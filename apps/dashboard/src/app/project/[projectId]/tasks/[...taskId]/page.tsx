@@ -22,9 +22,9 @@ const TASK_ROOT = process.env.NEXT_PUBLIC_AGENT_TASK_ROOT ?? null;
 // Join the captured segments back into the slash-delimited id the API expects.
 const joinTaskId = (segments: string[]): string => segments.join("/");
 
-// Tab title: "Task: <display_name>". Mirrors the page's task-resolution logic
-// (demo / inventory / legacy) so the title matches what the page renders.
-// Falls back to "Task" on any failure.
+// Tab title: "Task: <display_name>". Mirrors the page's task-resolution
+// logic (see `resolveTask` below) so the title matches what the page
+// renders. Falls back to "Task" on any failure.
 export async function generateMetadata({
   params,
 }: {
@@ -34,20 +34,7 @@ export async function generateMetadata({
   const taskId = joinTaskId(taskIdSegments);
   const isDemo = projectId === DEMO_PROJECT;
   try {
-    if (isDemo) {
-      const task = await getAgentTask(taskId, TASK_ROOT, projectId);
-      return { title: `Task: ${task.display_name}` };
-    }
-    try {
-      const project = await getProject(projectId);
-      if (project.task_source !== null && !project.task_source.inventory_stale) {
-        const task = await getProjectAgentTask(projectId, taskId);
-        return { title: `Task: ${task.display_name}` };
-      }
-    } catch {
-      // fall through to legacy
-    }
-    const task = await getAgentTask(taskId, TASK_ROOT, projectId);
+    const { task } = await resolveTask(projectId, taskId, TASK_ROOT, isDemo);
     return { title: `Task: ${task.display_name}` };
   } catch {
     return { title: "Task" };
@@ -55,6 +42,72 @@ export async function generateMetadata({
 }
 
 const EMPTY_TASK_RUNS: Awaited<ReturnType<typeof listTaskRuns>> = [];
+
+/**
+ * Resolve a task to display, shared by the page and its metadata.
+ *
+ * Resolution order matters and is the whole reason this helper exists:
+ *
+ * 1. **Demo project** → legacy filesystem discovery
+ *    (`getAgentTask`). The demo workspace is intentionally read-only and
+ *    not backed by the SPEC-119 inventory sync state machine.
+ *
+ * 2. **Non-demo project** → the project-scoped inventory endpoint
+ *    (`getProjectAgentTask`) is canonical and the *first* thing tried.
+ *    This is the fix for the "Task not found" navigation bug: the
+ *    previous logic gated the inventory call on an SSR `getProject()`
+ *    fetch, and when that fetch hiccuped the page silently fell through
+ *    to legacy discovery against `NEXT_PUBLIC_AGENT_TASK_ROOT` — a local
+ *    env var that frequently points at a stale or empty path, producing
+ *    a spurious "Task not found" even when the inventory has the row.
+ *
+ * 3. **Legacy fallback** — only reached when the inventory endpoint
+ *    fails *and* the project actually has a configured, non-stale
+ *    source (so the missing row is a real absence, not a config gap).
+ *    Unconfigured projects never fall through: the inventory 404 is the
+ *    truth. We rethrow the inventory endpoint's error (e.g. "Task not
+ *    found in inventory.") when there is nothing to fall back to, so
+ *    the user sees the meaningful reason instead of "Task not found".
+ */
+async function resolveTask(
+  projectId: string,
+  taskId: string,
+  taskRoot: string | null,
+  isDemo: boolean,
+): Promise<{ task: Awaited<ReturnType<typeof getProjectAgentTask>>; useInventory: boolean }> {
+  if (isDemo) {
+    // Demo workspace: legacy filesystem discovery only.
+    return { task: await getAgentTask(taskId, taskRoot, projectId), useInventory: false };
+  }
+
+  // Canonical path first. Capture the error so we can either fall back
+  // (when the project genuinely has a source) or rethrow it (when it
+  // doesn't, meaning the 404 is the real answer).
+  let inventoryError: unknown = null;
+  try {
+    return { task: await getProjectAgentTask(projectId, taskId), useInventory: true };
+  } catch (e) {
+    inventoryError = e;
+  }
+
+  // Only consider the legacy filesystem scan a valid fallback when the
+  // project has a configured, non-stale task source — i.e. the row is
+  // genuinely absent rather than the project being unconfigured. An
+  // unconfigured project has no `TASK_ROOT` worth scanning anyway.
+  try {
+    const project = await getProject(projectId);
+    const hasSource =
+      project.task_source !== null && !project.task_source.inventory_stale;
+    if (!hasSource) throw inventoryError;
+  } catch {
+    // Project fetch failure (e.g. transient SSR auth) — the inventory
+    // endpoint's error is the most informative thing we can surface.
+    throw inventoryError;
+  }
+
+  const task = await getAgentTask(taskId, taskRoot, projectId);
+  return { task, useInventory: false };
+}
 
 export default async function TaskDetailPage({
   params,
@@ -68,56 +121,39 @@ export default async function TaskDetailPage({
   const taskRoot = task_root ?? TASK_ROOT;
   const isDemo = projectId === DEMO_PROJECT;
 
-  // Resolve task source so we can pick between the SPEC-119
-  // inventory-backed endpoint (canonical for configured non-demo
-  // projects) and the legacy discovery endpoint (demo + unconfigured).
-  let useInventory = false;
-  try {
-    const project = await getProject(projectId);
-    useInventory =
-      !isDemo &&
-      project.task_source !== null &&
-      !project.task_source.inventory_stale;
-  } catch {
-    // Project fetch failure → fall back to legacy discovery; the actual
-    // task fetch below will surface the canonical error if any.
-  }
-
   let task: Awaited<ReturnType<typeof getProjectAgentTask>> | null = null;
   let taskRuns = EMPTY_TASK_RUNS;
   let error: string | null = null;
-
-  async function fetchTask(): Promise<typeof task> {
-    if (isDemo) {
-      return getAgentTask(taskId, taskRoot, projectId);
-    }
-    // For non-demo projects, try the project-scoped inventory endpoint
-    // first (canonical path). If that fails (project not configured,
-    // inventory stale, auth hiccup in SSR), fall back to the legacy
-    // discovery endpoint so the page doesn't go blank.
-    if (useInventory) {
-      try {
-        return await getProjectAgentTask(projectId, taskId);
-      } catch {
-        // fall through to legacy
-      }
-    }
-    return getAgentTask(taskId, taskRoot, projectId);
-  }
+  // Whether the task came from the inventory endpoint — the Files tab
+  // needs this to pick the right file-listing route.
+  let useInventory = false;
 
   try {
-    [task, taskRuns] = await Promise.all([
-      fetchTask(),
+    const [resolved, runs] = await Promise.all([
+      resolveTask(projectId, taskId, taskRoot, isDemo),
       listTaskRuns(taskId, projectId),
     ]);
+    task = resolved.task;
+    taskRuns = runs;
+    useInventory = resolved.useInventory;
   } catch (e: unknown) {
     error = e instanceof Error ? e.message : "Failed to fetch task details";
   }
 
   if (error) {
     return (
-      <div className="mx-6 mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
-        {error}
+      <div className="mx-auto w-full max-w-6xl flex flex-col">
+        <div className="border-b border-border px-6 py-5">
+          <Link
+            href={`/project/${projectId}/tasks`}
+            className="text-[12px] text-muted-foreground hover:text-foreground"
+          >
+            &larr; Tasks
+          </Link>
+        </div>
+        <div className="mx-6 mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
+          {error}
+        </div>
       </div>
     );
   }
