@@ -116,9 +116,16 @@ COPY apps/example-service/e2e/agent-task-demo /app/apps/example-service/e2e/agen
 # bakes them into the image so first-run latency is zero and there's no
 # committed lockfile to keep in sync with the monorepo. The @apo/sdk link goes
 # AFTER npm install, which would otherwise recreate node_modules and wipe it.
+#
+# Versions are pinned exactly (not ^ranges) because the demo tree intentionally
+# has no lockfile: a fresh build re-resolves from npm, and a caret range lets
+# an upstream release break the build with no warning. zod is on the 4.x line
+# because @anthropic-ai/claude-agent-sdk (declared by the demo's package.json)
+# has a hard peer dependency on zod ^4.0.0; installing zod 3.x makes npm abort
+# with ERESOLVE. ai@^6 and @ai-sdk/openai@^3 both accept zod 3 or 4.
 COPY --from=agent-task-builder /workspace/packages/sdk /app/_sdk-source
 RUN cd /app/apps/example-service/e2e/agent-task-demo \
-    && npm install --no-save --no-audit --no-fund zod@^3.22.0 ai@^6.0.3 @ai-sdk/openai@^3.0.1 \
+    && npm install --no-save --no-audit --no-fund zod@4.4.3 ai@6.0.230 @ai-sdk/openai@3.0.86 \
     && mkdir -p node_modules/@apo \
     && ln -sf /app/_sdk-source node_modules/@apo/sdk
 

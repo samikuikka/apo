@@ -70,7 +70,7 @@ const resultSchema = z.object({ summary: z.string(), findings: z.array(z.string(
 const toolLogSchema = z.object({
   total_calls: z.number(),
   tools_used: z.array(z.string()),
-  details: z.array(z.object({ tool: z.string(), args: z.record(z.unknown()), result: z.unknown() })),
+  details: z.array(z.object({ tool: z.string(), args: z.record(z.string(), z.unknown()), result: z.unknown() })),
 });
 const statsSchema = z.object({
   turn_count: z.number(),
