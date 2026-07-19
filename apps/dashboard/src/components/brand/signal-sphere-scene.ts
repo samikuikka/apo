@@ -203,7 +203,7 @@ export function buildSignalSphereScene(
   };
 }
 
-// Used by scripts/generate-signal-sphere.ts (outside the dashboard scan scope)
+// SVG renderer for the committed static brand assets.
 // react-doctor-disable-next-line react-doctor/deslop-unused-export, deslop/unused-export
 export function renderSignalSphereSvg(
   scene: SignalSphereScene,

@@ -55,8 +55,6 @@ apo's CLI has a `--ci` mode designed for automated runs. Strict exit codes (0=pa
 apo task run extract-parties --ci
 ```
 
-The repo's own [`scripts/ci-test.sh`](https://github.com/samikuikka/apo/blob/main/scripts/ci-test.sh) is a ready-to-adapt recipe: it pulls the repo, records the SHA/branch, runs the task with `--ci`, and includes a backend-reachability fallback. For a GitHub Actions workflow, the shape is:
-
 ```yaml
 - name: Run agent tasks
   run: apo task run extract-parties --ci

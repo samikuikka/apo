@@ -6,10 +6,10 @@ The Signal Sphere is a dotted spherical field of runtime signals with one visibl
 
 ## Architecture
 
-The brand system now has one shared geometry model and two renderers:
+The brand system has one shared geometry model and two presentation paths:
 
 - `signal-sphere-scene.ts`: shared math and scene generation
-- `generate-signal-sphere.ts`: static SVG export for simple surfaces
+- committed SVG/PNG assets: static artwork for simple surfaces
 - `SignalSphereCanvas.tsx`: live canvas renderer for in-app animation
 
 This keeps the logo math in one place while letting the product use richer motion than an `<img>` can support.
@@ -54,13 +54,7 @@ import { AnimatedSignalSphere } from "@/components/brand/AnimatedSignalSphere";
 
 This is the path for richer motion such as spinning rows, moving trails, endpoint pulsing, and more advanced future animation.
 
-## Generation
-
-```bash
-pnpm brand:generate
-```
-
-This writes four assets to `apps/dashboard/public/brand/`:
+The directory contains five committed assets:
 
 - `signal-sphere.svg` — canonical dense sphere (large sizes).
 - `signal-sphere-small.svg` / `.png` — sparse variant for <48px UI.

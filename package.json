@@ -12,7 +12,6 @@
     "lint:fix": "oxlint --fix --ignore-pattern=\"**/*.astro\" apps/ packages/",
     "typecheck": "pnpm --filter dashboard --filter @apo/sdk --filter @apo/example-service --filter @apo/cli run typecheck",
     "doctor": "npx react-doctor@latest",
-    "brand:generate": "tsx scripts/generate-signal-sphere.ts",
     "test:alpha": "pnpm test:alpha:backend && pnpm test:alpha:ui",
     "test:alpha:ui": "pnpm --filter dashboard exec playwright test --grep @alpha --project=chromium",
     "test:alpha:ui:all": "pnpm --filter dashboard exec playwright test e2e/alpha-project-setup-and-run.spec.ts e2e/alpha-schedule-lifecycle.spec.ts e2e/alpha-trace-drilldown.spec.ts",
@@ -24,7 +23,6 @@
     "concurrently": "^9.1.0",
     "oxlint": "^1.50.0",
     "react-doctor": "^0.3.0",
-    "sharp": "^0.35.2",
     "tsx": "^4.22.4"
   }
 }

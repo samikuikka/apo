@@ -395,7 +395,7 @@ entrypoint and can accidentally execute library code as a second CLI.
 - **Unit Tests**: Always run `pytest` in the backend and `pnpm test` in the packages/apps
 - **Integration**: Use the `example-service` to verify that SDK changes correctly log to the backend
 - **Linting**: Ensure all TypeScript code passes `eslint`
-- **Alpha release gate (SPEC-126)**: `pnpm test:alpha` runs the focused agent-testing release gate. It combines backend tests (scheduler recovery, project isolation, runtime config sanitization, task runtime packaging, dependency install policy) with the structural Playwright alpha specs. The deploy-shaped smoke script (`pnpm test:alpha:smoke`) uses deterministic fixtures — see [`docs/internal-alpha-checklist.md`](internal-alpha-checklist.md#fixture-model-deterministic-environment) for the full fixture model.
+- **Alpha release gate**: `pnpm test:alpha` combines focused backend tests with the structural Playwright alpha specs. Run `pnpm test:alpha:smoke` for the deploy-shaped Compose smoke test.
 
 ### API Documentation
 
