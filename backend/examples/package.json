@@ -1,0 +1,19 @@
+{
+  "name": "sdk-examples",
+  "version": "1.0.0",
+  "description": "Simple examples showing how to use the apo SDK",
+  "type": "module",
+  "scripts": {
+    "simple": "ts-node simple-sdk-example.ts",
+    "install-deps": "npm install"
+  },
+  "dependencies": {
+    "openai": "^6.10.0",
+    "@apo/sdk": "file:../../packages/sdk"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.0"
+  }
+}

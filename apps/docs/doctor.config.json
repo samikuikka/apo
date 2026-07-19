@@ -1,0 +1,16 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  "ignore": {
+    "files": [
+      ".astro/**",
+      "src/components/CodeCard.astro",
+      "src/components/Head.astro",
+      "src/components/Header.astro",
+      "src/components/Hero.astro",
+      "src/components/PageTitle.astro",
+      "src/components/Sidebar.astro",
+      "src/components/SidebarSublist.astro",
+      "src/components/TwoColumnContent.astro"
+    ]
+  }
+}

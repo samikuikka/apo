@@ -1,0 +1,131 @@
+---
+/**
+ * CodeCard — a static code/verdict card for the landing hero.
+ *
+ * Sits under the hero CTAs and shows what an apo task definition actually
+ * looks like: a real `tasks/<id>.eval.ts` snippet with a PASS verdict chip
+ * top-right. Mirrors flue's hero-code-snippet section (a white/translucent
+ * card straddling the hero), rendered in apo's dark/monochrome identity.
+ *
+ * Static by design — motion lives in the TerminalDemo section below. Sharp
+ * corners, mono font, card fill + hairline border per docs/design.md.
+ */
+interface Props {
+	filename?: string;
+	verdict?: 'PASS' | 'FAIL';
+}
+
+const {
+	filename = 'tasks/refund.eval.ts',
+	verdict = 'PASS',
+} = Astro.props;
+---
+
+<div class="code-card not-content" data-code-card>
+	<div class="code-card__chrome">
+		<span class="code-card__file">
+			<svg viewBox="0 0 16 16" aria-hidden="true" class="code-card__file-icon">
+				<path d="M9 1.5V5h3.5L9 1.5zM2 1.5h6V5.5h4V14.5H2V1.5z" fill="currentColor" />
+			</svg>
+			{filename}
+		</span>
+		<span class:list={["code-card__verdict", `is-${verdict.toLowerCase()}`]} aria-label={`Verdict: ${verdict}`}>
+			{verdict}
+		</span>
+	</div>
+	<pre class="code-card__body"><code><span class="tok-kw">import</span> {'{ task, test, turn }'} <span class="tok-kw">from</span> <span class="tok-str">'@apo/sdk/agent-task'</span>;
+
+<span class="tok-kw">export default</span> <span class="tok-fn">task</span>(
+  <span class="tok-str">'refund'</span>,
+  <span class="tok-fn">turn</span>(<span class="tok-str">'Refund order #4821 — keep the customer posted.'</span>),
+  [
+    <span class="tok-fn">test</span>(<span class="tok-str">'issues-refund'</span>, <span class="tok-kw">async</span> (t, {'{ refund }'}) =&gt; {'{'}
+      t.<span class="tok-fn">calledTool</span>(<span class="tok-str">'issue_refund'</span>, {'{ amount: 89.00 }'});
+      <span class="tok-kw">await</span> t.<span class="tok-fn">judge</span>(refund.summary, <span class="tok-str">'is warm, clear, and names the amount'</span>);
+    {'}'}),
+    <span class="tok-fn">test</span>(<span class="tok-str">'no-failed-actions'</span>, (t) =&gt; t.<span class="tok-fn">noFailedActions</span>()),
+  ],
+);</code></pre>
+</div>
+
+<style>
+	/* Card fill + hairline, sharp corners — matches .ec / .copy-prompt treatment. */
+	.code-card {
+		margin: 2rem 0 0;
+		background: var(--sl-color-gray-6);
+		border: 1px solid var(--sl-color-gray-5);
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: var(--sl-text-code, 0.8125rem);
+		line-height: 1.7;
+		overflow: hidden;
+	}
+
+	.code-card__chrome {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 0.55rem 0.85rem;
+		border-bottom: 1px solid var(--sl-color-gray-5);
+		background: var(--sl-color-black);
+	}
+
+	.code-card__file {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-code-sm, 0.75rem);
+		min-width: 0;
+	}
+
+	.code-card__file-icon {
+		width: 0.85rem;
+		height: 0.85rem;
+		fill: currentColor;
+		flex-shrink: 0;
+	}
+
+	/* Verdict chip — green for PASS (the accent), red for FAIL. */
+	.code-card__verdict {
+		flex-shrink: 0;
+		padding: 0.1rem 0.5rem;
+		border: 1px solid var(--sl-color-accent);
+		color: var(--sl-color-accent-high);
+		font-size: var(--sl-text-code-sm, 0.75rem);
+		font-weight: 600;
+		letter-spacing: 0.04em;
+	}
+
+	.code-card__verdict.is-fail {
+		border-color: oklch(0.55 0.24 25);
+		color: oklch(0.8 0.16 25);
+	}
+
+	.code-card__body {
+		margin: 0;
+		padding: 0.9rem 0.95rem 1rem;
+		overflow-x: auto;
+		color: var(--sl-color-gray-2);
+	}
+
+	.code-card__body code {
+		font-family: inherit;
+		background: none;
+		border: none;
+		color: inherit;
+		white-space: pre;
+	}
+
+	/* Minimal monochrome-ish syntax tokens — a small varied palette is permitted
+	   inside code-rendering modules (design.md "code syntax highlighting"). */
+	:global(.code-card .tok-kw) { color: var(--sl-color-accent-high); }
+	:global(.code-card .tok-str) { color: oklch(0.8 0.08 110); }
+	:global(.code-card .tok-fn) { color: var(--sl-color-gray-1); }
+
+	@media (max-width: 30rem) {
+		.code-card__body {
+			font-size: 0.7rem;
+		}
+	}
+</style>

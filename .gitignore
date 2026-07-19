@@ -1,0 +1,95 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build output
+dist
+build
+out
+.next
+
+# Env & secrets
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+!*.env.example
+
+# OS / editor (project conventions — not per-contributor tooling, which lives in global ignore)
+.DS_Store
+*.sw?
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+venv/
+.venv/
+
+# Build / coverage
+coverage
+.nyc_output
+*.tsbuildinfo
+
+# Databases (runtime data only — never track dev databases)
+*.db
+*.db-wal
+*.db-shm
+*.bak
+*.bak.*
+
+# Logs — task fixture .log files are test data, exempted below
+*.log
+!apps/example-service/e2e/agent-task-demo/tasks/**/*.log
+
+# VCS & worktrees (jj as the project's mandated VCS)
+.jj/
+.worktrees/
+.tmp-*
+
+# Playwright test output & CLI artifacts
+.playwright-cli/
+.playwright/
+**/playwright-report/
+**/test-results/
+
+# Private implementation system (maintainer-local, not part of the product)
+AGENTS.md
+CLAUDE.md
+/CONTEXT.md
+/specs/
+/project/
+/ralph
+/scripts/agent
+/scripts/test-jj-merge.sh
+/docs/plans/
+/docs/agent-worktree-state-research.md
+/docs/commit-granularity.md
+/docs/done-trigger.md
+/docs/jj-workflow.md
+/docs/merge-idiom.md
+/.agents/
+/.claude/
+/.codex/
+/.opencode/
+/.ncode/
+/.agent-state/
+/.personal/
+
+# Personal tooling / editor configs
+.zed/
+.mimocode/
+.mcp.json
+
+# Runtime caches
+backend/data/mock_runs_cache.json
+
+# Editor atomic-write temp files
+*.ts.*.ts

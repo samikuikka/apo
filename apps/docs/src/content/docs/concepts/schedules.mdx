@@ -1,0 +1,59 @@
+---
+title: Schedules
+description: "How often each subset runs: policy, not a single timer."
+---
+
+import SmartSchedulingDemo from '../../../components/demos/SmartSchedulingDemo.astro';
+
+How often a task runs isn't baked into the task. A **schedule** is a recurring, time-based trigger — separate from the task — that says *when* a selection of tasks runs. Cadence is policy, not a property.
+
+When a schedule fires, it creates a **batch run** with `trigger.source = "schedule"`, which flows through the same batch → task run → trace pipeline as a manual run. The verdict, tests, and trace are identical.
+
+## Four cadence types
+
+Every schedule picks one of:
+
+| Type | When it fires | Extra fields |
+|---|---|---|
+| **Daily** | Every day at `hour:minute` (timezone) | hour, minute |
+| **Weekly** | On `day_of_week` at `hour:minute` | + day_of_week |
+| **Monthly** | On `day_of_month` at `hour:minute` | + day_of_month |
+| **Smart** | Per-task, adapting to recent results | + min/max interval (days) |
+
+The first three are fixed clocks. **Smart** is different — it backs off tasks that keep passing and retests tasks that fail, using spaced repetition.
+
+## Subsets are a pattern you build
+
+apo doesn't enforce a subset taxonomy. You compose one by creating multiple schedules, each with its own task selection (`task` / `tasks` / `folder` / `all`, optionally narrowed by `grep`) and its own cadence. A common pattern:
+
+| Schedule | Selection | Cadence | Cost |
+|---|---|---|---|
+| **Smoke** | a few fast tasks | Daily | Low |
+| **Full** | all tasks | Weekly | High |
+| **Regression** | historically broken areas | Monthly | Medium |
+
+This is the layout to start from. Rename or regroup it once you have a reason to.
+
+## Smart scheduling
+
+Smart cadence uses the [SM-2 spaced-repetition algorithm](https://en.wikipedia.org/wiki/SuperMemo#Description_of_SM-2), **per task**. Each task in a Smart schedule tracks its own interval and ease factor independently:
+
+- **A task that passes** backs off exponentially — its next run multiplies by its ease factor (≈2.5×). Stable tasks graduate to running rarely.
+- **A task that fails** snaps straight back to the minimum interval (default 1 day). Flaky tasks get retested soon.
+- The schedule's next fire is the earliest next-run across all its tasks — so one failing task keeps the schedule active while the rest back off.
+
+The interval is clamped to `[min_interval_days, max_interval_days]` (defaults 1–30 days). Watch one task's interval evolve across five runs:
+
+<SmartSchedulingDemo />
+
+The curve climbs as the task keeps passing — 1d → 2.5d → 6.4d → 16.6d — then drops vertically when it fails, snapping back to 1d before climbing again.
+
+## Where schedules live
+
+Schedules are configured in the dashboard. Each is project-scoped and owns its own task selection, environment, and cadence rules. You can pause and resume a schedule (the `enabled` flag), or run one on demand via the manual trigger without waiting for its next fire time.
+
+## Next
+
+- [Tasks](/concepts/tasks/): what a schedule selects and runs.
+- [Adapters](/concepts/adapters/): the bridge to your real agent that each run invokes.
+- [Traces](/concepts/traces/): the per-run record every schedule produces.

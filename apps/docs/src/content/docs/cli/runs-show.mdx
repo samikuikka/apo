@@ -1,0 +1,109 @@
+---
+title: "apo runs show"
+description: "Show a run's verdict, checks, and failures."
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
+
+`apo runs show` reads a run's result — the verdict, the per-test breakdown, the cost, and the failure reasons. It's what you (or a coding agent) use after [`apo task run`](/cli/task-run/) to see what happened.
+
+<TerminalDemo
+  command="apo runs show de89cab0"
+  lines={[
+    { text: "" },
+    { text: "Run: de89cab0" },
+    { text: "  Task:     extract-parties" },
+    { text: "  Status:   completed" },
+    { text: "  Result:   FAIL", tone: "danger" },
+    { text: "  Checks:   1/2 passed (1 failed)" },
+    { text: "  Started:  7/4/2026, 5:12:30 PM" },
+    { text: "  Cost:     $0.0034" },
+    { text: "  Tokens:   1,247" },
+    { text: "  Trace:    f1a2b3c4", tone: "default" },
+    { text: "" },
+    { text: "  Checks:", tone: "default" },
+    { text: "    PASS used-source-document", tone: "success" },
+    { text: "      ✓ called-read-file", tone: "success" },
+    { text: "      ✓ no-failed-actions", tone: "success" },
+    { text: "    FAIL parties-are-complete", tone: "danger" },
+    { text: "      ✗ parties-match-schema", tone: "danger" },
+    { text: "        − Expected: every named party captured", tone: "danger" },
+    { text: "        + Received: missing \"acme-corp\"", tone: "danger" },
+  ]}
+/>
+
+## Synopsis
+
+```bash
+apo runs show [run-id] [--verbose] [--exit-status]
+```
+
+## Description
+
+Shows a run's details. The argument is a **run id** (the output of `apo task run`), a unique prefix of one, or the literal `last` (the default) for the most recent run.
+
+## Options
+
+| Option | Default | Purpose |
+|---|---|---|
+| `[run-id]` | `last` | Run id, unique prefix, or `last`. With no arg, resolves the latest run. |
+| `--verbose` | off | Show passing checks too (not just failures) and LLM-judge transcripts. |
+| `--exit-status` | off | Exit non-zero if the run failed (for scripting). |
+| `--task <id>` | — | When using `last`, scope to the latest run of this task. |
+
+## Output
+
+<TerminalOutput
+  lines={[
+    { text: "Run: de89cab0" },
+    { text: "  Task:     extract-parties" },
+    { text: "  Path:     real-agent/extract-parties/extract-parties.eval.ts" },
+    { text: "  Adapter:  real-agent" },
+    { text: "  Status:   completed" },
+    { text: "  Result:   FAIL", tone: "danger" },
+    { text: "  Checks:   1/2 passed (1 failed)" },
+    { text: "  Started:  7/16/2026, 9:42 AM" },
+    { text: "  Source:   cli · sami · apo task run" },
+    { text: "  Cost:     $0.0034" },
+    { text: "  Tokens:   1,247" },
+    { text: "  Trace:    f1a2b3c4 (apo traces show f1a2b3c4)" },
+    { text: "" },
+    { text: "  Checks:", tone: "default" },
+    { text: "    PASS used-source-document", tone: "success" },
+    { text: "      ✓ called-read-file", tone: "success" },
+    { text: "      ✓ no-failed-actions", tone: "success" },
+    { text: "    FAIL parties-are-complete", tone: "danger" },
+    { text: "      ✗ parties-match-schema", tone: "danger" },
+    { text: "        − Expected: every named party captured", tone: "danger" },
+    { text: "        + Received: missing \"acme-corp\"", tone: "danger" },
+  ]}
+/>
+
+With `--verbose`, passing checks are listed with their matchers, and judged checks include the judge's model, prompt, and response — so you can see exactly what the judge was asked and what it said.
+
+## The three ids
+
+`apo runs show` takes a **run id**. This is distinct from the **task id** (`apo task run` takes that) and the **trace id** (a separate field on the run, printed at the bottom of the output — pass it to `apo traces show`).
+
+## Example
+
+```bash
+# Show the latest run
+apo runs show
+
+# Show a specific run by id
+apo runs show de89cab0
+
+# Show with passing checks and judge transcripts
+apo runs show --verbose
+
+# Scope "last" to a specific task
+apo runs show last --task extract-parties
+```
+
+## See also
+
+- [`apo task run`](/cli/task-run/) — produce a run to inspect.
+- [`apo traces show`](/cli/traces-show/) — drill into the call tree when a test fails.
+- [Run and debug](/guides/run-and-debug/) — the manual debugging workflow.

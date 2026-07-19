@@ -1,0 +1,354 @@
+---
+/**
+ * TerminalDemo — a code block that becomes a runnable terminal.
+ *
+ * The command sits as a shell prompt line (`$ <command>`, selectable/copyable).
+ * Click Run and the simulated response streams in line-by-line below, ending
+ * on the verdict. A small touch that lets a reader feel the real loop without
+ * installing anything.
+ *
+ * Lines support rich per-part coloring so the mock matches what the real CLI
+ * actually prints (green PASS, red FAIL, bold headers, dim hints, ✓/✗ marks).
+ * Each line is either a string (shorthand) or `{ parts: [{ text, tone }] }`.
+ * Output is mocked — these don't run against a real backend.
+ *
+ * Same idiom as the other demos: scoped tokens, sharp corners, monospace,
+ * prefers-reduced-motion (instant full output), astro:before-swap cleanup.
+ * `not-content` on the root so Starlight's markdown margins don't interfere.
+ * See docs/design.md "Motion".
+ */
+import { prefersReducedMotion } from "./demo-motion";
+
+type Tone = "default" | "danger" | "success" | "dim" | "bold";
+type Part = { text: string; tone?: Tone };
+type Line = string | { text?: string; tone?: Tone; parts?: Part[] };
+
+interface Props {
+  command: string | string[];
+  lines: Line[];
+}
+
+const { command, lines } = Astro.props;
+const commands = Array.isArray(command) ? command : [command];
+
+// Normalize each line into a parts[] array for rendering.
+const normalized: Part[][] = lines.map((line) => {
+  if (typeof line === "string") return [{ text: line }];
+  if (line.parts) return line.parts;
+  return [{ text: line.text ?? "", tone: line.tone }];
+});
+---
+
+<div class="terminal not-content" data-terminal>
+  <div class="terminal__prompt">
+    <div class="terminal__command-block">
+      {commands.map((cmd) => (
+        <div class="terminal__command-line">
+          <span class="terminal__sigil" aria-hidden="true">$</span>
+          <span class="terminal__command">{cmd}</span>
+        </div>
+      ))}
+    </div>
+    <button class="terminal__run" type="button" data-run>
+      <span data-run-label>Run</span>
+    </button>
+  </div>
+  <div class="terminal__output" data-output aria-live="polite">
+    {normalized.map((parts, i) => (
+      <span class="terminal__line" data-line data-index={i}>
+        {parts.map((part) => (
+          <span class:list={["t", part.tone ? `is-${part.tone}` : ""]}>{part.text}</span>
+        ))}
+      </span>
+    ))}
+  </div>
+</div>
+
+<style>
+  .terminal {
+    margin: 1rem 0;
+    border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-black);
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+    font-size: 0.8rem;
+    /* Lines exist in the DOM but hidden until streamed; reserve no height for them. */
+    overflow: hidden;
+  }
+
+  .terminal__prompt {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid transparent;
+    transition: border-color 200ms ease;
+  }
+
+  /* Once output exists, separate the prompt from it with a hairline. */
+  .terminal[data-streaming] .terminal__prompt,
+  .terminal[data-done] .terminal__prompt {
+    border-bottom-color: var(--sl-color-gray-6);
+  }
+
+  .terminal__command-block {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .terminal__command-line {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+
+  .terminal__sigil {
+    color: var(--sl-color-accent);
+    user-select: none;
+    flex-shrink: 0;
+  }
+
+  .terminal__command {
+    color: var(--sl-color-gray-2);
+    /* Keep each command on one line. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .terminal__run {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.6rem;
+    background: var(--sl-color-gray-7, #313136);
+    border: 1px solid var(--sl-color-gray-5);
+    color: var(--sl-color-gray-2);
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .terminal__run:hover:not(:disabled) {
+    background: var(--sl-color-gray-6);
+    border-color: var(--sl-color-gray-4);
+  }
+
+  .terminal__run:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+
+  /* Done state — the button reads "Run again" and sits at rest. */
+  .terminal[data-done] .terminal__run {
+    color: var(--sl-color-gray-3);
+  }
+
+  .terminal__output {
+    padding: 0 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    /* Collapsed when idle; expands to natural height when output exists.
+       No fixed max-height — long outputs (the breakdown has ~14 lines)
+       must be fully visible. Each line animates in on its own. */
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 200ms ease, padding 200ms ease;
+  }
+
+  .terminal[data-streaming] .terminal__output,
+  .terminal[data-done] .terminal__output {
+    /* Large enough that any realistic output fits; the container's real
+       height is governed by its flowing content, not this cap. */
+    max-height: 60rem;
+    padding-top: 0.55rem;
+    padding-bottom: 0.6rem;
+  }
+
+  /* Lines exist statically but are hidden until their stream turn.
+     When a line is active, a blinking cursor sits at the end of the
+     visible text — simulating a terminal writing output. */
+  .terminal__line {
+    color: var(--sl-color-gray-2);
+    opacity: 0;
+  }
+
+  .terminal__line[data-shown] {
+    opacity: 1;
+  }
+
+  /* Cursor: a thin green block that blinks at the end of the active line. */
+  .terminal__line[data-active]::after {
+    content: "";
+    display: inline-block;
+    width: 0.45em;
+    height: 1.1em;
+    margin-left: 1px;
+    background: var(--sl-color-accent);
+    vertical-align: text-bottom;
+    animation: terminal-cursor 600ms steps(1) infinite;
+  }
+
+  @keyframes terminal-cursor {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  /* Empty separator lines still need height to create visual gaps. */
+  .terminal__line:empty {
+    min-height: 0.6rem;
+  }
+
+  /* Per-part tones — match the real CLI's color helpers (format.ts):
+     green PASS/✓, red FAIL/✗, dim hints, bold headers. */
+  :global(.t) {
+    color: var(--sl-color-gray-2);
+  }
+  :global(.t.is-success) {
+    color: var(--sl-color-accent-high);
+  }
+  :global(.t.is-danger) {
+    color: oklch(0.8 0.16 25);
+  }
+  :global(.t.is-dim) {
+    color: var(--sl-color-gray-4);
+  }
+  :global(.t.is-bold) {
+    color: var(--sl-color-white);
+    font-weight: 600;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .terminal__line {
+      transition: none;
+      transform: none;
+    }
+    .terminal__output {
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  import { prefersReducedMotion } from "./demo-motion";
+
+  // Typewriter effect: characters stream in, like a real terminal writing output.
+  // Fast enough to feel snappy (~1s total) but each character appears progressively.
+  const TARGET_TOTAL_MS = 1000;
+  const MIN_CHAR_MS = 4;       // never slower than 4ms per char
+  const MAX_CHAR_MS = 18;      // never faster than 18ms per char (visible writing)
+  const LINE_START_GAP_MS = 30; // small pause when a new line begins
+
+  function setupTerminal(root: HTMLElement) {
+    const runBtn = root.querySelector<HTMLButtonElement>("[data-run]");
+    const runLabel = root.querySelector<HTMLElement>("[data-run-label]");
+    const lines = Array.from(root.querySelectorAll<HTMLElement>("[data-line]"));
+    if (!runBtn || !runLabel) return;
+
+    // Pre-compute the full text of each line (from child spans) so we can
+    // reveal characters progressively.
+    const lineData = lines.map((line) => {
+      const spans = Array.from(line.querySelectorAll<HTMLElement>(":scope > .t"));
+      const fullText = spans.map((s) => s.textContent ?? "").join("");
+      return { el: line, spans, fullText, length: fullText.length };
+    });
+
+    const totalChars = lineData.reduce((sum, l) => sum + Math.max(l.length, 1), 0);
+    const charDelay = Math.max(MIN_CHAR_MS, Math.min(MAX_CHAR_MS, TARGET_TOTAL_MS / totalChars));
+
+    let streaming = false;
+    let timer: number | undefined;
+
+    function reset() {
+      for (const { el, spans } of lineData) {
+        el.removeAttribute("data-shown");
+        el.removeAttribute("data-active");
+        // Restore full text
+        for (const span of spans) {
+          span.style.visibility = "";
+        }
+      }
+      root.removeAttribute("data-streaming");
+      root.removeAttribute("data-done");
+    }
+
+    async function stream() {
+      if (streaming) return;
+      streaming = true;
+      reset();
+      root.setAttribute("data-streaming", "");
+      runBtn.disabled = true;
+      runLabel.textContent = "Running";
+
+      // Reduced motion: show all instantly.
+      if (prefersReducedMotion()) {
+        for (const { el } of lineData) el.setAttribute("data-shown", "");
+        finish();
+        return;
+      }
+
+      // Hide all span text initially
+      for (const { spans } of lineData) {
+        for (const span of spans) span.style.visibility = "hidden";
+      }
+
+      // Stream character by character
+      let charIndex = 0;
+      for (const { el, spans, fullText } of lineData) {
+        el.setAttribute("data-shown", "");
+        el.setAttribute("data-active", "");
+
+        // Small pause at the start of each line
+        if (charIndex > 0) {
+          await new Promise<void>((r) => { timer = window.setTimeout(r, LINE_START_GAP_MS); });
+        }
+
+        // Reveal characters within this line's spans
+        let revealed = 0;
+        for (const span of spans) {
+          const spanText = span.textContent ?? "";
+          span.style.visibility = "hidden";
+
+          for (let i = 0; i < spanText.length; i++) {
+            // Show this span up to character i+1 by clipping
+            span.style.visibility = "visible";
+            span.style.clipPath = `inset(0 ${spanText.length - i - 1}ch 0 0)`;
+            revealed++;
+            charIndex++;
+            await new Promise<void>((r) => { timer = window.setTimeout(r, charDelay); });
+          }
+          // Fully reveal this span
+          span.style.clipPath = "";
+        }
+
+        el.removeAttribute("data-active");
+      }
+
+      finish();
+    }
+
+    function finish() {
+      streaming = false;
+      root.removeAttribute("data-streaming");
+      root.setAttribute("data-done", "");
+      runBtn.disabled = false;
+      runLabel.textContent = "Run again";
+    }
+
+    runBtn.addEventListener("click", stream);
+
+    document.addEventListener(
+      "astro:before-swap",
+      () => { window.clearTimeout(timer); },
+      { once: true },
+    );
+  }
+
+  document
+    .querySelectorAll<HTMLElement>("[data-terminal]")
+    .forEach((root) => setupTerminal(root));
+</script>

@@ -1,0 +1,9 @@
+.git/
+node_modules/
+.next/
+__pycache__/
+.uv-cache/
+*.pyc
+.env
+data/
+backend/data/

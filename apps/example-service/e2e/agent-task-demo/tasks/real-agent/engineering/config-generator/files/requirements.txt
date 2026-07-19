@@ -1,0 +1,32 @@
+# Deployment Requirements
+# =======================
+
+## Service Configuration
+- Service name: payment-gateway
+- Namespace: production
+- Environment: production
+- Container port: 8080
+- Health check path: /health
+- Log level: info
+
+## Resource Requirements
+- Each instance needs at minimum: 0.5 CPU cores, 512MB memory
+- Each instance should be limited to: 1.0 CPU core, 1GB memory
+- Expected RPS per instance: 500 requests/second
+- Peak traffic: 2000 RPS
+
+## High Availability
+- Minimum 2 replicas for HA
+- Must handle 1 replica failure without service degradation
+- Rolling deployments with zero downtime
+
+## Budget Constraints
+- Monthly budget: $1200
+- Cost per CPU core per hour: $0.05
+- Cost per GB memory per hour: $0.01
+- 730 hours per month
+
+## Additional Notes
+- Service handles payment processing, latency is critical
+- P99 latency target: < 200ms
+- Need extra headroom for traffic spikes (20% buffer)

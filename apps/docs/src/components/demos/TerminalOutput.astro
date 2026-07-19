@@ -1,0 +1,70 @@
+---
+/**
+ * TerminalOutput — a static, colored terminal block for "Output" sections.
+ *
+ * TerminalDemo (above) is interactive — click Run and the output streams.
+ * But the man-pages also have a static "Output" section that documents the
+ * full format, and those render as plain ```text blocks with no coloring.
+ * The real CLI colors PASS/✓ green and FAIL/✗ red, so the static blocks
+ * should match.
+ *
+ * Same visual language as TerminalDemo (black bg, monospace, colored lines)
+ * but no Run button, no streaming — just a pre-rendered colored block.
+ *
+ * Usage:
+ *   <TerminalOutput
+ *     lines={[
+ *       { text: "Run: de89cab0" },
+ *       { text: "  Result:   FAIL", tone: "danger" },
+ *       { text: "    ✓ no-failed-actions", tone: "success" },
+ *     ]}
+ *   />
+ */
+interface Props {
+  lines: Array<{ text: string; tone?: "default" | "danger" | "success" }>;
+}
+
+const { lines } = Astro.props;
+---
+
+<div class="terminal-output not-content">
+  {lines.map((line) => (
+    <span class:list={["terminal-output__line", line.tone ? `is-${line.tone}` : ""]}>
+      {line.text}
+    </span>
+  ))}
+</div>
+
+<style>
+  .terminal-output {
+    margin: 1rem 0;
+    border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-black);
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    padding: 0.6rem 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    overflow-x: auto;
+  }
+
+  .terminal-output__line {
+    color: var(--sl-color-gray-3);
+    white-space: pre;
+  }
+
+  /* Empty separator lines still need height to create visual gaps. */
+  .terminal-output__line:empty {
+    min-height: 0.6rem;
+  }
+
+  .terminal-output__line.is-danger {
+    color: oklch(0.8 0.16 25);
+  }
+
+  .terminal-output__line.is-success {
+    color: var(--sl-color-accent);
+  }
+</style>

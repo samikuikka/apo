@@ -1,0 +1,48 @@
+---
+// Overrides Starlight's built-in PageTitle to place a brand cover above the
+// H1 on selected pages — matching flue's DocsCover-above-the-header placement.
+// The cover is a React island (client:visible) and only renders on the pages
+// listed below. Everywhere else this component is identical to the default.
+import { SignalSphereIsland } from './brand/SignalSphereIsland.tsx';
+
+// Mirrors @astrojs/starlight/constants (not in the public exports map).
+const PAGE_TITLE_ID = '_top';
+
+// Slugs that get a centered signal-sphere cover above the title.
+// (Splash uses Starlight's `hero` instead — this only affects non-hero pages.)
+const PAGES_WITH_COVER = new Set(['why-apo']);
+
+const slug = Astro.locals.starlightRoute?.entry?.id?.replace(/\.(md|mdx)$/, '') ?? '';
+const showCover = PAGES_WITH_COVER.has(slug);
+---
+
+{showCover && (
+  <div class="page-cover">
+    <SignalSphereIsland client:visible size={180} />
+  </div>
+)}
+
+<h1 id={PAGE_TITLE_ID}>{Astro.locals.starlightRoute.entry.data.title}</h1>
+
+<style>
+  .page-cover {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1rem;
+  }
+
+  /* Mirror the H1's top spacing so the cover sits in the title block. */
+  .page-cover + h1 {
+    margin-top: 0;
+  }
+
+  @layer starlight.core {
+    h1 {
+      margin-top: 1rem;
+      font-size: var(--sl-text-h1);
+      line-height: var(--sl-line-height-headings);
+      font-weight: 600;
+      color: var(--sl-color-white);
+    }
+  }
+</style>

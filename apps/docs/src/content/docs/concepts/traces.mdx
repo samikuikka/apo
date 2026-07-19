@@ -1,0 +1,51 @@
+---
+title: Traces
+description: "The runtime record of a run: the call tree, tokens, and messages. Where you go when a run fails."
+---
+
+import TraceTreeDemo from '../../../components/demos/TraceTreeDemo.astro';
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+
+**When a run fails, the trace is where you go.** It's the full runtime record of one task run: the call tree, the tokens, the actual messages. It's treated as a first-class surface, not an afterthought.
+
+## What's in a trace
+
+- **The call tree**: every call the agent made, parent/child relationships, what it returned.
+- **Token usage**: input/output tokens per call, with cost.
+- **Model parameters**: temperature, model, all params actually used.
+- **The messages**: the actual system, user, assistant, and tool messages exchanged.
+
+A trace is a tree built over time, not a flat log. The calls nest, and the order matters:
+
+<TraceTreeDemo />
+
+## One trace per run
+
+You never have to figure out which trace goes with a run — each task run owns at most one trace, and there are never two competing traces for one execution. See [Mental model](/concepts/mental-model/) for the rule that enforces this.
+
+## How to read one
+
+<TerminalDemo
+  command="apo traces show f1a3e9c0"
+  lines={[
+    { text: "Trace: f1a3e9c0" },
+    { text: "  Task:      extract-parties" },
+    { text: "  Status:    completed" },
+    { text: "  Duration:  4.2s" },
+    { text: "  Calls:     6" },
+    { text: "  Cost:      $0.0042" },
+    { text: "  Tokens:    3,841" },
+    { text: "" },
+    { text: "  Calls:" },
+    { text: "    read_file                gpt-4o              0.3s     $0.0008     412" },
+    { text: "        tool: read_file" },
+    { text: "        args: {\"path\":\"contract.pdf\"}" },
+    { text: "    extract_entities         gpt-4o              1.1s     $0.0014   1,204" },
+    { text: "    generate_response        gpt-4o              2.4s     $0.0020   2,225" },
+    { text: "        tokens: 1,890 prompt + 335 completion" },
+  ]}
+/>
+
+Start at the failing test (from `apo runs show`), then walk the call tree to see what the agent actually did. The messages are where "why did it do that" gets answered: you can read exactly what the agent was told and what it said back.
+
+For the full debugging workflow, see [Run and debug](/guides/run-and-debug/).

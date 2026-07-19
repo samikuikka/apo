@@ -1,0 +1,110 @@
+---
+title: "apo task run"
+description: "Run a task and get a verdict. The load-bearing command."
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
+
+`apo task run` executes a task — your real agent, against real inputs, producing a binary verdict. It's the command at the center of [the engineering loop](/guides/loop-engineering/).
+
+<TerminalDemo
+  command="apo task run extract-parties"
+  lines={[
+    { text: "" },
+    { text: "Run: de89cab0", tone: "default" },
+    { text: "  Task:      extract-parties" },
+    { text: "  Status:    completed" },
+    { text: "  Result:    FAIL", tone: "danger" },
+    { text: "  Started:   7/4/2026, 5:12:30 PM" },
+    { text: "  Cost:      $0.003400" },
+    { text: "  Tokens:    1,247" },
+    { text: "  Trace:     f1a2b3c4", tone: "default" },
+    { text: "" },
+    { text: "  Checks:", tone: "default" },
+    { text: "    FAIL parties-are-complete", tone: "danger" },
+    { text: "      ✗ parties-match-schema", tone: "danger" },
+    { text: "        − Expected: every named party captured", tone: "danger" },
+    { text: "        + Received: missing \"acme-corp\"", tone: "danger" },
+    { text: "      ✓ no-duplicate-parties", tone: "success" },
+    { text: "" },
+    { text: "  Inspect: apo runs show de89cab0", tone: "default" },
+  ]}
+/>
+
+## Synopsis
+
+```bash
+apo task run <task-id | path> [--ci]
+```
+
+## Description
+
+Runs a task. The argument is a **task id** (the folder name) or a filesystem path to the task folder. apo loads the task, drives the adapter through its lifecycle, collects deliverables, runs every `test(...)`, and reports the verdict.
+
+The task id is **not** a run id — a run id is what this command *outputs*. A trace id is a separate field on the run, printed at the bottom of the output.
+
+## Options
+
+| Option | Default | Purpose |
+|---|---|---|
+| `<task-id \| path>` | (required) | Task id (folder name) or filesystem path. |
+| `--ci` | off | CI mode: records CI metadata, uses strict exit codes. |
+
+## Output
+
+The result block carries the verdict and the per-check breakdown. The verdict is `PASS` (green) or `FAIL` (red) — the AND of all tests. Each check shows its result with failure reasons:
+
+<TerminalOutput
+  lines={[
+    { text: "Run: de89cab0" },
+    { text: "  Task:      extract-parties" },
+    { text: "  Adapter:   real-agent" },
+    { text: "  Status:    completed" },
+    { text: "  Result:    FAIL", tone: "danger" },
+    { text: "  Started:   7/16/2026, 9:42 AM" },
+    { text: "  Cost:      $0.003400" },
+    { text: "  Source:    cli · sami · apo task run" },
+    { text: "  Trace:     f1a2b3c4" },
+    { text: "" },
+    { text: "  Checks:", tone: "default" },
+    { text: "    FAIL parties-are-complete", tone: "danger" },
+    { text: "      ✗ parties-match-schema", tone: "danger" },
+    { text: "        − Expected: every named party captured", tone: "danger" },
+    { text: "        + Received: missing \"acme-corp\"", tone: "danger" },
+    { text: "      ✓ no-duplicate-parties", tone: "success" },
+  ]}
+/>
+
+The `Inspect:` line at the bottom hints the next command — `apo runs show <run-id>` for the full breakdown, `apo traces show <trace-id>` for the call tree.
+
+## Exit codes
+
+A failing run exits non-zero whether or not `--ci` is set — so any script gating on this command catches failures either way:
+
+| Exit code | Meaning |
+|---|---|
+| `0` | The run passed. |
+| `1` | The run completed but one or more tests failed. |
+| `2` | The run errored (adapter crashed, config missing, backend unreachable, etc.). |
+
+`--ci` doesn't change the exit codes; it records CI metadata (trigger source, actor, commit) on the run and reports a strict `0`/`1`/`2` mapping based on the pass result. Use it when you want the batch run tagged with its originating pipeline.
+
+## Example
+
+```bash
+# Run a task by id
+apo task run extract-parties
+
+# Run from CI, fail the pipeline on a failing test
+apo task run extract-parties --ci
+
+# Run a task by path
+apo task run ./e2e/tasks/extract-parties
+```
+
+## See also
+
+- [`apo runs show`](/cli/runs-show/) — read the full breakdown of a run.
+- [`apo traces show`](/cli/traces-show/) — debug a failure through the trace.
+- [Loop engineering](/guides/loop-engineering/) — how a coding agent uses this command to close the loop.

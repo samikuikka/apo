@@ -1,0 +1,341 @@
+---
+/**
+ * SmartSchedulingDemo — how SM-2 spaced repetition cadences a task.
+ *
+ * A single task's interval evolves across runs: passing backs off
+ * exponentially (1d → 2.5d → 6.4d → 16.6d), a fail snaps back to the
+ * minimum (1d), then it climbs again. The shape IS the concept — the
+ * exponential rise and the fail-cliff are what prose can't convey.
+ *
+ * Numbers are honest: computed from the real SM-2 constants in
+ * backend/apo/services/adaptive_scheduler.py (ease 2.5, PASS_EASE_DELTA
+ * 0.05, FAIL_EASE_DELTA -0.2, min 1d, max 30d).
+ *
+ * Same idiom as the other demos: scoped tokens, sharp corners, monospace,
+ * demo-motion.ts harness, reduced-motion static frame, astro:before-swap
+ * cleanup, not-content root. See docs/design.md "Motion".
+ */
+import { onVisible, prefersReducedMotion } from "./demo-motion";
+
+// The honest SM-2 sequence (interval_days, ease, passed).
+// The first entry is the initial state (1d, pre-run) so the first segment
+// is a real climb (1d → 2.5d), not a vertical stub at a shared x coordinate.
+type Run = { interval: number; passed: boolean | null };
+const runs: Run[] = [
+  { interval: 1, passed: null },     // initial state — no verdict, anchors the start
+  { interval: 2.5, passed: true },   // 1d × 2.5
+  { interval: 6.4, passed: true },   // 2.5d × 2.55
+  { interval: 16.6, passed: true },  // 6.4d × 2.6
+  { interval: 1, passed: false },    // fail → reset to min
+  { interval: 2.45, passed: true },  // 1d × 2.45
+];
+
+// SVG geometry. Y maps days 0..30 → pixel range; X evenly spaces the runs.
+const VIEW_W = 520;
+const VIEW_H = 260;
+const PAD_L = 38;
+const PAD_R = 16;
+const PAD_T = 28;
+const PAD_B = 36;
+const MAX_DAYS = 30;
+const plotW = VIEW_W - PAD_L - PAD_R;
+const plotH = VIEW_H - PAD_T - PAD_B;
+
+const xFor = (i: number) => PAD_L + (plotW * i) / (runs.length - 1);
+const yFor = (days: number) => PAD_T + plotH * (1 - days / MAX_DAYS);
+
+// One coordinate per run.
+const coords = runs.map((r, i) => ({ x: xFor(i), y: yFor(r.interval) }));
+
+// One path segment per transition (run[i] → run[i+1]). Each is revealed
+// sequentially in the animation, with its endpoint point lighting up as
+// the segment completes — so points never float ahead of the line.
+type Segment = { d: string; fromPass: boolean | null };
+const segments: Segment[] = [];
+for (let i = 0; i < coords.length - 1; i++) {
+  const a = coords[i]!;
+  const b = coords[i + 1]!;
+  segments.push({
+    d: `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} L ${b.x.toFixed(1)} ${b.y.toFixed(1)}`,
+    fromPass: runs[i + 1]!.passed,
+  });
+}
+
+// Y-axis gridlines at 0, 10, 20, 30 days.
+const gridlines = [0, 10, 20, 30];
+---
+
+<div class="smart-demo not-content" data-smart-demo>
+  <svg class="chart" viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} role="img" aria-label="Smart scheduling interval curve: passing backs off exponentially, a fail snaps back to the minimum">
+    {/* gridlines + y labels */}
+    {gridlines.map((days) => (
+      <g>
+        <line class="grid" x1={PAD_L} y1={yFor(days)} x2={VIEW_W - PAD_R} y2={yFor(days)} />
+        <text class="axis-label" x={PAD_L - 8} y={yFor(days) + 4} text-anchor="end">{days}d</text>
+      </g>
+    ))}
+
+    {/* x-axis baseline */}
+    <line class="axis" x1={PAD_L} y1={VIEW_H - PAD_B} x2={VIEW_W - PAD_R} y2={VIEW_H - PAD_B} />
+
+    {/* x labels: run numbers (skip the initial-state index 0) */}
+    {runs.slice(1).map((_, i) => (
+      <text class="axis-label" x={xFor(i + 1)} y={VIEW_H - PAD_B + 18} text-anchor="middle">run {i + 1}</text>
+    ))}
+
+    {/* the curve: one path segment per transition, revealed sequentially.
+        A segment lights up its endpoint point when it completes, so points
+        never float ahead of the line. */}
+    {segments.map((seg, i) => (
+      <path
+        class:list={["segment", seg.fromPass ? "to-pass" : "to-fail"]}
+        data-segment
+        data-index={i}
+        d={seg.d}
+      />
+    ))}
+
+    {/* per-run points: the initial state (1d) + each run's verdict/interval.
+        Indexing matches segments — point[i] sits at the END of segment[i-1]. */}
+    {runs.map((run, i) => (
+      <g
+        class:list={["run-point", run.passed === null && "is-initial"]}
+        data-run-point
+        data-index={i}
+      >
+        <circle
+          class:list={["point", run.passed === false ? "is-fail" : "is-pass"]}
+          cx={xFor(i)}
+          cy={yFor(run.interval)}
+          r="4"
+        />
+        {run.passed !== null && (
+          <text
+            class:list={["verdict", run.passed ? "is-pass" : "is-fail"]}
+            x={xFor(i)}
+            y={yFor(run.interval) - 12}
+            text-anchor="middle"
+          >{run.passed ? "✓" : "✗"}</text>
+        )}
+        <text
+          class="value"
+          x={xFor(i)}
+          y={yFor(run.interval) - (run.passed === null ? 12 : 24)}
+          text-anchor="middle"
+        >{run.interval >= 10 ? run.interval.toFixed(0) : run.interval.toFixed(1)}d</text>
+      </g>
+    ))}
+  </svg>
+  <p class="caption">
+    passing tasks back off exponentially; a fail snaps back to the minimum — flaky things get retested soon, stable things graduate
+  </p>
+</div>
+
+<style>
+  .smart-demo {
+    margin: 1.5rem 0;
+    padding: 1rem 1.25rem 0.9rem;
+    border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-gray-7, var(--sl-color-black));
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+  }
+
+  .chart {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .grid {
+    stroke: var(--sl-color-gray-6);
+    stroke-width: 1;
+    stroke-dasharray: 2 3;
+  }
+
+  .axis {
+    stroke: var(--sl-color-gray-5);
+    stroke-width: 1;
+  }
+
+  .axis-label {
+    fill: var(--sl-color-gray-4);
+    font-size: 9px;
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+  }
+
+  /* The curve: one path segment per transition. Each segment is hidden
+     (dashoffset = full length) until its step, then draws smoothly to its
+     endpoint. pathLength=1 normalizes so dashoffset 1 = hidden, 0 = drawn. */
+  :global(.segment) {
+    fill: none;
+    stroke: var(--sl-color-gray-2);
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    pathLength: 1;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    transition: stroke-dashoffset 480ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* The fail-cliff segment tints red so the drop reads as a regression. */
+  :global(.segment.to-fail) {
+    stroke: oklch(0.8 0.16 25);
+  }
+
+  :global(.segment[data-drawn]) {
+    stroke-dashoffset: 0;
+  }
+
+  /* Per-run points: hidden until the segment that leads INTO them completes.
+     The initial-state point (1d, no verdict) shows from the start. */
+  :global(.run-point) {
+    opacity: 0;
+    transition: opacity 240ms ease;
+  }
+
+  :global(.run-point.is-initial),
+  :global(.run-point[data-shown]) {
+    opacity: 1;
+  }
+
+  .point {
+    stroke: var(--sl-color-black);
+    stroke-width: 1.5;
+  }
+  .point.is-pass {
+    fill: var(--sl-color-accent);
+  }
+  .point.is-fail {
+    fill: oklch(0.8 0.16 25);
+  }
+
+  .verdict {
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+  }
+  .verdict.is-pass {
+    fill: var(--sl-color-accent-high);
+  }
+  .verdict.is-fail {
+    fill: oklch(0.8 0.16 25);
+  }
+
+  .value {
+    fill: var(--sl-color-gray-3);
+    font-size: 9px;
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+  }
+
+  .caption {
+    margin: 0.8rem 0 0;
+    color: var(--sl-color-gray-4);
+    font-size: 0.74rem;
+    line-height: 1.5;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.segment) {
+      stroke-dashoffset: 0;
+      transition: none;
+    }
+    :global(.run-point) {
+      opacity: 1;
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  import { onVisible, prefersReducedMotion } from "./demo-motion";
+
+  function setupDemo(root: HTMLElement) {
+    const segments = Array.from(root.querySelectorAll<HTMLElement>("[data-segment]"));
+    const points = Array.from(root.querySelectorAll<HTMLElement>("[data-run-point]"));
+    if (segments.length === 0) return;
+
+    // points[0] is the initial 1d state (always visible via is-initial class).
+    // segments[i] connects points[i] → points[i+1]; revealing it lights point[i+1].
+    const steps = segments.length;
+
+    function drawFully() {
+      for (const s of segments) s.setAttribute("data-drawn", "");
+      for (const p of points) p.setAttribute("data-shown", "");
+    }
+
+    function reset() {
+      for (const s of segments) s.removeAttribute("data-drawn");
+      // point[0] stays visible (is-initial); hide the rest.
+      for (let i = 1; i < points.length; i++) points[i]?.removeAttribute("data-shown");
+    }
+
+    // Reduced motion: full static curve.
+    if (prefersReducedMotion()) {
+      drawFully();
+      return;
+    }
+
+    let timer: number | undefined;
+    let disposed = false;
+    let visible = false;
+
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        timer = window.setTimeout(resolve, ms);
+      });
+
+    async function cycle() {
+      if (disposed || !visible) return;
+      reset();
+      await sleep(300);
+      if (disposed || !visible) return;
+
+      // Reveal one segment per step. Each segment draws smoothly to its
+      // endpoint; the endpoint point lights up as the segment completes.
+      for (let i = 0; i < steps; i++) {
+        segments[i]?.setAttribute("data-drawn", "");
+        // Wait for the draw transition, then light the endpoint point.
+        await sleep(500);
+        if (disposed || !visible) return;
+        points[i + 1]?.setAttribute("data-shown", "");
+        await sleep(180);
+        if (disposed || !visible) return;
+      }
+
+      // Hold on the complete curve so the fail-cliff and recovery land.
+      await sleep(2600);
+      if (disposed || !visible) return;
+      cycle();
+    }
+
+    const disposer = onVisible(
+      root,
+      (state) => {
+        if (state === "visible") {
+          if (!visible) {
+            visible = true;
+            cycle();
+          }
+        } else {
+          visible = false;
+          window.clearTimeout(timer);
+        }
+      },
+      { threshold: 0.4 },
+    );
+
+    document.addEventListener(
+      "astro:before-swap",
+      () => {
+        disposed = true;
+        window.clearTimeout(timer);
+        disposer();
+      },
+      { once: true },
+    );
+  }
+
+  document
+    .querySelectorAll<HTMLElement>("[data-smart-demo]")
+    .forEach((root) => setupDemo(root));
+</script>

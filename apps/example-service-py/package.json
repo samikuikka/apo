@@ -1,0 +1,9 @@
+{
+  "name": "example-service-py",
+  "private": true,
+  "scripts": {
+    "dev": ".venv/bin/uvicorn app.main:app --reload --port 3002",
+    "test": "uv run pytest",
+    "typecheck": "uv run basedpyright app"
+  }
+}

@@ -1,0 +1,574 @@
+/*
+ * apo docs theme — matches the dashboard identity (apps/dashboard globals.css).
+ *
+ * Pitch-black background, monochrome grays for hierarchy, green verdict accent,
+ * sharp corners (radius 0), dark-only. The dashboard is dark-only by design;
+ * docs follow the same rule — no light theme.
+ */
+
+/* ---------------------------------------------------------------------------
+ * Dark-only: kill Starlight's light theme by making the "light" :root use the
+ * same dark values. The dashboard hardcodes `color-scheme: dark` on <html> and
+ * ships no light variant; docs do the same.
+ * ------------------------------------------------------------------------- */
+:root,
+:root[data-theme='light'],
+:root[data-theme='dark'],
+::backdrop {
+  color-scheme: dark;
+
+  /* Base scale — monochrome, matching the dashboard tokens.
+     gray-1 brightest → gray-6 darkest. Pitch black sits below gray-6. */
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #f4f4f5; /* foreground / headings   (dashboard --foreground) */
+  --sl-color-gray-2: #d4d4d4; /* body text               (white nudged for prose legibility) */
+  --sl-color-gray-3: #a3a3a3; /* secondary text          (≈ --muted-foreground #999) */
+  --sl-color-gray-4: #737373; /* dimmed / placeholder    (dark muted) */
+  --sl-color-gray-5: #404040; /* hairlines / borders     (dashboard --border #404040) */
+  --sl-color-gray-6: #252525; /* card / panel fills      (dashboard --card #252525) */
+  --sl-color-black: #000000;  /* page background         (dashboard --background, pure black) */
+
+  /* Accent — the verdict green (dashboard --success / signal-sphere endpoint).
+     Replaces Starlight's default blue everywhere. */
+  --sl-color-accent-low: #0a1a0e;
+  --sl-color-accent: #4ade80;
+  --sl-color-accent-high: #86efac;
+
+  /* Semantic mappings — same as the dashboard. */
+  --sl-color-text: var(--sl-color-gray-2);
+  --sl-color-text-accent: var(--sl-color-accent-high);
+  --sl-color-text-invert: var(--sl-color-accent-low);
+  --sl-color-bg: var(--sl-color-black);            /* pure black page */
+  --sl-color-bg-nav: var(--sl-color-gray-6);       /* #252525 header */
+  --sl-color-bg-sidebar: #141414;                  /* dashboard --sidebar #141414 */
+  --sl-color-bg-inline-code: var(--sl-color-gray-6);
+  --sl-color-bg-accent: var(--sl-color-accent-high);
+  --sl-color-hairline-light: var(--sl-color-gray-5);
+  --sl-color-hairline: var(--sl-color-gray-6);
+  --sl-color-hairline-shade: var(--sl-color-black);
+  --sl-color-backdrop-overlay: #000000cc;
+}
+
+/* ---------------------------------------------------------------------------
+ * Sharp corners everywhere. Dashboard sets --radius: 0; docs follow.
+ * ------------------------------------------------------------------------- */
+:root {
+  --sl-radius: 0;
+}
+
+* {
+  border-radius: 0 !important;
+}
+
+/* ---------------------------------------------------------------------------
+ * Layout rhythm — centered frame, narrower sidebar, floating content column.
+ *
+ * Starlight's sidebar is `position: fixed` to the viewport edge and the
+ * content column centers in whatever space is left over — so on wide screens
+ * the content hugs the left third. Flue's whole layout (sidebar + content +
+ * TOC) sits inside a single centered frame, and the article is narrower than
+ * its main column with generous internal padding. That combination is what
+ * reads as "centered with lots of room in the same width."
+ *
+ * We replicate both levers here:
+ *  1. Cap `.page` at Flue's frame width (81.875rem = 1310px) and center it,
+ *     so the fixed sidebar shifts off the viewport edge together with content.
+ *  2. Narrow the content column (--sl-content-width) so the `.sl-container`
+ *     centers with breathing room on both sides inside the main pane, the way
+ *     Flue's `max-w-175` article floats inside an 820px main column.
+ *
+ * Unlayered rules win over Starlight's @layer defaults (Starlight ≥0.34).
+ * ------------------------------------------------------------------------- */
+:root {
+  --sl-sidebar-width: 15.875rem;     /* 254px — Flue's sidebar width */
+  --sl-nav-height: 3.5rem;           /* Flue's header height (h-14) */
+  --sl-content-width: 43.75rem;      /* 700px — Flue's article max-width (max-w-175) */
+  --sl-content-pad-x: clamp(2.6rem, 4vw, 4.45rem); /* Flue's main-column padding */
+  --sl-content-gap-y: 1.25rem;
+
+  /* Fonts — Inter + JetBrains Mono, matching Flue's docs exactly.
+     Loaded via the Head component override (Google Fonts). Inter is narrower
+     than system-ui at the same px size, which is what gives Flue its denser,
+     "designed" look at identical widths. The system stack is the fallback
+     while the web font loads (display=swap). */
+  --sl-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --sl-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
+    Monaco, Consolas, 'Liberation Mono', monospace;
+}
+
+/* Cap the whole page frame and center it — matches Flue's
+   `mx-auto w-[min(100%,var(--docs-frame-width))]`. Because the sidebar is
+   fixed, capping `.page` shifts the sidebar off the edge and re-centers the
+   content trio as one unit. Below the frame width it stays full-bleed. */
+@media (min-width: 82rem) {
+  .page {
+    max-width: 81.875rem;            /* 1310px — Flue's --docs-frame-width */
+    margin-inline: auto;
+  }
+  /* When the frame is centered, the fixed sidebar must track it rather than
+     the viewport — pin it to the frame's inline-start edge. */
+  .sidebar-pane {
+    inset-inline-start: calc((100vw - 81.875rem) / 2);
+    border-inline-end: 1px solid var(--sl-color-hairline-shade);
+  }
+  /* Header should also sit inside the centered frame, not span the viewport. */
+  .header {
+    max-width: 81.875rem;
+    margin-inline: auto;
+    inset-inline-start: calc((100vw - 81.875rem) / 2);
+    width: auto;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Typography — Flue-proportioned sizes, headings white + tight tracking.
+ *
+ * Starlight ships oversized desktop headings (H2 35px, H3 29px) that make
+ * the prose feel top-heavy. Flue runs H1 48px / H2 24px / H3 19px / body
+ * 15px — a tighter, scan-friendly scale. Body and line-height are set
+ * directly on <body> because Starlight's reset never applies --sl-text-body
+ * (it only sets font-family + line-height on body); leaving body at the
+ * browser default 16px was the first attempt's miss.
+ * ------------------------------------------------------------------------- */
+:root {
+  --sl-text-h1: 3rem;                /* 48px — Flue's text-5xl hero title */
+  --sl-text-h2: 1.5rem;              /* 24px — Flue's H2 */
+  --sl-text-h3: 1.1875rem;           /* 19px — Flue's H3 */
+  --sl-text-h4: 1.0625rem;           /* 17px — Flue-proportionate */
+  --sl-text-code: 0.8125rem;         /* 13px — Flue's code */
+  --sl-text-code-sm: 0.75rem;
+  --sl-line-height: 1.65;            /* Flue's line-height */
+  --sl-line-height-headings: 1.35;
+}
+
+/* Body text size — Flue sets this directly on body (15px), not via a variable.
+   Starlight's reset.css omits font-size on body, so the browser default (16px)
+   would win without this. Apply to .sl-markdown-content so it tracks the docs
+   content area without shrinking nav/sidebar chrome. */
+.sl-markdown-content {
+  font-size: 0.9375rem;              /* 15px — Flue's body */
+  line-height: 1.65;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--sl-color-white);
+  letter-spacing: -0.025em;
+}
+
+/* Section rhythm: give H2/H3 room to breathe above, like Flue (2.75rem / 2rem). */
+.sl-markdown-content :is(h2):not(:where(.not-content *)) {
+  margin-top: 2.75rem;
+}
+.sl-markdown-content :is(h3):not(:where(.not-content *)) {
+  margin-top: 2rem;
+}
+
+/* Body text: slightly off-white for prose comfort on pure black. */
+main p {
+  color: var(--sl-color-gray-2);
+}
+
+/* ---------------------------------------------------------------------------
+ * Selection highlight — cyan-ish, matches dashboard ::selection.
+ * ------------------------------------------------------------------------- */
+::selection {
+  background-color: oklch(0.65 0.15 195 / 30%);
+  color: oklch(0.98 0 0);
+}
+
+/* ---------------------------------------------------------------------------
+ * Scrollbar — match the dashboard's dark custom scrollbar.
+ * ------------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #141414;
+}
+::-webkit-scrollbar-thumb {
+  background: #404040;
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #525252;
+}
+
+/* ---------------------------------------------------------------------------
+ * Header / nav tweaks — tighter, monochrome, no default blue hover.
+ * ------------------------------------------------------------------------- */
+header [data-theme] {
+  /* hide the light/dark theme toggle — docs are dark-only, like the app */
+  display: none !important;
+}
+
+/* Brand lockup is symbol-only, like the app (dashboard BrandMark ships no
+   wordmark). Keep the logo, drop the visible "apo" text — it's redundant next
+   to the mark and adds clutter. The page <title> / aria-label still carry the
+   name for tabs and screen readers. */
+.site-title span {
+  display: none;
+}
+/* Logo sits flush, no text gap left behind. */
+.site-title img {
+  display: block;
+}
+
+/* ---------------------------------------------------------------------------
+ * Callouts (Starlight asides) — monochrome, matching the dashboard.
+ *
+ * The design system reserves color for state. Asides carry state (note/tip =
+ * neutral; caution/danger = warning), so: note/tip are grayscale, caution and
+ * danger use the muted destructive red. No blue/purple/orange — Starlight's
+ * default per-type hues clash with the dark/monochrome identity.
+ * ------------------------------------------------------------------------- */
+.starlight-aside {
+  border-radius: 0;            /* sharp corners, overrides the 0.25rem border */
+  border-inline-start-width: 2px;
+}
+/* note + tip: muted gray, low-key. Same treatment — a tip is just a note
+   with a different icon; no need to color-code them apart. */
+.starlight-aside--note,
+.starlight-aside--tip {
+  --sl-color-asides-text-accent: var(--sl-color-gray-1);
+  --sl-color-asides-border: var(--sl-color-gray-5);
+  background-color: var(--sl-color-gray-6);   /* #252525 — the card fill */
+}
+/* caution: muted destructive tint (low-chroma, not bright). */
+.starlight-aside--caution {
+  --sl-color-asides-text-accent: oklch(0.75 0.13 25);
+  --sl-color-asides-border: oklch(0.5 0.22 25);
+  background-color: oklch(0.5 0.22 25 / 14%);
+}
+/* danger: stronger red — for data-loss / unrecoverable states only. */
+.starlight-aside--danger {
+  --sl-color-asides-text-accent: oklch(0.8 0.16 25);
+  --sl-color-asides-border: oklch(0.55 0.24 25);
+  background-color: oklch(0.5 0.22 25 / 22%);
+}
+
+/* ---------------------------------------------------------------------------
+ * Code blocks — dark card fill + visible border, matching dashboard pre/code.
+ * ------------------------------------------------------------------------- */
+:root {
+  --sl-code-bg: var(--sl-color-gray-6);
+  --sl-code-border: var(--sl-color-gray-5);
+}
+
+/* Inline code */
+:not(pre) > code {
+  background: var(--sl-color-gray-6);
+  border: 1px solid var(--sl-color-gray-5);
+  color: var(--sl-color-gray-1);
+}
+
+/* Fenced code blocks (Expressive Code) */
+.ec {
+  background: var(--sl-color-gray-6) !important;
+  border: 1px solid var(--sl-color-gray-5) !important;
+  border-radius: 0 !important;
+}
+
+/* ---------------------------------------------------------------------------
+ * Landing page (standalone, src/pages/index.astro) — full-width, centered,
+ * no Starlight docs chrome. The structural opposite of the splash: every
+ * section spans the viewport with content centered in a max-w-6xl frame.
+ * ------------------------------------------------------------------------- */
+
+/* Full-width section with centered content frame + vertical rhythm. */
+.landing-section {
+  width: 100%;
+  padding-block: clamp(4rem, 10vw, 7rem);
+}
+
+.landing-section--tight {
+  padding-block: clamp(2.5rem, 6vw, 4rem);
+}
+
+.landing-section--bordered {
+  border-top: 1px solid var(--sl-color-gray-6);
+}
+
+/* Centered content frame — flue's max-w-6xl mx-auto px-6 equivalent. */
+.landing-container {
+  width: 100%;
+  max-width: 72rem; /* 1152px */
+  margin-inline: auto;
+  padding-inline: clamp(1.5rem, 4vw, 3rem);
+}
+
+.landing-container--narrow {
+  max-width: 48rem; /* 768px — for prose/demo blocks */
+}
+
+/* ---- Top nav: minimal, sticky, monochrome. ------------------------------ */
+.landing-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--sl-nav-height, 3.5rem);
+  padding-inline: clamp(1.5rem, 4vw, 3rem);
+  background: oklch(0 0 0 / 80%);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--sl-color-gray-6);
+}
+
+/* Left side: brand + section tabs, same row. */
+.landing-nav__left {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  min-width: 0;
+}
+
+.landing-nav__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: var(--sl-color-white);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}
+
+.landing-nav__mark {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+}
+
+.landing-nav__wordmark {
+  font-size: 1rem;
+}
+
+/* Section tabs — match the docs Header.astro .section-tab styling. */
+.landing-nav__tabs {
+  display: none;
+  align-items: baseline;
+  gap: 1.25rem;
+}
+
+@media (min-width: 50rem) {
+  .landing-nav__tabs {
+    display: flex;
+  }
+}
+
+.landing-nav__tab {
+  padding: 0.4rem 0;
+  font-size: 0.85rem;
+  color: var(--sl-color-gray-3);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+.landing-nav__tab:hover {
+  color: var(--sl-color-gray-2);
+}
+
+.landing-nav__tab[aria-current="true"],
+.landing-nav__tab.active {
+  color: var(--sl-color-gray-1);
+  border-bottom-color: var(--sl-color-accent);
+  font-weight: 600;
+}
+
+/* Right side: "Open app" + GitHub icon. */
+.landing-nav__right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+/* "Open app" — the primary action (solid white, e2b/dashboard style). */
+.landing-nav__app {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.85rem;
+  background: var(--sl-color-white);
+  color: var(--sl-color-black);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.landing-nav__app:hover {
+  background: var(--sl-color-gray-2);
+}
+
+/* GitHub icon — matches the docs SocialIcons treatment (icon only, no border). */
+.landing-nav__github {
+  display: inline-flex;
+  align-items: center;
+  color: var(--sl-color-gray-3);
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+
+.landing-nav__github:hover {
+  color: var(--sl-color-white);
+}
+
+.landing-nav__github-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* ---- Hero: left-aligned text inside the centered container. -----------
+   Like flue: the container centers with side gutters on wide screens, but
+   the text itself starts from the left edge of that container. No brand mark
+   in the hero — the nav carries it, so a second one here would double up. */
+.landing-section--hero {
+  padding-top: clamp(4rem, 9vw, 6.5rem);
+  padding-bottom: clamp(4rem, 9vw, 6.5rem);
+}
+
+.landing-hero {
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+/* Text column: takes most of the space. */
+.landing-hero__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Visual column: the animated sphere. Shrinks on small screens, hides on
+   very narrow ones so the title isn't cramped. */
+.landing-hero__visual {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 48rem) {
+  .landing-hero {
+    flex-direction: column-reverse;
+    gap: 1.5rem;
+  }
+}
+
+/* Title — short enough to wrap naturally at the container edge. No
+   max-width: the container already caps width, and a ch-based cap miscalculates
+   at the scaled font size + negative letter-spacing (clips the last word). */
+.landing-hero__title {
+  font-size: clamp(2.25rem, calc(1.25rem + 4.5vw), 4rem);
+  line-height: 1.04;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  color: var(--sl-color-white);
+  margin: 0 0 1.25rem;
+  text-wrap: balance;
+}
+
+.landing-hero__sub {
+  font-size: clamp(1rem, calc(0.5rem + 1.1vw), 1.1875rem);
+  line-height: 1.6;
+  color: var(--sl-color-gray-3);
+  max-width: 56ch;
+  margin: 0 0 2.75rem;
+  text-wrap: pretty;
+}
+
+/* ---- CTA row: Copy Prompt (primary) + GitHub (outline), left-aligned. -- */
+.landing-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.85rem;
+}
+
+/* CopyPrompt component has block margins; zero them inside the CTA row. */
+.landing-cta .copy-prompt {
+  margin: 0;
+}
+
+/* Inline the CTA-row GitHub button: outline/secondary, since CopyPromptButton
+   is the single primary action per design.md. */
+.landing-cta__github {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.95rem;
+  background: transparent;
+  border: 1px solid var(--sl-color-gray-5);
+  color: var(--sl-color-gray-2);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.landing-cta__github:hover {
+  border-color: var(--sl-color-gray-4);
+  color: var(--sl-color-white);
+  background: var(--sl-color-gray-6);
+}
+
+.landing-cta__github-icon {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+/* ---- Section heading: centered, tight. ---------------------------------- */
+.landing-section__heading {
+  font-size: clamp(1.5rem, calc(1rem + 1.5vw), 2rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--sl-color-white);
+  text-align: center;
+  margin: 0 0 0.75rem;
+}
+
+.landing-section__sub {
+  font-size: 0.9375rem;
+  color: var(--sl-color-gray-3);
+  text-align: center;
+  max-width: 48ch;
+  margin: 0 auto 3rem;
+  text-wrap: balance;
+}
+
+/* ---- Footer: thin, full-width. ----------------------------------------- */
+.landing-footer {
+  border-top: 1px solid var(--sl-color-gray-6);
+  padding-block: 2rem;
+}
+
+.landing-footer__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  color: var(--sl-color-gray-4);
+}
+
+.landing-footer__links {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.landing-footer__links a {
+  color: var(--sl-color-gray-3);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.landing-footer__links a:hover {
+  color: var(--sl-color-white);
+}

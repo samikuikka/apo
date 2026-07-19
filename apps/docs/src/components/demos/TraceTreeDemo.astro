@@ -1,0 +1,253 @@
+---
+/**
+ * TraceTreeDemo — a trace is a temporal tree, not a flat log.
+ *
+ * Calls nest and sequence outward over time: root run → tool → model →
+ * tool → judge verdict. Nodes reveal staggered, connectors draw, the token
+ * total ticks up, and it lands on the green verdict endpoint (echoing the
+ * signal sphere). Motion makes "what's in a trace" legible.
+ *
+ * Adapts flue's cardPulse reveal: an IntersectionObserver start, CSS
+ * opacity + transform transitions, replays on re-entry. Reduced motion
+ * renders the full tree statically expanded.
+ *
+ * See docs/design.md "Motion" — illustrative motion, not decoration.
+ */
+
+type TraceNode = {
+  kind: "root" | "tool" | "model" | "judge";
+  label: string;
+  tokens: number;
+  depth: number;
+};
+
+// A plausible failing run: search → complete → write → judge verdict.
+const nodes: TraceNode[] = [
+  { kind: "root", label: "agent.run", tokens: 0, depth: 0 },
+  { kind: "tool", label: "tool: search", tokens: 184, depth: 1 },
+  { kind: "model", label: "model: complete", tokens: 612, depth: 1 },
+  { kind: "tool", label: "tool: write", tokens: 47, depth: 1 },
+  { kind: "judge", label: "judge: verdict", tokens: 0, depth: 1 },
+];
+
+const totalTokens = nodes.reduce((sum, node) => sum + node.tokens, 0);
+---
+
+<div class="trace-demo" data-trace-demo>
+  <ul class="trace-tree" role="tree" aria-label="Example trace call tree">
+    {nodes.map((node, i) => (
+      <li
+        class:list={["trace-node", `trace-node--${node.kind}`]}
+        style={`--depth: ${node.depth}; --stagger: ${i};`}
+        data-trace-node
+        data-index={i}
+        data-tokens={node.tokens}
+        role="treeitem"
+      >
+        <span class="trace-node__connector" aria-hidden="true" />
+        <span class="trace-node__label">{node.label}</span>
+        {node.tokens > 0 && (
+          <span class="trace-node__tokens">{node.tokens} tok</span>
+        )}
+      </li>
+    ))}
+  </ul>
+
+  <p class="trace-total" aria-live="polite" data-trace-total>
+    <span class="trace-total__count" data-trace-total-count>0</span>
+    <span class="trace-total__label">tokens across {nodes.length} calls</span>
+  </p>
+</div>
+
+<style>
+  .trace-demo {
+    margin: 1.5rem 0;
+    padding: 1.25rem 1.25rem 1rem;
+    border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-gray-7, var(--sl-color-black));
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+  }
+
+  .trace-tree {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .trace-node {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding-left: calc(var(--depth) * 1.4rem);
+    opacity: 0;
+    transform: translateX(-8px);
+    transition: opacity 400ms ease, transform 400ms ease;
+  }
+
+  .trace-node[data-visible] {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  /* Stagger the reveal per node. */
+  .trace-node[data-visible] {
+    transition-delay: calc(var(--stagger) * 220ms);
+  }
+
+  .trace-node__connector {
+    width: 1.1rem;
+    height: 1px;
+    background: var(--sl-color-gray-5);
+    flex-shrink: 0;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 320ms ease;
+    transition-delay: calc(var(--stagger) * 220ms + 120ms);
+  }
+
+  .trace-node[data-visible] .trace-node__connector {
+    transform: scaleX(1);
+  }
+
+  .trace-node__label {
+    font-size: 0.82rem;
+    color: var(--sl-color-gray-2);
+  }
+
+  .trace-node--root .trace-node__label {
+    color: var(--sl-color-gray-1);
+    font-weight: 600;
+  }
+
+  .trace-node--judge .trace-node__label {
+    color: var(--sl-color-accent-high);
+  }
+
+  .trace-node__tokens {
+    margin-left: auto;
+    color: var(--sl-color-gray-4);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .trace-total {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin: 1.1rem 0 0;
+    padding-top: 1rem;
+    border-top: 1px solid var(--sl-color-gray-6);
+    color: var(--sl-color-gray-3);
+    font-size: 0.8rem;
+  }
+
+  .trace-total__count {
+    color: var(--sl-color-gray-1);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .trace-node,
+    .trace-node__connector {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  import { onVisible, prefersReducedMotion } from "./demo-motion";
+
+  function setupDemo(root: HTMLElement) {
+    const nodeEls = Array.from(
+      root.querySelectorAll<HTMLElement>("[data-trace-node]"),
+    );
+    const totalCountEl = root.querySelector<HTMLElement>("[data-trace-total-count]");
+    const tokensByIndex = nodeEls.map((el) => Number(el.dataset.tokens ?? "0"));
+
+    function revealAll() {
+      for (const el of nodeEls) el.setAttribute("data-visible", "");
+    }
+
+    function hideAll() {
+      for (const el of nodeEls) el.removeAttribute("data-visible");
+      if (totalCountEl) totalCountEl.textContent = "0";
+    }
+
+    // Reduced motion: render the full tree statically and show the final total.
+    if (prefersReducedMotion()) {
+      revealAll();
+      const total = tokensByIndex.reduce((sum, tokens) => sum + tokens, 0);
+      if (totalCountEl) totalCountEl.textContent = String(total);
+      return;
+    }
+
+    let timer: number | undefined;
+    let disposed = false;
+    let visible = false;
+
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        timer = window.setTimeout(resolve, ms);
+      });
+
+    async function play() {
+      if (disposed || !visible) return;
+      hideAll();
+      await sleep(150);
+      if (disposed || !visible) return;
+
+      let running = 0;
+      // Reveal nodes one by one; tick the token total as each lands.
+      for (let i = 0; i < nodeEls.length; i++) {
+        const el = nodeEls[i];
+        if (!el) continue;
+        el.setAttribute("data-visible", "");
+        running += tokensByIndex[i] ?? 0;
+        if (totalCountEl) totalCountEl.textContent = String(running);
+        // Match the CSS stagger (220ms per node) plus the connector draw.
+        await sleep(340);
+        if (disposed || !visible) return;
+      }
+
+      await sleep(2200);
+      if (disposed || !visible) return;
+      play();
+    }
+
+    const disposer = onVisible(
+      root,
+      (state) => {
+        if (state === "visible") {
+          if (!visible) {
+            visible = true;
+            play();
+          }
+        } else {
+          visible = false;
+          window.clearTimeout(timer);
+        }
+      },
+      { threshold: 0.5 },
+    );
+
+    document.addEventListener(
+      "astro:before-swap",
+      () => {
+        disposed = true;
+        window.clearTimeout(timer);
+        disposer();
+      },
+      { once: true },
+    );
+  }
+
+  document
+    .querySelectorAll<HTMLElement>("[data-trace-demo]")
+    .forEach((root) => setupDemo(root));
+</script>

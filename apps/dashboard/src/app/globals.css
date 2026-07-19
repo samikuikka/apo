@@ -1,0 +1,193 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+/* @import "shadcn/tailwind.css"; */
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-type-generation: var(--type-generation);
+  --color-type-tool: var(--type-tool);
+  --color-type-agent: var(--type-agent);
+  --color-type-embedding: var(--type-embedding);
+  --color-type-retriever: var(--type-retriever);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Main background - pure black */
+  --background: oklch(0 0 0);               /* #000000 - pure black */
+  --foreground: oklch(1 0 0);               /* #FFFFFF - pure white */
+
+  /* Cards - much lighter to clearly distinguish from background */
+  --card: oklch(0.18 0 0);                  /* #252525 - significantly lighter */
+  --card-foreground: oklch(1 0 0);
+  --popover: oklch(0.18 0 0);
+  --popover-foreground: oklch(1 0 0);
+
+  /* Primary - white button with black text (e2b style) */
+  --primary: oklch(1 0 0);                  /* #FFFFFF - white */
+  --primary-foreground: oklch(0 0 0);       /* #000000 - black */
+
+  /* Secondary - dark gray for subtle differentiation */
+  --secondary: oklch(0.2 0 0);              /* #333333 */
+  --secondary-foreground: oklch(1 0 0);
+
+  /* Muted - for less emphasized content */
+  --muted: oklch(0.2 0 0);
+  --muted-foreground: oklch(0.6 0 0);       /* #999999 - gray text */
+
+  /* Accent - for interactive elements */
+  --accent: oklch(0.25 0 0);                /* subtle gray accent */
+  --accent-foreground: oklch(1 0 0);
+
+  /* Borders - lighter gray for visibility */
+  --border: oklch(0.28 0 0);                /* #404040 - visible border */
+  --input: oklch(0.2 0 0);
+  --ring: oklch(0.4 0 0);                    /* gray focus ring */
+
+  /* Destructive - red for errors */
+  --destructive: oklch(0.5 0.22 25);         /* #DC2626 */
+  --destructive-foreground: oklch(1 0 0);
+
+  /* Success - muted green for pass/success states */
+  --success: oklch(0.65 0.15 155);            /* softer emerald green */
+  --warning: oklch(0.7 0.14 70);              /* muted amber */
+
+  /* Chart colors */
+  --chart-1: oklch(0.85 0.13 165);
+  --chart-2: oklch(0.77 0.15 163);
+  --chart-3: oklch(0.7 0.15 162);
+  --chart-4: oklch(0.6 0.13 163);
+  --chart-5: oklch(0.51 0.1 166);
+
+  /* Trace timeline — type colors. Low-chroma to match the restrained palette. */
+  --type-generation: oklch(0.62 0.13 255);  /* muted blue — LLM compute */
+  --type-tool: oklch(0.7 0.14 70);          /* amber — actions/tools (matches warning) */
+  --type-agent: oklch(0.65 0.15 155);       /* green — agents (matches success) */
+  --type-embedding: oklch(0.62 0.11 290);   /* muted purple */
+  --type-retriever: oklch(0.6 0.1 195);     /* muted cyan */
+
+  /* Sharp corners */
+  --radius: 0;
+
+  /* Sidebar with better separation */
+  --sidebar: oklch(0.08 0 0);               /* #141414 - distinguishable from main bg */
+  --sidebar-foreground: oklch(1 0 0);       /* White text */
+  --sidebar-primary: oklch(0.2 0 0);        /* Gray for non-active */
+  --sidebar-primary-foreground: oklch(1 0 0); /* White text on active */
+  --sidebar-accent: oklch(0.25 0 0);        /* More visible hover/active background */
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.3 0 0);         /* #4D4D4D - visible border */
+  --sidebar-ring: oklch(0.4 0 0);               /* gray focus ring */
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  /* Selection highlight */
+  ::selection {
+    background-color: oklch(0.65 0.15 195 / 30%);
+    color: oklch(0.98 0 0);
+  }
+
+  /* Custom scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: oklch(0.14 0.006 280);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: oklch(0.4 0.01 280);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.5 0.01 280);
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  html {
+    height: 100%;
+  }
+
+  /* Clean, simple typography like e2b */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold tracking-tight text-white;
+  }
+
+  h1 { @apply text-4xl; }
+  h2 { @apply text-3xl; }
+  h3 { @apply text-2xl; }
+  h4 { @apply text-xl; }
+
+  /* Body text - white on black */
+  p {
+    @apply text-gray-300;
+  }
+
+  /* Links */
+  a {
+    @apply text-foreground/70 hover:text-foreground;
+  }
+
+  /* Code blocks with better contrast */
+  code, pre {
+    @apply bg-card text-foreground border border-border;
+  }
+}

@@ -1,0 +1,12 @@
+title = "apo Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Intentional fake credentials in security fixtures and authentication tests"
+targetRules = ["generic-api-key"]
+paths = [
+  '''(^|/)apps/example-service/e2e/agent-task-demo/tasks/real-agent/security/security-audit/files/(db-queries|auth-handler)\.py$''',
+  '''(^|/)backend/tests/test_(webhooks|two_key_auth|api_key_cache)\.py$''',
+]

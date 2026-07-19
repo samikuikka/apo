@@ -1,0 +1,40 @@
+{
+  "name": "@apo/example-service",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:run": "vitest run",
+    "e2e": "node --experimental-strip-types scripts/run-agent-task-e2e.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.96",
+    "@ai-sdk/openai": "^3.0.1",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.212",
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@apo/sdk": "workspace:*",
+    "ai": "^6.0.3",
+    "nanoid": "^5.1.7",
+    "next": "16.2.9",
+    "openai": "^6.45.0",
+    "react": "19.2.1",
+    "react-dom": "19.2.1",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitest/ui": "^4.1.9",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
+  }
+}

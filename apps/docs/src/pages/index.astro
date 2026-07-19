@@ -1,0 +1,193 @@
+---
+/**
+ * Landing page — the standalone full-width product page at `/`.
+ *
+ * Bypasses Starlight's docs layout entirely (no sidebar, no docs header tabs):
+ * a centered hero, full-width sections, and the same dark/monochrome token
+ * system as the rest of the docs. Astro's `src/pages/` routes override
+ * Starlight's generated content routes, so this owns `/`.
+ *
+ * Structure mirrors flue's landing page (hero → CTA → demo → features → footer)
+ * rendered in apo's dark/sharp-cornered identity. Animations are CSS keyframes
+ * + IntersectionObserver reveals — the established docs idiom, no framer-motion.
+ */
+import "../styles/custom.css";
+import { SignalSphereIsland } from "../components/brand/SignalSphereIsland.tsx";
+import CopyPromptButton from "../components/CopyPromptButton.astro";
+import RunDetailMock from "../components/RunDetailMock.astro";
+import LandingFeatures from "../components/LandingFeatures.astro";
+import { docsSections, docsHref } from "../lib/docs-navigation";
+
+const GITHUB_URL = "https://github.com/samikuikka/apo";
+const APP_URL = "http://localhost:3000";
+const COPY_PROMPT_TEXT =
+	"Read https://apo.dev/start.md then help me set up apo and run my first task.";
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>apo — Opinionated agent testing framework</title>
+		<meta
+			name="description"
+			content="A testing framework for agent systems. It runs your real agent, evaluates the outcomes, and shows you exactly what went wrong when something breaks."
+		/>
+		<link rel="icon" href="/brand/signal-sphere-favicon-32.png" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+			rel="stylesheet"
+		/>
+	</head>
+	<body>
+		<!-- Nav — matches the docs header: brand mark + wordmark, section tabs,
+		     GitHub icon. Same structure/styling so / and /overview/ feel seamless. -->
+		<nav class="landing-nav" aria-label="Primary">
+			<div class="landing-nav__left">
+				<a class="landing-nav__brand" href="/" aria-label="apo — home">
+					<img
+						class="landing-nav__mark"
+						src="/brand/signal-sphere-small.svg"
+						alt=""
+						aria-hidden="true"
+					/>
+					<span class="landing-nav__wordmark">apo</span>
+				</a>
+				<div class="landing-nav__tabs">
+					{docsSections.map((section) => (
+						<a
+							class="landing-nav__tab"
+							href={docsHref(section.landingSlug)}
+						>
+							{section.title}
+						</a>
+					))}
+				</div>
+			</div>
+			<div class="landing-nav__right">
+				<a class="landing-nav__app" href={APP_URL}>
+					Open app
+				</a>
+				<a
+					class="landing-nav__github"
+					href={GITHUB_URL}
+					target="_blank"
+					rel="noopener noreferrer"
+					aria-label="GitHub repository"
+				>
+					<svg viewBox="0 0 24 24" aria-hidden="true" class="landing-nav__github-icon">
+						<path
+							fill="currentColor"
+							d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.7.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"
+						/>
+					</svg>
+				</a>
+			</div>
+		</nav>
+
+		<main>
+			<!-- Hero — title + animated sphere side by side. -->
+			<section class="landing-section landing-section--hero">
+				<div class="landing-container landing-hero">
+					<div class="landing-hero__text">
+					<h1 class="landing-hero__title">
+							Opinionated agent testing framework.
+						</h1>
+					<p class="landing-hero__sub">
+						A testing framework for agent systems. It runs your real agent, evaluates the outcomes, and shows you exactly what went wrong when something breaks.
+					</p>
+						<div class="landing-cta">
+							<CopyPromptButton text={COPY_PROMPT_TEXT} />
+							<a
+								class="landing-cta__github"
+								href={GITHUB_URL}
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								<svg viewBox="0 0 24 24" aria-hidden="true" class="landing-cta__github-icon">
+									<path
+										fill="currentColor"
+										d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.7.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"
+									/>
+								</svg>
+								<span>Star on GitHub</span>
+							</a>
+						</div>
+					</div>
+					<div class="landing-hero__visual">
+						<SignalSphereIsland client:load size={260} />
+					</div>
+				</div>
+			</section>
+
+			<!-- The product -->
+			<section class="landing-section landing-section--bordered">
+				<div class="landing-container">
+					<h2 class="landing-section__heading">This is what a failing run looks like</h2>
+					<p class="landing-section__sub">
+						Click a test to see its code. The failing one is already open.
+					</p>
+					<RunDetailMock />
+				</div>
+			</section>
+
+			<!-- Features -->
+			<section class="landing-section landing-section--bordered">
+				<div class="landing-container">
+					<LandingFeatures />
+				</div>
+			</section>
+		</main>
+
+		<footer class="landing-footer">
+			<div class="landing-container landing-footer__inner">
+				<span>apo — opinionated agent testing framework.</span>
+				<span class="landing-footer__links">
+					<a href="/overview/">Docs</a>
+					<a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">GitHub</a>
+				</span>
+			</div>
+		</footer>
+	</body>
+</html>
+
+<style is:global>
+	/* The standalone landing page owns the full document. Reset Starlight's
+	   page-frame padding so sections span the viewport edge to edge. */
+	html,
+	body {
+		margin: 0;
+		padding: 0;
+		background: var(--sl-color-black);
+		color: var(--sl-color-text);
+		font-family: var(--sl-font);
+		line-height: var(--sl-line-height);
+		-webkit-font-smoothing: antialiased;
+		/* Prevent horizontal scroll: clamp the page to the viewport and let long
+		   strings (URLs in the prompt, wide code) wrap or scroll within their
+		   container instead of pushing the body wider than the screen. */
+		overflow-x: hidden;
+	}
+
+	/* Border-box reset. The standalone page does NOT load Starlight's bundled
+	   CSS (which ships this reset), so without it .landing-container's
+	   `width: 100%` + padding overflows the parent by exactly the padding —
+	   that was the whole-page overflow. */
+	*,
+	*::before,
+	*::after {
+		box-sizing: border-box;
+	}
+
+	/* Long unbreakable strings (URLs, code, long words) wrap rather than
+	   overflow their container. */
+	.landing-hero__sub,
+	.landing-section__sub,
+	.cpb__preview-prompt {
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+</style>

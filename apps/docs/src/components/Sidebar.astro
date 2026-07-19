@@ -1,0 +1,75 @@
+---
+/**
+ * Sidebar override — renders only the active section's sidebar groups.
+ *
+ * Starlight builds the full sidebar (the union of every group from
+ * astro.config.mjs) and marks the current page's link with `isCurrent`.
+ * We determine which section owns the current page via getDocsSection(),
+ * filter the built sidebar down to that section's groups, and hand the
+ * filtered list to Starlight's own SidebarSublist — so active-link
+ * highlighting, badges, and collapse state all keep working unchanged.
+ *
+ * Without this override, every page would show every group from every
+ * section at once. With it, a page in the CLI section shows only CLI, etc.
+ *
+ * Anchor links: some entries use `link` with hashes (e.g.
+ * /reference/running/#runtaskoptions) so clicking navigates to the right section.
+ * Starlight's isCurrent matching ignores hashes, so we set aria-current
+ * client-side based on window.location.hash.
+ */
+import MobileMenuFooter from "virtual:starlight/components/MobileMenuFooter";
+import SidebarPersister from "@astrojs/starlight/components/SidebarPersister.astro";
+// Local override — renders groups as always-visible nested lists with no
+// collapse toggle (matches flue's sidebar). See SidebarSublist.astro.
+import SidebarSublist from "./SidebarSublist.astro";
+
+import {
+  getDocsSection,
+  filterSidebarBySection,
+} from "../lib/docs-navigation";
+
+const { sidebar } = Astro.locals.starlightRoute;
+const activeSection = getDocsSection(sidebar, Astro.url.pathname);
+const sectionSidebar = filterSidebarBySection(sidebar, activeSection);
+---
+
+<SidebarPersister>
+  <SidebarSublist sublist={sectionSidebar} />
+</SidebarPersister>
+
+<div class="md:sl-hidden">
+  <MobileMenuFooter />
+</div>
+
+<script>
+  // Highlight the sidebar entry matching the current URL hash. Some method
+  // entries use link-with-hash (e.g. /reference/running/#runtaskoptions);
+  // Starlight's isCurrent only matches pathname, so we set aria-current here.
+  function highlightHashLink() {
+    const hash = window.location.hash;
+    if (!hash) return;
+    // Remove any previous highlight.
+    document.querySelectorAll("#starlight__sidebar a[aria-current='true']").forEach((a) => {
+      // Only remove if it's a hash-link that doesn't match anymore.
+      if (a.getAttribute("href")?.includes("#")) {
+        a.removeAttribute("aria-current");
+      }
+    });
+    // Highlight the matching entry.
+    const links = document.querySelectorAll("#starlight__sidebar a");
+    for (const link of links) {
+      const href = link.getAttribute("href") || "";
+      if (href.endsWith("#" + hash.slice(1)) || href.endsWith(hash)) {
+        link.setAttribute("aria-current", "true");
+        break;
+      }
+    }
+  }
+
+  // Run on load and on hash change.
+  highlightHashLink();
+  window.addEventListener("hashchange", highlightHashLink);
+  // Also re-run after Astro view transitions (client-side navigation).
+  document.addEventListener("astro:page-load", highlightHashLink);
+</script>
+

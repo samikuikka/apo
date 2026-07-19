@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Lint + Typecheck (Frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+
+  backend:
+    name: Typecheck + Test (Backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: pip install uv
+      - name: Sync dependencies
+        working-directory: backend
+        run: uv sync --frozen
+      - name: Typecheck
+        working-directory: backend
+        # basedpyright treats warnings as failures whenever GITHUB_ACTIONS is set,
+        # even when --level error is requested. Keep the CI and local gates aligned.
+        run: env -u GITHUB_ACTIONS uv run basedpyright --level error apo
+      - name: Test
+        working-directory: backend
+        run: uv run pytest -x -q

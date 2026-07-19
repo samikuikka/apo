@@ -1,0 +1,69 @@
+{
+  "name": "@apo/sdk",
+  "version": "0.2.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./otel": {
+      "types": "./src/otel/index.ts",
+      "import": "./src/otel/index.ts",
+      "default": "./src/otel/index.ts"
+    },
+    "./agent-task": {
+      "types": "./src/agent-task/public.ts",
+      "import": "./src/agent-task/public.ts",
+      "default": "./src/agent-task/public.ts"
+    },
+    "./agent-task/integrations/ai-sdk": {
+      "types": "./src/agent-task/integrations/ai-sdk.ts",
+      "import": "./src/agent-task/integrations/ai-sdk.ts",
+      "default": "./src/agent-task/integrations/ai-sdk.ts"
+    },
+    "./agent-task/integrations/openai": {
+      "types": "./src/agent-task/integrations/openai.ts",
+      "import": "./src/agent-task/integrations/openai.ts",
+      "default": "./src/agent-task/integrations/openai.ts"
+    },
+    "./agent-task/integrations/anthropic": {
+      "types": "./src/agent-task/integrations/anthropic.ts",
+      "import": "./src/agent-task/integrations/anthropic.ts",
+      "default": "./src/agent-task/integrations/anthropic.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "build:agent-task-runtime": "node scripts/build-agent-task-runtime.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^4.1.9",
+    "esbuild": "^0.21.5",
+    "next": "^15.5.18",
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.9",
+    "zod": "^3.22.0"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/context-async-hooks": "^2.9.0",
+    "@opentelemetry/core": "^2.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.220.0",
+    "@opentelemetry/resources": "^2.9.0",
+    "@opentelemetry/sdk-trace-base": "^2.9.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "effect": "^3.19.12"
+  },
+  "peerDependencies": {
+    "next": "^13.0.0 || ^14.0.0 || ^15.0.0 || ^16.0.0"
+  }
+}

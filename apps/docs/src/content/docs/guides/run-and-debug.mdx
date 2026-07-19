@@ -1,0 +1,98 @@
+---
+title: Run and debug
+description: Run a task, read the result, debug the failure through the trace.
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+
+**This is the main loop.** Run a task, see whether it passed, and when it fails, find out why. Every run, whether manual, batch, or scheduled, flows through the same steps.
+
+## 1. Run a task
+
+<TerminalDemo
+	command="apo task run extract-parties"
+	lines={[
+		{ text: "" },
+		{ text: "→ running extract-parties" },
+		{ parts: [{ text: "→ Result: ", tone: "default" }, { text: "FAIL", tone: "danger" }, { text: "  (exit 1)", tone: "dim" }] },
+	]}
+/>
+
+## 2. Read the breakdown
+
+The result is pass or fail, but the breakdown shows which test broke and how:
+
+<TerminalDemo
+	command="apo runs show"
+	lines={[
+		{ text: "" },
+		{ parts: [{ text: "Run: de89cab0", tone: "bold" }] },
+		{ text: "  Task:     extract-parties" },
+		{ parts: [{ text: "  Result:   " }, { text: "FAIL", tone: "danger" }] },
+		{ text: "  Checks:   1/2 passed (1 failed)" },
+		{ text: "  Cost:     $0.0042" },
+		{ text: "" },
+		{ parts: [{ text: "  Checks:", tone: "bold" }] },
+		{ parts: [{ text: "    " }, { text: "✓", tone: "success" }, { text: " used-source-document" }] },
+		{ parts: [{ text: "    " }, { text: "✗", tone: "danger" }, { text: " parties-are-complete" }] },
+		{ parts: [{ text: "        " }, { text: "− Expected: ", tone: "success" }, { text: "every named party captured" }] },
+		{ parts: [{ text: "        " }, { text: "+ Received: ", tone: "danger" }, { text: 'missing "acme-corp"' }] },
+		{ text: "" },
+		{ parts: [{ text: "  Trace:    " }, { text: "f1a3e9c0", tone: "bold" }, { text: "  (apo traces show f1a3e9c0)", tone: "dim" }] },
+	]}
+/>
+
+Start here. The failing test tells you *what* broke: `parties-are-complete` failed because "acme-corp" was missing. That's your hypothesis. The trace tells you *why*.
+
+## 3. Open the trace
+
+<TerminalDemo
+	command="apo traces show f1a3e9c0"
+	lines={[
+		{ text: "" },
+		{ parts: [{ text: "Trace: f1a3e9c0", tone: "bold" }] },
+		{ text: "  Task:      extract-parties" },
+		{ text: "  Status:    completed" },
+		{ text: "  Duration:  4.2s" },
+		{ text: "  Cost:      $0.0042" },
+		{ text: "  Tokens:    3,841" },
+		{ text: "" },
+		{ parts: [{ text: "  Calls:", tone: "bold" }] },
+		{ text: "    read_file                0.3s     412 tok" },
+		{ text: '        args: {"path":"contract.pdf"}' },
+		{ text: "    extract_entities         1.1s   1,204 tok" },
+		{ text: "    generate_response        2.4s   2,225 tok" },
+		{ text: "        tokens: 1,890 prompt + 335 completion" },
+	]}
+/>
+
+The trace is the full runtime record of the run: the call tree, the token counts, the actual messages exchanged. Walk it to confirm or refute the hypothesis from the failing test.
+
+What to look for:
+
+- **The call tree**: which tools the agent called, in what order, with what input. Did it call `read_file`? Did it call `extract_entities`? Where did the behavior diverge from what the test expected?
+- **The messages**: the actual system, user, and assistant messages. This is where "why did it do that" gets answered. You can read exactly what the agent was told and what it said back.
+- **Token usage and params**: per call. A failure that looks like a reasoning bug is sometimes a model or temperature mismatch.
+
+## 4. Fix and re-run
+
+Once you've found the cause, fix the task or the agent and re-run. The new run gets its own trace, and you can compare against the previous failure to confirm the fix landed.
+
+The `Trace:` id in the breakdown is that run's one trace — there's never ambiguity about which trace belongs to a run. See [Mental model](/concepts/mental-model/) for the one-trace-per-run rule.
+
+## Batches
+
+A batch run is one execution that may produce several task runs. Batches are how selection-driven and scheduled runs work: you define a subset of tasks and run them together. A batch provides shared context (the selection, the trigger, the timing) across its task runs, but each task run still gets its own result, breakdown, and trace.
+
+<TerminalDemo
+	command="apo batch create --project my-project"
+	lines={[
+		{ text: "" },
+		{ parts: [{ text: "Batch: 7f2a8e90", tone: "bold" }] },
+		{ text: "  Project:  my-project" },
+		{ text: "  Tasks:    3 selected" },
+		{ text: "  Status:   running…" },
+	]}
+/>
+
+Use `apo batch show <batch-id>` to see the batch's task runs and outcomes.

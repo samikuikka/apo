@@ -1,0 +1,57 @@
+{
+  "description": "Vercel AI SDK telemetry with ai.* attributes. Tests the ai.model.id / ai.usage.promptTokens convention and ai.generateText span name detection.",
+  "source": "vercel-ai-sdk",
+  "input": {
+    "resourceSpans": [
+      {
+        "resource": {
+          "attributes": [
+            {"key": "service.name", "value": {"stringValue": "next-app"}}
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {"name": "ai-sdk"},
+            "spans": [
+              {
+                "traceId": "d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1",
+                "spanId": "d4c3b2a1f6e5d4c3",
+                "name": "ai.generateText",
+                "kind": 0,
+                "startTime": "2026-07-09T12:00:00.000000Z",
+                "endTime": "2026-07-09T12:00:04.000000Z",
+                "status": {"code": 1},
+                "attributes": [
+                  {"key": "ai.model.id", "value": {"stringValue": "claude-3.5-sonnet"}},
+                  {"key": "ai.usage.promptTokens", "value": {"intValue": "200"}},
+                  {"key": "ai.usage.completionTokens", "value": {"intValue": "80"}}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "trace_id": "d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1",
+    "spans": [
+      {
+        "span_id": "d4c3b2a1f6e5d4c3",
+        "parent_span_id": null,
+        "name": "ai.generateText",
+        "observation_type": "GENERATION",
+        "model": "claude-3.5-sonnet",
+        "prompt_tokens": 200,
+        "completion_tokens": 80,
+        "input": null,
+        "output": null,
+        "tool_name": null,
+        "is_root": true,
+        "start_time": "2026-07-09T12:00:00.000000Z",
+        "end_time": "2026-07-09T12:00:04.000000Z",
+        "status_code": 1
+      }
+    ]
+  }
+}

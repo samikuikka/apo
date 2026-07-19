@@ -1,0 +1,30 @@
+{
+  "name": "apo-root",
+  "private": true,
+  "packageManager": "pnpm@11.3.0",
+  "scripts": {
+    "predev": "fuser -k -TERM 3000/tcp 3001/tcp 3002/tcp 8000/tcp 2>/dev/null; sleep 1; fuser -k 3000/tcp 3001/tcp 3002/tcp 8000/tcp 2>/dev/null || true",
+    "dev": "concurrently \"pnpm --filter dashboard dev\" \"pnpm --filter backend dev\" \"pnpm --filter example-service dev\" \"pnpm --filter example-service-py dev\"",
+    "docs": "pnpm --filter docs dev",
+    "docs:build": "pnpm --filter docs build",
+    "apo": "node --experimental-strip-types packages/cli/src/main.ts",
+    "lint": "oxlint --ignore-pattern=\"**/*.astro\" apps/ packages/",
+    "lint:fix": "oxlint --fix --ignore-pattern=\"**/*.astro\" apps/ packages/",
+    "typecheck": "pnpm --filter dashboard --filter @apo/sdk --filter @apo/example-service --filter @apo/cli run typecheck",
+    "doctor": "npx react-doctor@latest",
+    "brand:generate": "tsx scripts/generate-signal-sphere.ts",
+    "test:alpha": "pnpm test:alpha:backend && pnpm test:alpha:ui",
+    "test:alpha:ui": "pnpm --filter dashboard exec playwright test --grep @alpha --project=chromium",
+    "test:alpha:ui:all": "pnpm --filter dashboard exec playwright test e2e/alpha-project-setup-and-run.spec.ts e2e/alpha-schedule-lifecycle.spec.ts e2e/alpha-trace-drilldown.spec.ts",
+    "test:alpha:backend": "cd backend && uv run pytest tests/test_alpha_scheduler_recovery.py tests/test_alpha_project_isolation.py tests/test_runtime_config.py tests/test_agent_task_runtime.py tests/test_task_dependency_installer.py -q",
+    "test:alpha:smoke": "bash scripts/self-hosted-alpha-smoke.sh"
+  },
+  "devDependencies": {
+    "basedpyright": "^1.38.2",
+    "concurrently": "^9.1.0",
+    "oxlint": "^1.50.0",
+    "react-doctor": "^0.3.0",
+    "sharp": "^0.35.2",
+    "tsx": "^4.22.4"
+  }
+}

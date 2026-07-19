@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <g id="endpoint">
+    <circle cx="179.44" cy="118.06" r="7" fill="var(--signal-sphere-accent, #4ade80)" opacity="0.10"/>
+    <circle cx="179.44" cy="118.06" r="5" fill="var(--signal-sphere-accent, #4ade80)" opacity="0.24"/>
+  </g>
+  <g id="band-0">
+      <circle cx="117.42" cy="19.87" r="2.87" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.37"/>
+      <circle cx="108.67" cy="18.46" r="2.87" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.37"/>
+      <circle cx="100.63" cy="17.70" r="2.94" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.38"/>
+      <circle cx="125.29" cy="21.68" r="2.94" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.38"/>
+      <circle cx="94.84" cy="17.76" r="3.06" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.42"/>
+      <circle cx="130.77" cy="23.55" r="3.06" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.42"/>
+      <circle cx="92.45" cy="18.63" r="3.22" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.46"/>
+      <circle cx="132.76" cy="25.13" r="3.22" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.46"/>
+      <circle cx="94.05" cy="20.17" r="3.39" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.51"/>
+      <circle cx="130.76" cy="26.09" r="3.39" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.51"/>
+      <circle cx="99.42" cy="22.09" r="3.53" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.56"/>
+      <circle cx="125.06" cy="26.22" r="3.53" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.56"/>
+      <circle cx="107.55" cy="23.99" r="3.61" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.59"/>
+      <circle cx="116.74" cy="25.47" r="3.61" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.59"/>
+  </g>
+  <g id="band-1">
+      <circle cx="113.95" cy="38.86" r="2.20" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.24"/>
+      <circle cx="88.13" cy="35.36" r="2.24" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.24"/>
+      <circle cx="138.85" cy="44.13" r="2.28" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.25"/>
+      <circle cx="65.50" cy="34.23" r="2.43" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.27"/>
+      <circle cx="158.74" cy="50.36" r="2.52" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.29"/>
+      <circle cx="50.08" cy="35.77" r="2.79" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.35"/>
+      <circle cx="169.85" cy="56.54" r="2.93" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.38"/>
+      <circle cx="45.33" cy="39.93" r="3.28" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.48"/>
+      <circle cx="169.25" cy="61.48" r="3.45" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.53"/>
+      <circle cx="53.31" cy="46.12" r="3.82" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.66"/>
+      <circle cx="155.88" cy="64.00" r="3.97" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.71"/>
+      <circle cx="73.44" cy="53.15" r="4.26" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.82"/>
+      <circle cx="131.66" cy="63.31" r="4.35" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.86"/>
+      <circle cx="101.78" cy="59.40" r="4.45" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.90"/>
+  </g>
+  <g id="band-2">
+      <circle cx="115.05" cy="61.32" r="2.03" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.22"/>
+      <circle cx="85.67" cy="57.07" r="2.05" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.22"/>
+      <circle cx="142.93" cy="67.68" r="2.10" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.23"/>
+      <circle cx="58.66" cy="55.53" r="2.17" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.23"/>
+      <circle cx="165.50" cy="75.39" r="2.32" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.26"/>
+      <circle cx="37.89" cy="57.05" r="2.47" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.28"/>
+      <circle cx="179.06" cy="83.40" r="2.73" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.34"/>
+      <circle cx="27.10" cy="61.66" r="2.96" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.39"/>
+      <circle cx="180.42" cy="90.44" r="3.31" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.49"/>
+      <circle cx="29.29" cy="68.93" r="3.57" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.57"/>
+      <circle cx="167.91" cy="95.09" r="3.93" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.70"/>
+      <circle cx="45.54" cy="77.76" r="4.16" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.79"/>
+      <circle cx="142.53" cy="96.15" r="4.43" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.89"/>
+      <circle cx="73.87" cy="86.46" r="4.56" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.95"/>
+      <circle cx="108.76" cy="93.09" r="4.66" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.99"/>
+  </g>
+  <g id="band-3">
+      <circle cx="93.16" cy="81.08" r="1.98" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.22"/>
+      <circle cx="121.82" cy="86.12" r="1.99" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.22"/>
+      <circle cx="65.19" cy="78.64" r="2.03" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.22"/>
+      <circle cx="147.93" cy="93.21" r="2.06" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.22"/>
+      <circle cx="41.21" cy="79.19" r="2.19" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.24"/>
+      <circle cx="168.24" cy="101.60" r="2.29" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.25"/>
+      <circle cx="24.54" cy="82.85" r="2.54" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.29"/>
+      <circle cx="179.62" cy="110.30" r="2.70" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.33"/>
+      <circle cx="18.27" cy="89.43" r="3.06" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.42"/>
+      <circle cx="18.27" cy="89.43" r="2.34" fill="color-mix(in srgb, var(--signal-sphere-accent, #4ade80) 18%, var(--signal-sphere-fg, #f4f4f5))" opacity="0.24"/>
+      <circle cx="179.44" cy="118.06" r="3.25" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.47"/>
+      <circle cx="179.44" cy="118.06" r="3.58" fill="color-mix(in srgb, var(--signal-sphere-accent, #4ade80) 100%, var(--signal-sphere-fg, #f4f4f5))" opacity="0.83"/>
+      <circle cx="24.60" cy="98.23" r="3.66" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.60"/>
+      <circle cx="24.60" cy="98.23" r="2.47" fill="color-mix(in srgb, var(--signal-sphere-accent, #4ade80) 25.97%, var(--signal-sphere-fg, #f4f4f5))" opacity="0.30"/>
+      <circle cx="166.38" cy="123.50" r="3.85" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.67"/>
+      <circle cx="166.38" cy="123.50" r="3.51" fill="color-mix(in srgb, var(--signal-sphere-accent, #4ade80) 95.16%, var(--signal-sphere-fg, #f4f4f5))" opacity="0.79"/>
+      <circle cx="43.84" cy="107.95" r="4.20" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.80"/>
+      <circle cx="43.84" cy="107.95" r="2.68" fill="color-mix(in srgb, var(--signal-sphere-accent, #4ade80) 39.78%, var(--signal-sphere-fg, #f4f4f5))" opacity="0.40"/>
+      <circle cx="141.38" cy="125.39" r="4.34" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.86"/>
+      <circle cx="141.38" cy="125.39" r="3.37" fill="color-mix(in srgb, var(--signal-sphere-accent, #4ade80) 85.54%, var(--signal-sphere-fg, #f4f4f5))" opacity="0.73"/>
+      <circle cx="73.53" cy="116.83" r="4.55" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.94"/>
+      <circle cx="73.53" cy="116.83" r="2.93" fill="color-mix(in srgb, var(--signal-sphere-accent, #4ade80) 55.94%, var(--signal-sphere-fg, #f4f4f5))" opacity="0.52"/>
+      <circle cx="108.34" cy="123.06" r="4.60" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.97"/>
+      <circle cx="108.34" cy="123.06" r="3.17" fill="color-mix(in srgb, var(--signal-sphere-accent, #4ade80) 71.93%, var(--signal-sphere-fg, #f4f4f5))" opacity="0.63"/>
+  </g>
+  <g id="band-4">
+      <circle cx="94.05" cy="105.80" r="1.98" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.22"/>
+      <circle cx="122.64" cy="111.43" r="1.99" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.22"/>
+      <circle cx="65.62" cy="103.25" r="2.01" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.22"/>
+      <circle cx="147.59" cy="119.43" r="2.08" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.23"/>
+      <circle cx="41.19" cy="104.20" r="2.15" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.23"/>
+      <circle cx="165.19" cy="128.81" r="2.35" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.26"/>
+      <circle cx="24.58" cy="108.76" r="2.48" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.28"/>
+      <circle cx="172.02" cy="138.23" r="2.81" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.35"/>
+      <circle cx="19.26" cy="116.56" r="2.99" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.40"/>
+      <circle cx="165.67" cy="146.05" r="3.38" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.51"/>
+      <circle cx="27.52" cy="126.56" r="3.57" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.57"/>
+      <circle cx="145.87" cy="150.57" r="3.92" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.70"/>
+      <circle cx="49.18" cy="136.99" r="4.07" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.75"/>
+      <circle cx="115.51" cy="150.52" r="4.27" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.83"/>
+      <circle cx="80.72" cy="145.64" r="4.33" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.85"/>
+  </g>
+  <g id="band-5">
+      <circle cx="88.62" cy="132.25" r="2.01" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.22"/>
+      <circle cx="113.56" cy="137.12" r="2.02" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.22"/>
+      <circle cx="64.13" cy="130.66" r="2.06" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.22"/>
+      <circle cx="134.95" cy="144.53" r="2.13" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.23"/>
+      <circle cx="44.12" cy="132.71" r="2.23" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.24"/>
+      <circle cx="148.98" cy="153.34" r="2.38" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.26"/>
+      <circle cx="32.42" cy="138.28" r="2.55" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.30"/>
+      <circle cx="152.48" cy="162.05" r="2.78" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.35"/>
+      <circle cx="32.02" cy="146.61" r="3.00" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.40"/>
+      <circle cx="143.72" cy="168.86" r="3.24" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.47"/>
+      <circle cx="44.12" cy="156.20" r="3.45" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.53"/>
+      <circle cx="123.49" cy="172.09" r="3.64" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.60"/>
+      <circle cx="67.00" cy="164.96" r="3.77" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.64"/>
+      <circle cx="95.76" cy="170.73" r="3.84" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.67"/>
+  </g>
+  <g id="band-6">
+      <circle cx="92.43" cy="168.99" r="2.31" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.25"/>
+      <circle cx="84.06" cy="167.75" r="2.31" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.25"/>
+      <circle cx="99.97" cy="171.32" r="2.35" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.26"/>
+      <circle cx="76.40" cy="167.81" r="2.36" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.26"/>
+      <circle cx="105.25" cy="174.29" r="2.44" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.27"/>
+      <circle cx="70.92" cy="169.19" r="2.46" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.28"/>
+      <circle cx="107.21" cy="177.37" r="2.55" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.30"/>
+      <circle cx="68.71" cy="171.65" r="2.58" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.30"/>
+      <circle cx="105.36" cy="179.94" r="2.68" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.32"/>
+      <circle cx="70.31" cy="174.74" r="2.71" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.33"/>
+      <circle cx="99.97" cy="181.46" r="2.80" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.35"/>
+      <circle cx="75.51" cy="177.83" r="2.81" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.35"/>
+      <circle cx="92.07" cy="181.59" r="2.87" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.37"/>
+      <circle cx="83.30" cy="180.29" r="2.87" fill="var(--signal-sphere-fg, #f4f4f5)" opacity="0.37"/>
+  </g>
+</svg>

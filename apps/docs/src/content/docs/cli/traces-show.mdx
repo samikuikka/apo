@@ -1,0 +1,100 @@
+---
+title: "apo traces show"
+description: "Show a trace's call tree, timing, tokens, and cost."
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
+
+`apo traces show` reads a trace — the full call tree of a run: every model call, every tool call, the inputs, the outputs, the messages exchanged. It's what you open when a test fails and you need to see what the agent actually did.
+
+<TerminalDemo
+  command="apo traces show f1a2b3c4"
+  lines={[
+    { text: "" },
+    { text: "Trace: f1a2b3c4" },
+    { text: "  Task:      extract-parties" },
+    { text: "  Status:    completed" },
+    { text: "  Duration:  0.8s" },
+    { text: "  Calls:     3" },
+    { text: "  Cost:      $0.0034" },
+    { text: "  Tokens:    1,247" },
+    { text: "" },
+    { text: "  Calls:", tone: "default" },
+    { text: "    model-call             gemini-2.5-flash-lite    0.3s      $0.0008    412" },
+    { text: "        tokens: 380 prompt + 32 completion" },
+    { text: "      read_file                                       0.1s      -          -" },
+    { text: "        tool: read_file" },
+    { text: "        result: {\"path\":\"contract.pdf\",\"size\":48213}" },
+    { text: "    model-call             gemini-2.5-flash-lite    0.3s      $0.0026    835" },
+    { text: "        tokens: 432 prompt + 403 completion" },
+  ]}
+/>
+
+## Synopsis
+
+```bash
+apo traces show <trace-id> [--verbose] [--errors-only]
+```
+
+## Description
+
+Shows a trace's call details. The argument is a **trace id** (required) or a unique prefix. A trace id is a separate field on a run — `apo runs show` prints it at the bottom of its output.
+
+## Options
+
+| Option | Default | Purpose |
+|---|---|---|
+| `<trace-id>` | (required) | Trace id or unique prefix. |
+| `--verbose` | off | Show per-call input/output and full messages. |
+| `--errors-only` | off | Filter to ERROR and WARNING calls only. |
+
+## Output
+
+<TerminalOutput
+  lines={[
+    { text: "Trace: f1a2b3c4" },
+    { text: "  Task:      extract-parties" },
+    { text: "  Status:    completed" },
+    { text: "  Duration:  0.8s" },
+    { text: "  Calls:     3" },
+    { text: "  Cost:      $0.0034" },
+    { text: "  Tokens:    1,247" },
+    { text: "  Created:   7/16/2026, 9:42 AM" },
+    { text: "" },
+    { text: "  Calls:", tone: "default" },
+    { text: "    extract-parties       gemini-2.5-flash-lite    0.3s      $0.0008    412" },
+    { text: "        tokens: 380 prompt + 32 completion" },
+    { text: "     read_file            -                            0.1s      -          -" },
+    { text: "        tool: read_file" },
+    { text: "        args: {\"path\":\"contract.pdf\"}" },
+    { text: "        result: {\"path\":\"contract.pdf\",\"size\":48213}" },
+    { text: "    generate-response      gemini-2.5-flash-lite    0.3s      $0.0026    835" },
+    { text: "        tokens: 432 prompt + 403 completion" },
+  ]}
+/>
+
+With `--verbose`, each call expands to show its full input and output — the messages sent to the model, the tool results returned, the deliverables collected. With `--errors-only`, only calls that errored or warned are shown, for fast triage.
+
+## Why the trace matters
+
+When a test like `t.calledTool("read_file", { input: { path: "contract.pdf" } })` fails, the trace tells you why. You can see whether the tool was called at all, what arguments it received, and what it returned. The trace is the bridge between a failing assertion and the hypothesis about what to change. See [Traces](/concepts/traces/).
+
+## Example
+
+```bash
+# Show a trace by id
+apo traces show f1a2b3c4
+
+# Show with full per-call detail
+apo traces show f1a2b3c4 --verbose
+
+# Show only what errored
+apo traces show f1a2b3c4 --errors-only
+```
+
+## See also
+
+- [`apo runs show`](/cli/runs-show/) — get the trace id from a run's output.
+- [Traces](/concepts/traces/) — what a trace is and how to read it.
+- [Run and debug](/guides/run-and-debug/) — the workflow from failing test to trace to fix.

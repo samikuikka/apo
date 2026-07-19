@@ -1,0 +1,43 @@
+{
+  "description": "Duplicate span delivery (retried batch). Tests idempotency: the same span exported twice must produce one canonical record, not a duplicate.",
+  "source": "edge-case",
+  "edge_case": "duplicate-idempotent",
+  "input": {
+    "resourceSpans": [
+      {
+        "scopeSpans": [
+          {
+            "spans": [
+              {
+                "traceId": "66666666666666666666666666666666",
+                "spanId": "7777777777777777",
+                "name": "dedup-test",
+                "startTime": "2026-07-09T12:00:00.000000Z",
+                "endTime": "2026-07-09T12:00:01.000000Z",
+                "attributes": [
+                  {"key": "gen_ai.usage.input_tokens", "value": {"intValue": "5"}}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "trace_id": "66666666666666666666666666666666",
+    "spans": [
+      {
+        "span_id": "7777777777777777",
+        "parent_span_id": null,
+        "name": "dedup-test",
+        "observation_type": "SPAN",
+        "prompt_tokens": 5,
+        "is_root": true,
+        "start_time": "2026-07-09T12:00:00.000000Z",
+        "end_time": "2026-07-09T12:00:01.000000Z"
+      }
+    ],
+    "idempotent": true
+  }
+}

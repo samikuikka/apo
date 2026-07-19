@@ -1,0 +1,89 @@
+{
+  "description": "OpenAI Python SDK with opentelemetry-instrumentation-openai-v2. Experimental semantic conventions (OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental) with content capture (span_only). Tests prompt/completion content normalization (parts→content), tool call detection, and arguments stringification.",
+  "source": "openai-instrumentation-v2",
+  "input": {
+    "resourceSpans": [
+      {
+        "resource": {
+          "attributes": [
+            {"key": "service.name", "value": {"stringValue": "example-service-py"}},
+            {"key": "service.namespace", "value": {"stringValue": "18ee0427d268"}},
+            {"key": "telemetry.sdk.language", "value": {"stringValue": "python"}},
+            {"key": "telemetry.sdk.version", "value": {"stringValue": "1.43.0"}}
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {"name": "opentelemetry.instrumentation.openai"},
+            "spans": [
+              {
+                "traceId": "f1e2d3c4b5a6f1e2d3c4b5a6f1e2d3c4",
+                "spanId": "e1d2c3b4a5f6e1d2",
+                "name": "chat gpt-4o-mini",
+                "kind": 3,
+                "startTime": "2026-07-09T12:00:00.000000Z",
+                "endTime": "2026-07-09T12:00:02.500000Z",
+                "status": {"code": 1},
+                "attributes": [
+                  {"key": "gen_ai.operation.name", "value": {"stringValue": "chat"}},
+                  {"key": "gen_ai.request.model", "value": {"stringValue": "gpt-4o-mini"}},
+                  {"key": "gen_ai.provider.name", "value": {"stringValue": "openai"}},
+                  {"key": "gen_ai.response.model", "value": {"stringValue": "openai/gpt-4o-mini"}},
+                  {"key": "gen_ai.response.id", "value": {"stringValue": "chatcmpl-test123"}},
+                  {"key": "gen_ai.response.finish_reasons", "value": {"arrayValue": {"values": [{"stringValue": "tool_calls"}]}}},
+                  {"key": "gen_ai.usage.input_tokens", "value": {"intValue": "150"}},
+                  {"key": "gen_ai.usage.output_tokens", "value": {"intValue": "25"}},
+                  {"key": "gen_ai.input.messages", "value": {"stringValue": "[{\"role\":\"system\",\"parts\":[{\"content\":\"You are a helpful assistant.\",\"type\":\"text\"}]},{\"role\":\"user\",\"parts\":[{\"content\":\"List the files.\",\"type\":\"text\"}]}]"}},
+                  {"key": "gen_ai.output.messages", "value": {"stringValue": "[{\"role\":\"assistant\",\"parts\":[{\"name\":\"list_files\",\"arguments\":{\"path\":\".\"},\"id\":\"call_abc123\",\"type\":\"tool_call\"}],\"finish_reason\":\"tool_calls\"}]"}}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "trace_id": "f1e2d3c4b5a6f1e2d3c4b5a6f1e2d3c4",
+    "spans": [
+      {
+        "span_id": "e1d2c3b4a5f6e1d2",
+        "parent_span_id": null,
+        "name": "chat gpt-4o-mini",
+        "observation_type": "GENERATION",
+        "model": "gpt-4o-mini",
+        "prompt_tokens": 150,
+        "completion_tokens": 25,
+        "input": {
+          "messages": [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "List the files."}
+          ]
+        },
+        "output": {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "call_abc123",
+                  "type": "function",
+                  "function": {
+                    "name": "list_files",
+                    "arguments": "{\"path\": \".\"}"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "tool_name": null,
+        "is_root": true,
+        "start_time": "2026-07-09T12:00:00.000000Z",
+        "end_time": "2026-07-09T12:00:02.500000Z",
+        "status_code": 1
+      }
+    ]
+  }
+}

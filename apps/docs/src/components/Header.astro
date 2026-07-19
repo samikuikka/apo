@@ -1,0 +1,143 @@
+---
+/**
+ * Header override — adds flue-style section tabs (Guide / Reference / CLI /
+ * Ecosystem) into the header bar itself, between the site title and the
+ * search/controls. Same horizontal row, not a floating block below it.
+ *
+ * The active tab is computed from the current page's sidebar via
+ * getDocsSection(). Everything else (SiteTitle, Search, SocialIcons,
+ * ThemeSelect, LanguageSelect) is preserved from Starlight's default Header.
+ *
+ * On narrow viewports the tabs scroll horizontally inside the header; the
+ * mobile menu already carries the full section list via the filtered sidebar.
+ */
+import config from "virtual:starlight/user-config";
+import LanguageSelect from "virtual:starlight/components/LanguageSelect";
+import Search from "virtual:starlight/components/Search";
+import SiteTitle from "virtual:starlight/components/SiteTitle";
+import SocialIcons from "virtual:starlight/components/SocialIcons";
+import ThemeSelect from "virtual:starlight/components/ThemeSelect";
+
+import { docsSections, getDocsSection, docsHref } from "../lib/docs-navigation";
+
+const { sidebar } = Astro.locals.starlightRoute;
+const activeSection = getDocsSection(sidebar, Astro.url.pathname);
+
+/** Render Search when Pagefind is enabled or the component is overridden. */
+const shouldRenderSearch =
+  config.pagefind ||
+  config.components.Search !== "@astrojs/starlight/components/Search.astro";
+---
+
+<div class="header">
+  <div class="title-wrapper sl-flex">
+    <SiteTitle />
+  </div>
+
+  <nav class="section-tabs" aria-label="Documentation sections">
+    {
+      docsSections.map((section) => (
+        <a
+          href={docsHref(section.landingSlug)}
+          class:list={["section-tab", { active: section.key === activeSection.key }]}
+          aria-current={section.key === activeSection.key ? "true" : undefined}
+        >
+          {section.title}
+        </a>
+      ))
+    }
+  </nav>
+
+  <div class="sl-flex print:hidden">
+    {shouldRenderSearch && <Search />}
+  </div>
+  <div class="sl-hidden md:sl-flex print:hidden right-group">
+    <a class="header-app-link" href="http://localhost:3000">Open app</a>
+    <div class="sl-flex social-icons">
+      <SocialIcons />
+    </div>
+    <ThemeSelect />
+    <LanguageSelect />
+  </div>
+</div>
+
+<style>
+  .header {
+    display: flex;
+    gap: var(--sl-nav-gap);
+    justify-content: space-between;
+    align-items: center;
+    height: 100%;
+  }
+
+  .title-wrapper {
+    overflow: clip;
+    padding: 0.25rem;
+    margin: -0.25rem;
+    min-width: 0;
+    flex-shrink: 0;
+  }
+
+  .section-tabs {
+    display: none;
+    align-items: baseline;
+    gap: 1.25rem;
+    flex: 1 1 auto;
+    overflow-x: auto;
+    white-space: nowrap;
+    /* Hide scrollbar on the tabs while keeping them scrollable. */
+    scrollbar-width: none;
+  }
+  .section-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  @media (min-width: 50rem) {
+    .section-tabs {
+      display: flex;
+    }
+  }
+
+  .section-tab {
+    padding: 0.4rem 0;
+    font-size: 0.85rem;
+    color: var(--sl-color-gray-3);
+    border-bottom: 2px solid transparent;
+    transition:
+      color 150ms ease,
+      border-color 150ms ease;
+  }
+
+  .section-tab:hover {
+    color: var(--sl-color-gray-2);
+  }
+
+  .section-tab.active {
+    color: var(--sl-color-gray-1);
+    border-bottom-color: var(--sl-color-accent);
+    font-weight: 600;
+  }
+
+  .right-group,
+  .social-icons {
+    gap: 1rem;
+    align-items: center;
+  }
+
+  /* "Open app" — matches the landing page nav button (solid white, primary). */
+  .header-app-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.85rem;
+    background: var(--sl-color-white);
+    color: var(--sl-color-black);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background-color 0.15s ease;
+  }
+
+  .header-app-link:hover {
+    background: var(--sl-color-gray-2);
+  }
+</style>

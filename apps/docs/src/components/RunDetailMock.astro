@@ -1,0 +1,630 @@
+---
+/**
+ * RunDetailMock — a faithful static recreation of the dashboard's Task Run
+ * Detail view, for the landing page.
+ *
+ * Mirrors the real component structure from
+ * apps/dashboard/.../runs/task/[taskRunId]/ — same tokens, same layout, same
+ * verdict pill / outcome summary / check breakdown. Static (no interactivity);
+ * scroll-reveal animations fill the bar and stagger the check rows.
+ *
+ * Uses the dashboard's exact OKLCH tokens (globals.css) via local CSS vars so
+ * it's pixel-consistent with the real product.
+ */
+---
+
+<figure class="rdm" data-rdm aria-label="apo dashboard — task run detail">
+	{/* ── Window chrome: breadcrumb + verdict pill + title ─────────────── */}
+	<div class="rdm__head">
+		<div class="rdm__crumbs">
+			<span class="rdm__crumb rdm__crumb--link">← Runs</span>
+			<span class="rdm__sep">›</span>
+			<span class="rdm__crumb rdm__crumb--mono">a3f9c120</span>
+			<span class="rdm__sep">›</span>
+			<span class="rdm__crumb rdm__crumb--link">code-review</span>
+			<span class="rdm__sep">›</span>
+			<span class="rdm__crumb rdm__crumb--mono rdm__crumb--current">de89cab012</span>
+		</div>
+
+		<div class="rdm__titlebar">
+			<span class="rdm__pill rdm__pill--fail">
+				<span class="rdm__pill-dot"></span>
+				Failed
+			</span>
+			<h3 class="rdm__title">code-review</h3>
+		</div>
+		<div class="rdm__meta">
+			engineering/code-review · realAgentAdapter · schedule · batch a3f9c120
+		</div>
+	</div>
+
+	{/* ── Outcome summary: big % + segmented bar + legend + metadata ───── */}
+	<div class="rdm__outcome">
+		<div class="rdm__rate">
+			<span class="rdm__rate-num">75%</span>
+			<span class="rdm__rate-label">pass rate</span>
+		</div>
+		<div class="rdm__bar-wrap">
+			<div class="rdm__bar">
+				<div class="rdm__bar-pass" style="--w: 75%"></div>
+				<div class="rdm__bar-fail" style="--w: 25%"></div>
+			</div>
+			<div class="rdm__legend">
+				<span class="rdm__legend-item rdm__legend-item--pass">3 passed</span>
+				<span class="rdm__legend-sep">·</span>
+				<span class="rdm__legend-item rdm__legend-item--fail">1 failed</span>
+				<span class="rdm__legend-sep">·</span>
+				<span class="rdm__legend-item"><span class="rdm__legend-num">4</span> checks</span>
+			</div>
+			<div class="rdm__outcome-meta">
+				<span class="rdm__metric">⏱ 2m 14s</span>
+				<span class="rdm__metric">$0.0842</span>
+				<span class="rdm__metric">4,200 tokens</span>
+			</div>
+		</div>
+	</div>
+
+	{/* ── Tab bar ──────────────────────────────────────────────────────── */}
+	<div class="rdm__tabs">
+		<span class="rdm__tab rdm__tab--active">Checks <span class="rdm__tab-count">4</span></span>
+		<span class="rdm__tab">Conversation History</span>
+		<span class="rdm__tab">Deliverables</span>
+	</div>
+
+	{/* ── Checks summary header ────────────────────────────────────────── */}
+	<div class="rdm__checks-head">
+		<div class="rdm__checks-count">
+			<span class="rdm__checks-passed">3</span>/4 passed
+			<span class="rdm__failed-pill">1 failed</span>
+		</div>
+		<span class="rdm__checks-hint">Click to expand</span>
+	</div>
+
+	{/* ── Checks panel: the test breakdown ─────────────────────────────── */}
+	<div class="rdm__panel">
+		{/* Check 1: pass — trace assertions on the tool log */}
+		<div class="rdm__check" data-check style="--i:0">
+			<button class="rdm__check-head" type="button">
+				<span class="rdm__badge rdm__badge--pass">✓</span>
+				<span class="rdm__check-id">read-source-before-review</span>
+				<span class="rdm__chevron">›</span>
+			</button>
+			<div class="rdm__check-body" hidden>
+				<div class="rdm__codeviewer">
+					<div class="cm-line"><span class="cm-ln">1</span><span class="cm-tok-kw">test</span>(<span class="cm-tok-str">"read-source-before-review"</span>, (t) =&gt; {'{'}</div>
+					<div class="cm-line"><span class="cm-ln">2</span>  <span class="cm-tok-cmt">// The agent must read source files before producing a review.</span></div>
+					<div class="cm-line"><span class="cm-ln">3</span>  <span class="cm-tok-api">t.calledTool</span>(<span class="cm-tok-str">"read_file"</span>, {'{ input: { path: "source.py" } }'});</div>
+					<div class="cm-line"><span class="cm-ln">4</span>  <span class="cm-tok-api">t.calledTool</span>(<span class="cm-tok-str">"read_file"</span>, {'{ input: { path: "tests.py" } }'});</div>
+					<div class="cm-line"><span class="cm-ln">5</span>  <span class="cm-tok-api">t.noFailedActions</span>();</div>
+					<div class="cm-line"><span class="cm-ln">6</span>  <span class="cm-tok-api">t.maxToolCalls</span>(<span class="cm-tok-num">40</span>);</div>
+					<div class="cm-line"><span class="cm-ln">7</span>{'}'});</div>
+				</div>
+			</div>
+		</div>
+
+		{/* Check 2: pass — deliverable check with destructuring + matcher */}
+		<div class="rdm__check" data-check style="--i:1">
+			<button class="rdm__check-head" type="button">
+				<span class="rdm__badge rdm__badge--pass">✓</span>
+				<span class="rdm__check-id">findings-cite-line-numbers</span>
+				<span class="rdm__chevron">›</span>
+			</button>
+			<div class="rdm__check-body" hidden>
+				<div class="rdm__codeviewer">
+					<div class="cm-line"><span class="cm-ln">1</span><span class="cm-tok-kw">test</span>(<span class="cm-tok-str">"findings-cite-line-numbers"</span>, (t, {'{ deliverables }'}) =&gt; {'{'}</div>
+					<div class="cm-line"><span class="cm-ln">2</span>  <span class="cm-tok-kw">const</span> {'{ findings }'} = deliverables;</div>
+					<div class="cm-line"><span class="cm-ln">3</span>  <span class="cm-tok-kw">const</span> hasLines = findings.every((f) =&gt; <span class="cm-tok-kw">typeof</span> f.line === <span class="cm-tok-str">"number"</span>);</div>
+					<div class="cm-line"><span class="cm-ln">4</span>  <span class="cm-tok-api">t.check</span>(findings.length, {'{ min: 2 }'});</div>
+					<div class="cm-line"><span class="cm-ln">5</span>  <span class="cm-tok-api">t.check</span>(hasLines, <span class="cm-tok-str">"every finding cites a line number"</span>);</div>
+					<div class="cm-line"><span class="cm-ln">6</span>{'}'});</div>
+				</div>
+			</div>
+		</div>
+
+		{/* Check 3: FAIL — toolOrder assertion (agent searched before reading) */}
+		<div class="rdm__check rdm__check--expanded" data-check data-open style="--i:2">
+			<button class="rdm__check-head rdm__check-head--expanded" type="button">
+				<span class="rdm__badge rdm__badge--fail">✗</span>
+				<span class="rdm__check-id rdm__check-id--fail">follows-review-workflow</span>
+				<span class="rdm__chevron rdm__chevron--open">›</span>
+			</button>
+			<div class="rdm__check-body">
+				<div class="rdm__codeviewer">
+					<div class="cm-line"><span class="cm-ln">1</span><span class="cm-tok-kw">test</span>(<span class="cm-tok-str">"follows-review-workflow"</span>, (t) =&gt; {'{'}</div>
+					<div class="cm-line"><span class="cm-ln">2</span>  <span class="cm-tok-cmt">// Review workflow: read → search → generate, in that order.</span></div>
+					<div class="cm-line rdm__cm-line--fail"><span class="cm-ln"><span class="cm-marker"></span>3</span>  <span class="cm-tok-api">t.toolOrder</span>([</div>
+					<div class="cm-line rdm__cm-line--fail"><span class="cm-ln">4</span>    <span class="cm-tok-str">"read_file"</span>,</div>
+					<div class="cm-line rdm__cm-line--fail"><span class="cm-ln">5</span>    <span class="cm-tok-str">"search_content"</span>,</div>
+					<div class="cm-line rdm__cm-line--fail"><span class="cm-ln">6</span>    <span class="cm-tok-str">"generate_review"</span>,</div>
+					<div class="cm-line rdm__cm-line--fail"><span class="cm-ln">7</span>  ]');</div>
+					<div class="cm-line"><span class="cm-ln">8</span>{'}'});</div>
+				</div>
+			</div>
+		</div>
+
+		{/* Check 4: pass — LLM judge with realistic rubric */}
+		<div class="rdm__check" data-check style="--i:3">
+			<button class="rdm__check-head" type="button">
+				<span class="rdm__badge rdm__badge--pass">✓</span>
+				<span class="rdm__check-id">review-is-actionable</span>
+				<span class="rdm__chevron">›</span>
+			</button>
+			<div class="rdm__check-body" hidden>
+				<div class="rdm__codeviewer">
+					<div class="cm-line"><span class="cm-ln">1</span><span class="cm-tok-kw">test</span>(<span class="cm-tok-str">"review-is-actionable"</span>, <span class="cm-tok-kw">async</span> (t, {'{ deliverables }'}) =&gt; {'{'}</div>
+					<div class="cm-line"><span class="cm-ln">2</span>  <span class="cm-tok-kw">const</span> {'{ summary, findings }'} = deliverables;</div>
+					<div class="cm-line"><span class="cm-ln">3</span>  <span class="cm-tok-kw">await</span> <span class="cm-tok-api">t.judge</span>(summary, [</div>
+					<div class="cm-line"><span class="cm-ln">4</span>    <span class="cm-tok-str">"PASS when the summary names each finding"</span>,</div>
+					<div class="cm-line"><span class="cm-ln">5</span>    <span class="cm-tok-str">"and suggests a concrete fix for each one"</span>,</div>
+					<div class="cm-line"><span class="cm-ln">6</span>    <span class="cm-tok-str">"FAIL if findings are generic boilerplate"</span>,</div>
+					<div class="cm-line"><span class="cm-ln">7</span>  ].join(<span class="cm-tok-str">" "</span>));</div>
+					<div class="cm-line"><span class="cm-ln">8</span>{'}'});</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</figure>
+
+<style>
+	/* Dashboard tokens (verbatim from apps/dashboard globals.css :root).
+	   Used locally so the mock is pixel-consistent with the real product. */
+	.rdm {
+		--bg: oklch(0 0 0);
+		--fg: oklch(1 0 0);
+		--card: oklch(0.18 0 0);
+		--muted: oklch(0.6 0 0);
+		--border: oklch(0.4 0 0);
+		--success: oklch(0.65 0.15 155);
+		--destructive: oklch(0.5 0.22 25);
+		--warning: oklch(0.7 0.14 70);
+		--radius: 0;
+
+		margin: 0;
+		border: 1px solid var(--border);
+		background: var(--bg);
+		font-family: var(--sl-font);
+		overflow: hidden;
+	}
+
+	/* ── Head: breadcrumb + pill + title + meta ────────────────────────── */
+	.rdm__head {
+		padding: 1rem 1.5rem 1.25rem;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.rdm__crumbs {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	.rdm__crumb--link { color: var(--muted); }
+	.rdm__crumb--mono { font-family: var(--sl-font-mono, monospace); }
+	.rdm__crumb--current { color: var(--fg); }
+
+	.rdm__sep {
+		color: oklch(0.6 0 0 / 50%);
+	}
+
+	.rdm__titlebar {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		margin-top: 0.5rem;
+	}
+
+	.rdm__pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.125rem 0.5rem;
+		border: 1px solid var(--border);
+		background: var(--card);
+		border-radius: 9999px;  /* rounded-full — the one allowed radius */
+		font-size: 11px;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
+	}
+
+	.rdm__pill--fail {
+		color: var(--destructive);
+	}
+
+	.rdm__pill-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 9999px;
+		background: var(--destructive);
+	}
+
+	.rdm__title {
+		font-size: 20px;
+		font-weight: 600;
+		letter-spacing: -0.015em;
+		color: var(--fg);
+		margin: 0;
+	}
+
+	.rdm__meta {
+		margin-top: 0.25rem;
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	/* ── Outcome summary: rate + bar + legend + metrics ────────────────── */
+	.rdm__outcome {
+		display: flex;
+		align-items: center;
+		gap: 1.25rem;
+		padding: 1rem 1.5rem;
+		border-top: 1px solid var(--border);
+		border-bottom: 1px solid var(--border);
+	}
+
+	.rdm__rate {
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+		flex-shrink: 0;
+	}
+
+	.rdm__rate-num {
+		font-family: var(--sl-font-mono, monospace);
+		font-size: 32px;
+		line-height: 1;
+		letter-spacing: -0.02em;
+		color: var(--fg);  /* white — the Failed pill + red bar carry the failure signal */
+	}
+
+	.rdm__rate-label {
+		font-size: 11px;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--muted);
+		margin-top: 0.25rem;
+	}
+
+	.rdm__bar-wrap {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.rdm__bar {
+		display: flex;
+		height: 8px;
+		width: 100%;
+		max-width: 28rem;
+		overflow: hidden;
+		border-radius: 9999px;
+		background: var(--border);
+	}
+
+	.rdm__bar-pass,
+	.rdm__bar-fail {
+		height: 100%;
+		width: 0;
+		transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+		transition-delay: 0.3s;
+	}
+
+	.rdm__bar-pass { background: var(--success); }
+	.rdm__bar-fail { background: var(--destructive); }
+
+	.rdm[data-visible] .rdm__bar-pass { width: var(--w); }
+	.rdm[data-visible] .rdm__bar-fail { width: var(--w); }
+
+	.rdm__legend {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.375rem;
+		margin-top: 0.5rem;
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	.rdm__legend-item--pass { color: var(--success); }
+	.rdm__legend-item--fail { color: var(--destructive); }
+
+	.rdm__legend-num {
+		font-family: var(--sl-font-mono, monospace);
+		color: var(--fg);
+	}
+
+	.rdm__legend-sep {
+		color: oklch(0.6 0 0 / 40%);
+	}
+
+	.rdm__outcome-meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1.25rem;
+		margin-top: 0.375rem;
+		font-size: 12px;
+	}
+
+	.rdm__metric {
+		font-family: var(--sl-font-mono, monospace);
+		color: oklch(1 0 0 / 80%);
+	}
+
+	/* ── Tabs ──────────────────────────────────────────────────────────── */
+	.rdm__tabs {
+		display: flex;
+		gap: 0.25rem;
+		padding: 0 1.5rem;
+		border-top: 1px solid var(--border);
+	}
+
+	.rdm__tab {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		height: 2.25rem;
+		padding: 0 0.75rem;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--muted);
+	}
+
+	.rdm__tab--active {
+		color: var(--fg);
+	}
+
+	.rdm__tab--active::after {
+		content: "";
+		position: absolute;
+		left: 0.5rem;
+		right: 0.5rem;
+		bottom: -1px;
+		height: 1px;
+		background: var(--fg);
+	}
+
+	.rdm__tab-count {
+		padding: 0 0.25rem;
+		font-family: var(--sl-font-mono, monospace);
+		font-size: 10px;
+		background: oklch(1 0 0 / 10%);
+	}
+
+	/* ── Checks summary header ─────────────────────────────────────────── */
+	.rdm__checks-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 1.25rem 1.5rem 0.5rem;
+		font-size: 12px;
+	}
+
+	.rdm__checks-count {
+		color: var(--muted);
+	}
+
+	.rdm__checks-passed {
+		font-weight: 500;
+		color: var(--fg);
+	}
+
+	.rdm__failed-pill {
+		display: inline-flex;
+		align-items: center;
+		margin-left: 0.75rem;
+		padding: 0.125rem 0.5rem;
+		border-radius: 9999px;
+		background: oklch(0.5 0.22 25 / 10%);
+		color: var(--destructive);
+	}
+
+	.rdm__checks-hint {
+		color: oklch(0.6 0 0 / 60%);
+	}
+
+	/* ── Checks panel ──────────────────────────────────────────────────── */
+	.rdm__panel {
+		margin: 0 1.5rem 1.5rem;
+		border: 1px solid var(--border);
+		background: oklch(0.18 0 0 / 60%);
+		overflow: hidden;
+	}
+
+	.rdm__check {
+		border-bottom: 1px solid var(--border);
+		opacity: 0;
+		transform: translateY(4px);
+		transition: opacity 0.3s ease, transform 0.3s ease;
+		transition-delay: calc(var(--i, 0) * 120ms + 0.5s);
+	}
+
+	.rdm__check:last-child {
+		border-bottom: none;
+	}
+
+	.rdm[data-visible] .rdm__check {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	.rdm__check--expanded {
+		background: oklch(0.18 0 0 / 30%);
+	}
+
+	.rdm__check-head {
+		display: flex;
+		width: 100%;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.75rem 1rem;
+		text-align: left;
+		background: transparent;
+		border: none;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.rdm__badge {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+		height: 20px;
+		flex-shrink: 0;
+		border-radius: 9999px;
+		font-size: 10px;
+	}
+
+	.rdm__badge--pass {
+		background: oklch(0.65 0.15 155 / 15%);
+		color: var(--success);
+	}
+
+	.rdm__badge--fail {
+		background: oklch(0.5 0.22 25 / 15%);
+		color: var(--destructive);
+	}
+
+	.rdm__check-id {
+		font-family: var(--sl-font-mono, monospace);
+		font-size: 13px;
+		color: var(--fg);
+	}
+
+	.rdm__check-id--fail {
+		color: var(--destructive);
+		font-weight: 500;
+	}
+
+	.rdm__chevron {
+		margin-left: auto;
+		color: oklch(0.6 0 0 / 60%);
+		font-size: 14px;
+		transform: rotate(0deg);
+		transition: transform 0.15s ease;
+	}
+
+	.rdm__chevron--open {
+		transform: rotate(90deg);
+	}
+
+	/* Expanded check body */
+	.rdm__check-body {
+		padding: 0 1rem 1rem 3.25rem;
+	}
+
+	/* ── CodeViewer mock — CodeMirror 6 look (github-dark theme) ────────
+	   12px mono, transparent bg, line-number gutter with right border,
+	   red gutter marker + underline on the failing line. Token colors
+	   match the real githubDarkHighlight style exactly. */
+	.rdm__codeviewer {
+		border: 1px solid var(--border);
+		background: transparent;
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 12px;
+		line-height: 1.6;
+		overflow-x: auto;  /* allow horizontal scroll on mobile so code isn't clipped */
+	}
+
+	.cm-line {
+		display: block;
+		white-space: pre;
+		padding-right: 1rem;
+		color: #e1e4e8;
+	}
+
+	.cm-ln {
+		display: inline-block;
+		min-width: 2.5em;
+		padding-right: 0.75rem;
+		text-align: right;
+		color: oklch(0.45 0 0);
+		border-right: 1px solid var(--border);
+		margin-right: 0.75rem;
+		position: relative;
+	}
+
+	/* Red gutter marker on the failing line (CodeMirror lint marker). */
+	.cm-marker {
+		position: absolute;
+		right: -0.5rem;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 8px;
+		height: 8px;
+		border-radius: 9999px;
+		background: var(--destructive);
+	}
+
+	/* Failing line: subtle red tint + the assertion gets a red underline. */
+	.rdm__cm-line--fail {
+		background: oklch(0.5 0.22 25 / 8%);
+	}
+
+	.rdm__cm-line--fail .cm-tok-api {
+		text-decoration: underline;
+		text-decoration-style: wavy;
+		text-decoration-color: var(--destructive);
+		text-underline-offset: 3px;
+	}
+
+	/* GitHub-Dark syntax tokens (verbatim from githubDarkHighlight). */
+	.cm-tok-kw { color: #f97583; }
+	.cm-tok-str { color: #9ecbff; }
+	.cm-tok-num { color: #79b8ff; }
+	.cm-tok-cmt { color: #6a737d; font-style: italic; }
+	/* t.<method> calls — the apo highlighter (#ffa657, weight 600). */
+	.cm-tok-api { color: #ffa657; font-weight: 600; }
+
+	/* ── Reduced motion: show everything immediately ───────────────────── */
+	@media (prefers-reduced-motion: reduce) {
+		.rdm__check,
+		.rdm__bar-pass,
+		.rdm__bar-fail {
+			opacity: 1 !important;
+			transform: none !important;
+			transition: none !important;
+		}
+		.rdm__bar-pass { width: 75% !important; }
+		.rdm__bar-fail { width: 25% !important; }
+	}
+</style>
+
+<script>
+	import { onVisible } from "./demos/demo-motion";
+
+	const mock = document.querySelector<HTMLElement>("[data-rdm]");
+	if (mock) {
+		onVisible(mock, (state) => {
+			mock.toggleAttribute("data-visible", state === "visible");
+		});
+	}
+
+	// Click-to-expand: toggle each check's body open/closed, matching the
+	// real dashboard's ExpandableCheckItem behavior.
+	for (const check of document.querySelectorAll<HTMLElement>("[data-check]")) {
+		const head = check.querySelector<HTMLButtonElement>(".rdm__check-head");
+		const body = check.querySelector<HTMLElement>(".rdm__check-body");
+		const chevron = check.querySelector<HTMLElement>(".rdm__chevron");
+		if (!head || !body) continue;
+
+		head.addEventListener("click", () => {
+			const isOpen = body.hasAttribute("hidden");
+			if (isOpen) {
+				body.removeAttribute("hidden");
+				check.classList.add("rdm__check--expanded");
+				head.classList.add("rdm__check-head--expanded");
+				chevron?.classList.add("rdm__chevron--open");
+			} else {
+				body.setAttribute("hidden", "");
+				check.classList.remove("rdm__check--expanded");
+				head.classList.remove("rdm__check-head--expanded");
+				chevron?.classList.remove("rdm__chevron--open");
+			}
+		});
+	}
+</script>

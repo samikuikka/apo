@@ -1,0 +1,385 @@
+---
+/**
+ * SchedulesDemo — cadence is policy, not one timer.
+ *
+ * Two panels, same clock, opposite conclusions:
+ *  - ONE TIMER (left): every subset fires on every tick of a single global
+ *    clock — relentless, wasteful. Same cost for smoke and the full suite.
+ *  - PER-SUBSET POLICY (right): the same timeline, but each subset fires on
+ *    its own sensible cadence — smoke often, full rarely, regression once.
+ *
+ * The motion stages the section's thesis directly: the left looks wrong,
+ * the right looks right, and both consumed the same elapsed time.
+ *
+ * Same idiom as the other demos: scoped tokens, sharp corners, demo-motion.ts
+ * harness, reduced-motion static frame, astro:before-swap cleanup.
+ * See docs/design.md "Motion".
+ */
+import { onVisible, prefersReducedMotion } from "./demo-motion";
+
+// Three subsets, same on both panels. The right panel's cadence (in ticks of
+// the shared compressed clock) is what differs from the left.
+type Subset = { key: string; label: string };
+
+const subsets: Subset[] = [
+  { key: "smoke", label: "smoke" },
+  { key: "full", label: "full" },
+  { key: "regression", label: "regression" },
+];
+
+// The shared compressed clock: how many ticks make up one demo loop, and the
+// per-tick interval in ms. Both panels advance on this same clock.
+const TICK_INTERVAL_MS = 600;
+const TICKS_PER_LOOP = 16;
+
+// Right panel: which ticks (0-indexed) each subset fires on.
+// smoke fires almost every tick; full at the halfway mark; regression once
+// near the end. Left panel fires ALL subsets on EVERY tick — that's the point.
+const RIGHT_FIRES: Record<string, number[]> = {
+  smoke: [0, 2, 4, 6, 8, 10, 12, 14],
+  full: [8],
+  regression: [14],
+};
+---
+
+<div class="schedules-demo not-content" data-schedules-demo data-tick-interval={TICK_INTERVAL_MS} data-ticks-per-loop={TICKS_PER_LOOP}>
+  <div class="shared-clock">
+    <span class="shared-clock__label">shared clock</span>
+    <span class="shared-clock__value" data-clock>tick 0</span>
+  </div>
+  <div class="panels">
+    {/* LEFT — one timer fires everything, all the time. */}
+    <section class="panel panel--wrong" aria-label="One timer running everything">
+      <header class="panel__head">
+        <span class="panel__tag panel__tag--wrong">one timer</span>
+      </header>
+      <ul class="rows not-content" data-panel="wrong">
+        {subsets.map((subset) => (
+          <li class="row not-content" data-subset={subset.key}>
+            <span class="row__label">{subset.label}</span>
+            <div class="row__track" data-track />
+          </li>
+        ))}
+      </ul>
+      <div class="panel__note">everything, all the time — same cost for smoke and the full suite</div>
+    </section>
+
+    {/* RIGHT — each subset on its own clock. */}
+    <section class="panel panel--right" aria-label="Per-subset policy">
+      <header class="panel__head">
+        <span class="panel__tag panel__tag--right">per-subset policy</span>
+      </header>
+      <ul class="rows not-content" data-panel="right" data-right-fires={JSON.stringify(RIGHT_FIRES)}>
+        {subsets.map((subset) => (
+          <li class="row not-content" data-subset={subset.key}>
+            <span class="row__label">{subset.label}</span>
+            <div class="row__track" data-track />
+          </li>
+        ))}
+      </ul>
+      <div class="panel__note">each subset on its own clock — smoke often, full nightly, regression on release</div>
+    </section>
+  </div>
+</div>
+
+<style>
+  .schedules-demo {
+    margin: 1.5rem 0;
+    padding: 1.1rem;
+    border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-gray-7, var(--sl-color-black));
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+  }
+
+  .panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    /* align-items default (stretch) makes both panels the same height. */
+    gap: 0.85rem;
+  }
+
+  @media (max-width: 40rem) {
+    .panels {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .panel {
+    border: 1px solid var(--sl-color-gray-6);
+    padding: 0.75rem 0.8rem;
+    /* Flex column so header/rows/note distribute fixed space identically
+       across both panels regardless of how full the tracks get. */
+    display: flex;
+    flex-direction: column;
+    /* Hard reset — Starlight's markdown content layer applies top margins to
+       block elements following other blocks; neutralize so both panels match. */
+    margin: 0;
+  }
+
+  .panel--wrong {
+    /* Subtle danger tint to read as "the wrong way". */
+    border-color: oklch(0.4 0.06 25);
+  }
+
+  .panel__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.7rem;
+  }
+
+  .panel__tag {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.08rem 0.4rem;
+    border: 1px solid var(--sl-color-gray-5);
+    color: var(--sl-color-gray-3);
+  }
+
+  .panel__tag--wrong {
+    color: oklch(0.8 0.16 25);
+    border-color: oklch(0.4 0.06 25);
+  }
+
+  .panel__tag--right {
+    color: var(--sl-color-accent-high);
+    border-color: var(--sl-color-accent-low);
+  }
+
+  .panel__clock {
+    font-size: 0.68rem;
+    color: var(--sl-color-gray-4);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    /* Grow to fill the panel so the note sits at the same y in both cards,
+       and reserve enough height that the three rows always have room. */
+    flex: 1 1 auto;
+    min-height: 7.6rem;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 5.5rem 1fr;
+    /* Pin to top so labels line up across panels even when one track fills. */
+    align-items: start;
+    gap: 0.6rem;
+    /* Each row takes an equal share so smoke/full/regression sit at the same
+       level in both panels. */
+    flex: 1 1 0;
+  }
+
+  .row__label {
+    color: var(--sl-color-gray-2);
+    font-size: 0.74rem;
+    line-height: 1.4rem;
+  }
+
+  .row__track {
+    display: flex;
+    /* nowrap + overflow hidden: ticks accumulate and clip rather than wrapping
+       and growing the row. Keeps the card height stable across panels. */
+    flex-wrap: nowrap;
+    overflow: hidden;
+    gap: 3px;
+    height: 1.4rem;
+  }
+
+  .shared-clock {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.85rem;
+    padding-bottom: 0.7rem;
+    border-bottom: 1px solid var(--sl-color-gray-6);
+  }
+
+  .shared-clock__label {
+    color: var(--sl-color-gray-4);
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .shared-clock__value {
+    color: var(--sl-color-gray-2);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Each fire is a square dropped into the track. These are created in JS
+     via createElement, so the styles must be :global — Astro's scoping hash
+     is only applied to elements in the template, not to runtime-created nodes. */
+  :global(.tick) {
+    width: 0.6rem;
+    height: 0.6rem;
+    background: var(--sl-color-accent);
+    opacity: 0;
+    transform: scale(0.5);
+    animation: tickDrop 280ms ease-out forwards;
+  }
+
+  /* On the WRONG panel, the relentless cadence reads as a problem via a
+     danger tint instead of the verdict green. */
+  :global(.panel--wrong .tick) {
+    background: oklch(0.8 0.16 25);
+    animation: tickDropWrong 280ms ease-out forwards;
+  }
+
+  @keyframes tickDrop {
+    to {
+      opacity: 0.9;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes tickDropWrong {
+    to {
+      opacity: 0.85;
+      transform: scale(1);
+    }
+  }
+
+  /* Fade older ticks so the recent firing reads as a cluster. */
+  :global(.tick:nth-child(n + 6)) {
+    opacity: 0.3;
+    animation: none;
+    transform: scale(1);
+  }
+
+  .panel__note {
+    margin: 0.7rem 0 0;
+    color: var(--sl-color-gray-4);
+    font-size: 0.68rem;
+    line-height: 1.4;
+    /* Reserve two full lines so the left (short) and right (longer) notes
+       occupy the same block height — keeps the cards the same size. */
+    min-height: 3.8em;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.tick) {
+      animation: none;
+      opacity: 0.6;
+      transform: scale(1);
+    }
+  }
+</style>
+
+<script>
+  import { onVisible, prefersReducedMotion } from "./demo-motion";
+
+  function setupDemo(root: HTMLElement) {
+    const tickInterval = Number(root.dataset.tickInterval ?? "600");
+    const ticksPerLoop = Number(root.dataset.ticksPerLoop ?? "16");
+    const wrongPanel = root.querySelector<HTMLElement>('[data-panel="wrong"]');
+    const rightPanel = root.querySelector<HTMLElement>('[data-panel="right"]');
+    const rightFiresRaw = rightPanel?.dataset.rightFires ?? "{}";
+    const rightFires: Record<string, number[]> = JSON.parse(rightFiresRaw);
+
+    const wrongTracks = new Map<string, HTMLElement>();
+    const rightTracks = new Map<string, HTMLElement>();
+    for (const el of root.querySelectorAll<HTMLElement>("[data-subset]")) {
+      const key = el.dataset.subset ?? "";
+      const track = el.querySelector<HTMLElement>("[data-track]");
+      if (!track) continue;
+      if (el.closest('[data-panel="wrong"]')) wrongTracks.set(key, track);
+      else rightTracks.set(key, track);
+    }
+
+    const clocks = Array.from(root.querySelectorAll<HTMLElement>("[data-clock]"));
+    const MAX_TICKS = 14;
+
+    function dropTick(track: HTMLElement, wrong: boolean) {
+      const tick = document.createElement("span");
+      tick.className = "tick";
+      track.appendChild(tick);
+      while (track.children.length > MAX_TICKS) {
+        track.removeChild(track.firstChild!);
+      }
+      // Suppress the unused-var lint without changing behavior.
+      void wrong;
+    }
+
+    function setClock(n: number) {
+      for (const el of clocks) el.textContent = `tick ${n}`;
+    }
+
+    // Reduced motion: render a static representative frame — enough ticks on
+    // each track that the density contrast between the two panels reads.
+    if (prefersReducedMotion()) {
+      const sampleTicks = 10;
+      for (const [, track] of wrongTracks) {
+        for (let i = 0; i < sampleTicks; i++) dropTick(track, true);
+      }
+      for (const [key, track] of rightTracks) {
+        const fires = rightFires[key] ?? [];
+        // Pre-fill the right panel with one loop's worth of fires so the
+        // sparser cadence is legible statically.
+        const count = Math.min(fires.length, sampleTicks);
+        for (let i = 0; i < count; i++) dropTick(track, false);
+      }
+      setClock(ticksPerLoop - 1);
+      return;
+    }
+
+    let tickN = 0;
+    let timer: number | undefined;
+    let disposed = false;
+    let visible = false;
+
+    function advance() {
+      if (disposed || !visible) return;
+      setClock(tickN);
+
+      // WRONG panel: every subset fires every tick.
+      for (const [, track] of wrongTracks) dropTick(track, true);
+
+      // RIGHT panel: each subset fires only on its scheduled ticks.
+      for (const [key, track] of rightTracks) {
+        if ((rightFires[key] ?? []).includes(tickN)) dropTick(track, false);
+      }
+
+      tickN = (tickN + 1) % ticksPerLoop;
+      timer = window.setTimeout(advance, tickInterval);
+    }
+
+    const disposer = onVisible(
+      root,
+      (state) => {
+        if (state === "visible") {
+          if (!visible) {
+            visible = true;
+            advance();
+          }
+        } else {
+          visible = false;
+          window.clearTimeout(timer);
+        }
+      },
+      { threshold: 0.3 },
+    );
+
+    document.addEventListener(
+      "astro:before-swap",
+      () => {
+        disposed = true;
+        window.clearTimeout(timer);
+        disposer();
+      },
+      { once: true },
+    );
+  }
+
+  document
+    .querySelectorAll<HTMLElement>("[data-schedules-demo]")
+    .forEach((root) => setupDemo(root));
+</script>

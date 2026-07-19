@@ -1,0 +1,53 @@
+---
+title: "apo traces list"
+description: "List recent traces — observability runs with call counts, duration, and model."
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
+
+List recent traces (observability runs) from the backend. These are the call-tree records that [`apo traces show`](/cli/traces-show/) opens.
+
+<TerminalDemo
+  command="apo traces list"
+  lines={[
+    { text: "Trace ID  Task             Status     Calls  Duration  Model                  Created" },
+    { text: "────────  ───────────────  ─────────  ─────  ────────  ─────────────────────  ─────────────────────" },
+    { text: "f1a2b3c4  extract-parties   completed  4      0.8s      gemini-2.5-flash-lite  7/4/2026, 5:12 PM" },
+    { text: "d5e6f7g8  code-review       completed  7      2.1s      gemini-2.5-flash-lite  7/4/2026, 4:03 PM" },
+    { text: "" },
+    { text: "2 traces total", tone: "default" },
+  ]}
+/>
+
+## Synopsis
+
+```bash
+apo traces list [--task <id>] [--limit <n>]
+```
+
+## Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--task <id>` | all | Only traces for this task. |
+| `--limit <n>` | 20 | Maximum traces to list. |
+
+## Output
+
+<TerminalOutput
+  lines={[
+    { text: "Trace ID  Task             Status     Calls  Duration  Model                  Created" },
+    { text: "────────  ───────────────  ─────────  ─────  ────────  ─────────────────────  ─────────────────────" },
+    { text: "f1a2b3c4  extract-parties   completed  4      0.8s      gemini-2.5-flash-lite  7/4/2026, 5:12 PM" },
+    { text: "d5e6f7g8  code-review       completed  7      2.1s      gemini-2.5-flash-lite  7/4/2026, 4:03 PM" },
+    { text: "" },
+    { text: "2 traces total", tone: "default" },
+  ]}
+/>
+
+## See also
+
+- [`apo traces show`](/cli/traces-show/) — open a trace's call tree.
+- [Traces](/concepts/traces/) — what a trace is and how to read it.
+- [CLI overview](/cli/) — the full command surface.

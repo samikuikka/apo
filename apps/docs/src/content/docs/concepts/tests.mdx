@@ -1,0 +1,76 @@
+---
+title: Tests
+description: "What a test is, the two kinds, and how to read the breakdown."
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+
+A test is one assertion about a run. You write it as a `test(...)` block, and a task usually needs several: not one vague judgment, not one brittle exact-match. Every test records into the same breakdown.
+
+For *why* code assertions and LLM judges are the same kind of thing, see [Why apo](/why-apo/). This page covers what a test looks like and how to read what comes back.
+
+## Two kinds, one shape
+
+Every test asserts one of two things: **what the agent did** (did it call the right tool? did anything error?), or **what it produced** (is the output correct?). Both are written the same way, and both report into the same breakdown.
+
+A test about what the agent did reads the run's trace. It's fast, deterministic, and free:
+
+```typescript
+test("used-source-document", (t) => {
+  t.calledTool("read_file", { input: { path: "contract.pdf" } });
+  t.noFailedActions();
+});
+```
+
+A test about what the agent produced reads the deliverables your adapter collected. It can check a value against a schema, or hand the value to an LLM and ask whether it's actually good:
+
+```typescript
+test("parties-are-complete", async (t, { deliverables }) => {
+  t.check(deliverables.parties, matches(partiesSchema));
+  await t.judge(
+    deliverables.parties,
+    "PASS when every named party is captured without false positives.",
+  );
+});
+```
+
+The `t` object carries assertions like `calledTool`, `noFailedActions`, and `check`. The second argument to the callback is a context with `{ deliverables, files, task }`: `deliverables` is what your adapter returned, `files` is the task's inputs. The full method list lives in the [Assertions API](/reference/assertions/).
+
+## How the result is computed
+
+If every test passes, the run passes. If any test fails, the run fails. No weighting, no scores, no partial credit.
+
+A test never throws. It records. One test can make several assertions, and you'll see each in the breakdown. A failing assertion doesn't stop the test; it keeps going and reports everything it found.
+
+## What a failure looks like
+
+<TerminalDemo
+  command="apo runs show"
+  lines={[
+    { parts: [{ text: "Run: de89cab0", tone: "bold" }] },
+    { text: "  Task:     extract-parties" },
+    { text: "  Status:   completed" },
+    { parts: [{ text: "  Result:   " }, { text: "FAIL", tone: "danger" }] },
+    { text: "  Checks:   1/2 passed (1 failed)" },
+    { parts: [{ text: "  Trace:    f1a3e9c0 " }, { text: "(apo traces show f1a3e9c0)", tone: "dim" }] },
+    { text: "" },
+    { parts: [{ text: "  Checks:", tone: "bold" }] },
+    { parts: [{ text: "    " }, { text: "PASS", tone: "success" }, { text: " used-source-document" }] },
+    { parts: [{ text: "    " }, { text: "FAIL", tone: "danger" }, { text: " parties-are-complete" }] },
+    { parts: [{ text: "      " }, { text: "✗", tone: "danger" }, { text: " captures-every-party" }] },
+    { parts: [{ text: "        " }, { text: "− Expected: ", tone: "success" }, { text: "every named party captured" }] },
+    { parts: [{ text: "        " }, { text: "+ Received: ", tone: "danger" }, { text: 'missing "acme-corp"' }] },
+  ]}
+/>
+
+`1/2 passed` is the graded signal. Across runs, that count is how you tell whether a change helped. See [Why apo](/why-apo/) for why the result stays binary but the count is preserved.
+
+:::note
+A judge's model, prompt, and response stay inspectable inside the test that used it. You can see exactly what the judge was asked and what it said, so it doesn't become an opaque "LLM score."
+:::
+
+## Next
+
+- [Tasks](/concepts/tasks/), where `test(...)` sits in the `.eval.ts` file.
+- [Adapters](/concepts/adapters/), where `deliverables` comes from.
+- [Run and debug](/guides/run-and-debug/), the workflow from a failing test to the trace.

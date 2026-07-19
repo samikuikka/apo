@@ -1,0 +1,379 @@
+---
+/**
+ * LoopEngineeringDemo — a coding agent closing the loop on its own.
+ *
+ * The page's point is that apo's CLI is the interface an agent uses to
+ * iterate without you: it runs the task, reads the verdict, opens the
+ * trace, edits the code, and re-runs until green. The convergence is what
+ * proves the loop is real — 0/2 → 1/2 → 2/2, no human in any step.
+ *
+ * The demo renders that as one terminal lane played back fast: each command
+ * types in char-by-char at sped-up terminal speed, then the CLI's output
+ * lands beneath it. Across three iterations the verdict lands on PASS. Then
+ * it loops.
+ *
+ * Motion earns its place (docs/design.md "Illustrative motion"): a static
+ * frame of three runs does not communicate "the agent iterates toward pass
+ * on its own" — the streaming cycle does.
+ *
+ * Colors use the apo tokens (custom.css): pass = --sl-color-accent / -high
+ * (#4ade80 / #86efac), fail = oklch(0.8 0.16 25) (the orange-red used by
+ * every demo), body text on --sl-color-gray-2 so test names stay legible
+ * even on dimmed earlier runs.
+ *
+ * Structure mirrors the house demos: scoped CSS tokens, data-state toggling
+ * + CSS transitions, an IntersectionObserver start/stop, and a
+ * reduced-motion branch that renders the final static frame.
+ */
+---
+
+<div class="agent-loop" data-agent-loop>
+  <div class="agent-loop__screen" data-screen>
+    {/*
+      The full scripted sequence. The script reveals entries in order:
+        — .agent-loop__cmd    types in char-by-char at sped-up terminal speed (data-typewriter on the text span)
+        — .agent-loop__out    CLI output, revealed as a block after its command
+        — .agent-loop__note   italic aside ("agent edits the code…")
+      Each <li> carries data-kind + data-run to drive the reveal order.
+    */}
+    <ol class="agent-loop__lines" data-lines>
+      {/* run #1 — both fail */}
+      <li class="agent-loop__line agent-loop__cmd" data-kind="cmd" data-run="1">
+        <span class="agent-loop__sigil">$</span><span class="agent-loop__text" data-typewriter>apo task run answer-from-spec</span>
+      </li>
+      <li class="agent-loop__line agent-loop__out" data-kind="out" data-run="1" data-tone="fail">
+        <span class="agent-loop__verdict">✗ FAIL</span><span class="agent-loop__count">0/2</span>
+      </li>
+      <li class="agent-loop__line agent-loop__out agent-loop__tests" data-kind="out" data-run="1">
+        <span class="agent-loop__test" data-state="fail">reads-source-first</span>
+        <span class="agent-loop__test" data-state="fail">answer-is-correct</span>
+      </li>
+      <li class="agent-loop__line agent-loop__cmd" data-kind="cmd" data-run="1">
+        <span class="agent-loop__sigil">$</span><span class="agent-loop__text" data-typewriter>apo traces show 9c4a</span>
+      </li>
+      <li class="agent-loop__line agent-loop__out" data-kind="out" data-run="1">
+        agent never called read_file — answered from priors
+      </li>
+      <li class="agent-loop__line agent-loop__note" data-kind="note" data-run="1">
+        agent edits the code to read the source before answering…
+      </li>
+
+      {/* run #2 — closer, one passes */}
+      <li class="agent-loop__line agent-loop__cmd" data-kind="cmd" data-run="2">
+        <span class="agent-loop__sigil">$</span><span class="agent-loop__text" data-typewriter>apo task run answer-from-spec</span>
+      </li>
+      <li class="agent-loop__line agent-loop__out" data-kind="out" data-run="2" data-tone="fail">
+        <span class="agent-loop__verdict">✗ FAIL</span><span class="agent-loop__count">1/2</span>
+      </li>
+      <li class="agent-loop__line agent-loop__out agent-loop__tests" data-kind="out" data-run="2">
+        <span class="agent-loop__test" data-state="pass">reads-source-first</span>
+        <span class="agent-loop__test" data-state="fail">answer-is-correct</span>
+      </li>
+      <li class="agent-loop__line agent-loop__cmd" data-kind="cmd" data-run="2">
+        <span class="agent-loop__sigil">$</span><span class="agent-loop__text" data-typewriter>apo traces show b71f</span>
+      </li>
+      <li class="agent-loop__line agent-loop__out" data-kind="out" data-run="2">
+        read the source, but the answer added a claim that isn't in it
+      </li>
+      <li class="agent-loop__line agent-loop__note" data-kind="note" data-run="2">
+        agent tightens the prompt to cite each claim…
+      </li>
+
+      {/* run #3 — converged, both pass */}
+      <li class="agent-loop__line agent-loop__cmd" data-kind="cmd" data-run="3">
+        <span class="agent-loop__sigil">$</span><span class="agent-loop__text" data-typewriter>apo task run answer-from-spec</span>
+      </li>
+      <li class="agent-loop__line agent-loop__out" data-kind="out" data-run="3" data-tone="pass">
+        <span class="agent-loop__verdict">✓ PASS</span><span class="agent-loop__count">2/2</span>
+      </li>
+      <li class="agent-loop__line agent-loop__out agent-loop__tests" data-kind="out" data-run="3">
+        <span class="agent-loop__test" data-state="pass">reads-source-first</span>
+        <span class="agent-loop__test" data-state="pass">answer-is-correct</span>
+      </li>
+    </ol>
+  </div>
+</div>
+
+<style>
+  .agent-loop {
+    margin: 1.5rem 0;
+  }
+
+  .agent-loop__screen {
+    border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-black);
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+  }
+
+  .agent-loop__lines {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .agent-loop__line {
+    margin: 0;
+    color: var(--sl-color-gray-2);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    opacity: 0;
+    transform: translateY(2px);
+    transition:
+      opacity 280ms ease,
+      transform 280ms ease;
+  }
+
+  .agent-loop__line[data-shown] {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /*
+    Earlier runs dim — but to gray-3 (a readable secondary), NOT gray-5
+    (a border color, ~invisible on black). The active run stays full
+    gray-2 so it reads focal.
+  */
+  .agent-loop__line[data-run="1"][data-shown],
+  .agent-loop__line[data-run="2"][data-shown] {
+    color: var(--sl-color-gray-3);
+  }
+
+  /* ---- command prompt lines ---- */
+
+  .agent-loop__cmd {
+    display: flex;
+    gap: 0.55rem;
+    align-items: baseline;
+  }
+
+  .agent-loop__sigil {
+    color: var(--sl-color-accent-high);
+    flex-shrink: 0;
+    font-weight: 600;
+  }
+
+  .agent-loop__cmd .agent-loop__text {
+    color: var(--sl-color-gray-1);
+  }
+
+  /* Typewriter cursor — sits at the end of the command while it streams. */
+  .agent-loop__text[data-typing]::after {
+    content: "";
+    display: inline-block;
+    width: 0.55ch;
+    height: 1.05em;
+    margin-left: 1px;
+    background: var(--sl-color-accent);
+    transform: translateY(0.15em);
+    animation: agent-loop-blink 1s steps(2, start) infinite;
+  }
+
+  @keyframes agent-loop-blink {
+    to {
+      visibility: hidden;
+    }
+  }
+
+  /* ---- verdict + count ---- */
+
+  .agent-loop__out[data-tone="fail"] .agent-loop__verdict {
+    color: oklch(0.8 0.16 25);
+    font-weight: 600;
+  }
+
+  .agent-loop__out[data-tone="pass"] .agent-loop__verdict {
+    color: var(--sl-color-accent);
+    font-weight: 600;
+  }
+
+  .agent-loop__count {
+    margin-left: 0.75rem;
+    color: var(--sl-color-gray-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- per-test lines with colored check marks ---- */
+
+  .agent-loop__tests {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding-left: 1.1rem;
+  }
+
+  .agent-loop__test {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+
+  .agent-loop__test::before {
+    flex-shrink: 0;
+    font-weight: 600;
+  }
+
+  .agent-loop__test[data-state="pass"]::before {
+    content: "✓";
+    color: var(--sl-color-accent);
+  }
+
+  .agent-loop__test[data-state="fail"]::before {
+    content: "✗";
+    color: oklch(0.8 0.16 25);
+  }
+
+  /* ---- agent-aside ---- */
+
+  .agent-loop__note {
+    color: var(--sl-color-gray-3);
+    font-style: italic;
+    padding-left: 1.1rem;
+    border-left: 1px solid var(--sl-color-gray-5);
+    margin: 0.1rem 0 0.4rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .agent-loop__line {
+      transition: none;
+    }
+    .agent-loop__text[data-typing]::after {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  import { onVisible, prefersReducedMotion } from "./demo-motion";
+
+  // Per-kind pacing (ms). Commands type out fast — ~12ms/char, ~4x faster than
+  // a readable typing speed — so the loop reads as a sped-up terminal session,
+  // not a slow character-by-character crawl. Output and notes land as blocks.
+  const TYPE_MS_PER_CHAR = 12;
+  const PAUSE_AFTER_CMD_MS = 250;
+  const OUT_BLOCK_MS = 650;
+  const NOTE_MS = 1000;
+  const LOOP_PAUSE_MS = 2600;
+
+  function setupDemo(root: HTMLElement) {
+    const lines = Array.from(
+      root.querySelectorAll<HTMLElement>("[data-lines] .agent-loop__line"),
+    );
+
+    function hideAll() {
+      for (const line of lines) line.removeAttribute("data-shown");
+    }
+
+    function showAll() {
+      for (const line of lines) line.setAttribute("data-shown", "");
+      // Restore full command text in case a reduced-motion frame left it empty.
+      for (const textEl of root.querySelectorAll<HTMLElement>("[data-typewriter]")) {
+        if (textEl.dataset.fullText !== undefined) {
+          textEl.textContent = textEl.dataset.fullText;
+        }
+        delete textEl.dataset.typing;
+      }
+    }
+
+    // Reduced motion: render the final frame — every line visible, with the
+    // earlier runs dimmed by the CSS [data-run] rule so the green run #3
+    // still reads as the destination. Cursor suppressed via the media query.
+    if (prefersReducedMotion()) {
+      showAll();
+      return;
+    }
+
+    let timer: number | undefined;
+    let disposed = false;
+    let visible = false;
+
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        timer = window.setTimeout(resolve, ms);
+      });
+
+    // Type a command's text out char-by-char, fast. Leaves the blinking cursor
+    // in place while typing. Resolves early if the demo is disposed/hidden.
+    async function typeCommand(textEl: HTMLElement) {
+      const full = textEl.dataset.fullText ?? textEl.textContent ?? "";
+      textEl.dataset.typing = "";
+      textEl.textContent = "";
+      for (let i = 0; i < full.length; i++) {
+        if (disposed || !visible) return;
+        textEl.textContent = full.slice(0, i + 1);
+        await sleep(TYPE_MS_PER_CHAR);
+      }
+    }
+
+    async function cycle() {
+      if (disposed || !visible) return;
+      hideAll();
+
+      for (const line of lines) {
+        if (disposed || !visible) return;
+        line.setAttribute("data-shown", "");
+        const kind = line.dataset.kind ?? "out";
+
+        if (kind === "cmd") {
+          const textEl = line.querySelector<HTMLElement>("[data-typewriter]");
+          if (textEl) {
+            // Cache the full text once, before typing empties it.
+            if (textEl.dataset.fullText === undefined) {
+              textEl.dataset.fullText = textEl.textContent ?? "";
+            }
+            await typeCommand(textEl);
+            if (disposed || !visible) return;
+            delete textEl.dataset.typing;
+            await sleep(PAUSE_AFTER_CMD_MS);
+          } else {
+            await sleep(OUT_BLOCK_MS);
+          }
+        } else if (kind === "note") {
+          await sleep(NOTE_MS);
+        } else {
+          await sleep(OUT_BLOCK_MS);
+        }
+      }
+      if (disposed || !visible) return;
+
+      await sleep(LOOP_PAUSE_MS);
+      if (disposed || !visible) return;
+
+      cycle();
+    }
+
+    const disposer = onVisible(
+      root,
+      (state) => {
+        if (state === "visible") {
+          if (!visible) {
+            visible = true;
+            cycle();
+          }
+        } else {
+          visible = false;
+          window.clearTimeout(timer);
+        }
+      },
+      { threshold: 0.35 },
+    );
+
+    document.addEventListener(
+      "astro:before-swap",
+      () => {
+        disposed = true;
+        window.clearTimeout(timer);
+        disposer();
+      },
+      { once: true },
+    );
+  }
+
+  document
+    .querySelectorAll<HTMLElement>("[data-agent-loop]")
+    .forEach((root) => setupDemo(root));
+</script>

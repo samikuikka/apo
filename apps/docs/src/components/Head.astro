@@ -1,0 +1,13 @@
+---
+// Overrides Starlight's Head to load Inter + JetBrains Mono from Google Fonts,
+// matching Flue's docs exactly. Same weights, same display=swap, same preconnect.
+const { head } = Astro.locals.starlightRoute;
+---
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+	href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+	rel="stylesheet"
+/>
+{head.map(({ tag: Tag, attrs, content }) => <Tag {...attrs} set:html={content} />)}

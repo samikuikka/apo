@@ -1,0 +1,50 @@
+---
+title: "apo task list"
+description: "List discovered tasks — from the backend or the local filesystem."
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
+
+List the tasks available to run. With a `--project` set and the backend reachable, lists the backend's synced task inventory. Without one, scans the local `--dir` for `.eval.ts` files.
+
+<TerminalDemo
+  command="apo task list"
+  lines={[
+    { text: "ID               Adapter      Checks  Simulator" },
+    { text: "───────────────  ───────────  ──────  ─────────" },
+    { text: "extract-parties  real-agent   yes     -" },
+    { text: "code-review      real-agent   yes     -" },
+    { text: "document-qa      real-agent   yes     -" },
+    { text: "" },
+    { text: "3 tasks found", tone: "default" },
+  ]}
+/>
+
+## Synopsis
+
+```bash
+apo task list
+```
+
+## Output
+
+<TerminalOutput
+  lines={[
+    { text: "ID               Adapter      Checks  Simulator" },
+    { text: "───────────────  ───────────  ──────  ─────────" },
+    { text: "extract-parties  real-agent   yes     -" },
+    { text: "code-review      real-agent   yes     -" },
+    { text: "document-qa      real-agent   yes     -" },
+    { text: "" },
+    { text: "3 tasks found", tone: "default" },
+  ]}
+/>
+
+The `ID` is the task folder name — pass it to [`apo task run`](/cli/task-run/). `Checks` is `yes` when the task registers any `test(...)` blocks, `-` when it has none.
+
+## See also
+
+- [`apo task run`](/cli/task-run/) — run one of these tasks.
+- [`apo task show`](/cli/task-show/) — see a task's details.
+- [CLI overview](/cli/) — the full command surface.

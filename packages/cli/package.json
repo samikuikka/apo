@@ -1,0 +1,22 @@
+{
+  "name": "@apo/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "apo": "./src/main.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "apo": "node --experimental-strip-types src/main.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@apo/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.9"
+  }
+}

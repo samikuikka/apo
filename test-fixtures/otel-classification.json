@@ -1,0 +1,82 @@
+[
+  {
+    "name": "vercel-tool-call",
+    "spanName": "ai.toolCall",
+    "attributes": {
+      "ai.toolCall.name": "search",
+      "ai.toolCall.args": "{\"query\":\"otel\"}",
+      "ai.toolCall.result": "{\"hits\":2}"
+    },
+    "expected": {
+      "observationType": "TOOL",
+      "toolName": "search",
+      "toolParameters": {"query": "otel"},
+      "toolResult": {"hits": 2}
+    }
+  },
+  {
+    "name": "standard-tool-call",
+    "spanName": "execute_tool search",
+    "attributes": {
+      "gen_ai.operation.name": "execute_tool",
+      "gen_ai.tool.name": "search",
+      "gen_ai.tool.call.arguments": "{\"query\":\"tracing\"}",
+      "gen_ai.tool.call.result": "{\"hits\":3}"
+    },
+    "expected": {
+      "observationType": "TOOL",
+      "toolName": "search",
+      "toolParameters": {"query": "tracing"},
+      "toolResult": {"hits": 3}
+    }
+  },
+  {
+    "name": "standard-attributes-win-on-mixed-generation",
+    "spanName": "ai.generateText",
+    "attributes": {
+      "ai.model.id": "vercel-model",
+      "gen_ai.request.model": "standard-model",
+      "ai.usage.promptTokens": 900,
+      "ai.usage.completionTokens": 800,
+      "gen_ai.usage.input_tokens": 90,
+      "gen_ai.usage.output_tokens": 80,
+      "ai.response.text": "vercel response",
+      "gen_ai.response.text": "standard response"
+    },
+    "expected": {
+      "observationType": "GENERATION",
+      "model": "standard-model",
+      "promptTokens": 90,
+      "completionTokens": 80,
+      "text": "standard response"
+    }
+  },
+  {
+    "name": "standard-agent-invocation",
+    "spanName": "invoke_agent planner",
+    "attributes": {
+      "gen_ai.operation.name": "invoke_agent",
+      "gen_ai.agent.name": "planner"
+    },
+    "expected": {
+      "observationType": "AGENT"
+    }
+  },
+  {
+    "name": "vercel-generation",
+    "spanName": "ai.generateText",
+    "attributes": {
+      "ai.model.id": "gpt-4o",
+      "ai.usage.promptTokens": 12,
+      "ai.usage.completionTokens": 7,
+      "ai.response.text": "hello"
+    },
+    "expected": {
+      "observationType": "GENERATION",
+      "model": "gpt-4o",
+      "promptTokens": 12,
+      "completionTokens": 7,
+      "text": "hello"
+    }
+  }
+]

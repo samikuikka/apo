@@ -1,0 +1,17 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  "ignore": {
+    "overrides": [
+      {
+        "files": [
+          "src/components/trace-detail/comments/useTextSelection.tsx",
+          "src/components/trace-detail/contexts/SelectionContext.tsx",
+          "src/components/trace-detail/contexts/TraceDataContext.tsx",
+          "src/components/trace-detail/contexts/ViewPreferencesContext.tsx",
+          "src/components/ui/table.tsx"
+        ],
+        "rules": ["react-doctor/only-export-components"]
+      }
+    ]
+  }
+}

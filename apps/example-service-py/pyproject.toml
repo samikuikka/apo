@@ -1,0 +1,42 @@
+[project]
+name = "example-service-py"
+version = "0.1.0"
+description = "Python example service for apo: an agentic chat endpoint with tracing"
+requires-python = ">=3.13,<3.15"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "openai>=1.0",
+  "python-dotenv",
+  "apo-otel[openai]",
+]
+
+[dependency-groups]
+dev = [
+  "pytest",
+  "basedpyright",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.basedpyright]
+pythonVersion = "3.13"
+venvPath = "."
+venv = ".venv"
+reportMissingTypeStubs = false
+reportExplicitAny = false
+reportAny = false
+reportUnannotatedClassAttribute = false
+reportMissingParameterType = false
+reportUnknownParameterType = false
+reportUnknownArgumentType = false
+reportUnusedCallResult = false
+
+[tool.uv]
+cache-dir = ".uv-cache"
+default-groups = ["dev"]
+
+[tool.uv.sources]
+apo-otel = { path = "../../packages/apo-otel-python" }

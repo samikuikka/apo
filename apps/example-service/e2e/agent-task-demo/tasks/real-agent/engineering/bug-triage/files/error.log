@@ -1,0 +1,29 @@
+2024-07-15T14:22:01.114Z ERROR [order-service] Failed to process order ORD-4521
+  TypeError: Cannot read property 'toFixed' of undefined
+    at TaxService.calculate (services/tax.js:45:18)
+    at OrderProcessor.process (services/orders.js:112:22)
+    at handleOrder (routes/orders.js:28:5)
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+  order_total=1240.00 user_id=u_8821 payment_method=card
+  CONTEXT: tax_rate was undefined for region=EU-DE (config fetch returned null)
+
+2024-07-15T14:22:03.891Z ERROR [order-service] Failed to process order ORD-4523
+  TypeError: Cannot read property 'toFixed' of undefined
+    at TaxService.calculate (services/tax.js:45:18)
+    at OrderProcessor.process (services/orders.js:112:22)
+    at handleOrder (routes/orders.js:28:5)
+  order_total=1899.50 user_id=u_4410 payment_method=paypal
+  CONTEXT: tax_rate was undefined for region=EU-DE
+
+2024-07-15T14:22:18.407Z ERROR [order-service] Failed to process order ORD-4525
+  RangeError: Maximum call stack size exceeded
+    at DiscountService.applyDiscount (services/discount.js:28:14)
+    at DiscountService.applyDiscount (services/discount.js:28:14)
+    at DiscountService.applyDiscount (services/discount.js:28:14)
+    at OrderProcessor.process (services/orders.js:128:18)
+    at handleOrder (routes/orders.js:28:5)
+  order_total=1500.00 user_id=u_7700 payment_method=card
+  CONTEXT: coupon=RECURSIVE_50 triggered infinite recursion in discount stacking logic
+
+2024-07-15T14:22:19.012Z WARN  [order-service] Order processing degraded: 3 failures in last 18s (15% of throughput)
+2024-07-15T14:22:19.500Z INFO  [order-service] Circuit breaker opened for order-service (threshold=10% error rate)

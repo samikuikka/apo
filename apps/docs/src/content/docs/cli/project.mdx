@@ -1,0 +1,187 @@
+---
+title: "apo project"
+description: "Switch projects, configure task sources, and sync the task inventory."
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
+
+Project commands manage which project you're operating against and where its tasks come from. Every command respects the global `--project` flag (or the saved project from `apo login`).
+
+## `apo project list`
+
+List projects you can access. The active project is marked with `*`.
+
+### Synopsis
+
+```bash
+apo project list
+```
+
+### Output
+
+<TerminalDemo
+  command="apo project list"
+  lines={[
+    { text: "Name           ID          Role" },
+    { text: "─────────────  ──────────  ──────" },
+    { text: "acme-evals *   a1b2c3d4    owner", tone: "success" },
+    { text: "staging-tests  e5f6g7h8    member" },
+    { text: "" },
+    { text: "2 projects  (* = active; cyan = unique prefix you can pass)", tone: "default" },
+  ]}
+/>
+
+## `apo project use`
+
+Switch the active project. Rewrites `~/.apo/credentials` with the new project id.
+
+### Synopsis
+
+```bash
+apo project use [id|name|prefix]
+```
+
+With no argument and more than one project, opens an interactive picker. Accepts an id, name, or unique prefix as a positional or via `--project`.
+
+### Output
+
+<TerminalOutput
+  lines={[
+    { text: "✓ Switched to acme-evals (a1b2c3d4)", tone: "success" },
+    { text: "  Run `apo project list` to see all your projects.", tone: "default" },
+  ]}
+/>
+
+### Examples
+
+```bash
+apo project use acme-evals
+apo project use staging    # unique prefix
+apo project use            # interactive picker
+```
+
+## `apo project init-tasks`
+
+Configure and sync a GitHub-backed task source in one step. This is the fastest path from zero to runnable tasks: it sets the source, triggers a sync, and — if GitHub isn't connected yet — opens the browser for OAuth and retries.
+
+### Synopsis
+
+```bash
+apo project init-tasks --repo <owner/repo | url> [--branch <name>] [--subpath <path>] [--name <text>]
+```
+
+### Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--repo <owner/repo \| url>` | (required) | GitHub repository. Accepts `owner/repo` or a full `github.com/...` URL. |
+| `--branch <name>` | `main` | Branch to clone. |
+| `--subpath <path>` | repo root | Subdirectory within the repo where tasks live. |
+| `--name <text>` | `owner/repo` | Display name for the task source. |
+
+### What it does
+
+1. Normalizes the repo input to a clone URL.
+2. `PATCH`es the project's task source to type `git`.
+3. Attempts a sync. If it fails and GitHub OAuth isn't connected, opens the browser for authorization, polls until connected (up to 3 minutes), then retries.
+4. Lists the discovered task count.
+
+```bash
+apo project init-tasks --repo acme/agent-evals --branch main --subpath e2e/tasks
+```
+
+## `apo project source`
+
+Manage the task source — where tasks come from. Three subcommands:
+
+### `apo project source show`
+
+Prints the configured source: type (git/filesystem/demo), repository, ref, subpath, status, last synced commit, and any error.
+
+#### Synopsis
+
+```bash
+apo project source show
+```
+
+#### Output
+
+<TerminalOutput
+  lines={[
+    { text: "Project task source: acme-evals", tone: "default" },
+    { text: "  Type:          git" },
+    { text: "  Name:          acme/agent-evals" },
+    { text: "  Status:        synced" },
+    { text: "  Repository:    https://github.com/acme/agent-evals" },
+    { text: "  Ref:           main" },
+    { text: "  Subpath:       e2e/tasks" },
+    { text: "  Filesystem:    -" },
+    { text: "  Demo seed:     -" },
+    { text: "  Last synced:   7/4/2026, 4:15 PM" },
+    { text: "  Commit:        a1b2c3d" },
+  ]}
+/>
+
+### `apo project source set`
+
+Create or replace the task source.
+
+```bash
+apo project source set --type <git|filesystem|demo> [options]
+```
+
+| Option | Required for | Description |
+|---|---|---|
+| `--type <git\|filesystem\|demo>` | all | Source type. |
+| `--repo <url>` | git | Clone URL. |
+| `--ref <branch>` | git | Branch (default `main`). |
+| `--subpath <path>` | — | Subdirectory where tasks live. |
+| `--path <dir>` | filesystem | Local directory to scan. |
+| `--name <text>` | — | Display name. |
+| `--seed <id>` | demo | Demo seed id (default `default`). |
+
+### `apo project source sync`
+
+Sync the configured source into the task inventory without listing the tasks. Use [`apo project sync-tasks`](#apo-project-sync-tasks) if you also want the count.
+
+#### Synopsis
+
+```bash
+apo project source sync
+```
+
+#### Output
+
+<TerminalOutput
+  lines={[
+    { text: "Synced project task source: acme-evals", tone: "default" },
+    { text: "  Status:      synced" },
+    { text: "  Commit:      a1b2c3d" },
+    { text: "  Last synced: 7/16/2026, 9:42 AM" },
+  ]}
+/>
+
+## `apo project sync-tasks`
+
+Sync the task inventory and report the count. Combines `source sync` with a task listing so you see what landed.
+
+### Synopsis
+
+```bash
+apo project sync-tasks
+```
+
+<TerminalOutput
+  lines={[
+    { text: "Synced project tasks: acme-evals", tone: "default" },
+    { text: "  Status:  synced" },
+    { text: "  Commit:  a1b2c3d" },
+    { text: "  Tasks:   10", tone: "default" },
+  ]}
+/>
+
+## See also
+
+- [`apo task list`](/cli/task-list/) — list the tasks the source produces.
+- [CLI overview](/cli/) — the full command surface.

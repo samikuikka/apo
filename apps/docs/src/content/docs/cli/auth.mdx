@@ -1,0 +1,101 @@
+---
+title: "apo login / logout"
+description: "Authenticate with email and password, save a project-scoped API key, or clear saved credentials."
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
+
+## `apo login`
+
+Authenticate with the backend and save a project-scoped API key to `~/.apo/credentials`. Every subsequent command in this project uses the saved key.
+
+<TerminalDemo
+  command="apo login"
+  lines={[
+    { text: "Backend URL [http://localhost:8000]: http://localhost:8000" },
+    { text: "Email: sami@example.com" },
+    { text: "Password: ••••••••••" },
+    { text: "" },
+    { text: "✓ Logged in as sami@example.com", tone: "success" },
+    { text: "" },
+    { text: "  Backend:  http://localhost:8000" },
+    { text: "  Project:  acme-evals (a1b2c3d4)" },
+    { text: "  Key:      apo_key_abc... (full)" },
+    { text: "  Saved to: ~/.apo/credentials" },
+  ]}
+/>
+
+### Synopsis
+
+```bash
+apo login [--email <addr> --password <pw> --project <id|name>] [--force]
+```
+
+### Description
+
+Verifies any existing saved key against the backend first — so you don't get stuck "logged in" with a key that every command rejects. If the key is invalid or absent, prompts for backend URL, email, and a masked password, then lists your projects and asks which one to scope the key to.
+
+A new key is minted server-side (`POST /v1/api-keys/bootstrap`) and scoped to the chosen project. The key is written to `~/.apo/credentials` alongside the backend URL, project id, and task root.
+
+### Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--email <addr>` | (prompted) | Email to authenticate with. |
+| `--password <pw>` | (prompted) | Password (masked at the prompt). |
+| `--project <id\|name\|prefix>` | (prompted) | Project to scope the key to. Accepts an id, name, or unique prefix. If omitted and you have one project, it's auto-selected. |
+| `--backend <url>` | (prompted) | Backend URL to authenticate against. |
+| `--force` | off | Re-authenticate even if a valid key is already saved. |
+
+### Output
+
+<TerminalOutput
+  lines={[
+    { text: "✓ Logged in as sami@example.com", tone: "success" },
+    { text: "" },
+    { text: "  Backend:  http://localhost:8000" },
+    { text: "  Project:  acme-evals (a1b2c3d4)" },
+    { text: "  Key:      apo_key_abc... (full)" },
+    { text: "  Saved to: ~/.apo/credentials" },
+  ]}
+/>
+
+### Examples
+
+```bash
+# Interactive — prompts for everything
+apo login
+
+# Non-interactive (CI, scripts)
+apo login --email sami@example.com --password '*****' --project acme-evals
+
+# Force re-auth against a different backend
+apo login --force --backend https://apo.internal.company.com
+```
+
+## `apo logout`
+
+Clear saved credentials. No backend call — just deletes `~/.apo/credentials`.
+
+### Synopsis
+
+```bash
+apo logout
+```
+
+### Output
+
+<TerminalOutput
+  lines={[
+    { text: "✓ Logged out (sami@example.com).", tone: "success" },
+    { text: "  Removed: ~/.apo/credentials" },
+  ]}
+/>
+
+If you weren't logged in, prints `Not logged in.`
+
+## See also
+
+- [Project commands](/cli/project/) — switch projects after logging in.
+- [CLI overview](/cli/) — the full command surface.

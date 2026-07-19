@@ -1,0 +1,25 @@
+{
+  "UserResponse": {
+    "type": "object",
+    "required": ["id", "name", "email", "role", "created_at"],
+    "properties": {
+      "id": { "type": "integer", "minimum": 1 },
+      "name": { "type": "string", "minLength": 1 },
+      "email": { "type": "string", "format": "email" },
+      "role": { "type": "string", "enum": ["admin", "user", "moderator"] },
+      "created_at": { "type": "string", "format": "date-time" },
+      "avatar_url": { "type": "string", "format": "uri" }
+    }
+  },
+  "OrderResponse": {
+    "type": "object",
+    "required": ["id", "user_id", "items", "total", "status"],
+    "properties": {
+      "id": { "type": "integer", "minimum": 1 },
+      "user_id": { "type": "integer", "minimum": 1 },
+      "items": { "type": "array", "minItems": 1 },
+      "total": { "type": "number", "minimum": 0 },
+      "status": { "type": "string", "enum": ["pending", "processing", "shipped", "delivered", "cancelled"] }
+    }
+  }
+}

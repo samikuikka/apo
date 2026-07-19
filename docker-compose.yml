@@ -1,0 +1,91 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "3000:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_TRUST_HOST=true
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - NEXT_PUBLIC_AUTH_DISABLED=false
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persistent task-source cache so re-syncs fetch instead of re-cloning.
+      - task_source_cache:/var/lib/apo/task-sources
+      # Persistent SQLite database (the file lives at /app/data/optimizer.db).
+      - apo_db:/app/data
+    environment:
+      # No DATABASE_URL → the backend defaults to SQLite at /app/data/optimizer.db.
+      # This makes dev and prod identical. To run Postgres instead, apply the
+      # docker-compose.postgres.yml override (see comments there).
+      - AUTH_SECRET=${AUTH_SECRET}
+      # FRONTEND_URL is the browser-facing URL: used for CORS allow-list and
+      # for generating links (password reset, invitations) that the user opens
+      # in their browser. It must match NEXTAUTH_URL, NOT the docker-internal
+      # hostname, otherwise CORS blocks browser fetches and generated links
+      # resolve to unreachable docker-internal addresses.
+      - FRONTEND_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      # Alpha topology (SPEC-124): scheduler runs in the single backend process.
+      - SCHEDULER_ENABLED=${SCHEDULER_ENABLED:-true}
+      - TASK_SOURCE_CACHE_DIR=/var/lib/apo/task-sources
+      # Optional first-user bootstrap (idempotent — only runs when no users
+      # exist). Normal onboarding is account creation + project invite.
+      # Operators set these explicitly when they want headless first boot;
+      # unset by default so deploys don't ship with known credentials.
+      - INIT_USER_EMAIL=${INIT_USER_EMAIL:-}
+      - INIT_USER_PASSWORD=${INIT_USER_PASSWORD:-}
+      - INIT_USER_NAME=${INIT_USER_NAME:-}
+      # Pass through OpenRouter key for real-task runs.
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      - AGENT_TASK_OPENROUTER_MODEL=${AGENT_TASK_OPENROUTER_MODEL:-google/gemini-2.5-flash-lite}
+      # --- Data size control (SQLite) ---
+      # Age out traces/runs older than N days (0 = disabled, recommended 90).
+      - APO_RETENTION_DAYS=${APO_RETENTION_DAYS:-0}
+      # Hard ceiling on DB file size in 4 KiB pages (0 = unlimited).
+      # e.g. 262144 pages ~= 1 GiB. Writes fail once the cap is hit.
+      - APO_MAX_DB_PAGES=${APO_MAX_DB_PAGES:-0}
+    # NOTE: Single uvicorn worker is intentional. The in-memory rate limiter
+    # and SSE broadcaster require a single process. Horizontal scaling needs Redis.
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  task_source_cache:
+  apo_db:

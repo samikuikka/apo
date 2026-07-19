@@ -1,0 +1,252 @@
+---
+/**
+ * CopyPromptButton — the compact hero CTA, modeled on flue's homepage button.
+ *
+ * A small inline dark button (the single primary action) with a copy icon that
+ * animates on hover and morphs to a checkmark after a successful copy. The
+ * prompt text appears in a hover-preview tooltip BELOW the button (not beside,
+ * not always-visible), exactly like flue's hero CTA.
+ *
+ * Distinct from CopyPrompt.astro: that's the boxed docs callout (prompt always
+ * visible beside the button). This is the minimal hero variant.
+ *
+ * States, driven by data attributes on the wrapper:
+ *   default → hover shows the prompt preview below
+ *   data-feedback="true" + data-copy-error="false" → "Copied!" success
+ *   data-feedback="true" + data-copy-error="true"  → "Copy failed" error
+ */
+interface Props {
+	text: string;
+	label?: string;
+	copiedLabel?: string;
+	errorLabel?: string;
+}
+
+const {
+	text,
+	label = "Copy Prompt",
+	copiedLabel = "Copied — paste into your coding agent",
+	errorLabel = "Could not copy prompt",
+} = Astro.props;
+---
+
+<span class="cpb" data-copy-prompt data-feedback="false" data-copy-error="false">
+	<button class="cpb__btn" type="button" aria-label={label}>
+		<span class="cpb__icon" aria-hidden="true">
+			<svg class="cpb__icon-copy" viewBox="0 0 640 640">
+				<path d="M288 64C252.7 64 224 92.7 224 128L224 384C224 419.3 252.7 448 288 448L480 448C515.3 448 544 419.3 544 384L544 183.4C544 166 536.9 149.3 524.3 137.2L466.6 81.8C454.7 70.4 438.8 64 422.3 64L288 64zM160 192C124.7 192 96 220.7 96 256L96 512C96 547.3 124.7 576 160 576L352 576C387.3 576 416 547.3 416 512L416 496L352 496L352 512L160 512L160 256L176 256L176 192L160 192z"></path>
+			</svg>
+			<svg class="cpb__icon-check" viewBox="0 0 24 24">
+				<path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"></path>
+			</svg>
+		</span>
+		<span class="cpb__label" data-copy-prompt-label>{label}</span>
+	</button>
+
+	<span class="cpb__preview" data-copy-prompt-preview role="tooltip">
+		<span class="cpb__preview-prompt">
+			<span class="cpb__quote" aria-hidden="true">&ldquo;</span><span
+				data-copy-prompt-text>{text}</span
+			><span class="cpb__quote" aria-hidden="true">&rdquo;</span>
+		</span>
+		<span class="cpb__preview-success">
+			<svg viewBox="0 0 24 24" aria-hidden="true" class="cpb__check-mark">
+				<path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"></path>
+			</svg>
+			{copiedLabel}
+		</span>
+		<span class="cpb__preview-error">
+			<svg viewBox="0 0 24 24" aria-hidden="true" class="cpb__error-mark">
+				<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"></path>
+			</svg>
+			{errorLabel}
+		</span>
+	</span>
+</span>
+
+<style>
+	/* Wrapper — inline so it sits in the CTA row next to the GitHub button. */
+	.cpb {
+		position: relative;
+		display: inline-flex;
+	}
+
+	/* The button — small, dark, primary. Matches flue's hero CTA sizing. */
+	.cpb__btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0.55rem 0.95rem;
+		background: var(--sl-color-white);
+		border: 1px solid var(--sl-color-white);
+		color: var(--sl-color-black);
+		font-family: var(--sl-font);
+		font-size: 0.8125rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: background-color 0.15s ease;
+	}
+
+	.cpb__btn:hover {
+		background: var(--sl-color-gray-2);
+	}
+
+	/* Icon container — the copy + check overlap; cross-fade on copy. */
+	.cpb__icon {
+		position: relative;
+		display: inline-flex;
+		width: 0.9rem;
+		height: 0.9rem;
+		flex-shrink: 0;
+	}
+
+	.cpb__icon svg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		fill: currentColor;
+		transition: opacity 0.2s ease, transform 0.2s ease;
+	}
+
+	.cpb__icon-copy {
+		opacity: 1;
+		transform: scale(1);
+	}
+
+	.cpb__icon-check {
+		opacity: 0;
+		transform: scale(0.6);
+	}
+
+	/* Copied state: swap to the checkmark, tint accent green. */
+	.cpb[data-feedback="true"][data-copy-error="false"] .cpb__btn {
+		background: var(--sl-color-accent-low, #0a1a0e);
+		border-color: var(--sl-color-accent);
+		color: var(--sl-color-accent-high);
+	}
+
+	.cpb[data-feedback="true"][data-copy-error="false"] .cpb__icon-copy {
+		opacity: 0;
+		transform: scale(0.6);
+	}
+
+	.cpb[data-feedback="true"][data-copy-error="false"] .cpb__icon-check {
+		opacity: 1;
+		transform: scale(1);
+	}
+
+	/* Preview tooltip — sits below the button, hidden by default. */
+	.cpb__preview {
+		position: absolute;
+		top: calc(100% + 0.5rem);
+		left: 0;
+		z-index: 40;
+		min-width: 18rem;
+		max-width: 26rem;
+		padding: 0.7rem 0.85rem;
+		background: var(--sl-color-gray-6);
+		border: 1px solid var(--sl-color-gray-5);
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.75rem;
+		line-height: 1.55;
+		color: var(--sl-color-gray-2);
+		opacity: 0;
+		transform: translateY(-4px);
+		transition: opacity 0.18s ease, transform 0.18s ease;
+		pointer-events: none;
+	}
+
+	/* Show preview on hover (default state) or feedback (copied/error). */
+	.cpb:hover .cpb__preview,
+	.cpb:focus-within .cpb__preview,
+	.cpb[data-feedback="true"] .cpb__preview {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	.cpb__quote {
+		color: var(--sl-color-gray-4);
+	}
+
+	/* Preview content swaps by state: prompt (default), success, error. */
+	.cpb__preview-success,
+	.cpb__preview-error {
+		display: none;
+		align-items: center;
+		gap: 0.4rem;
+		font-family: var(--sl-font);
+	}
+
+	.cpb[data-feedback="true"][data-copy-error="false"] .cpb__preview-prompt,
+	.cpb[data-feedback="true"][data-copy-error="true"] .cpb__preview-prompt {
+		display: none;
+	}
+
+	.cpb[data-feedback="true"][data-copy-error="false"] .cpb__preview-success {
+		display: inline-flex;
+		color: var(--sl-color-accent-high);
+	}
+
+	.cpb[data-feedback="true"][data-copy-error="true"] .cpb__preview-error {
+		display: inline-flex;
+		color: oklch(0.8 0.16 25);
+	}
+
+	.cpb__check-mark,
+	.cpb__error-mark {
+		width: 0.85rem;
+		height: 0.85rem;
+		fill: currentColor;
+		flex-shrink: 0;
+	}
+
+	@media (max-width: 30rem) {
+		.cpb__preview {
+			min-width: 14rem;
+			max-width: calc(100vw - 3rem);
+		}
+	}
+</style>
+
+<script>
+	for (const wrapper of document.querySelectorAll<HTMLElement>("[data-copy-prompt]")) {
+		// Only wire the hero button variant (this component); the boxed CopyPrompt
+		// has its own script keyed off the same attribute, so scope by .cpb.
+		if (!wrapper.classList.contains("cpb")) continue;
+
+		const button = wrapper.querySelector<HTMLButtonElement>(".cpb__btn");
+		const code = wrapper.querySelector<HTMLElement>("[data-copy-prompt-text]");
+		if (!button || !code) continue;
+
+		let resetTimer: ReturnType<typeof setTimeout> | undefined;
+
+		button.addEventListener("click", async () => {
+			const text = code.textContent ?? "";
+			let copied = false;
+			try {
+				await navigator.clipboard.writeText(text);
+				copied = true;
+			} catch {
+				const textarea = document.createElement("textarea");
+				textarea.value = text;
+				textarea.setAttribute("readonly", "");
+				textarea.style.cssText = "position:absolute;left:-9999px;top:-9999px;";
+				document.body.appendChild(textarea);
+				textarea.select();
+				try {
+					copied = document.execCommand("copy");
+				} catch {}
+				textarea.remove();
+			}
+
+			wrapper.dataset.copyError = String(!copied);
+			wrapper.dataset.feedback = "true";
+
+			clearTimeout(resetTimer);
+			resetTimer = setTimeout(() => {
+				wrapper.dataset.feedback = "false";
+			}, 2600);
+		});
+	}
+</script>

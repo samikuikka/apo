@@ -1,0 +1,25 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'backend'
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: true
+  msw: true
+  protobufjs: false
+  sharp: true
+  unrs-resolver: true
+minimumReleaseAgeExclude:
+  - '@vitest/coverage-v8@4.1.9'
+  - '@vitest/expect@4.1.9'
+  - '@vitest/mocker@4.1.9'
+  - '@vitest/pretty-format@4.1.9'
+  - '@vitest/runner@4.1.9'
+  - '@vitest/snapshot@4.1.9'
+  - '@vitest/spy@4.1.9'
+  - '@vitest/utils@4.1.9'
+  - vitest@4.1.9
+  - '@vitest/ui@4.1.9'
+  - '@opentelemetry/semantic-conventions@1.43.0'
+overrides:
+  '@apo/cli': link:packages/cli

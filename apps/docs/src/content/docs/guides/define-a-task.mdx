@@ -1,0 +1,110 @@
+---
+title: Define a Task
+description: Create a task using the folder convention and a .eval.ts file.
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+
+**A task is a folder.** One file, one optional directory:
+
+```text
+extract-parties/
+  extract-parties.eval.ts   # task(...) + turn(...) + test(...)
+  files/                    # optional: inputs, auto-discovered
+    contract.pdf
+```
+
+The `.eval.ts` registers the task and imports the adapter from wherever it lives in your codebase. The adapter is the bridge to your application — apo doesn't know how to run your agent, so you give it a method that does. If that's unfamiliar, read [Adapters](/concepts/adapters/) first; this guide assumes you understand what the adapter is for.
+
+## 1. Register the definition
+
+The `.eval.ts` imports your adapter and registers the task:
+
+```typescript
+// extract-parties.eval.ts
+import { task } from "@apo/sdk/agent-task";
+import { legalDocumentAdapter } from "../adapter";  // wherever it lives in your codebase
+
+// The definition: name, the adapter that drives your real agent, and the
+// deliverables it must produce.
+task("extract-parties", {
+  adapter: legalDocumentAdapter,
+  deliverables: ["parties", "amounts", "dates"],
+});
+```
+
+The `task(...)` call registers:
+
+- the **name** (used in CLI and dashboard),
+- the **adapter** (how apo drives your real agent),
+- the **deliverables** (the structured outputs the run will be judged against; must match the adapter's declared deliverable keys).
+
+The adapter itself lives wherever makes sense in your project — typically alongside your agent code, not inside the task folder. A shared adapter that serves many tasks is just a module you import wherever needed. Full reference: [Adapters](/concepts/adapters/).
+
+## 2. Define the turn behavior
+
+```typescript
+import { turn } from "@apo/sdk/agent-task";
+
+// Feed the contract to the agent on the first turn, then stop.
+turn(async ({ files, transcript }) => {
+  if (transcript.length > 0) return null;
+  return await files.read("contract.pdf");
+});
+```
+
+`turn(...)` decides what the agent sees each turn. Files placed in the task's `files/` directory are auto-discovered and available here. **Returning `null` ends the turn loop.** Without it, the task keeps re-sending input until `maxTurns` cuts it off.
+
+## 3. Write the tests
+
+```typescript
+import { matches, test } from "@apo/sdk/agent-task";
+import { partiesSchema } from "./schemas";
+
+// A deterministic test: did the agent open the right file, with no failures?
+test("used-source-document", (t) => {
+  t.calledTool("read_file", { input: { path: "contract.pdf" } });
+  t.noFailedActions();
+});
+
+// A judged test: schema-check the deliverable, then let an LLM judge quality.
+test("parties-are-complete", async (t, { deliverables }) => {
+  t.check(deliverables.parties, matches(partiesSchema));
+  await t.judge(
+    deliverables.parties,
+    "PASS when every named party is captured without false positives.",
+  );
+});
+```
+
+Each `test(...)` is one assertion. Code assertions (`t.calledTool`, `t.check`) and LLM-backed assertions (`t.judge`) live side by side. See [Tests](/concepts/tests/) for the full vocabulary.
+
+## Done
+
+The task is now discoverable. Sync it into the project and run it:
+
+<TerminalDemo
+	command="apo project source sync"
+	lines={[
+		{ text: "" },
+		{ text: "→ syncing task source…" },
+		{ text: "  found 1 new task: extract-parties" },
+		{ parts: [{ text: "  ", tone: "default" }, { text: "synced", tone: "success" }] },
+	]}
+/>
+
+Then run it:
+
+<TerminalDemo
+	command="apo task run extract-parties"
+	lines={[
+		{ text: "" },
+		{ parts: [{ text: "Run: de89cab0", tone: "bold" }] },
+		{ text: "  Task:     extract-parties" },
+		{ parts: [{ text: "  Result:   " }, { text: "PASS", tone: "success" }] },
+		{ text: "  Checks:   2/2 passed" },
+		{ text: "  Cost:     $0.0042" },
+	]}
+/>
+
+If the run fails because the agent misbehaved, the trace shows what it actually did, and that trace comes from the spans your adapter threaded through `sendUserTurn`.

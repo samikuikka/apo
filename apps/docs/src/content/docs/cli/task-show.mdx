@@ -1,0 +1,76 @@
+---
+title: "apo task show"
+description: "Show a task's details — adapter, checks, deliverables, and latest run."
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
+
+Show a task's details — adapter, whether it has checks, and (with a backend project) its latest run. Without a backend project, it shows the local task folder's deliverables and files instead.
+
+<TerminalDemo
+  command="apo task show extract-parties"
+  lines={[
+    { text: "" },
+    { text: "Task: extract-parties" },
+    { text: "  Adapter:     real-agent" },
+    { text: "  Checks:      yes" },
+    { text: "  Simulator:   no" },
+    { text: "  Path:        real-agent/extract-parties/extract-parties.eval.ts" },
+    { text: "  Folder:      real-agent/extract-parties" },
+    { text: "  Latest run:", tone: "default" },
+    { text: "    - de89cab0: failed", tone: "danger" },
+  ]}
+/>
+
+## Synopsis
+
+```bash
+apo task show <task-id>
+```
+
+## Options
+
+| Option | Default | Description |
+|---|---|---|
+| `<task-id>` | (required) | Task id (folder name). |
+
+## Output
+
+With a backend project, the task comes from the synced inventory and includes the latest run:
+
+<TerminalOutput
+  lines={[
+    { text: "Task: extract-parties" },
+    { text: "  Adapter:     real-agent" },
+    { text: "  Checks:      yes" },
+    { text: "  Simulator:   no" },
+    { text: "  Path:        real-agent/extract-parties/extract-parties.eval.ts" },
+    { text: "  Folder:      real-agent/extract-parties" },
+    { text: "  Latest run:", tone: "default" },
+    { text: "    - de89cab0: failed", tone: "danger" },
+  ]}
+/>
+
+`Checks` and `Simulator` are `yes`/`no` flags. The `Latest run:` line (when one exists) gives the run id and its status.
+
+Without a backend project, the task is read from the local filesystem — it shows `Deliverables:` (comma-joined) and a `Files:` list instead, and no latest run:
+
+<TerminalOutput
+  lines={[
+    { text: "Task: extract-parties" },
+    { text: "  Adapter:      real-agent" },
+    { text: "  Checks:       yes" },
+    { text: "  Simulator:    no" },
+    { text: "  Path:         extract-parties/extract-parties.eval.ts" },
+    { text: "  Deliverables: parties, amounts, dates" },
+    { text: "  Files:", tone: "default" },
+    { text: "    - contract.pdf", tone: "default" },
+  ]}
+/>
+
+## See also
+
+- [`apo task list`](/cli/task-list/) — see all tasks.
+- [`apo task run`](/cli/task-run/) — run the task.
+- [CLI overview](/cli/) — the full command surface.

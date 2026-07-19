@@ -1,0 +1,9 @@
+{
+  "name": "backend",
+  "private": true,
+  "scripts": {
+    "dev": ".venv/bin/uvicorn apo.api:app --reload --port 8000",
+    "test": "uv run pytest",
+    "typecheck": "uv run basedpyright"
+  }
+}

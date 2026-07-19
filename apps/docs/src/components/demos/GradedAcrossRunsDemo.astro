@@ -1,0 +1,296 @@
+---
+/**
+ * GradedAcrossRunsDemo — the "trajectory" insight, animated.
+ *
+ * Two runs of 15 tests each. Run #142 fails 1 (14/15); run #143 regresses
+ * to 9/15. The verdict badge stays FAIL both times — the whole point of
+ * "graded across runs": a binary verdict hides the regression, the count
+ * reveals it. Motion makes the fall legible where a static table does not.
+ *
+ * Adapts flue's durability sim: data-state on each cell + CSS color
+ * transitions, an IntersectionObserver start/stop, and a reduced-motion
+ * branch that renders the final static frame.
+ *
+ * See docs/design.md "Motion" — illustrative motion, not decoration.
+ */
+const TOTAL = 15;
+---
+
+<div class="graded-demo" data-graded-demo>
+  <div class="graded-runs">
+    <div class="graded-run">
+      <div class="graded-run-head">
+        <span class="graded-run-id">run #142</span>
+        <span class="graded-verdict" data-verdict>FAIL</span>
+      </div>
+      <div class="graded-cells" data-cells-for="142">
+        {Array.from({ length: TOTAL }, (_, i) => (
+          <span class="graded-cell" data-state="pending" data-index={i} data-run="142" />
+        ))}
+      </div>
+      <div class="graded-count" data-count-for="142">—/15</div>
+    </div>
+
+    <div class="graded-run">
+      <div class="graded-run-head">
+        <span class="graded-run-id">run #143</span>
+        <span class="graded-verdict" data-verdict>FAIL</span>
+      </div>
+      <div class="graded-cells" data-cells-for="143">
+        {Array.from({ length: TOTAL }, (_, i) => (
+          <span class="graded-cell" data-state="pending" data-index={i} data-run="143" />
+        ))}
+      </div>
+      <div class="graded-count" data-count-for="143">—/15</div>
+    </div>
+  </div>
+
+  <p class="graded-trajectory" data-trajectory aria-live="polite">
+    14/15 <span class="graded-arrow">→</span> 9/15 <span class="graded-trend">↘ regression</span>
+  </p>
+</div>
+
+<style>
+  .graded-demo {
+    margin: 1.5rem 0;
+    padding: 1.25rem;
+    border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-gray-7, var(--sl-color-black));
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+  }
+
+  .graded-runs {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .graded-run-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+
+  .graded-run-id {
+    color: var(--sl-color-gray-3);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .graded-verdict {
+    color: oklch(0.8 0.16 25);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    border: 1px solid oklch(0.8 0.16 25);
+    padding: 0.05rem 0.4rem;
+  }
+
+  .graded-cells {
+    display: grid;
+    grid-template-columns: repeat(15, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .graded-cell {
+    aspect-ratio: 1 / 1;
+    background: var(--sl-color-gray-6);
+    transition: background-color 500ms ease;
+  }
+
+  .graded-cell[data-state="pass"] {
+    background: var(--sl-color-accent);
+  }
+
+  .graded-cell[data-state="fail"] {
+    background: oklch(0.8 0.16 25);
+  }
+
+  .graded-count {
+    margin-top: 0.4rem;
+    color: var(--sl-color-gray-2);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .graded-trajectory {
+    margin: 1.25rem 0 0;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--sl-color-gray-6);
+    color: var(--sl-color-gray-3);
+    font-size: 0.85rem;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 600ms ease, transform 600ms ease;
+  }
+
+  .graded-trajectory[data-visible] {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .graded-trajectory .graded-arrow {
+    color: var(--sl-color-gray-4);
+    margin: 0 0.35rem;
+  }
+
+  .graded-trajectory .graded-trend {
+    color: oklch(0.8 0.16 25);
+    margin-left: 0.4rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .graded-cell {
+      transition: none;
+    }
+    .graded-trajectory {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  import { onVisible, prefersReducedMotion } from "./demo-motion";
+
+  const FAIL_142 = new Set([6]);
+  const FAIL_143 = new Set([6, 9, 10, 12, 13, 14]);
+  const TOTAL = 15;
+
+  type RunDef = { run: 142 | 143; fails: Set<number> };
+
+  function setupDemo(root: HTMLElement) {
+    const trajectory = root.querySelector<HTMLElement>("[data-trajectory]");
+    const run142Cells = Array.from(
+      root.querySelectorAll<HTMLElement>('.graded-cell[data-run="142"]'),
+    );
+    const run143Cells = Array.from(
+      root.querySelectorAll<HTMLElement>('.graded-cell[data-run="143"]'),
+    );
+    const count142 = root.querySelector<HTMLElement>('[data-count-for="142"]');
+    const count143 = root.querySelector<HTMLElement>('[data-count-for="143"]');
+
+    function cellOf(cells: HTMLElement[], index: number) {
+      return cells.find((cell) => Number(cell.dataset.index) === index);
+    }
+
+    function setRun(cells: HTMLElement[], fails: Set<number>) {
+      let passed = 0;
+      for (let i = 0; i < TOTAL; i++) {
+        const cell = cellOf(cells, i);
+        if (!cell) continue;
+        if (fails.has(i)) {
+          cell.dataset.state = "fail";
+        } else {
+          cell.dataset.state = "pass";
+          passed += 1;
+        }
+      }
+      return passed;
+    }
+
+    function resetRun(cells: HTMLElement[]) {
+      for (const cell of cells) cell.dataset.state = "pending";
+    }
+
+    function setCount(el: HTMLElement | null, passed: number) {
+      if (el) el.textContent = `${passed}/15`;
+    }
+
+    // Reduced motion: render the final static frame and stop.
+    if (prefersReducedMotion()) {
+      const p142 = setRun(run142Cells, FAIL_142);
+      const p143 = setRun(run143Cells, FAIL_143);
+      setCount(count142, p142);
+      setCount(count143, p143);
+      trajectory?.setAttribute("data-visible", "");
+      return;
+    }
+
+    let timer: number | undefined;
+    let disposed = false;
+    let visible = false;
+
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        timer = window.setTimeout(resolve, ms);
+      });
+
+    async function cycle() {
+      if (disposed || !visible) return;
+
+      // Reset both runs to pending.
+      resetRun(run142Cells);
+      resetRun(run143Cells);
+      setCount(count142, 0);
+      setCount(count143, 0);
+      trajectory?.removeAttribute("data-visible");
+      await sleep(400);
+      if (disposed || !visible) return;
+
+      // Run #142: fill cells, one fails.
+      for (let i = 0; i < TOTAL; i++) {
+        const cell = cellOf(run142Cells, i);
+        if (!cell) continue;
+        cell.dataset.state = FAIL_142.has(i) ? "fail" : "pass";
+        const passed = i + 1 - (FAIL_142.has(i) ? 1 : 0);
+        setCount(count142, passed);
+        await sleep(70);
+      }
+      if (disposed || !visible) return;
+      await sleep(700);
+
+      // Run #143: cells fill, regressing ones land on fail.
+      for (let i = 0; i < TOTAL; i++) {
+        const cell = cellOf(run143Cells, i);
+        if (!cell) continue;
+        cell.dataset.state = FAIL_143.has(i) ? "fail" : "pass";
+        const passed = i + 1 - Array.from(FAIL_143).filter((f) => f <= i).length;
+        setCount(count143, passed);
+        await sleep(70);
+      }
+      if (disposed || !visible) return;
+
+      // Reveal the trajectory readout — both runs are FAIL, but 9 < 14.
+      trajectory?.setAttribute("data-visible", "");
+      await sleep(2600);
+      if (disposed || !visible) return;
+
+      cycle();
+    }
+
+    const disposer = onVisible(
+      root,
+      (state) => {
+        if (state === "visible") {
+          if (!visible) {
+            visible = true;
+            cycle();
+          }
+        } else {
+          visible = false;
+          window.clearTimeout(timer);
+        }
+      },
+      { threshold: 0.4 },
+    );
+
+    // Cleanup on Astro view-transition navigation.
+    document.addEventListener(
+      "astro:before-swap",
+      () => {
+        disposed = true;
+        window.clearTimeout(timer);
+        disposer();
+      },
+      { once: true },
+    );
+  }
+
+  document
+    .querySelectorAll<HTMLElement>("[data-graded-demo]")
+    .forEach((root) => setupDemo(root));
+</script>

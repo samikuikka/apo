@@ -1,0 +1,117 @@
+---
+title: Why apo
+description: The reasoning behind the design.
+---
+
+import GradedAcrossRunsDemo from '../../components/demos/GradedAcrossRunsDemo.astro';
+import DeliverableDemo from '../../components/demos/DeliverableDemo.astro';
+import SchedulesDemo from '../../components/demos/SchedulesDemo.astro';
+
+**apo** is a testing framework for agents. You write a test, apo runs your real agent against it, and the run comes back green or red. It's the same loop you already know from Jest or pytest, with one difference: an agent's output usually isn't exact-match, so a test can also hand the result to an LLM and ask *is this actually good?*
+
+Most of the choices below fall out of taking that idea seriously.
+
+## Run the real thing
+
+**The only test worth running is the one that runs the real thing.**
+
+An agent is not a prompt. It's a prompt plus tools plus the code that wires them together. Scoring the prompt in isolation tells you about the prompt. It tells you nothing about whether the agent actually works.
+
+So apo runs the full implementation, the same code path you ship, and judges what comes back. No mocks of the agent, no stubbed tool responses, no shortcuts. If you change a tool, the next run reflects it. If you ship a regression, the next run catches it.
+
+## Judge the deliverable, not the chat
+
+**What the agent *produced* matters more than what it *said*.**
+
+Most agent eval tools grade the conversation, the back-and-forth text between the user and the model. That's the easiest thing to capture, so it's what gets scored. But for most agent systems, the chat is not the result. The result is an artifact: a file written, a state changed, a report generated, an action taken, a structured deliverable the agent was asked to produce.
+
+apo is built around those deliverables. A task declares what the agent should produce, the adapter collects it after the run, and the tests assert on the actual output, not on whether the conversation *sounded* right. A response that's polite, fluent, and completely wrong should fail. A response that's terse but produced the right artifact should pass.
+
+<DeliverableDemo />
+
+This is why the adapter exists, and why it's your responsibility to write: only your code knows what "the deliverable" even *is* for your agent. apo can't guess it, and shouldn't.
+
+## One file, three concerns
+
+**The task, the input, and the tests live in one `.eval.ts` file.**
+
+Most eval setups scatter these across config files, prompt templates, fixture directories, and a separate assertions module, so understanding a single evaluation means opening five tabs. apo refuses that. A task is one folder with one file: `task(...)` registers the definition, `turn(...)` decides what the agent sees, and the tests sit right there next to them. Read the file top to bottom and you've read the whole evaluation.
+
+This isn't an aesthetic preference. When a run fails, the breakdown points at a test by name, and that test lives in the same file as everything that produced the failure. The cause and its context are one scroll apart, not linked across a project tree.
+
+## One kind of test
+
+**A test is a test. Some run in code, some ask an LLM. Both are the same shape.**
+
+Some tests are exact: did the agent call `read_file` on the contract? Does the output match the schema? Did anything error?
+
+Others need judgment: did the response actually meet what a user would expect? That's not a `===` question, and pretending it is leaves the most important checks unwritten.
+
+Both are written the same way: a `test(...)` block.
+
+```typescript
+// deterministic: runs in code, no model
+test("used-source-document", (t) => {
+  t.calledTool("read_file", { input: { path: "contract.pdf" } });
+  t.noFailedActions();
+});
+
+// judged: hands the deliverable to an LLM
+test("parties-are-complete", async (t, { deliverables }) => {
+  t.check(deliverables.parties, matches(partiesSchema));
+  await t.judge(
+    deliverables.parties,
+    "PASS when every named party is captured without false positives.",
+  );
+});
+```
+
+We didn't want two systems, with "checks" over here and "evals" over there, because the moment you split them, people reach for the wrong one. They'll write a judge where a five-line assertion would do, or skip judgment entirely because standing up a separate eval is too much friction.
+
+## Binary results
+
+**A run passes or fails. There is no score.**
+
+`0.78` doesn't tell you whether to ship. It doesn't tell you whether the run met the standard. And it lets a near-pass quietly feel like a win, which is the most dangerous failure mode in evaluation, the one you don't investigate.
+
+The question for a single run is binary: did it meet the bar, or didn't it? If any test fails, the run fails. No weighting, no averaging, no partial credit.
+
+## Graded across runs
+
+**Binary is right for a decision. It's blind to a trajectory.**
+
+Here's the problem. A run that fails 1 of 15 tests and a run that fails 14 of 15 are both "fail." Collapse them to a 0% pass-rate and you've thrown away the single most useful signal in evaluation: *did the last change help?*
+
+So apo keeps the per-test counts. Each run is still pass or fail; the result doesn't soften, but across runs you can read the direction. `14/15 → 9/15` is a regression even though both are red. `2/15 → 11/15` is real progress even though neither ships yet.
+
+<GradedAcrossRunsDemo />
+
+:::note
+The graded signal is for *comparing* runs. It does not turn the result into a score. A 14/15 run is still a fail.
+:::
+
+## Failures need traces
+
+**When a run fails, you should be able to see exactly what the agent did.**
+
+The breakdown tells you *what* failed: which test, what was expected, what came back. The trace tells you *why*: the full call tree, every tool invocation with its input and output, the token counts, and the actual messages exchanged between the agent and the model.
+
+apo treats the trace as a first-class surface, not an afterthought bolted onto an eval tool. Each run owns exactly one trace: never two competing ones, never a guessing game about which trace belongs to which run. A failure you can't debug is a failure you can't fix.
+
+## Schedules as policy
+
+**How often a task runs is a policy decision, not a property of the task.**
+
+A task says *what* to evaluate. When it runs is a separate concern, and the right cadence depends on the subset: smoke tests are cheap and should run on every commit; the full suite is expensive and belongs nightly; regression suites run when something is about to ship. So apo keeps cadence out of the task and puts it in a schedule, where different subsets can run at different rates instead of one timer running everything all the time.
+
+<SchedulesDemo />
+
+## The loop, without you in it
+
+**A coding agent can run this whole loop itself.** You write the tests once, encoding your expert judgment, then hand the loop to the agent: it runs the task from the CLI, reads the result, opens the trace, iterates on the codebase, and runs again until the tests pass. Your expertise lives in the tests; the agent applies it without you watching each run.
+
+See [Loop engineering with apo](/guides/loop-engineering/) for the workflow.
+
+---
+
+If that matches how you think about agent testing, the [Quickstart](/quickstart/) will get you to a result.

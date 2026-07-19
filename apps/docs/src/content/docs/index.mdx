@@ -1,0 +1,35 @@
+---
+title: apo
+description: A testing framework for agent systems. Real runs, binary results, debuggable failures.
+template: splash
+hero:
+  tagline: A testing framework for agent systems. Run the real thing, get a result, debug the failure.
+  actions:
+    - text: Get started
+      link: /overview/
+      icon: right-arrow
+      variant: primary
+    - text: Why apo
+      link: /why-apo/
+      icon: right-arrow
+---
+
+import CopyPrompt from '../../components/CopyPrompt.astro';
+
+apo runs your real agent and reduces every task run to a pass or fail. When a run fails, you see which test broke and why, down to the message that caused it.
+
+## Set up with an agent
+
+apo is agent-installed. Point your coding agent at the setup prompt; it returns a markdown skill the agent follows end to end.
+
+<CopyPrompt text={`Read https://apo.dev/start.md then help me set up apo and run my first task.`} />
+
+The prompt lives at [`/start.md`](/start.md) (raw markdown). The steps are stubbed for now; the structure mirrors Flue's agent setup skill.
+
+## Where to start
+
+- **[Overview](/overview/)**: what apo is, in a minute.
+- **[Why apo](/why-apo/)**: the thinking behind the design.
+- **[Quickstart](/quickstart/)**: clone to first result.
+- **[Adapters](/concepts/adapters/)**: the part you write, the bridge to your real agent.
+- **[Self-Hosting](/self-hosting/topology/)**: run it on your own box.

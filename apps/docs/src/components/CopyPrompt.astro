@@ -1,0 +1,163 @@
+---
+/**
+ * CopyPrompt — a boxed "Copy Prompt" call-to-action.
+ *
+ * Renders a prompt string with a copy-to-clipboard button. The prompt
+ * typically points a coding agent at /start.md, which serves a skill-style
+ * setup spec as text/markdown. Ported from Flue's CopyPrompt.astro (both the
+ * docs and www variants), adapted to apo's monochrome identity.
+ *
+ * Usage in .mdx:
+ *   import CopyPrompt from '../../components/CopyPrompt.astro';
+ *   <CopyPrompt text="Read https://apo.dev/start.md then help me set up apo." />
+ */
+interface Props {
+	text: string;
+	label?: string;
+}
+
+const { text, label = 'Copy Prompt' } = Astro.props;
+---
+
+<div class="copy-prompt" data-copy-prompt>
+	<div class="copy-prompt-inner">
+		<button class="copy-prompt-btn" type="button" aria-label={label}>
+			<svg class="copy-prompt-icon" viewBox="0 0 640 640" aria-hidden="true">
+				<path
+					d="M288 64C252.7 64 224 92.7 224 128L224 384C224 419.3 252.7 448 288 448L480 448C515.3 448 544 419.3 544 384L544 183.4C544 166 536.9 149.3 524.3 137.2L466.6 81.8C454.7 70.4 438.8 64 422.3 64L288 64zM160 192C124.7 192 96 220.7 96 256L96 512C96 547.3 124.7 576 160 576L352 576C387.3 576 416 547.3 416 512L416 496L352 496L352 512L160 512L160 256L176 256L176 192L160 192z"
+				></path>
+			</svg>
+			<span class="copy-prompt-label" data-copy-prompt-label>{label}</span>
+		</button>
+		<p class="copy-prompt-text">
+			<span aria-hidden="true" class="copy-prompt-quote">&ldquo;</span><span
+				data-copy-prompt-text>{text}</span
+			><span aria-hidden="true" class="copy-prompt-quote">&rdquo;</span>
+		</p>
+	</div>
+</div>
+
+<style>
+	/* Monochrome card fill, sharp corners — matches the callout treatment. */
+	.copy-prompt {
+		margin-block: 1.25rem;
+		padding: 1rem 1.25rem;
+		background: var(--sl-color-gray-6);
+		border: 1px solid var(--sl-color-gray-5);
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.8125rem;
+		line-height: 1.7;
+		color: var(--sl-color-gray-2);
+	}
+
+	.copy-prompt-inner {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 1rem;
+	}
+
+	@media (min-width: 40rem) {
+		.copy-prompt-inner {
+			flex-direction: row;
+			align-items: center;
+			gap: 1.25rem;
+			margin-inline: auto;
+			width: fit-content;
+			max-width: 100%;
+		}
+	}
+
+	.copy-prompt-btn {
+		display: inline-flex;
+		flex-shrink: 0;
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0.34rem 0.62rem;
+		background: #313136;
+		border: 1px solid #4b4c51;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+		transition: background-color 0.15s, border-color 0.15s;
+	}
+
+	.copy-prompt-btn:hover {
+		background: #3b3c42;
+		border-color: #62636a;
+	}
+
+	/* "Copied!" state — the accent green, only after a successful copy. */
+	.copy-prompt[data-feedback='true'] .copy-prompt-btn {
+		border-color: var(--sl-color-accent);
+		color: var(--sl-color-accent-high);
+	}
+
+	.copy-prompt-icon {
+		width: 0.95rem;
+		height: 0.95rem;
+		fill: currentColor;
+	}
+
+	.copy-prompt-text {
+		margin: 0;
+		min-width: 0;
+		max-width: 100%;
+		text-align: left;
+		color: var(--sl-color-gray-2);
+	}
+
+	@media (min-width: 40rem) {
+		.copy-prompt-text {
+			width: 20rem;
+			text-align: center;
+		}
+	}
+
+	.copy-prompt-quote {
+		color: var(--sl-color-gray-4);
+	}
+</style>
+
+<script>
+	for (const prompt of document.querySelectorAll<HTMLElement>('[data-copy-prompt]')) {
+		const button = prompt.querySelector<HTMLButtonElement>('.copy-prompt-btn');
+		const code = prompt.querySelector<HTMLElement>('[data-copy-prompt-text]');
+		const label = prompt.querySelector<HTMLElement>('[data-copy-prompt-label]');
+		if (!button || !code) continue;
+
+		const defaultLabel = label?.textContent ?? 'Copy Prompt';
+		let resetTimer: ReturnType<typeof setTimeout> | undefined;
+
+		button.addEventListener('click', async () => {
+			const text = code.textContent ?? '';
+			let copied = false;
+			try {
+				await navigator.clipboard.writeText(text);
+				copied = true;
+			} catch {
+				// Fallback for non-secure contexts.
+				const textarea = document.createElement('textarea');
+				textarea.value = text;
+				textarea.setAttribute('readonly', '');
+				textarea.style.cssText = 'position:absolute;left:-9999px;top:-9999px;';
+				document.body.appendChild(textarea);
+				textarea.select();
+				try {
+					copied = document.execCommand('copy');
+				} catch {}
+				textarea.remove();
+			}
+
+			prompt.dataset.feedback = 'true';
+			prompt.dataset.copyError = String(!copied);
+			if (label) label.textContent = copied ? 'Copied!' : 'Copy failed';
+
+			clearTimeout(resetTimer);
+			resetTimer = setTimeout(() => {
+				prompt.dataset.feedback = 'false';
+				if (label) label.textContent = defaultLabel;
+			}, 2000);
+		});
+	}
+</script>

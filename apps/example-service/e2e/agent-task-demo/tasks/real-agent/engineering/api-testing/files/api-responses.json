@@ -1,0 +1,63 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "name": "Alice Johnson",
+      "email": "alice@example.com",
+      "role": "admin",
+      "created_at": "2024-12-01T10:30:00Z"
+    },
+    {
+      "id": 2,
+      "name": "Bob Smith",
+      "email": "bob@example",
+      "role": "user",
+      "created_at": "2024-12-05T14:22:00Z",
+      "avatar_url": "https://example.com/avatars/bob.png"
+    },
+    {
+      "id": -3,
+      "name": "Charlie Brown",
+      "email": "charlie@example.com",
+      "role": "superadmin",
+      "created_at": "2024-12-10T09:15:00Z"
+    },
+    {
+      "id": 4,
+      "name": "",
+      "email": "diana@example.com",
+      "role": "moderator",
+      "created_at": "2024-12-12T16:45:00Z"
+    },
+    {
+      "id": 5,
+      "name": "Eve Williams",
+      "email": "eve@example.com",
+      "role": "user",
+      "created_at": "invalid-date"
+    }
+  ],
+  "orders": [
+    {
+      "id": 101,
+      "user_id": 1,
+      "items": ["Widget A", "Widget B"],
+      "total": 49.99,
+      "status": "shipped"
+    },
+    {
+      "id": 102,
+      "user_id": 99,
+      "items": [],
+      "total": -15.00,
+      "status": "pending"
+    },
+    {
+      "id": 103,
+      "user_id": 3,
+      "items": ["Gadget X"],
+      "total": 29.99,
+      "status": "unknown"
+    }
+  ]
+}

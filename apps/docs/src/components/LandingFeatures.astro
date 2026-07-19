@@ -1,0 +1,794 @@
+---
+/**
+ * LandingFeatures — the editorial bento features section.
+ *
+ * One anchor cell (col-span 4 × row-span 2) carrying apo's core mechanic —
+ * tests as the spec, with a real .eval.ts fragment showing a code assertion
+ * and an LLM judge as peers — plus five supporting cells.
+ *
+ * The line-up reflects what apo actually is (PROJECT-BELIEFS.md), not the
+ * reductive "binary verdicts" framing: tests encode judgment, the real agent
+ * runs, deliverables are judged, failures are debuggable, regression is
+ * tracked across runs, and cadence is a policy decision.
+ *
+ * Each card has a small, specific micro-animation that *represents what that
+ * feature does* — IntersectionObserver-triggered via onVisible(), freezes to a
+ * final frame under prefers-reduced-motion. No WebGL, no icons-in-circles.
+ */
+---
+
+<section class="bento not-content" data-landing-features>
+	<h2 class="bento__heading">Features</h2>
+
+	<div class="bento__grid">
+		{/* ── Anchor: Tests are the spec ─────────────────────────────── */}
+		<article class="cell cell--anchor" data-cell>
+			<h3 class="cell__title">Tests are the spec</h3>
+			<p class="cell__desc">
+					Deterministic code assertions and LLM-judged assertions, both written as <code>test(...)</code> in the same file.
+				</p>
+
+			<div class="spec" aria-hidden="true">
+				<div class="spec__file">tasks/refund.eval.ts</div>
+				<pre class="spec__code"><code><span class="tok-kw">import</span> {'{ test }'} <span class="tok-kw">from</span> <span class="tok-str">'@apo/sdk/agent-task'</span>;</code><code>
+<span class="tok-kw">export default</span> <span class="tok-fn">task</span>(<span class="tok-str">'refund'</span>, <span class="tok-fn">turn</span>(<span class="tok-str">'Refund order #4821'</span>), [</code><code class="spec__pair" data-pair style="--i:0">  <span class="tok-fn">test</span>(<span class="tok-str">'issues-refund'</span>, <span class="tok-kw">async</span> (t, {'{ refund }'}) =&gt; {'{'}
+    t.<span class="tok-fn">calledTool</span>(<span class="tok-str">'issue_refund'</span>);
+    t.<span class="tok-fn">noFailedActions</span>();
+    <span class="tok-kw">await</span> t.<span class="tok-fn">judge</span>(refund.summary,</code><code class="spec__pair spec__pair--judge" data-pair style="--i:0">      <span class="tok-str">'PASS when the refund is issued and the reply names the amount.'</span>);
+  {'}'}),
+</code><code>]);</code></pre>
+			</div>
+		</article>
+
+		{/* ── Runs the real agent ───────────────────────────────────── */}
+		<article class="cell" data-cell>
+			<h3 class="cell__title">Runs the real agent</h3>
+			<p class="cell__desc">
+					An adapter you write drives your real agent — same code path you ship, no mocks or stubs.
+				</p>
+			<div class="converge" aria-hidden="true">
+				{/* One cohesive SVG: three source circles → flowing lines → adapter → result.
+				    Three named stacks; the "works with anything" claim lives in the
+				    card description, not a vague fourth node. */}
+				<svg class="converge__svg" viewBox="0 0 160 100" preserveAspectRatio="none">
+					{/* Flowing lines: source → adapter */}
+					<line class="converge__line" style="--i:0" x1="30"  y1="10" x2="80" y2="50" />
+					<line class="converge__line" style="--i:1" x1="80"  y1="10" x2="80" y2="50" />
+					<line class="converge__line" style="--i:2" x1="130" y1="10" x2="80" y2="50" />
+					{/* Stem: adapter → result */}
+					<line class="converge__line converge__line--stem" x1="80" y1="50" x2="80" y2="88" />
+					{/* Source circles */}
+					<circle class="converge__node" cx="30"  cy="10" r="9" />
+					<circle class="converge__node" cx="80"  cy="10" r="9" />
+					<circle class="converge__node" cx="130" cy="10" r="9" />
+				</svg>
+				{/* Logo nodes — centered over each source circle (cx/160 = %). */}
+				<span class="converge__node-label" style="left:18.75%">
+					<svg viewBox="0 0 16 16" aria-label="OpenAI"><path d="M14.949 6.547a3.94 3.94 0 0 0-.348-3.273 4.11 4.11 0 0 0-4.4-1.934A4.1 4.1 0 0 0 8.423.2 4.15 4.15 0 0 0 6.305.086a4.1 4.1 0 0 0-1.891.948 4.04 4.04 0 0 0-1.158 1.753 4.1 4.1 0 0 0-1.563.679A4 4 0 0 0 .554 4.72a3.99 3.99 0 0 0 .502 4.731 3.94 3.94 0 0 0 .346 3.274 4.11 4.11 0 0 0 4.402 1.933c.382.425.852.764 1.377.995.526.231 1.095.35 1.67.346 1.78.002 3.358-1.132 3.901-2.804a4.1 4.1 0 0 0 1.563-.68 4 4 0 0 0 1.14-1.253 3.99 3.99 0 0 0-.506-4.716m-6.097 8.406a3.05 3.05 0 0 1-1.945-.694l.096-.054 3.23-1.838a.53.53 0 0 0 .265-.455v-4.49l1.366.778q.02.011.025.035v3.722c-.003 1.653-1.361 2.992-3.037 2.996m-6.53-2.75a2.95 2.95 0 0 1-.36-2.01l.095.057L5.29 12.09a.53.53 0 0 0 .527 0l3.949-2.246v1.555a.05.05 0 0 1-.022.041L6.473 13.3c-1.454.826-3.311.335-4.15-1.098m-.85-6.94A3.02 3.02 0 0 1 3.07 3.949v3.785a.51.51 0 0 0 .262.451l3.93 2.237-1.366.779a.05.05 0 0 1-.048 0L2.585 9.342a2.98 2.98 0 0 1-1.113-4.094zm11.216 2.571L8.747 5.576l1.362-.776a.05.05 0 0 1 .048 0l3.265 1.86a3 3 0 0 1 1.173 1.207 2.96 2.96 0 0 1-.27 3.2 3.05 3.05 0 0 1-1.36.997V8.279a.52.52 0 0 0-.276-.445m1.36-2.015-.097-.057-3.226-1.855a.53.53 0 0 0-.53 0L6.249 6.153V4.598a.04.04 0 0 1 .019-.04L9.533 2.7a3.07 3.07 0 0 1 3.257.139c.474.325.843.778 1.066 1.303.223.526.289 1.103.191 1.664zM5.503 8.575 4.139 7.8a.05.05 0 0 1-.026-.037V4.049c0-.57.166-1.127.476-1.607s.752-.864 1.275-1.105a3.08 3.08 0 0 1 3.234.41l-.096.054-3.23 1.838a.53.53 0 0 0-.265.455zm.742-1.577 1.758-1 1.762 1v2l-1.755 1-1.762-1z"/></svg>
+				</span>
+				<span class="converge__node-label" style="left:50%">
+					<svg viewBox="0 0 24 24" aria-label="Anthropic"><path d="M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z"/></svg>
+				</span>
+				<span class="converge__node-label" style="left:81.25%">
+					<svg viewBox="0 0 24 24" aria-label="Google Gemini"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></svg>
+				</span>
+
+				<span class="converge__adapter">adapter</span>
+				<span class="converge__terminal">
+					<span class="converge__prompt">$</span> apo task run
+				</span>
+			</div>
+		</article>
+
+		{/* ── Judges deliverables ───────────────────────────────────── */}
+		<article class="cell" data-cell>
+			<h3 class="cell__title">Judges deliverables</h3>
+			<p class="cell__desc">
+					Tests run against the structured output the agent produced — the deliverable — not the chat text.
+				</p>
+			<div class="deliverable" aria-hidden="true">
+				{/* Two rows: the chat (dimmed, ignored) vs the deliverable (checked).
+				    A concrete split that shows exactly what apo scores vs ignores. */}
+				<div class="deliverable__row deliverable__row--chat" data-chat>
+					<span class="deliverable__tag">chat</span>
+					<span class="deliverable__line">"I'll process that refund for you right away…"</span>
+					<span class="deliverable__mark deliverable__mark--ignore">—</span>
+				</div>
+				<div class="deliverable__row deliverable__row--out" data-out>
+					<span class="deliverable__tag">deliverable</span>
+					<span class="deliverable__code">{'{ refund: 89.00, status: "issued" }'}</span>
+					<span class="deliverable__mark deliverable__mark--pass">✓</span>
+				</div>
+			</div>
+		</article>
+
+		{/* ── Debuggable traces ─────────────────────────────────────── */}
+		<article class="cell" data-cell>
+			<h3 class="cell__title">Debuggable traces</h3>
+			<p class="cell__desc">
+					Every run records a trace: the call tree, token counts, model params, and the messages exchanged.
+				</p>
+			<div class="trace" aria-hidden="true">
+				<div class="trace__line trace__line--0" data-trace style="--i:0">
+					<span class="trace__arrow">▼</span> run refund
+					<span class="trace__meta">$0.004 · 1,840 tok</span>
+				</div>
+				<div class="trace__line trace__line--1" data-trace style="--i:1">
+					<span class="trace__arrow">▼</span> issue_refund
+					<span class="trace__meta">0.3s · 412 tok</span>
+				</div>
+				<div class="trace__line trace__line--2" data-trace style="--i:2">
+					<span class="trace__indent">args: &#123; amount: 89.00 &#125;</span>
+				</div>
+				<div class="trace__line trace__line--3" data-trace style="--i:3">
+					<span class="trace__arrow">▼</span> generate_reply
+					<span class="trace__meta">1.1s · 1,204 tok</span>
+				</div>
+				<div class="trace__line trace__line--4" data-trace style="--i:4">
+					<span class="trace__indent">"Refund of $89.00 issued…"</span>
+				</div>
+			</div>
+		</article>
+
+		{/* ── Track regression ──────────────────────────────────────── */}
+		<article class="cell" data-cell>
+			<h3 class="cell__title">Track regression</h3>
+			<p class="cell__desc">
+					Each run keeps a per-test count (e.g. 14/15), so you can compare runs and see improvement or regression over time.
+				</p>
+			<div class="regression" aria-hidden="true">
+				<div class="regression__bar" data-rbar style="--i:0">
+					<span class="regression__label">v1.2</span>
+					<span class="regression__track"><span class="regression__fill" style="--w:93%"></span></span>
+					<span class="regression__count">14/15</span>
+				</div>
+				<div class="regression__bar" data-rbar style="--i:1">
+					<span class="regression__label">v1.3</span>
+					<span class="regression__track"><span class="regression__fill regression__fill--down" style="--w:60%"></span></span>
+					<span class="regression__count">9/15</span>
+				</div>
+			</div>
+		</article>
+
+		{/* ── Schedules as policy ───────────────────────────────────── */}
+		<article class="cell" data-cell>
+			<h3 class="cell__title">Schedules as policy</h3>
+			<p class="cell__desc">
+					Group tests into subsets (smoke, full, regression) and assign each a cadence — per commit, daily, or spaced-repetition.
+				</p>
+			<div class="schedule" aria-hidden="true">
+				<div class="schedule__row" data-srow style="--i:0"><span class="schedule__tag">smoke</span><span class="schedule__cadence">each commit</span></div>
+				<div class="schedule__row" data-srow style="--i:1"><span class="schedule__tag">full</span><span class="schedule__cadence">daily</span></div>
+				<div class="schedule__row" data-srow style="--i:2"><span class="schedule__tag">regression</span><span class="schedule__cadence">smart · SM-2</span></div>
+			</div>
+		</article>
+	</div>
+</section>
+
+<style>
+	.bento {
+		margin-top: 3rem;
+	}
+
+	.bento__heading {
+		font-size: var(--sl-text-h2, 1.5rem);
+		font-weight: 600;
+		letter-spacing: -0.025em;
+		color: var(--sl-color-white);
+		margin: 0 0 1.5rem;
+	}
+
+	/* ── Grid: 6-col desktop, 2-col tablet, 1-col mobile. ───────────── */
+	.bento__grid {
+		display: grid;
+		gap: 1rem;
+		grid-template-columns: 1fr;
+	}
+
+	@media (min-width: 40rem) {
+		.bento__grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+		.cell--anchor {
+			grid-column: 1 / -1;
+		}
+	}
+
+	@media (min-width: 64rem) {
+		.bento__grid {
+			grid-template-columns: repeat(6, 1fr);
+			grid-auto-flow: dense;
+		}
+		.cell--anchor {
+			grid-area: 1 / 1 / span 2 / span 4;
+		}
+		.cell:not(.cell--anchor) {
+			grid-column: span 2;
+		}
+	}
+
+	/* ── Card base: sharp corners, hairline border, restrained hover. ── */
+	.cell {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		background: var(--sl-color-gray-6);
+		border: 1px solid var(--sl-color-gray-5);
+		padding: 1.25rem;
+		transition: border-color 0.15s ease, background-color 0.15s ease;
+	}
+
+	.cell:hover {
+		border-color: var(--sl-color-gray-4);
+		background-color: #2a2a2a;
+	}
+
+	.cell--anchor {
+		background: var(--sl-color-black);
+		gap: 0.75rem;
+	}
+
+	.cell--anchor:hover {
+		background: #0a0a0a;
+	}
+
+	.cell__title {
+		font-size: 1rem;
+		font-weight: 600;
+		color: var(--sl-color-white);
+		letter-spacing: -0.01em;
+		margin: 0;
+	}
+
+	.cell__desc {
+		font-size: 0.8125rem;
+		line-height: 1.6;
+		color: var(--sl-color-gray-3);
+		margin: 0 0 0.5rem;
+	}
+
+	.cell__desc code {
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.75rem;
+		color: var(--sl-color-gray-2);
+		background: var(--sl-color-gray-6);
+		border: 1px solid var(--sl-color-gray-5);
+		padding: 0.05rem 0.3rem;
+	}
+
+	.cell--anchor .cell__title {
+		font-size: 1.25rem;
+	}
+
+	.cell--anchor .cell__desc {
+		font-size: 0.875rem;
+		max-width: 48ch;
+	}
+
+	/* ══════════════════════════════════════════════════════════════════
+	   ANCHOR: .eval.ts fragment — the two test() blocks highlight in turn,
+	   showing code + judge are peers (the same shape).
+	   ══════════════════════════════════════════════════════════════════ */
+	.spec {
+		margin-top: auto;
+		border: 1px solid var(--sl-color-gray-5);
+		background: var(--sl-color-gray-6);
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.78rem;
+		line-height: 1.7;
+		overflow: hidden;
+	}
+
+	.spec__file {
+		padding: 0.4rem 0.85rem;
+		border-bottom: 1px solid var(--sl-color-gray-5);
+		color: var(--sl-color-gray-4);
+		font-size: 0.72rem;
+		background: var(--sl-color-black);
+	}
+
+	.spec__code {
+		margin: 0;
+		padding: 0.7rem 0.85rem;
+		overflow-x: auto;
+		color: var(--sl-color-gray-2);
+	}
+
+	.spec__code code {
+		font-family: inherit;
+		display: block;
+		white-space: pre;
+	}
+
+	/* The two test() pairs — each highlights in turn. */
+	.spec__pair {
+		display: block;
+		padding: 0.15rem 0.35rem;
+		margin: 0 -0.35rem;
+		border-left: 2px solid transparent;
+		transition: border-color 0.4s ease, background-color 0.4s ease;
+	}
+
+	.bento[data-visible] .spec__pair {
+		animation: pairHighlight 4s ease-in-out infinite;
+		animation-delay: calc(var(--i, 0) * 2s);
+	}
+
+	@keyframes pairHighlight {
+		0%, 100% {
+			border-left-color: transparent;
+			background-color: transparent;
+		}
+		35% {
+			border-left-color: var(--sl-color-accent);
+			background-color: var(--sl-color-accent-low, #0a1a0e);
+		}
+	}
+
+	/* Syntax tokens — apo's real palette (dashboard syntax-highlight.tsx):
+	   purple keywords, emerald strings, amber numbers/literals, muted comments.
+	   Code highlighting is a permitted exception to the monochrome rule
+	   (design.md "code syntax highlighting"). */
+	.spec .tok-kw { color: oklch(0.72 0.15 300); }   /* purple-300 */
+	.spec .tok-str { color: oklch(0.78 0.13 160); }  /* emerald-300 */
+	.spec .tok-num { color: oklch(0.82 0.14 70); }   /* amber-300 */
+	.spec .tok-fn { color: var(--sl-color-gray-1); } /* default fg */
+
+	/* ══════════════════════════════════════════════════════════════════
+	   RUNS THE REAL AGENT: a compact convergence diagram with through-flow.
+	   Many stacks converge into the adapter, then a single stem continues
+	   down to "apo runs." Dashes flow along every line (the adapter is a
+	   bridge, not a dead-end).
+
+	   Sized for a small col-span-2 card: the SVG fills the container width,
+	   labels/adapter/result are absolutely positioned over it.
+	   ══════════════════════════════════════════════════════════════════ */
+	.converge {
+		position: relative;
+		margin-top: auto;
+		margin-inline: auto;
+		width: 100%;
+		max-width: 13rem;
+		/* viewBox is 160×100. */
+		aspect-ratio: 160 / 100;
+	}
+
+	/* SVG draws the converging + stem lines; fills the container. */
+	.converge__svg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		overflow: visible;
+	}
+
+	/* Flowing dashes — the accent green with a soft glow. The dashes
+	   themselves carry apo's verdict-green color; the glow makes them
+	   read as energy/data traveling down the line. */
+	.converge__line {
+		stroke: var(--sl-color-accent);
+		stroke-width: 1.2;
+		stroke-dasharray: 3 5;
+		opacity: 0.55;
+		filter: drop-shadow(0 0 2px oklch(0.72 0.19 145 / 0.5));
+	}
+
+	/* Dashes flow: source → adapter → result (top → bottom). Staggered per
+	   converging line; the stem flows at its own pace. The glow pulses
+	   subtly in sync with the flow. */
+	.bento[data-visible] .converge__line {
+		animation: dashFlow 1.4s linear infinite, lineGlow 2.8s ease-in-out infinite;
+		animation-delay: calc(var(--i, 0) * 0.18s), calc(var(--i, 0) * 0.3s);
+	}
+
+	@keyframes dashFlow {
+		from { stroke-dashoffset: 0; }
+		to   { stroke-dashoffset: -16; }
+	}
+
+	@keyframes lineGlow {
+		0%, 100% {
+			opacity: 0.4;
+			filter: drop-shadow(0 0 1px oklch(0.72 0.19 145 / 0.3));
+		}
+		50% {
+			opacity: 0.75;
+			filter: drop-shadow(0 0 3px oklch(0.72 0.19 145 / 0.6));
+		}
+	}
+
+	/* Source node circles — drawn in the SVG, filled dark with a hairline
+	   border. The logo/text sits on top via .converge__node-label. */
+	.converge__node {
+		fill: var(--sl-color-gray-6);
+		stroke: var(--sl-color-gray-5);
+		stroke-width: 0.6;
+	}
+
+	/* Logo/text nodes — absolutely positioned over each source circle.
+	   Centered on the circle's cx (cx/160 = percentage) and cy (10/100 = 10%). */
+	.converge__node-label {
+		position: absolute;
+		top: 10%;
+		transform: translate(-50%, -50%);
+		z-index: 2;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.converge__node-label svg {
+		width: 0.75rem;
+		height: 0.75rem;
+		fill: var(--sl-color-gray-2);
+	}
+
+	/* Adapter node — centered horizontally, at 50% (y=50/100). */
+	.converge__adapter {
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		transform: translate(-50%, -50%);
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.62rem;
+		color: var(--sl-color-gray-2);
+		border: 1px solid var(--sl-color-gray-4);
+		background: var(--sl-color-black);
+		padding: 0.18rem 0.55rem;
+		z-index: 2;
+	}
+
+	/* Terminal-style result — looks like the CLI command the flow produces.
+	   Mono font, dark fill, hairline border, green prompt sigil. */
+	.converge__terminal {
+		position: absolute;
+		left: 50%;
+		top: 88%;
+		transform: translate(-50%, -50%);
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.58rem;
+		color: var(--sl-color-gray-2);
+		background: var(--sl-color-black);
+		border: 1px solid var(--sl-color-gray-5);
+		padding: 0.12rem 0.45rem;
+		white-space: nowrap;
+		z-index: 2;
+	}
+
+	.converge__prompt {
+		color: var(--sl-color-accent);
+		margin-right: 0.25rem;
+	}
+
+	/* ══════════════════════════════════════════════════════════════════
+	   JUDGES DELIVERABLES: a concrete split — the chat (dimmed, ignored)
+	   vs the deliverable (the structured output apo actually checks).
+	   Two stacked rows; the deliverable row lights up green on reveal.
+	   ══════════════════════════════════════════════════════════════════ */
+	.deliverable {
+		margin-top: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	.deliverable__row {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0.3rem 0.45rem;
+		border: 1px solid var(--sl-color-gray-5);
+		background: var(--sl-color-black);
+		opacity: 0;
+		transform: translateY(4px);
+		transition: opacity 0.35s ease, transform 0.35s ease, border-color 0.35s ease;
+	}
+
+	.bento[data-visible] .deliverable__row {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	/* Chat row reveals first (delay 0.3s), deliverable row second (delay 0.6s). */
+	.bento[data-visible] .deliverable__row--chat { transition-delay: 0.3s; }
+	.bento[data-visible] .deliverable__row--out  { transition-delay: 0.6s; }
+
+	/* The chat row reads as secondary — apo ignores it. Keep it readable
+	   (no row-level opacity) but muted via text color + dimmer border. */
+	.deliverable__row--chat {
+		border-color: var(--sl-color-gray-6);
+	}
+
+	.deliverable__row--chat .deliverable__line {
+		font-style: italic;
+		color: var(--sl-color-gray-2);
+		font-size: 0.62rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		flex: 1;
+	}
+
+	/* The deliverable row lights up — apo checks this. */
+	.bento[data-visible] .deliverable__row--out {
+		border-color: var(--sl-color-accent);
+		background: var(--sl-color-accent-low, #0a1a0e);
+	}
+
+	/* Tags: "chat" vs "deliverable" */
+	.deliverable__tag {
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.6rem;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--sl-color-gray-2);
+		flex-shrink: 0;
+		min-width: 4rem;
+	}
+
+	.deliverable__row--out .deliverable__tag {
+		color: var(--sl-color-accent-high);
+	}
+
+	/* The deliverable code — the structured output apo judges. */
+	.deliverable__code {
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.6rem;
+		color: var(--sl-color-gray-2);
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	/* Verdict marks: — for ignored chat, ✓ for the checked deliverable. */
+	.deliverable__mark {
+		flex-shrink: 0;
+		font-size: 0.7rem;
+		width: 1rem;
+		text-align: center;
+	}
+
+	.deliverable__mark--ignore {
+		color: var(--sl-color-gray-3);
+	}
+
+	.deliverable__mark--pass {
+		color: var(--sl-color-accent);
+		font-weight: 700;
+	}
+
+	/* ══════════════════════════════════════════════════════════════════
+	   DEBUGGABLE TRACES: a real call tree — parent calls with tokens/cost,
+	   child calls indented under them, args/messages deeper still. Lines
+	   draw in top-to-bottom on scroll, like the trace assembling.
+	   ══════════════════════════════════════════════════════════════════ */
+	.trace {
+		margin-top: 0.5rem;
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.66rem;
+		line-height: 1.7;
+		border-left: 1px solid var(--sl-color-gray-5);
+		padding-left: 0.6rem;
+	}
+
+	.trace__line {
+		color: var(--sl-color-gray-2);
+		opacity: 0;
+		transform: translateX(-6px);
+		transition: opacity 0.35s ease, transform 0.35s ease;
+		transition-delay: calc(var(--i, 0) * 200ms);
+	}
+
+	/* Parent calls (level 0): run refund, generate_reply. */
+	.trace__line--0 {
+		color: var(--sl-color-gray-1);
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+	}
+
+	/* Child calls (level 1): indented, slightly dimmer. */
+	.trace__line--1 {
+		padding-left: 0.9rem;
+		color: var(--sl-color-gray-3);
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+	}
+
+	/* Args/messages (level 2): indented deeper, dimmest. */
+	.trace__line--2,
+	.trace__line--4 {
+		padding-left: 1.8rem;
+		color: var(--sl-color-gray-4);
+		font-size: 0.6rem;
+	}
+
+	/* The third parent (generate_reply) — same as level 1. */
+	.trace__line--3 {
+		padding-left: 0.9rem;
+		color: var(--sl-color-gray-3);
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+	}
+
+	.trace__arrow {
+		color: var(--sl-color-gray-5);
+		flex-shrink: 0;
+	}
+
+	.trace__indent {
+		color: var(--sl-color-gray-4);
+	}
+
+	/* Token/cost metadata — right-aligned, dim. */
+	.trace__meta {
+		margin-left: auto;
+		color: var(--sl-color-gray-5);
+		font-size: 0.55rem;
+	}
+
+	.bento[data-visible] .trace__line {
+		opacity: 1;
+		transform: translateX(0);
+	}
+
+	/* ══════════════════════════════════════════════════════════════════
+	   TRACK REGRESSION: two bars fill in sequence, the second drops.
+	   ══════════════════════════════════════════════════════════════════ */
+	.regression {
+		margin-top: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 0.45rem;
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.7rem;
+	}
+
+	.regression__bar {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		opacity: 0;
+		transform: translateX(-4px);
+		transition: opacity 0.35s ease, transform 0.35s ease;
+		transition-delay: calc(var(--i, 0) * 400ms + 0.2s);
+	}
+
+	.bento[data-visible] .regression__bar {
+		opacity: 1;
+		transform: translateX(0);
+	}
+
+	.regression__label {
+		color: var(--sl-color-gray-4);
+		width: 2.5rem;
+		flex-shrink: 0;
+	}
+
+	.regression__track {
+		flex: 1;
+		height: 0.5rem;
+		background: var(--sl-color-gray-5);
+		overflow: hidden;
+	}
+
+	.regression__fill {
+		display: block;
+		height: 100%;
+		width: 0;
+		background: var(--sl-color-accent);
+		transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+		transition-delay: calc(var(--i, 0) * 400ms + 0.5s);
+	}
+
+	.bento[data-visible] .regression__fill {
+		width: var(--w);
+	}
+
+	.regression__fill--down {
+		background: oklch(0.7 0.16 25);
+	}
+
+	.regression__count {
+		color: var(--sl-color-gray-2);
+		width: 2.5rem;
+		flex-shrink: 0;
+		text-align: right;
+	}
+
+	/* ══════════════════════════════════════════════════════════════════
+	   SCHEDULES AS POLICY: three subset/interval rows stack in.
+	   ══════════════════════════════════════════════════════════════════ */
+	.schedule {
+		margin-top: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.7rem;
+	}
+
+	.schedule__row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.25rem 0;
+		border-bottom: 1px solid var(--sl-color-gray-6);
+		opacity: 0;
+		transform: translateY(-4px);
+		transition: opacity 0.3s ease, transform 0.3s ease;
+		transition-delay: calc(var(--i, 0) * 150ms + 0.2s);
+	}
+
+	.schedule__row:last-child {
+		border-bottom: none;
+	}
+
+	.bento[data-visible] .schedule__row {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	.schedule__tag {
+		color: var(--sl-color-gray-2);
+		border: 1px solid var(--sl-color-gray-5);
+		padding: 0.05rem 0.4rem;
+	}
+
+	.schedule__cadence {
+		color: var(--sl-color-gray-4);
+	}
+
+	/* ══════════════════════════════════════════════════════════════════
+	   prefers-reduced-motion: freeze every animation to its final frame.
+	   ══════════════════════════════════════════════════════════════════ */
+	@media (prefers-reduced-motion: reduce) {
+		.spec__pair,
+		.trace__line,
+		.regression__bar,
+		.schedule__row {
+			opacity: 1 !important;
+			transform: none !important;
+			transition: none !important;
+			animation: none !important;
+		}
+
+		.converge__line {
+			animation: none !important;
+			stroke: var(--sl-color-accent) !important;
+			opacity: 0.6 !important;
+			filter: drop-shadow(0 0 2px oklch(0.72 0.19 145 / 0.4)) !important;
+		}
+
+		.deliverable__row {
+			opacity: 1 !important;
+			transform: none !important;
+			transition: none !important;
+		}
+
+		.regression__fill {
+			width: var(--w) !important;
+			transition: none !important;
+		}
+	}
+</style>
+
+<script>
+	// Trip all per-card animations when the section scrolls into view. The
+	// [data-visible] attribute on the root is what each scoped keyframe keys off.
+	// NOTE: the import must be INSIDE the script tag — frontmatter imports are
+	// server-side only and don't reach the browser. Without this, onVisible is
+	// undefined and the animations never fire.
+	import { onVisible } from "./demos/demo-motion";
+
+	const section = document.querySelector<HTMLElement>("[data-landing-features]");
+	if (section) {
+		onVisible(section, (state) => {
+			section.toggleAttribute("data-visible", state === "visible");
+		});
+	}
+</script>

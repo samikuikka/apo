@@ -1,0 +1,72 @@
+{
+  "description": "Child span arrives BEFORE its root span. Tests that the projector tolerates out-of-order delivery and reconstructs correct hierarchy when the root arrives.",
+  "source": "edge-case",
+  "edge_case": "child-before-root",
+  "input": {
+    "resourceSpans": [
+      {
+        "scopeSpans": [
+          {
+            "spans": [
+              {
+                "traceId": "11111111111111111111111111111111",
+                "spanId": "2222222222222222",
+                "parentSpanId": "3333333333333333",
+                "name": "child-operation",
+                "startTime": "2026-07-09T12:00:01.000000Z",
+                "endTime": "2026-07-09T12:00:02.000000Z",
+                "attributes": [
+                  {"key": "gen_ai.request.model", "value": {"stringValue": "gpt-4o-mini"}},
+                  {"key": "gen_ai.usage.input_tokens", "value": {"intValue": "10"}}
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "scopeSpans": [
+          {
+            "spans": [
+              {
+                "traceId": "11111111111111111111111111111111",
+                "spanId": "3333333333333333",
+                "name": "root-operation",
+                "startTime": "2026-07-09T12:00:00.000000Z",
+                "endTime": "2026-07-09T12:00:03.000000Z",
+                "attributes": [
+                  {"key": "apo.observation.type", "value": {"stringValue": "AGENT"}}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "trace_id": "11111111111111111111111111111111",
+    "spans": [
+      {
+        "span_id": "3333333333333333",
+        "parent_span_id": null,
+        "name": "root-operation",
+        "observation_type": "AGENT",
+        "is_root": true,
+        "start_time": "2026-07-09T12:00:00.000000Z",
+        "end_time": "2026-07-09T12:00:03.000000Z"
+      },
+      {
+        "span_id": "2222222222222222",
+        "parent_span_id": "3333333333333333",
+        "name": "child-operation",
+        "observation_type": "GENERATION",
+        "model": "gpt-4o-mini",
+        "prompt_tokens": 10,
+        "is_root": false,
+        "start_time": "2026-07-09T12:00:01.000000Z",
+        "end_time": "2026-07-09T12:00:02.000000Z"
+      }
+    ]
+  }
+}

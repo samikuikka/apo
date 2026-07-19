@@ -1,0 +1,41 @@
+"""Route modules grouped by domain for the FastAPI backend."""
+
+from ..routes import (
+    health,
+    runs,
+    admin,
+    trace_stream,
+    agent_task_runs,
+    agent_task_files,
+    agent_task_schedules,
+    models,
+    analytics,
+    comments,
+    public,
+    api_keys,
+    auth,
+    demo,
+    projects,
+    project_members,
+    system_runtime,
+)
+
+__all__ = [
+    "health",
+    "runs",
+    "admin",
+    "trace_stream",
+    "agent_task_runs",
+    "agent_task_files",
+    "agent_task_schedules",
+    "models",
+    "analytics",
+    "comments",
+    "public",
+    "api_keys",
+    "auth",
+    "demo",
+    "projects",
+    "project_members",
+    "system_runtime",
+]

@@ -1,0 +1,13 @@
+{
+  "venvPath": ".",
+  "venv": "backend/.venv",
+  "pythonVersion": "3.13",
+  "executionEnvironments": [
+    {
+      "root": "backend",
+      "extraPaths": [
+        "backend"
+      ]
+    }
+  ]
+}

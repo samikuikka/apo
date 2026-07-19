@@ -1,0 +1,430 @@
+---
+/**
+ * DeliverableDemo — judge the deliverable, not the chat.
+ *
+ * The lesson is where you should look: the chat reads as polished and helpful,
+ * so a chat-grader would pass it. The artifact it produced is wrong, so the
+ * deliverable-grader fails it. Motion sequences the reframe — chat-looks-good
+ * first, then the artifact reveals wrong, then the verdict.
+ *
+ * Same idiom as GradedAcrossRunsDemo: scoped tokens, sharp corners,
+ * demo-motion.ts harness, reduced-motion static frame, astro:before-swap
+ * cleanup. See docs/design.md "Motion" — illustrative, not decorative.
+ */
+
+type Msg = { role: "user" | "assistant"; text: string };
+
+const messages: Msg[] = [
+  { role: "user", text: "Add retries to config.json." },
+  { role: "assistant", text: "Done! Updated config.json. ✓" },
+];
+
+// The artifact: a config with retries missing. The assertion flags it.
+const artifactLines = [
+  { text: '{', state: "ok" },
+  { text: '  "name": "billing-svc",', state: "ok" },
+  { text: '  "timeout_ms": 5000', state: "ok" },
+  { text: '}', state: "ok" },
+];
+const FAIL_LINE_INDEX = 2; // missing "retries" after timeout_ms
+---
+
+<div class="deliverable-demo" data-deliverable-demo>
+  <section class="panel panel--chat" aria-label="Agent chat">
+    <header class="panel__head">
+      <span class="panel__tag">chat</span>
+      <span class="panel__note" data-chat-note>graded by the conversation → looks right</span>
+    </header>
+    <ul class="chat">
+      {messages.map((msg, i) => (
+        <li class:list={["chat__msg", `chat__msg--${msg.role}`]} data-chat-msg data-index={i}>
+          <span class="chat__role">{msg.role}</span>
+          <span class="chat__text">{msg.text}</span>
+        </li>
+      ))}
+    </ul>
+    <p class="chat__verdict" data-chat-verdict>
+      <span class="dot dot--pass" /> polite, fluent — <span class="chat__verdict-pass">sounds correct</span>
+    </p>
+  </section>
+
+  <section class="panel panel--artifact" aria-label="Deliverable produced" data-artifact-panel>
+    <header class="panel__head">
+      <span class="panel__tag">deliverable</span>
+      <span class="panel__note">config.json — what the agent actually produced</span>
+    </header>
+    <pre class="artifact"><code>{artifactLines.map((line, i) => (
+      <span class:list={["artifact__line", i === FAIL_LINE_INDEX ? "is-target" : ""]} data-artifact-line data-index={i}>{line.text}</span>
+    ))}</code></pre>
+    <ul class="assertions">
+      <li class="assertion" data-assertion>
+        <span class="assertion__check" aria-hidden="true" />
+        <span class="assertion__label">test: retries is present</span>
+        <span class="assertion__result" data-assertion-result>—</span>
+      </li>
+    </ul>
+  </section>
+
+  <p class="verdict" data-verdict>
+    <span class="verdict__badge verdict__badge--fail">FAIL</span>
+    right artifact is the signal, not the chat
+  </p>
+</div>
+
+<style>
+  .deliverable-demo {
+    margin: 1.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+    font-size: 0.8rem;
+  }
+
+  .panel {
+    border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-gray-7, var(--sl-color-black));
+    padding: 0.75rem 0.9rem;
+  }
+
+  .panel__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .panel__tag {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.68rem;
+    color: var(--sl-color-gray-3);
+    border: 1px solid var(--sl-color-gray-6);
+    padding: 0.05rem 0.35rem;
+  }
+
+  .panel__note {
+    color: var(--sl-color-gray-4);
+    font-size: 0.72rem;
+  }
+
+  /* --- chat --- */
+  .chat {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .chat__msg {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 320ms ease, transform 320ms ease;
+  }
+
+  .chat__msg[data-visible] {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .chat__role {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--sl-color-gray-4);
+  }
+
+  .chat__msg--user .chat__role {
+    color: var(--sl-color-gray-3);
+  }
+
+  .chat__msg--assistant .chat__role {
+    color: var(--sl-color-gray-4);
+  }
+
+  .chat__text {
+    color: var(--sl-color-gray-2);
+  }
+
+  .chat__msg--user {
+    padding-left: 0.6rem;
+    border-left: 2px solid var(--sl-color-gray-6);
+  }
+
+  .chat__verdict {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.7rem 0 0;
+    color: var(--sl-color-gray-3);
+    font-size: 0.72rem;
+    opacity: 0;
+    transition: opacity 400ms ease;
+  }
+
+  .chat__verdict[data-visible] {
+    opacity: 1;
+  }
+
+  .chat__verdict-pass {
+    color: var(--sl-color-accent-high);
+  }
+
+  .dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    flex-shrink: 0;
+    border: 1px solid var(--sl-color-gray-5);
+  }
+
+  .dot--pass {
+    background: var(--sl-color-gray-6);
+    transition: background-color 400ms ease;
+  }
+
+  .chat__verdict[data-visible] .dot--pass {
+    background: var(--sl-color-accent);
+  }
+
+  /* --- artifact --- */
+  .panel--artifact {
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 420ms ease, transform 420ms ease;
+  }
+
+  .panel--artifact[data-visible] {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .artifact {
+    margin: 0;
+    font-family: inherit;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--sl-color-gray-2);
+  }
+
+  .artifact__line {
+    display: block;
+    padding: 0.05rem 0.3rem;
+    margin: 0 -0.3rem;
+    border-left: 2px solid transparent;
+    transition: border-color 400ms ease, background-color 400ms ease;
+  }
+
+  .artifact__line.is-target[data-fail] {
+    border-left-color: oklch(0.8 0.16 25);
+    background: oklch(0.28 0.08 25 / 0.18);
+  }
+
+  .assertions {
+    list-style: none;
+    margin: 0.7rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .assertion {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.72rem;
+    color: var(--sl-color-gray-3);
+  }
+
+  .assertion__check {
+    width: 0.7rem;
+    height: 0.7rem;
+    flex-shrink: 0;
+    background: var(--sl-color-gray-6);
+    transition: background-color 400ms ease;
+  }
+
+  .assertion[data-fail] .assertion__check {
+    background: oklch(0.8 0.16 25);
+  }
+
+  .assertion__result {
+    margin-left: auto;
+    font-size: 0.68rem;
+    color: var(--sl-color-gray-4);
+  }
+
+  .assertion[data-fail] .assertion__result {
+    color: oklch(0.8 0.16 25);
+  }
+
+  /* --- verdict --- */
+  .verdict {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0.4rem 0 0;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--sl-color-gray-6);
+    color: var(--sl-color-gray-3);
+    font-size: 0.78rem;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 500ms ease, transform 500ms ease;
+  }
+
+  .verdict[data-visible] {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .verdict__badge {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    padding: 0.1rem 0.45rem;
+  }
+
+  .verdict__badge--fail {
+    color: oklch(0.8 0.16 25);
+    border: 1px solid oklch(0.8 0.16 25);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat__msg,
+    .panel--artifact,
+    .chat__verdict,
+    .verdict {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  import { onVisible, prefersReducedMotion } from "./demo-motion";
+
+  function setupDemo(root: HTMLElement) {
+    const chatMsgs = Array.from(
+      root.querySelectorAll<HTMLElement>("[data-chat-msg]"),
+    );
+    const chatVerdict = root.querySelector<HTMLElement>("[data-chat-verdict]");
+    const artifactPanel = root.querySelector<HTMLElement>("[data-artifact-panel]");
+    const targetLine = root.querySelector<HTMLElement>(
+      ".artifact__line.is-target",
+    );
+    const assertion = root.querySelector<HTMLElement>("[data-assertion]");
+    const assertionResult = root.querySelector<HTMLElement>(
+      "[data-assertion-result]",
+    );
+    const verdict = root.querySelector<HTMLElement>("[data-verdict]");
+
+    function revealFinal() {
+      for (const msg of chatMsgs) msg.setAttribute("data-visible", "");
+      chatVerdict?.setAttribute("data-visible", "");
+      artifactPanel?.setAttribute("data-visible", "");
+      targetLine?.setAttribute("data-fail", "");
+      assertion?.setAttribute("data-fail", "");
+      if (assertionResult) assertionResult.textContent = "fail";
+      verdict?.setAttribute("data-visible", "");
+    }
+
+    function reset() {
+      for (const msg of chatMsgs) msg.removeAttribute("data-visible");
+      chatVerdict?.removeAttribute("data-visible");
+      artifactPanel?.removeAttribute("data-visible");
+      targetLine?.removeAttribute("data-fail");
+      assertion?.removeAttribute("data-fail");
+      if (assertionResult) assertionResult.textContent = "—";
+      verdict?.removeAttribute("data-visible");
+    }
+
+    // Reduced motion: render the final static frame and stop.
+    if (prefersReducedMotion()) {
+      revealFinal();
+      return;
+    }
+
+    let timer: number | undefined;
+    let disposed = false;
+    let visible = false;
+
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        timer = window.setTimeout(resolve, ms);
+      });
+
+    async function cycle() {
+      if (disposed || !visible) return;
+      reset();
+      await sleep(300);
+      if (disposed || !visible) return;
+
+      // Chat messages type in, staggered.
+      for (const msg of chatMsgs) {
+        msg.setAttribute("data-visible", "");
+        await sleep(420);
+        if (disposed || !visible) return;
+      }
+
+      // "sounds correct" — chat looks right.
+      chatVerdict?.setAttribute("data-visible", "");
+      await sleep(650);
+      if (disposed || !visible) return;
+
+      // The artifact reveals — and the assertion flags it.
+      artifactPanel?.setAttribute("data-visible", "");
+      await sleep(450);
+      if (disposed || !visible) return;
+      targetLine?.setAttribute("data-fail", "");
+      assertion?.setAttribute("data-fail", "");
+      if (assertionResult) assertionResult.textContent = "fail";
+      await sleep(500);
+      if (disposed || !visible) return;
+
+      // Verdict: wrong artifact, despite a fluent chat.
+      verdict?.setAttribute("data-visible", "");
+      await sleep(5200);
+      if (disposed || !visible) return;
+
+      cycle();
+    }
+
+    const disposer = onVisible(
+      root,
+      (state) => {
+        if (state === "visible") {
+          if (!visible) {
+            visible = true;
+            cycle();
+          }
+        } else {
+          visible = false;
+          window.clearTimeout(timer);
+        }
+      },
+      { threshold: 0.35 },
+    );
+
+    document.addEventListener(
+      "astro:before-swap",
+      () => {
+        disposed = true;
+        window.clearTimeout(timer);
+        disposer();
+      },
+      { once: true },
+    );
+  }
+
+  document
+    .querySelectorAll<HTMLElement>("[data-deliverable-demo]")
+    .forEach((root) => setupDemo(root));
+</script>

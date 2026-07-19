@@ -1,0 +1,143 @@
+---
+title: "apo batch"
+description: "Create, list, and watch batch runs — many tasks run together."
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
+
+A batch run executes multiple tasks in one operation and reports the aggregate result. Use it for regression checks, smoke suites, or any time you need to run more than one task.
+
+<TerminalDemo
+  command="apo batch show b9c0d1e2"
+  lines={[
+    { text: "" },
+    { text: "Batch: b9c0d1e2" },
+    { text: "  Status:   completed" },
+    { text: "  Tasks:    3" },
+    { text: "  Passed:   2" },
+    { text: "  Failed:   1" },
+    { text: "  Errored:  0" },
+    { text: "  Cost:     $0.0153" },
+    { text: "  Created:  7/4/2026, 5:30 PM" },
+    { text: "  Source:   cli · sami" },
+    { text: "" },
+    { text: "  Task Runs:", tone: "default" },
+    { text: "    FAIL extract-parties (completed) [real-agent] 0.8s $0.0034", tone: "danger" },
+    { text: "        checks: 1/2 passed", tone: "default" },
+    { text: "        trace: f1a2b3c4", tone: "default" },
+    { text: "    PASS code-review (completed) [real-agent] 2.1s $0.0091", tone: "success" },
+    { text: "        checks: 3/3 passed", tone: "default" },
+    { text: "        trace: d5e6f7g8", tone: "default" },
+    { text: "    PASS document-qa (completed) [real-agent] 1.4s $0.0028", tone: "success" },
+    { text: "        checks: 2/2 passed", tone: "default" },
+    { text: "        trace: a7b8c9d0", tone: "default" },
+  ]}
+/>
+
+## `apo batch create`
+
+Create a new batch run on the backend.
+
+### Synopsis
+
+```bash
+apo batch create --tasks <id1,id2,...>
+```
+
+### Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--tasks <id1,id2,...>` | (required) | Comma-separated task ids. |
+
+Without a `--project`, the ids are resolved against local `--dir` discovery and the filesystem paths are sent. With a `--project`, the ids are sent directly.
+
+### Output
+
+<TerminalOutput
+  lines={[
+    { text: "Batch created: b9c0d1e2" },
+    { text: "  Status:    running" },
+    { text: "  Tasks:     3" },
+    { text: "" },
+    { text: "  Runs:", tone: "default" },
+    { text: "    - extract-parties: running" },
+    { text: "    - code-review: queued" },
+    { text: "    - document-qa: queued" },
+  ]}
+/>
+
+## `apo batch show`
+
+Show a batch run's details — aggregate counts, per-task results, costs, and trace ids.
+
+### Synopsis
+
+```bash
+apo batch show <batch-id> [--watch]
+```
+
+### Options
+
+| Option | Default | Description |
+|---|---|---|
+| `<batch-id>` | (required) | Batch id or unique prefix. |
+| `--watch` | off | Clear the screen and refresh every 3s while the batch is `running` or `queued`. |
+
+### Output
+
+<TerminalOutput
+  lines={[
+    { text: "Batch: b9c0d1e2" },
+    { text: "  Status:   completed" },
+    { text: "  Tasks:    3" },
+    { text: "  Passed:   2" },
+    { text: "  Failed:   1" },
+    { text: "  Errored:  0" },
+    { text: "  Cost:     $0.0153" },
+    { text: "  Created:  7/16/2026, 9:42 AM" },
+    { text: "  Source:   cli · sami · apo batch create" },
+    { text: "" },
+    { text: "  Task Runs:", tone: "default" },
+    { text: "    FAIL extract-parties (completed) [real-agent] 0.8s $0.0034", tone: "danger" },
+    { text: "        checks: 1/2 passed", tone: "default" },
+    { text: "        trace: f1a2b3c4", tone: "default" },
+    { text: "    PASS code-review (completed) [real-agent] 2.1s $0.0091", tone: "success" },
+    { text: "        checks: 3/3 passed", tone: "default" },
+    { text: "        trace: d5e6f7g8", tone: "default" },
+    { text: "    PASS document-qa (completed) [real-agent] 1.4s $0.0028", tone: "success" },
+    { text: "        checks: 2/2 passed", tone: "default" },
+    { text: "        trace: a7b8c9d0", tone: "default" },
+  ]}
+/>
+
+With `--watch`, the screen clears and re-renders every 3 seconds until the batch settles.
+
+## `apo batch list`
+
+List batch runs.
+
+### Synopsis
+
+```bash
+apo batch list [--status <s>]
+```
+
+### Output
+
+<TerminalOutput
+  lines={[
+    { text: "Batch ID   Tasks   Status      Passed   Cost      Duration   Created" },
+    { text: "─────────  ──────  ──────────  ───────  ────────  ────────   ─────────────────────" },
+    { text: "b9c0d1e2   3       completed   2/3      $0.0153   4.3s       7/4/2026, 5:30 PM" },
+    { text: "c1d2e3f4   5       completed   5/5      $0.0241   12.1s      7/4/2026, 4:15 PM" },
+    { text: "" },
+    { text: "2 batches", tone: "default" },
+  ]}
+/>
+
+## See also
+
+- [`apo task run`](/cli/task-run/) — run a single task.
+- [CLI overview](/cli/) — the full command surface.

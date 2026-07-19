@@ -1,0 +1,207 @@
+---
+title: Quickstart
+description: Set up apo with a coding agent, or by hand, from clone to first result.
+---
+
+import CopyPrompt from '../../components/CopyPrompt.astro';
+import TerminalDemo from '../../components/demos/TerminalDemo.astro';
+
+**Zero to a real result, as fast as possible.** The whole loop is: run it, see the result, read the breakdown, debug the failure.
+
+## Automatic installation
+
+Copy this prompt and paste it into your coding agent. Your agent will guide you through setting up apo, authoring an adapter for your agent, and running your first task, and answer any questions you have along the way.
+
+<CopyPrompt text={`Read https://apo.dev/start.md then help me set up apo and run my first task.`} />
+
+## Manual installation
+
+:::note
+Use the prompt above. The steps below are for when you want to set things up yourself.
+:::
+
+### 1. Bring up the stack
+
+apo isn't on npm yet. Self-host from source:
+
+```bash
+git clone <repo-url> && cd apo
+docker compose up -d --build
+```
+
+Wait for readiness. The healthcheck confirms the database, task cache, and auth are ready, not just that the process booted:
+
+```bash
+curl -fsS http://localhost:8000/health/ready | jq
+# {"ok": true, ...}
+```
+
+Open `http://localhost:3000` and create the first admin account. Full details in [Self-Hosting](/self-hosting/topology/).
+
+### 2. Authenticate
+
+<TerminalDemo
+  command="apo login"
+  lines={[
+    { parts: [{ text: "Email: you@example.com" }] },
+    { parts: [{ text: "Password: ********" }] },
+    { parts: [{ text: "✓ Logged in as you@example.com", tone: "success" }] },
+    { text: "  Backend:  http://localhost:8000" },
+    { text: "  Project:  acme-eval (a1b2c3d4)" },
+    { parts: [{ text: "  Key:      apo_live_a1b2" }, { text: "...", tone: "dim" }, { text: " (full)" }] },
+    { text: "  Saved to: /home/you/.apo/credentials" },
+  ]}
+/>
+
+Credentials save to `~/.apo/credentials`.
+
+### 3. Sync a task source
+
+Tasks live in code. Configure a source and pull the task inventory in:
+
+<TerminalDemo
+  command="apo project init-tasks --repo acme/contracts"
+  lines={[
+    { parts: [{ text: "Initialized project tasks: ", tone: "bold" }, { text: "a1b2c3d4" }] },
+    { text: "  Repository:  acme/contracts" },
+    { text: "  Branch:      main" },
+    { text: "  Subpath:     -" },
+    { text: "  Status:      ok" },
+    { text: "  Commit:      9f3a1b2" },
+    { text: "  Tasks:       2" },
+  ]}
+/>
+
+<TerminalDemo
+  command="apo project source sync"
+  lines={[
+    { parts: [{ text: "Synced project task source: ", tone: "bold" }, { text: "a1b2c3d4" }] },
+    { text: "  Status:      ok" },
+    { text: "  Commit:      9f3a1b2" },
+    { text: "  Last synced: 2026-07-04 12:04 UTC" },
+  ]}
+/>
+
+<TerminalDemo
+  command="apo task list"
+  lines={[
+    { parts: [{ text: "ID                 Adapter        Checks  Simulator", tone: "bold" }] },
+    { text: "─────────────────  ────────────   ───────  ─────────" },
+    { text: "extract-parties    ai-sdk-agent   yes     yes" },
+    { text: "summarize-sla      ai-sdk-agent   yes     -" },
+    { text: "" },
+    { parts: [{ text: "2 tasks found", tone: "dim" }] },
+  ]}
+/>
+
+### 4. Run a task
+
+<TerminalDemo
+  command="apo task run extract-parties"
+  lines={[
+    { parts: [{ text: "Running task from contracts/extract-parties...", tone: "dim" }] },
+    { text: "" },
+    { parts: [{ text: "PASS", tone: "success" }, { text: " " }, { text: "extract-parties", tone: "bold" }] },
+    { parts: [{ text: "  Checks:", tone: "bold" }] },
+    { parts: [{ text: "    " }, { text: "PASS", tone: "success" }, { text: " used-source-document" }] },
+    { parts: [{ text: "    " }, { text: "PASS", tone: "success" }, { text: " parties-are-complete" }] },
+  ]}
+/>
+
+A run produces a binary result: pass or fail. Click **Run** to see a passing one. Run `apo runs show` next to see the full breakdown.
+
+### 5. Read the breakdown
+
+The result is binary, but the breakdown shows every test and how it contributed. Here's the run you just made:
+
+<TerminalDemo
+  command="apo runs show"
+  lines={[
+    { parts: [{ text: "(latest run)", tone: "dim" }] },
+    { parts: [{ text: "Run: de89cab0", tone: "bold" }] },
+    { text: "  Task:     extract-parties" },
+    { text: "  Path:     contracts/extract-parties" },
+    { text: "  Adapter:  ai-sdk-agent" },
+    { text: "  Status:   completed" },
+    { parts: [{ text: "  Result:   " }, { text: "PASS", tone: "success" }] },
+    { text: "  Checks:   2/2 passed (0 failed)" },
+    { text: "  Started:  2026-07-04 12:04 UTC" },
+    { text: "  Source:   cli" },
+    { text: "  Cost:     $0.0042" },
+    { parts: [{ text: "  Trace:    f1a3e9c0 " }, { text: "(apo traces show f1a3e9c0)", tone: "dim" }] },
+    { text: "" },
+    { parts: [{ text: "  Checks:", tone: "bold" }] },
+    { parts: [{ text: "    " }, { text: "PASS", tone: "success" }, { text: " used-source-document" }] },
+    { parts: [{ text: "    " }, { text: "PASS", tone: "success" }, { text: " parties-are-complete" }] },
+  ]}
+/>
+
+When a run fails, the same breakdown shows which test broke and what came back vs. what was expected, enough to know where to look before opening the trace.
+
+### 6. Inspect the trace
+
+The breakdown tells you *what* happened. The trace tells you the full *how*: every call the agent made, with what input and output. Pass `--verbose` to see the messages and outputs:
+
+<TerminalDemo
+  command="apo traces show f1a3e9c0 --verbose"
+  lines={[
+    { parts: [{ text: "Trace: f1a3e9c0", tone: "bold" }] },
+    { text: "  Task:      extract-parties" },
+    { text: "  Status:    completed" },
+    { text: "  Duration:  4.2s" },
+    { text: "  Calls:     3" },
+    { text: "  Cost:      $0.0042" },
+    { text: "  Tokens:    843" },
+    { text: "  Created:   2026-07-04 12:04 UTC" },
+    { text: "" },
+    { parts: [{ text: "  Calls:", tone: "bold" }] },
+    { parts: [
+      { text: "  ", tone: "dim" },
+      { text: " " },
+      { text: "read_file                " },
+      { text: "gpt-4o               ", tone: "dim" },
+      { text: "   0.8s" },
+      { text: "    $0.0011" },
+      { text: "      184" },
+    ] },
+    { parts: [{ text: "      tokens: 124 prompt + 60 completion", tone: "dim" }] },
+    { parts: [{ text: "      tool: read_file", tone: "dim" }] },
+    { parts: [{ text: '      args: {"path":"contract.pdf"}', tone: "dim" }] },
+    { parts: [{ text: '      result: {"content":"Acme Corp hereby..."}', tone: "dim" }] },
+    { parts: [
+      { text: "  ", tone: "dim" },
+      { text: " " },
+      { text: "complete                 " },
+      { text: "gpt-4o               ", tone: "dim" },
+      { text: "   2.1s" },
+      { text: "    $0.0031" },
+      { text: "      612" },
+    ] },
+    { parts: [{ text: "      tokens: 480 prompt + 132 completion", tone: "dim" }] },
+    { parts: [{ text: "      output:", tone: "dim" }] },
+    { parts: [{ text: '        {"parties":["Acme","Globex","Initech"]}', tone: "dim" }] },
+    { parts: [
+      { text: "  ", tone: "dim" },
+      { text: " " },
+      { text: "judge                    " },
+      { text: "gpt-4o               ", tone: "dim" },
+      { text: "   1.3s" },
+      { text: "    $0.0003" },
+      { text: "       47" },
+    ] },
+    { parts: [{ text: "      tokens: 30 prompt + 17 completion", tone: "dim" }] },
+    { parts: [{ text: "      output:", tone: "dim" }] },
+    { parts: [{ text: '        {"result":"PASS","reason":"every named party captured"}', tone: "dim" }] },
+  ]}
+/>
+
+The trace is a first-class surface: the call tree, token counts, and the actual messages exchanged. When a run fails, this is where you go to see where behavior diverged from what the test expected.
+
+See [Traces](/concepts/traces/) for the full surface.
+
+## Next
+
+- [Adapters](/concepts/adapters/): the part you write, the bridge between apo and your real agent.
+- [Define a Task](/guides/define-a-task/): the folder convention and `.eval.ts` shape.
+- [Tests](/concepts/tests/): code assertions and LLM judges, side by side.
+- [Why apo](/why-apo/): the reasoning behind this design.

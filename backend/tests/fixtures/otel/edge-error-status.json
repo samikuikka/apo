@@ -1,0 +1,56 @@
+{
+  "description": "Span with ERROR status and exception event. Tests that error status, status message, and exception events survive canonicalization and project correctly.",
+  "source": "edge-case",
+  "edge_case": "error-status",
+  "input": {
+    "resourceSpans": [
+      {
+        "scopeSpans": [
+          {
+            "spans": [
+              {
+                "traceId": "44444444444444444444444444444444",
+                "spanId": "5555555555555555",
+                "name": "failing-operation",
+                "kind": 0,
+                "startTime": "2026-07-09T12:00:00.000000Z",
+                "endTime": "2026-07-09T12:00:01.000000Z",
+                "status": {"code": 2, "message": "Connection refused"},
+                "events": [
+                  {
+                    "name": "exception",
+                    "timeUnixNano": "1720526401000000000",
+                    "attributes": [
+                      {"key": "exception.type", "value": {"stringValue": "ConnectionError"}},
+                      {"key": "exception.message", "value": {"stringValue": "ECONNREFUSED"}}
+                    ]
+                  }
+                ],
+                "attributes": [
+                  {"key": "gen_ai.request.model", "value": {"stringValue": "gpt-4o"}}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "trace_id": "44444444444444444444444444444444",
+    "spans": [
+      {
+        "span_id": "5555555555555555",
+        "parent_span_id": null,
+        "name": "failing-operation",
+        "observation_type": "GENERATION",
+        "model": "gpt-4o",
+        "is_root": true,
+        "status_code": 2,
+        "status_message": "Connection refused",
+        "start_time": "2026-07-09T12:00:00.000000Z",
+        "end_time": "2026-07-09T12:00:01.000000Z"
+      }
+    ]
+  }
+}

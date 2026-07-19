@@ -1,0 +1,36 @@
+[project]
+name = "apo-backend"
+version = "0.2.0"
+description = "Backend services for apo"
+requires-python = ">=3.13,<3.15"
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "sqlmodel",
+  "python-dotenv",
+  "httpx",
+  "psycopg2-binary",
+  "bcrypt",
+  "python-jose[cryptography]",
+  "aiosmtplib>=3.0",
+  "opentelemetry-proto>=1.0",
+  "opentelemetry-sdk>=1.43.0",
+  "opentelemetry-exporter-otlp-proto-http>=1.43.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest",
+  "basedpyright",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+  "alpha: SPEC-126 internal alpha release gate tests",
+]
+
+[tool.uv]
+cache-dir = ".uv-cache"
+default-groups = ["dev"]

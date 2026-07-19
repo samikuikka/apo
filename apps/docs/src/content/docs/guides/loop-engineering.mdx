@@ -1,0 +1,78 @@
+---
+title: Loop engineering with apo
+description: Write the tests, then let a coding agent close the loop. Run, read the result, read the trace, iterate.
+---
+
+import LoopEngineeringDemo from "../../../components/demos/LoopEngineeringDemo.astro";
+
+Changing how an agent behaves is usually a manual loop. You run it, watch what it does, judge the output, tweak the code, re-run. You're in every step, and you're the bottleneck.
+
+Once your judgment is encoded as tests, a coding agent can close that loop itself. It runs the task from the CLI, reads the result, opens the trace, edits the code, and runs again, iterating until the run passes. You watch the result converge.
+
+<LoopEngineeringDemo />
+
+## Why a coding agent can do this
+
+That loop only works because three things are true at once:
+
+- **The CLI is a first-class trigger.** `apo task run` isn't a convenience wrapper around the dashboard. It's the interface a coding agent uses to drive apo. Every operation the loop needs (run, read result, read trace) has a CLI command with parseable output.
+- **Tests encode expert judgment.** The deterministic checks capture "did it do the obvious things right." The judged tests capture "is this actually good": the taste and domain knowledge you'd otherwise apply by watching each run. Once written, they apply that judgment consistently, every run, without you.
+- **Traces make failures legible to an agent.** When a test fails, the trace shows exactly what the agent did: the calls, the inputs, the messages. A coding agent can read that and form a hypothesis about what to change in the codebase, the same way you would.
+
+## The workflow
+
+You do this once, when defining what "good" means for a behavior you're building or changing.
+
+### 1. Write the tests first
+
+Before changing the agent, write tests that describe the behavior you want. Both kinds:
+
+```typescript
+// Deterministic: the agent must read the source before answering.
+test("reads-source-first", (t) => {
+  t.calledTool("read_file", { input: { path: "spec.md" } });
+  t.noFailedActions();
+});
+
+// Judged: the answer must be genuinely correct, not just formatted right.
+test("answer-is-correct", async (t, { deliverables }) => {
+  await t.judge(
+    deliverables.answer,
+    "PASS when the answer is accurate to the source, cites where it found each claim, and adds nothing false.",
+  );
+});
+```
+
+This is where your expertise goes. The tests are the spec. They say what "good" means for this task, in a form both you and the agent can check against.
+
+### 2. Hand the loop to a coding agent
+
+Give the agent the task name and let it close the loop:
+
+```text
+Run `apo task run answer-from-spec`.
+Read the result with `apo runs show`.
+If it failed, read the trace with `apo traces show <trace-id>` to see what the agent did.
+Then iterate on the codebase to move the behavior toward passing, and re-run.
+Stop when the run passes.
+```
+
+The agent runs the task, sees the result, opens the trace, forms a hypothesis, edits the code, and re-runs. Each iteration produces a result you can see: `0/2 → 1/2 → 2/2`. You're not watching each run; you're checking whether the trajectory is moving the right way.
+
+:::note[The three ids are distinct]
+`apo task run` takes a **task id** (or path). `apo runs show` takes a **run id**, the output of a run, optional (defaults to the latest). `apo traces show` takes a **trace id**, a separate field on the run record. A run prints its trace id at the bottom so the agent knows what to open next.
+:::
+
+### 3. Check the result
+
+When the agent reports the task is passing, look at the final run yourself. The tests passing means the agent met the standard you encoded, but the standard is yours to interrogate. If a test is too lenient, tighten the rubric and let the agent iterate again. If a test is too strict, loosen it. The loop is cheap to re-run.
+
+## When this is worth it
+
+Loop engineering pays off when the behavior you're building is complex enough that you'd otherwise iterate manually many times: steering a workflow, changing how an agent uses tools, refining an output format. For a one-off check, running once from the dashboard is faster. For a behavior you're going to iterate on twenty times, encoding the tests once and letting the agent close the loop is dramatically faster, and the tests stay behind as a regression guard after you're done.
+
+## Next
+
+- [Tests](/concepts/tests/): the assertion vocabulary you're encoding judgment into.
+- [Traces](/concepts/traces/): what the agent reads to form its hypothesis.
+- [Run and debug](/guides/run-and-debug/): the manual version of the same loop, for when you want to drive.

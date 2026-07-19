@@ -1,0 +1,10 @@
+__pycache__/
+.uv-cache/
+.venv/
+data/
+.env
+*.pyc
+.git
+.gitignore
+tests/
+*.md

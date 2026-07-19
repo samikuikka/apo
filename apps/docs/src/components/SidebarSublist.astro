@@ -1,0 +1,234 @@
+---
+/**
+ * SidebarSublist override — renders groups as always-visible nested lists,
+ * with no collapsible toggle. Matches flue's sidebar: parent labels are plain
+ * headings (not <summary> toggles), children always show as an indented <ul>.
+ *
+ * The only change from Starlight's default SidebarSublist is the group branch:
+ * instead of <details><summary>…<caret/></summary>, a group renders as a
+ * non-interactive label + a plain nested <ul>. Everything else (links, active
+ * state, badges, nesting borders) is identical to the default.
+ *
+ * Why: Starlight's <summary> toggles expand/collapse on click and don't
+ * navigate. With nested groups (task / runs / traces under CLI), readers expect
+ * the parent to be a label, not an action — and the children should always be
+ * visible. This removes the toggle entirely.
+ */
+import { Badge } from "@astrojs/starlight/components";
+
+// Minimal local type for the built sidebar entries — avoids importing
+// Starlight's internal routing types, which aren't in the public exports map.
+type Attrs = { class?: string; [key: string]: unknown };
+type SidebarBadge = { variant?: string; class?: string; text?: string };
+interface SidebarLink {
+  type: "link";
+  label: string;
+  href: string;
+  isCurrent?: boolean;
+  attrs?: Attrs;
+  badge?: SidebarBadge;
+}
+interface SidebarGroup {
+  type: "group";
+  label: string;
+  entries: SidebarEntry[];
+  collapsed?: boolean;
+  badge?: SidebarBadge;
+}
+type SidebarEntry = SidebarLink | SidebarGroup;
+
+interface Props {
+  sublist: SidebarEntry[];
+  nested?: boolean;
+}
+
+const { sublist, nested } = Astro.props;
+
+// Inline flattenSidebar — recurses into groups to find leaf links. Used to
+// detect whether a group contains the current page (→ bold its label).
+function flattenSidebar(entries: SidebarEntry[]): SidebarLink[] {
+  return entries.flatMap((entry) =>
+    entry.type === "group" ? flattenSidebar(entry.entries) : entry,
+  );
+}
+
+const groupIsActive = (entries: SidebarEntry[] | undefined) =>
+  entries ? flattenSidebar(entries).some((i) => i.isCurrent) : false;
+
+// The href a group label should link to. Matches flue: every parent navigates
+// to its own page. Starlight groups can't carry a slug/link, so the group's
+// destination is its first leaf link — e.g. "CLI" → /cli/ (Overview),
+// "task" → /cli/task-run/ (its first command). Returns undefined for a group
+// with no link children (then the label renders as a plain non-clickable heading).
+function groupHref(entries: SidebarEntry[] | undefined): string | undefined {
+  if (!entries) return undefined;
+  const leaves = flattenSidebar(entries);
+  return leaves[0]?.href;
+}
+---
+
+<ul class:list={{ "top-level": !nested }}>
+  {
+    sublist.map((entry) => (
+      <li>
+        {entry.type === "link" ? (
+          <a
+            href={entry.href}
+            aria-current={entry.isCurrent ? "page" : undefined}
+            class:list={[{ large: !nested }, entry.attrs.class]}
+            {...entry.attrs}
+          >
+            <span>{entry.label}</span>
+            {entry.badge && (
+              <Badge
+                variant={entry.badge.variant}
+                class={entry.badge.class}
+                text={entry.badge.text}
+              />
+            )}
+          </a>
+        ) : (
+          (() => {
+            const href = groupHref(entry.entries);
+            const active = groupIsActive(entry.entries);
+            const LabelTag = href ? "a" : "span";
+            return (
+              <>
+                <LabelTag
+                  href={href}
+                  class:list={[
+                    "group-label",
+                    { large: !nested, active, clickable: Boolean(href) },
+                  ]}
+                >
+                  <span>{entry.label}</span>
+                  {entry.badge && (
+                    <Badge
+                      variant={entry.badge.variant}
+                      class={entry.badge.class}
+                      text={entry.badge.text}
+                    />
+                  )}
+                </LabelTag>
+                <Astro.self sublist={entry.entries} nested />
+              </>
+            );
+          })()
+        )}
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  @layer starlight.core {
+    ul {
+      --sl-sidebar-item-padding-inline: 0.5rem;
+      list-style: none;
+      padding: 0;
+    }
+
+    li {
+      overflow-wrap: anywhere;
+    }
+
+    ul ul li {
+      margin-inline-start: var(--sl-sidebar-item-padding-inline);
+      border-inline-start: 1px solid var(--sl-color-hairline-light);
+      padding-inline-start: var(--sl-sidebar-item-padding-inline);
+    }
+
+    .large {
+      font-size: var(--sl-text-lg);
+      font-weight: 600;
+      color: var(--sl-color-white);
+    }
+
+    .top-level > li + li {
+      margin-top: 0.75rem;
+    }
+
+    /* Group label: a heading for its children. Not a toggle, no caret.
+       When the group has its own page (.clickable), it renders as an <a>
+       and navigates on click — matching flue. Otherwise it's a plain <span>. */
+    .group-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.25em;
+      padding: 0.2em var(--sl-sidebar-item-padding-inline);
+      line-height: 1.4;
+      text-decoration: none;
+    }
+
+    /* Subgroup labels (nested) are smaller and dimmer than top-level groups. */
+    .group-label:not(.large) {
+      font-size: var(--sl-text-sm);
+      font-weight: 600;
+      color: var(--sl-color-gray-3);
+      padding-top: 0.5em;
+    }
+
+    /* A group with its own page reads as a link: cursor + hover brighten. */
+    .group-label.clickable {
+      cursor: pointer;
+      border-radius: 0.25rem;
+    }
+    .group-label.clickable:hover {
+      color: var(--sl-color-white);
+    }
+
+    /* A clickable group whose page is the current page gets the same accent
+       highlight as an active leaf link — the green pill background. */
+    .group-label.clickable.active {
+      font-weight: 600;
+      color: var(--sl-color-text-invert);
+      background-color: var(--sl-color-text-accent);
+    }
+
+    /* A non-clickable group (category heading) only brightens when it contains
+       the current page — no background, since it isn't itself a destination. */
+    .group-label.active {
+      color: var(--sl-color-white);
+    }
+
+    a {
+      display: block;
+      border-radius: 0.25rem;
+      text-decoration: none;
+      color: var(--sl-color-gray-2);
+      padding: 0.3em var(--sl-sidebar-item-padding-inline);
+      line-height: 1.4;
+    }
+
+    a:hover,
+    a:focus {
+      color: var(--sl-color-white);
+    }
+
+    [aria-current="page"],
+    [aria-current="page"]:hover,
+    [aria-current="page"]:focus {
+      font-weight: 600;
+      color: var(--sl-color-text-invert);
+      background-color: var(--sl-color-text-accent);
+    }
+
+    a > *:not(:last-child),
+    .group-label > *:not(:last-child) {
+      margin-inline-end: 0.25em;
+    }
+
+    @media (min-width: 50rem) {
+      .top-level > li + li {
+        margin-top: 0.5rem;
+      }
+      .large {
+        font-size: var(--sl-text-base);
+      }
+      a {
+        font-size: var(--sl-text-sm);
+      }
+    }
+  }
+</style>
