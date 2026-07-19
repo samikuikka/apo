@@ -121,19 +121,15 @@ class NativeTraceBackend:
         total_cost = 0.0
         total_tokens = 0
         for call in calls:
-            if call.cost is not None:
-                total_cost += call.cost
-            elif call.calculated_cost is not None:
-                total_cost += call.calculated_cost
-            elif call.provided_cost is not None:
-                total_cost += call.provided_cost
+            # SPEC-136: ``cost`` is the single effective total (micro-USD int);
+            # fall back to ``provided_cost`` only when cost is unset.
+            effective = call.cost if call.cost is not None else call.provided_cost
+            if effective is not None:
+                total_cost += effective
             if call.total_tokens is not None:
                 total_tokens += call.total_tokens
         has_any_cost = any(
-            call.cost is not None
-            or call.calculated_cost is not None
-            or call.provided_cost is not None
-            for call in calls
+            call.cost is not None or call.provided_cost is not None for call in calls
         )
         task_run.total_cost = round(total_cost, 6) if has_any_cost else None
         task_run.total_tokens = total_tokens if total_tokens > 0 else None

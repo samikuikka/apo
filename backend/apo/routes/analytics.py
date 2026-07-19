@@ -314,7 +314,9 @@ def _call_to_dict(call: LoggedCallDB) -> dict[str, object]:
         "completion_tokens": call.completion_tokens,
         "total_tokens": call.total_tokens,
         "provided_cost": call.provided_cost,
-        "calculated_cost": call.calculated_cost,
+        "cost_breakdown": call.cost_breakdown,
+        "cost_provenance": call.cost_provenance,
+        "raw_usage": call.raw_usage,
         "provided_model_name": call.provided_model_name,
         "created_at": call.created_at.isoformat() if call.created_at else None,
     }

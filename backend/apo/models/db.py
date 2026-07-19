@@ -350,16 +350,26 @@ class LoggedCallDB(LoggedCallBase, table=True):
     prompt_id: str | None = Field(default=None, index=True)
     prompt_version: int | None = Field(default=None)
 
-    # Cost breakdown
-    provided_cost: float | None = Field(default=None)
-    calculated_cost: float | None = Field(default=None)
+    # Cost (SPEC-136 ticket 06): micro-USD int totals + per-call frozen storage.
+    provided_cost: int | None = Field(default=None)
+    cost_breakdown: dict[str, int] | None = Field(
+        default=None, sa_column=Column("cost_breakdown", JSON)
+    )
+    raw_usage: dict[str, int] | None = Field(
+        default=None, sa_column=Column("raw_usage", JSON)
+    )
+    matched_tier_id: int | None = Field(default=None)
+    matched_tier_name: str | None = Field(default=None)
+    cost_provenance: str | None = Field(default=None)
 
     # Time metrics
     time_to_first_token_ms: float | None = Field(default=None)
 
-    # Model tracking
+    # Model tracking. internal_model_id references the matched models.id row.
+    # Stored as a soft reference (not a hard FK) so re-pricing and model
+    # deletion don't strand rows; the value is recomputed at compute time.
     provided_model_name: str | None = Field(default=None)
-    internal_model_id: str | None = Field(default=None)
+    internal_model_id: int | None = Field(default=None)
 
     # Tool-specific fields
     tool_name: str | None = Field(default=None)

@@ -253,9 +253,13 @@ class TestProjectorCostAndAggregates:
             assert call is not None
             assert call.total_tokens == 150
             # A correctly-formed GenAI span (model + usage) must produce cost.
-            # gpt-4o: (100 * 2.50 + 50 * 10.00) / 1_000_000 = 0.00075
-            assert call.calculated_cost is not None
-            assert call.calculated_cost == pytest.approx(0.00075)
+            # SPEC-136: gpt-4o input=$2.50/MTok, output=$10.00/MTok.
+            #   input: round(2_500_000 micro-per-1M * 100 / 1e6) = 250 micro-USD
+            #   output: round(10_000_000 * 50 / 1e6) = 500 micro-USD
+            #   total = 750 micro-USD
+            assert call.cost == 750
+            assert call.cost_provenance == "computed"
+            assert call.cost_breakdown == {"input": 250, "output": 500}
 
     def test_root_span_completion_computes_run_aggregates(self):
         """When the root span completes, run-level aggregates are computed."""

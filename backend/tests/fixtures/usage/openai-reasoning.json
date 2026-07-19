@@ -1,0 +1,15 @@
+{
+  "description": "OpenAI o-series reasoning. reasoning.output_tokens is included in output_tokens (OTel semconv). Non-overlap: output excludes reasoning.",
+  "source": "openai",
+  "provider": "openai",
+  "input": {
+    "gen_ai.usage.input_tokens": 100,
+    "gen_ai.usage.output_tokens": 500,
+    "gen_ai.usage.reasoning.output_tokens": 300
+  },
+  "expected": {
+    "input": 100,
+    "output": 200,
+    "reasoning": 300
+  }
+}

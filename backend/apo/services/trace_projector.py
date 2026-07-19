@@ -432,11 +432,12 @@ def _raw_attr(span: OtlpSpanDB, key: str) -> dict[str, Any] | None:
 
 
 def _apply_cost(session: Session, call: LoggedCallDB, span: OtlpSpanDB) -> None:
-    """Compute and store server-side cost for a projected call.
+    """Normalize usage + freeze cost onto a projected call (SPEC-136 ticket 06).
 
-    Mirrors ``process_call_create`` / ``process_call_update`` in the legacy
-    ingestion path (SPEC-129 Track 6 parity). If no model definition matches,
-    cost is left unset (the legacy path behaves identically).
+    Shared with the legacy ingestion path via ``pricing.apply.apply_cost_to_call``:
+    normalize the span's usage to canonical UsageKeys, then either freeze a
+    SDK-provided cost verbatim (provenance "provided") or compute the
+    per-dimension breakdown (provenance "computed"). After write, frozen.
 
     Only GENERATION calls get cost — child spans like ``ai.generateText.doGenerate``
     carry per-step token data but are not separate billable API calls. Computing
@@ -461,19 +462,15 @@ def _apply_cost(session: Session, call: LoggedCallDB, span: OtlpSpanDB) -> None:
     if not call.model or call.observation_type != "GENERATION":
         return
     try:
-        from .cost_calculation import calculate_cost_for_model
+        from .pricing.apply import apply_cost_to_call
 
-        calculated = calculate_cost_for_model(
+        apply_cost_to_call(
             session,
-            call.model,
-            call.prompt_tokens,
-            call.completion_tokens,
+            call,
+            attributes=span.attributes or {},
             project=span.project_id,
+            at_time=span.start_time or call.created_at or datetime.now(timezone.utc),
         )
-        if calculated is not None:
-            call.calculated_cost = calculated
-            if call.cost is None:
-                call.cost = calculated
     except Exception:
         logger.debug("Cost calculation failed for model %s", call.model, exc_info=True)
 

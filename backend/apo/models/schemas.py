@@ -187,7 +187,7 @@ class LoggedCallBase(SQLModel):
     created_at: datetime = Field(index=True)
     model: str
     latency_ms: float | None = Field(default=None, index=True)
-    cost: float | None = Field(default=None, index=True)
+    cost: int | None = Field(default=None, index=True)  # micro-USD int (SPEC-136 ticket 06)
 
     # === Langfuse-style observability fields ===
     parent_call_id: str | None = Field(
@@ -221,18 +221,27 @@ class LoggedCallBase(SQLModel):
     prompt_id: str | None = Field(default=None, index=True)  # Legacy prompt identifier
     prompt_version: int | None = Field(default=None)  # Legacy prompt version metadata
 
-    # Cost breakdown (provided vs calculated)
-    provided_cost: float | None = Field(default=None)  # User-reported cost
-    calculated_cost: float | None = Field(default=None)  # Calculated from usage
+    # Cost (SPEC-136 ticket 06). Effective total in micro-USD int. Provided by
+    # the SDK (verbatim) or computed from the frozen breakdown (sum of dims).
+    provided_cost: int | None = Field(default=None)  # micro-USD int; SDK-reported
+
+    # Per-call cost storage (SPEC-136 ticket 06): the frozen per-dimension
+    # breakdown, normalized raw usage, the matched model/tier, and provenance.
+    cost_breakdown: dict[str, int] | None = None  # JSON: {UsageKey: micro-USD}
+    raw_usage: dict[str, int] | None = None  # JSON: normalized usage map
+    matched_tier_id: int | None = Field(default=None)
+    matched_tier_name: str | None = Field(default=None)
+    cost_provenance: str | None = Field(default=None)  # "provided" | "computed"
 
     # Time to first token metric (completion_start_time - created_at)
     time_to_first_token_ms: float | None = Field(default=None)
 
-    # Model tracking (user-provided vs internal)
+    # Model tracking (user-provided vs internal). internal_model_id is now the
+    # FK to the matched models row (SPEC-136 ticket 06).
     provided_model_name: str | None = Field(default=None)  # What user specified
-    internal_model_id: str | None = Field(
+    internal_model_id: int | None = Field(
         default=None
-    )  # Internal ID for pricing lookup
+    )  # FK to models.id for the matched pricing row
 
     # Tool-specific fields (when observation_type = "TOOL")
     tool_name: str | None = Field(default=None)  # Name of the tool/function

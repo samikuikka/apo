@@ -1,0 +1,15 @@
+{
+  "description": "Anthropic cache_creation without TTL split. The whole cache_creation bucket lands in cache_write_5m (the default TTL tier) when no ephemeral breakdown is present.",
+  "source": "anthropic",
+  "provider": "anthropic",
+  "input": {
+    "gen_ai.usage.input_tokens": 1000,
+    "gen_ai.usage.output_tokens": 200,
+    "gen_ai.usage.cache_creation.input_tokens": 500
+  },
+  "expected": {
+    "input": 1000,
+    "output": 200,
+    "cache_write_5m": 500
+  }
+}

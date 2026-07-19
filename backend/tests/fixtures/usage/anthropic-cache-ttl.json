@@ -1,0 +1,20 @@
+{
+  "description": "Anthropic with cache_creation (5m + 1h split) and cache_read. Anthropic's input_tokens is already net of cache. cache_creation total is 500; the 5m/1h ephemeral subsets are 200+100=300, leaving 200 untagged residual which lands in the default (5m) tier. So cache_write_5m = 200 (tagged) + 200 (residual) = 400.",
+  "source": "anthropic",
+  "provider": "anthropic",
+  "input": {
+    "gen_ai.usage.input_tokens": 1000,
+    "gen_ai.usage.output_tokens": 200,
+    "gen_ai.usage.cache_read.input_tokens": 300,
+    "gen_ai.usage.cache_creation.input_tokens": 500,
+    "gen_ai.usage.cache_creation.ephemeral_5m_input_tokens": 200,
+    "gen_ai.usage.cache_creation.ephemeral_1h_input_tokens": 100
+  },
+  "expected": {
+    "input": 1000,
+    "output": 200,
+    "cache_read": 300,
+    "cache_write_5m": 400,
+    "cache_write_1h": 100
+  }
+}

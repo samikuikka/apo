@@ -1,0 +1,17 @@
+{
+  "description": "Unknown key pass-through (store-but-unpriced). A key with no canonical mapping is kept verbatim in the map; only input/output are priced.",
+  "source": "generic",
+  "provider": null,
+  "input": {
+    "gen_ai.usage.input_tokens": 1000,
+    "gen_ai.usage.output_tokens": 500,
+    "gen_ai.usage.cached_tokens": 250,
+    "gen_ai.usage.foobar_tokens": 99
+  },
+  "expected": {
+    "input": 1000,
+    "output": 500,
+    "cached_tokens": 250,
+    "foobar_tokens": 99
+  }
+}

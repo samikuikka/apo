@@ -1,0 +1,13 @@
+{
+  "description": "Generic fallback: OpenInference llm.token_count.* aliases.",
+  "source": "generic",
+  "provider": null,
+  "input": {
+    "llm.token_count.prompt": 1000,
+    "llm.token_count.completion": 500
+  },
+  "expected": {
+    "input": 1000,
+    "output": 500
+  }
+}

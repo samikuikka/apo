@@ -1,0 +1,17 @@
+{
+  "description": "Bedrock cache read + write. cacheRead is a subset of input_tokens (non-overlap). cacheWrite is the cache-creation bucket.",
+  "source": "bedrock",
+  "provider": "bedrock",
+  "input": {
+    "gen_ai.usage.input_tokens": 1000,
+    "gen_ai.usage.output_tokens": 200,
+    "gen_ai.usage.cache_read.input_tokens": 300,
+    "gen_ai.usage.cache_creation.input_tokens": 500
+  },
+  "expected": {
+    "input": 700,
+    "output": 200,
+    "cache_read": 300,
+    "cache_write_5m": 500
+  }
+}

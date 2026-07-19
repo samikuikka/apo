@@ -1,0 +1,15 @@
+{
+  "description": "Generic fallback with cache_read present (semconv-subset). cache_read is subtracted from input (non-overlap invariant). Note: generic recognizes cache_read.input_tokens as a canonical alias.",
+  "source": "generic",
+  "provider": null,
+  "input": {
+    "gen_ai.usage.input_tokens": 1000,
+    "gen_ai.usage.output_tokens": 200,
+    "gen_ai.usage.cache_read.input_tokens": 400
+  },
+  "expected": {
+    "input": 600,
+    "output": 200,
+    "cache_read": 400
+  }
+}

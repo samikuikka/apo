@@ -1,0 +1,13 @@
+{
+  "description": "Generic fallback: gen_ai.usage.* aliases (prompt_tokens/completion_tokens). No provider signal.",
+  "source": "generic",
+  "provider": null,
+  "input": {
+    "gen_ai.usage.prompt_tokens": 1000,
+    "gen_ai.usage.completion_tokens": 500
+  },
+  "expected": {
+    "input": 1000,
+    "output": 500
+  }
+}

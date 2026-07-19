@@ -1,0 +1,15 @@
+{
+  "description": "OpenAI with cached prompt tokens. cachedPromptTokens is a subset of input_tokens (OTel semconv). Non-overlap: input excludes cache_read.",
+  "source": "openai",
+  "provider": "openai",
+  "input": {
+    "gen_ai.usage.input_tokens": 1000,
+    "gen_ai.usage.output_tokens": 200,
+    "gen_ai.usage.cache_read.input_tokens": 400
+  },
+  "expected": {
+    "input": 600,
+    "cache_read": 400,
+    "output": 200
+  }
+}

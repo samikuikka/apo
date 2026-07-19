@@ -1,0 +1,13 @@
+{
+  "description": "Generic fallback: Vercel AI SDK ai.usage.* camelCase aliases.",
+  "source": "generic",
+  "provider": null,
+  "input": {
+    "ai.usage.promptTokens": 1000,
+    "ai.usage.completionTokens": 500
+  },
+  "expected": {
+    "input": 1000,
+    "output": 500
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "description": "Gemini 2.5 thinking model via official OTel genai instrumentation. reasoning.output_tokens is included in output_tokens; cache_read.input_tokens is a subset of input_tokens (non-overlap).",
+  "source": "gemini",
+  "provider": "gemini",
+  "input": {
+    "gen_ai.usage.input_tokens": 1000,
+    "gen_ai.usage.output_tokens": 500,
+    "gen_ai.usage.reasoning.output_tokens": 300,
+    "gen_ai.usage.cache_read.input_tokens": 200
+  },
+  "expected": {
+    "input": 800,
+    "output": 200,
+    "reasoning": 300,
+    "cache_read": 200
+  }
+}

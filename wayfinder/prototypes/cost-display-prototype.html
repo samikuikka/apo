@@ -1,0 +1,392 @@
+<!doctype html>
+<!--
+  PROTOTYPE — THROWAWAY. Not production code. Answers ticket 11's question:
+  "how should 1–N per-dimension cost dimensions look in the dashboard?"
+  Built to validate layout decisions; delete or fold the verdict into the spec.
+
+  Open directly in a browser: file://…/wayfinder/prototypes/cost-display-prototype.html
+  No build step, no deps. Uses apo's EXACT design tokens (globals.css) and the
+  tooltip's inverted (light-bg) surface so what you see matches production.
+
+  Surfaced states (each is a real case the cost system produces):
+    A. Computed call — 6 dimensions (the full enum from ticket 01)
+    B. Computed call — 2 dimensions (simple input/output)
+    C. Provided-scalar call — no breakdown (SDK gave a number, ticket 06)
+    D. Legacy call — pre-migration, no breakdown (ticket 09)
+    E. Unpriced dimension — reasoning key present, no price row (ticket 06)
+    F. Run aggregation — per-model rollup with a dimension mix
+-->
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>apo cost display — prototype (throwaway)</title>
+<style>
+  /* ---- EXACT tokens from apps/dashboard/src/app/globals.css ---- */
+  :root {
+    color-scheme: dark;
+    --background: oklch(0 0 0);
+    --foreground: oklch(1 0 0);
+    --card: oklch(0.18 0 0);
+    --popover: oklch(0.18 0 0);
+    --primary: oklch(1 0 0);
+    --primary-foreground: oklch(0 0 0);
+    --secondary: oklch(0.2 0 0);
+    --muted: oklch(0.2 0 0);
+    --muted-foreground: oklch(0.6 0 0);
+    --accent: oklch(0.25 0 0);
+    --border: oklch(0.28 0 0);
+    --destructive: oklch(0.5 0.22 25);
+    --success: oklch(0.65 0.15 155);
+    --warning: oklch(0.7 0.14 70);
+    --radius: 0;
+    /* font stacks (loaded by the Next app; degraded gracefully here) */
+    --font-sans: "Noto Sans", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; }
+  body { margin: 0; padding: 32px 40px 80px; }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted-foreground); }
+
+  /* page chrome */
+  h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 4px; }
+  .lede { color: var(--muted-foreground); font-size: 13px; max-width: 70ch; margin: 0 0 8px; }
+  .legend { color: var(--muted-foreground); font-size: 12px; margin: 0 0 32px; }
+  .legend code { font-family: var(--font-mono); color: var(--foreground); }
+  section.block { border-top: 1px solid var(--border); padding: 24px 0 0; margin-top: 32px; }
+  section.block:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
+  h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--muted-foreground); font-size: 12px; margin: 0 0 16px; }
+  .row { display: flex; align-items: flex-start; gap: 40px; flex-wrap: wrap; }
+  .cell { display: flex; flex-direction: column; gap: 8px; }
+  .cell .cap { color: var(--muted-foreground); font-size: 11px; }
+
+  /* ---- the surfaces under test ---- */
+
+  /* a cost "pill" in a table/tree (dark surface, like TraceTree) */
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+    background: color-mix(in oklch, var(--muted) 10%, transparent);
+    padding: 2px 6px; font-size: 11px; color: var(--muted-foreground);
+    cursor: help; position: relative; border-radius: 0;
+  }
+  .pill:hover { border-color: var(--border); color: var(--foreground); }
+
+  /* ---- TOOLTIP: inverted surface (bg-foreground text-background), matches tooltip.tsx ---- */
+  .tip {
+    /* visible-on-hover in real life; shown statically here so all states are comparable */
+    display: none; position: absolute; left: 0; top: calc(100% + 6px); z-index: 50;
+    background: var(--foreground); color: var(--background);
+    padding: 8px 10px; font-size: 12px; line-height: 1.5; width: max-content; max-width: 320px;
+    border-radius: 0;
+  }
+  .pill:hover .tip, .show-tip .tip { display: block; }
+  .tip .model { font-weight: 600; margin-bottom: 4px; font-family: var(--font-mono); font-size: 11px; }
+  .tip hr { border: 0; border-top: 1px solid color-mix(in oklch, var(--background) 20%, transparent); margin: 4px 0; }
+  .tip .dim { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; }
+  .tip .dim .k { color: color-mix(in oklch, var(--background) 65%, var(--foreground)); }
+  .tip .dim .v { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .tip .total { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; }
+  .tip .total .k { font-weight: 600; }
+  .tip .total .v { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; }
+  .tip .prov { color: color-mix(in oklch, var(--background) 60%, var(--foreground)); margin-top: 4px; font-size: 11px; }
+  .tip .warn { color: var(--warning); margin-top: 4px; font-size: 11px; }
+  .tip .legacy { color: color-mix(in oklch, var(--background) 60%, var(--foreground)); margin-top: 4px; font-size: 11px; }
+
+  /* family grouping (input-family / output-family) */
+  .tip .fam { color: color-mix(in oklch, var(--background) 50%, var(--foreground)); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 6px; margin-bottom: 2px; }
+  .tip .fam:first-of-type { margin-top: 0; }
+
+  /* stacked-bar breakdown (inline, compact) */
+  .stack { display: inline-flex; height: 4px; width: 60px; vertical-align: middle; margin-left: 6px; }
+  .stack span { display: block; height: 100%; }
+
+  /* dimension color assignment — monochrome shades, NOT rainbow.
+     design.md: "Color = state, not decoration." Cost dimensions aren't state;
+     they're identity. So we use grayscale steps, reserving hue for *warnings*. */
+  .c-input        { background: oklch(0.95 0 0); }
+  .c-cache_read   { background: oklch(0.75 0 0); }
+  .c-cache_write_5m { background: oklch(0.60 0 0); }
+  .c-cache_write_1h { background: oklch(0.50 0 0); }
+  .c-output       { background: oklch(0.40 0 0); }
+  .c-reasoning    { background: oklch(0.30 0 0); }
+  .c-unpriced     { background: color-mix(in oklch, var(--warning) 50%, transparent); }
+
+  /* run/section metric block */
+  .metric-block { border: 1px solid var(--border); padding: 16px; min-width: 360px; }
+  .metric-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px solid color-mix(in oklch, var(--border) 60%, transparent); }
+  .metric-row:last-child { border-bottom: 0; }
+  .metric-row .label { color: var(--muted-foreground); font-size: 11px; }
+  .metric-row .value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 13px; }
+
+  /* model breakdown list */
+  .mb { border: 1px solid var(--border); padding: 12px 16px; min-width: 420px; }
+  .mb-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 10px 0; border-bottom: 1px solid color-mix(in oklch, var(--border) 60%, transparent); }
+  .mb-row:last-child { border-bottom: 0; }
+  .mb-row .name { font-family: var(--font-mono); font-size: 12px; }
+  .mb-row .count { color: var(--muted-foreground); font-size: 11px; margin-top: 2px; }
+  .mb-row .cost { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; text-align: right; }
+  .mb-row .mix { grid-column: 1 / -1; margin-top: 6px; }
+  .mb-row .mix .bar { display: flex; height: 3px; width: 100%; }
+  .mb-row .mix .bar span { display: block; height: 100%; }
+  .mb-row .mix .legend { display: flex; gap: 10px; margin-top: 4px; font-size: 10px; color: var(--muted-foreground); }
+  .mb-row .mix .legend span { display: inline-flex; align-items: center; gap: 3px; }
+  .mb-row .mix .legend i { display: inline-block; width: 7px; height: 7px; }
+
+  .note { border-left: 2px solid var(--warning); background: color-mix(in oklch, var(--warning) 8%, transparent); padding: 8px 12px; font-size: 12px; color: var(--muted-foreground); margin: 12px 0; max-width: 70ch; }
+  .note strong { color: var(--foreground); }
+</style>
+</head>
+<body>
+
+<h1>Cost display — per-dimension breakdown</h1>
+<p class="lede">
+  Prototype for ticket 11. Every call can now carry 1–6 priceable dimensions
+  (ticket 01). This shows the proposed layouts for the tooltip, the trace-detail
+  costs tab, and the run/session rollup — across every state the cost system
+  produces. Hover any pill to see its tooltip; all tooltips are also shown
+  pinned below for side-by-side comparison.
+</p>
+<p class="legend">
+  Tokens match <code>globals.css</code> exactly. Tooltip surface is inverted
+  (<code>bg-foreground text-background</code>) like <code>tooltip.tsx</code>.
+  Dimensions use <strong>monochrome shades</strong>, not hues — color is state
+  per <code>design.md</code>, and a dimension is identity, not state.
+</p>
+
+<!-- ============================================================ -->
+<!-- A. THE TOOLTIP — every state side by side                     -->
+<!-- ============================================================ -->
+<section class="block">
+  <h2>1 · Call cost tooltip (the primary surface)</h2>
+  <p class="sub">Hover a pill. Or read the pinned versions below. Dimensions are <strong>grouped by family</strong> (input-side / output-side), <strong>sorted within family</strong> by descending magnitude, zero-cost dimensions hidden. Total on its own row above the rule.</p>
+
+  <div class="row">
+
+    <!-- A. computed, full 6-dim -->
+    <div class="cell">
+      <span class="cap">A · computed, 6 dims (hover)</span>
+      <span class="pill mono">
+        ∑ $0.0184
+        <div class="tip">
+          <div class="model">claude-sonnet-4.5</div>
+          <div class="total"><span class="k">Total</span><span class="v">$0.0184</span></div>
+          <hr>
+          <div class="fam">Input</div>
+          <div class="dim">
+            <span class="k">input · 1,240 tok</span><span class="v">$0.0093</span>
+            <span class="k">cache_read · 8,900 tok</span><span class="v">$0.0027</span>
+            <span class="k">cache_write_5m · 310 tok</span><span class="v">$0.0009</span>
+          </div>
+          <div class="fam">Output</div>
+          <div class="dim">
+            <span class="k">output · 540 tok</span><span class="v">$0.0050</span>
+            <span class="k">reasoning · 220 tok</span><span class="v">$0.0005</span>
+          </div>
+          <div class="prov">computed · tier: large-context</div>
+        </div>
+      </span>
+    </div>
+
+    <!-- B. computed, 2 dims (simple) -->
+    <div class="cell">
+      <span class="cap">B · computed, 2 dims (hover)</span>
+      <span class="pill mono">
+        $0.0021
+        <div class="tip">
+          <div class="model">gpt-4o-mini</div>
+          <div class="total"><span class="k">Total</span><span class="v">$0.0021</span></div>
+          <hr>
+          <div class="fam">Input</div>
+          <div class="dim">
+            <span class="k">input · 8,300 tok</span><span class="v">$0.0017</span>
+          </div>
+          <div class="fam">Output</div>
+          <div class="dim">
+            <span class="k">output · 410 tok</span><span class="v">$0.0004</span>
+          </div>
+          <div class="prov">computed</div>
+        </div>
+      </span>
+    </div>
+
+    <!-- C. provided-scalar -->
+    <div class="cell">
+      <span class="cap">C · provided-scalar (hover)</span>
+      <span class="pill mono">
+        $0.0150
+        <div class="tip">
+          <div class="model">gpt-4o</div>
+          <div class="total"><span class="k">Total</span><span class="v">$0.0150</span></div>
+          <div class="prov">provided by SDK · no breakdown</div>
+        </div>
+      </span>
+    </div>
+
+    <!-- D. legacy -->
+    <div class="cell">
+      <span class="cap">D · legacy pre-migration (hover)</span>
+      <span class="pill mono">
+        $0.0120
+        <div class="tip">
+          <div class="model">claude-3.5-sonnet</div>
+          <div class="total"><span class="k">Total</span><span class="v">$0.0120</span></div>
+          <div class="legacy">legacy call · no breakdown stored (pre-migration)</div>
+        </div>
+      </span>
+    </div>
+
+    <!-- E. unpriced dimension -->
+    <div class="cell">
+      <span class="cap">E · unpriced dimension (hover)</span>
+      <span class="pill mono">
+        $0.0071
+        <div class="tip">
+          <div class="model">o3</div>
+          <div class="total"><span class="k">Total</span><span class="v">$0.0071</span></div>
+          <hr>
+          <div class="fam">Input</div>
+          <div class="dim">
+            <span class="k">input · 2,100 tok</span><span class="v">$0.0042</span>
+          </div>
+          <div class="fam">Output</div>
+          <div class="dim">
+            <span class="k">output · 520 tok</span><span class="v">$0.0029</span>
+            <span class="k" style="color:var(--warning)">reasoning · 980 tok</span><span class="v" style="color:var(--warning)">unpriced</span>
+          </div>
+          <div class="warn">⚠ reasoning has no price for this model</div>
+          <div class="prov">computed</div>
+        </div>
+      </span>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <strong>Decision candidates for the tooltip:</strong>
+    (1) group by family + sort by magnitude — scales 1→6 dims without a layout
+    jump; (2) hide zero-cost rows (a dimension priced at 0 for this call isn't
+    interesting); (3) total above the rule so the eye lands on it first;
+    (4) provenance as a quiet footer line (<code>computed</code> /
+    <code>provided</code>), not a parallel "Provided: $X · Calculated: $Y" row —
+    ticket 06 collapsed that split, the tooltip shouldn't re-show it;
+    (5) unpriced dimensions surfaced in <code>--warning</code> amber so a mispriced
+    model is visible, not silent.
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- B. TRACE DETAIL — costs tab                                   -->
+<!-- ============================================================ -->
+<section class="block">
+  <h2>2 · Trace detail — "costs" tab (run-level)</h2>
+  <p class="sub">Total + avg/call stay. Per-model breakdown gains a <strong>dimension mix bar</strong> under each model — one glance shows whether a model's cost is input-dominated, cache-heavy, or reasoning-heavy. No client-side recompute; these are stored breakdowns summed.</p>
+
+  <div class="row">
+    <div class="metric-block">
+      <div class="metric-row"><span class="label">Total cost</span><span class="value">$0.0478</span></div>
+      <div class="metric-row"><span class="label">Avg / call</span><span class="value">$0.0096</span></div>
+      <div class="metric-row"><span class="label">Avg latency</span><span class="value">1,840ms</span></div>
+      <div class="metric-row"><span class="label">Priced calls</span><span class="value">5 / 5</span></div>
+    </div>
+
+    <div class="mb">
+      <div class="mb-row">
+        <div>
+          <div class="name">claude-sonnet-4.5</div>
+          <div class="count">3 calls</div>
+        </div>
+        <div class="cost">$0.0392</div>
+        <div class="mix">
+          <div class="bar">
+            <span class="c-input"        style="width:38%"></span>
+            <span class="c-cache_read"   style="width:11%"></span>
+            <span class="c-cache_write_5m" style="width:4%"></span>
+            <span class="c-output"       style="width:33%"></span>
+            <span class="c-reasoning"    style="width:14%"></span>
+          </div>
+        </div>
+      </div>
+      <div class="mb-row">
+        <div>
+          <div class="name">gpt-4o-mini</div>
+          <div class="count">2 calls</div>
+        </div>
+        <div class="cost">$0.0086</div>
+        <div class="mix">
+          <div class="bar">
+            <span class="c-input"   style="width:72%"></span>
+            <span class="c-output"  style="width:28%"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>The mix bar is the new affordance.</strong> It's 3px tall (present,
+    not loud), monochrome, and uses the same shade-per-dimension key as the
+    tooltip so the two surfaces share one legend. A model that's 90% input
+    (cache miss) vs one that's 60% cache_read (cache hit) look visibly different
+    at a glance — the debuggability the per-dimension breakdown exists to
+    provide. Hovering a segment in production would isolate that dimension; in
+    this throwaway it's static.
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- C. AGGREGATION — runs/sessions list                           -->
+<!-- ============================================================ -->
+<section class="block">
+  <h2>3 · Runs &amp; sessions list — compact</h2>
+  <p class="sub">List views stay scalar (a single total per run) — a dimension breakdown doesn't belong in a dense table row. The tooltip-on-hover carries the mix for anyone who wants it. Unpriced calls surface with the warning amber instead of being silently zero.</p>
+
+  <div class="row">
+    <div class="cell">
+      <span class="cap">normal run</span>
+      <span class="pill mono">∑ $0.0478</span>
+    </div>
+    <div class="cell">
+      <span class="cap">unpriced call in run (partial total)</span>
+      <span class="pill mono" style="color:var(--warning); border-color:color-mix(in oklch,var(--warning) 50%, transparent)">∑ $0.0230 ⚠</span>
+    </div>
+    <div class="cell">
+      <span class="cap">legacy run (no breakdown)</span>
+      <span class="pill mono">∑ $0.0120</span>
+    </div>
+    <div class="cell">
+      <span class="cap">no cost data</span>
+      <span class="pill mono">—</span>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>Unpriced = amber, not red.</strong> Red (<code>--destructive</code>)
+    is reserved for errors in this design system. A call that genuinely has no
+    price match isn't an error, it's "data we couldn't price" —
+    <code>--warning</code> amber. The ⚠ signals "this total is partial; some
+    calls were unpriced." This is the <em>only</em> new color rule; everything
+    else stays monochrome per <code>design.md</code>.
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- D. DECISIONS THIS PROTOTYPE VALIDATES                         -->
+<!-- ============================================================ -->
+<section class="block">
+  <h2>4 · What this prototype decides</h2>
+  <div style="max-width:72ch; font-size:13px; line-height:1.7;">
+    <p><strong>① Group by family, sort by magnitude.</strong> Input-family (<code>input, cache_read, cache_write_5m, cache_write_1h</code>) and output-family (<code>output, reasoning</code>) as labeled groups; within each, largest-cost first. Scales 1→6 dims without a layout jump, and reads naturally (biggest cost is most visible).</p>
+    <p><strong>② Provenance is a quiet footer, not a parallel row.</strong> The old "Provided: $X · Calculated: $Y" two-number display is gone — ticket 06 collapsed that into one effective total + a provenance flag. The tooltip honors that: one total, a small <code>computed</code> / <code>provided by SDK</code> line at the bottom. The divergence-flag logic (<code>Math.abs(provided - calculated) &gt; 0.0001</code>) is deleted with it.</p>
+    <p><strong>③ Client-side recompute is removed.</strong> <code>model-pricing.ts</code>'s <code>fetchModelPricing</code> / <code>matchModelPricing</code> / <code>computeCallBreakdown</code> are deleted. The dashboard reads stored <code>cost_breakdown</code> (ticket 06) directly. The regex-anchoring mismatch (frontend <code>^…$</code> vs backend <code>re.search</code>) dies with it — ticket 10 made matching server-side only.</p>
+    <p><strong>④ Unpriced dimensions surface in amber.</strong> A usage key present in <code>raw_usage</code> but with no price row shows as <code>reasoning · 980 tok — unpriced</code> in <code>--warning</code>, with a ⚠ footer. Makes a mispriced model debuggable after the fact — the stated purpose of storing per-dimension breakdown (locked decision 3).</p>
+    <p><strong>⑤ Legacy calls render "no breakdown."</strong> Pre-migration calls (ticket 09: <code>cost_breakdown</code>/<code>raw_usage</code> null) show the scalar total + a quiet "legacy call · no breakdown stored" footer. No synthesis from current prices (that would be misleading per ticket 04's time-windowing).</p>
+    <p><strong>⑥ Dimension identity = monochrome shades, never hue.</strong> Six grayscale steps for the six canonical keys. <code>design.md</code> says color is state, not decoration; a dimension is identity. Hue is reserved for the one genuine state change: unpriced = amber warning.</p>
+  </div>
+</section>
+
+</body>
+</html>

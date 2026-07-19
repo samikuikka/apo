@@ -1,0 +1,13 @@
+{
+  "description": "OpenAI plain usage (no cache/reasoning). gen_ai.usage.* semconv.",
+  "source": "openai",
+  "provider": "openai",
+  "input": {
+    "gen_ai.usage.input_tokens": 1000,
+    "gen_ai.usage.output_tokens": 500
+  },
+  "expected": {
+    "input": 1000,
+    "output": 500
+  }
+}

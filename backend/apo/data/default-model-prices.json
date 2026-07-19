@@ -1,0 +1,371 @@
+{
+  "_comment": "Bundled default model prices for apo. Loaded idempotently on startup (SPEC-136 ticket 07); this file is the SOLE source of truth for __global__ models. Per-project overrides come via the API (ticket 10). Units: USD per 1M tokens, human-readable (e.g. 2.50 = $2.50/1M); converted to micro-USD-per-million ints at load (ticket 02 #3). Pricing keys are the canonical UsageKeys (ticket 01): input, cache_read, cache_write_5m, cache_write_1h, output, reasoning. Tier conditions use ticket 05's {keys,operator,threshold} shape; the large-context tier sums input+cache_read (cached tokens occupy the context window). updated_at is pinned from JSON (NOT now()) and used for per-model exact-equality idempotency. Maintenance: see ticket 08 — review cadence is on-demand, ownership is 'whoever ships a release'.",
+  "_format": {
+    "match_pattern": "anchored regex; matched via re.fullmatch(pattern, name, re.IGNORECASE)",
+    "prices": "USD per 1M tokens; canonical usage keys: input, cache_read, cache_write_5m, cache_write_1h, output, reasoning",
+    "last_reviewed": "YYYY-MM; maintainer-facing staleness signal (JSON-only, never written to DB)",
+    "updated_at": "ISO datetime; pinned from JSON for per-model idempotency; bump to force a re-write"
+  },
+  "models": [
+    {
+      "match_pattern": "(?i)^claude-sonnet-4-5$",
+      "provider": "anthropic",
+      "display_name": "Claude Sonnet 4.5",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 3.00,
+            "cache_read": 0.30,
+            "cache_write_5m": 3.75,
+            "cache_write_1h": 6.00,
+            "output": 15.00
+          }
+        }
+      ]
+    },
+    {
+      "match_pattern": "(?i)^claude-opus-4-5$",
+      "provider": "anthropic",
+      "display_name": "Claude Opus 4.5",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 15.00,
+            "cache_read": 1.50,
+            "cache_write_5m": 18.75,
+            "cache_write_1h": 30.00,
+            "output": 75.00
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "Cache-tiered model (golden shape #3, ticket 13 §5): exercises the cache_read / cache_write_5m / cache_write_1h distinct priced dimensions.",
+      "match_pattern": "(?i)^claude-3[.-]5-sonnet.*$",
+      "provider": "anthropic",
+      "display_name": "Claude 3.5 Sonnet",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 3.00,
+            "cache_read": 0.30,
+            "cache_write_5m": 3.75,
+            "output": 15.00
+          }
+        }
+      ]
+    },
+    {
+      "match_pattern": "(?i)^claude-3[.-]5-haiku.*$",
+      "provider": "anthropic",
+      "display_name": "Claude 3.5 Haiku",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 0.80,
+            "cache_read": 0.08,
+            "cache_write_5m": 1.00,
+            "output": 4.00
+          }
+        }
+      ]
+    },
+    {
+      "match_pattern": "(?i)^gpt-4o$",
+      "provider": "openai",
+      "display_name": "GPT-4o",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 2.50,
+            "cache_read": 1.25,
+            "output": 10.00
+          }
+        }
+      ]
+    },
+    {
+      "match_pattern": "(?i)^gpt-4o-mini$",
+      "provider": "openai",
+      "display_name": "GPT-4o mini",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 0.15,
+            "cache_read": 0.075,
+            "output": 0.60
+          }
+        }
+      ]
+    },
+    {
+      "match_pattern": "(?i)^gpt-4\\.1$",
+      "provider": "openai",
+      "display_name": "GPT-4.1",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 2.00,
+            "cache_read": 0.50,
+            "output": 8.00
+          }
+        }
+      ]
+    },
+    {
+      "match_pattern": "(?i)^gpt-4\\.1-mini$",
+      "provider": "openai",
+      "display_name": "GPT-4.1 mini",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 0.40,
+            "cache_read": 0.10,
+            "output": 1.60
+          }
+        }
+      ]
+    },
+    {
+      "match_pattern": "(?i)^gpt-4\\.1-nano$",
+      "provider": "openai",
+      "display_name": "GPT-4.1 nano",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 0.10,
+            "cache_read": 0.025,
+            "output": 0.40
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "Reasoning model (golden shape #4, ticket 13 §5): exercises the reasoning output dimension and the unpriced-key skip when reasoning has no price row. Note: o3 prices reasoning as part of output here (OpenAI bills o3 output including thinking); a model that prices reasoning separately would add a 'reasoning' key.",
+      "match_pattern": "(?i)^o3$",
+      "provider": "openai",
+      "display_name": "o3",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 2.00,
+            "cache_read": 0.50,
+            "output": 8.00
+          }
+        }
+      ]
+    },
+    {
+      "match_pattern": "(?i)^o3-mini$",
+      "provider": "openai",
+      "display_name": "o3-mini",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 1.10,
+            "cache_read": 0.55,
+            "output": 4.40
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "Large-context-tiered model (golden shape #2, ticket 13 §5): the threshold sums input+cache_read (cached tokens occupy the context window). When the read-side family exceeds 200k, the large-context tier doubles input price.",
+      "match_pattern": "(?i)^gemini-2\\.5-pro$",
+      "provider": "gemini",
+      "display_name": "Gemini 2.5 Pro",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 1.25,
+            "cache_read": 0.3125,
+            "output": 10.00
+          }
+        },
+        {
+          "name": "large-context",
+          "is_default": false,
+          "priority": 1,
+          "conditions": [
+            {
+              "keys": ["input", "cache_read"],
+              "operator": "gt",
+              "threshold": 200000
+            }
+          ],
+          "prices": {
+            "input": 2.50,
+            "cache_read": 0.625,
+            "output": 15.00
+          }
+        }
+      ]
+    },
+    {
+      "match_pattern": "(?i)^gemini-2\\.5-flash$",
+      "provider": "gemini",
+      "display_name": "Gemini 2.5 Flash",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 0.075,
+            "cache_read": 0.01875,
+            "output": 0.30
+          }
+        }
+      ]
+    },
+    {
+      "match_pattern": "(?i)^gemini-2\\.0-flash$",
+      "provider": "gemini",
+      "display_name": "Gemini 2.0 Flash",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 0.10,
+            "cache_read": 0.025,
+            "output": 0.40
+          }
+        }
+      ]
+    },
+    {
+      "match_pattern": "(?i)^command-r-plus$",
+      "provider": "generic",
+      "display_name": "Command R+",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 2.50,
+            "output": 10.00
+          }
+        }
+      ]
+    },
+    {
+      "match_pattern": "(?i)^command-r$",
+      "provider": "generic",
+      "display_name": "Command R",
+      "start_date": null,
+      "updated_at": "2026-07-22T00:00:00Z",
+      "last_reviewed": "2026-07",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 0.50,
+            "output": 1.50
+          }
+        }
+      ]
+    }
+  ]
+}

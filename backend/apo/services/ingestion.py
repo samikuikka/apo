@@ -22,7 +22,7 @@ from ..ingestion_helpers import (
 )
 from ..models.db import LoggedCallDB, RunDB
 from ..models.schemas import MessageList
-from ..services.cost_calculation import calculate_cost_for_model
+from ..services.pricing.apply import apply_cost_to_call
 from ..services.scoring import (
     create_observation_score,
     create_trace_score,
@@ -59,6 +59,58 @@ def _get_message_list(body: dict[str, object], key: str) -> MessageList:
         if isinstance(item, dict):
             messages.append(dict(cast(dict[str, object], item)))
     return messages
+
+
+def _ingestion_usage_attributes(body: dict[str, object]) -> dict[str, object]:
+    """Build an OTel-style attribute map from a legacy ingestion body.
+
+    The legacy direct-writer carries flat ``prompt_tokens``/``completion_tokens``
+    (and optionally richer usage under ``usage`` / ``raw_usage``). Map these onto
+    the canonical OTel gen_ai.usage.* keys the normalizer reads. If the body
+    already carries a ``usage``/``raw_usage`` map (post-SPEC-136 SDK), forward
+    it losslessly.
+    """
+    attrs: dict[str, object] = {}
+    prompt = _get_optional_int(body, "prompt_tokens")
+    completion = _get_optional_int(body, "completion_tokens")
+    if prompt is not None:
+        attrs["gen_ai.usage.input_tokens"] = prompt
+    if completion is not None:
+        attrs["gen_ai.usage.output_tokens"] = completion
+
+    # Forward any richer usage the SDK carried (canonical keys or aliases).
+    for key in ("usage", "raw_usage"):
+        extra = body.get(key)
+        if isinstance(extra, dict):
+            for k, v in cast(dict[str, object], extra).items():
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    _ = attrs.setdefault(k, int(v))
+    return attrs
+
+
+def _apply_ingestion_cost(
+    session: Session,
+    call: LoggedCallDB,
+    body: dict[str, object],
+    at_time: datetime,
+) -> None:
+    """Normalize usage + freeze cost on a legacy-ingested call (SPEC-136 ticket 06).
+
+    Shared seam with the canonical projector: build an attribute map from the
+    legacy body, then provided-wins-verbatim-else-compute. The body's
+    ``cost``/``provided_cost`` (micro-USD int) are already on ``call``.
+    """
+    attrs = _ingestion_usage_attributes(body)
+    provider = _get_optional_str(body, "provider")
+    apply_cost_to_call(
+        session,
+        call,
+        attributes=attrs,
+        provider=provider,
+        project=call.project,
+        at_time=at_time,
+    )
+
 
 
 async def process_call_create(body: dict[str, object], session: Session) -> None:
@@ -116,7 +168,7 @@ async def process_call_create(body: dict[str, object], session: Session) -> None
         created_at=created_at,
         model=model_name,
         latency_ms=latency_ms,
-        cost=_get_optional_float(body, "cost"),
+        cost=_get_optional_int(body, "cost"),
         parent_call_id=_get_optional_str(body, "parent_call_id"),
         observation_type=_get_str(body, "observation_type", "GENERATION"),
         level=_get_str(body, "level", "DEFAULT"),
@@ -131,11 +183,9 @@ async def process_call_create(body: dict[str, object], session: Session) -> None
         total_tokens=total_tokens,
         prompt_id=_get_optional_str(body, "prompt_id"),
         prompt_version=_get_optional_int(body, "prompt_version"),
-        provided_cost=_get_optional_float(body, "provided_cost"),
-        calculated_cost=_get_optional_float(body, "calculated_cost"),
+        provided_cost=_get_optional_int(body, "provided_cost"),
         time_to_first_token_ms=time_to_first_token_ms,
         provided_model_name=_get_optional_str(body, "provided_model_name"),
-        internal_model_id=_get_optional_str(body, "internal_model_id"),
         tool_name=_get_optional_str(body, "tool_name"),
         tool_parameters=_get_optional_json_map(body, "tool_parameters"),
         tool_result=_get_optional_json_map(body, "tool_result"),
@@ -146,12 +196,10 @@ async def process_call_create(body: dict[str, object], session: Session) -> None
         meta=_get_optional_json_map(body, "metadata"),
     )
 
-    if prompt_tokens is not None and completion_tokens is not None:
-        calculated = calculate_cost_for_model(
-            session, model_name, prompt_tokens, completion_tokens
-        )
-        if calculated is not None:
-            call.calculated_cost = calculated
+    # SPEC-136 ticket 06: normalize usage + freeze cost (shared seam with the
+    # canonical projector). Provided cost wins verbatim; else compute.
+    if call.observation_type == "GENERATION" and model_name and model_name != "unknown":
+        _apply_ingestion_cost(session, call, body, created_at)
 
     _ = session.merge(call)
     session.commit()
@@ -203,7 +251,7 @@ async def process_call_update(body: dict[str, object], session: Session) -> None
     if "completion_tokens" in body:
         call.completion_tokens = _get_optional_int(body, "completion_tokens")
     if "cost" in body:
-        call.cost = _get_optional_float(body, "cost")
+        call.cost = _get_optional_int(body, "cost")
     if "status_message" in body:
         call.status_message = _get_optional_str(body, "status_message")
     if "level" in body:
@@ -223,9 +271,7 @@ async def process_call_update(body: dict[str, object], session: Session) -> None
     if "prompt_version" in body:
         call.prompt_version = _get_optional_int(body, "prompt_version")
     if "provided_cost" in body:
-        call.provided_cost = _get_optional_float(body, "provided_cost")
-    if "calculated_cost" in body:
-        call.calculated_cost = _get_optional_float(body, "calculated_cost")
+        call.provided_cost = _get_optional_int(body, "provided_cost")
     if "time_to_first_token_ms" in body:
         call.time_to_first_token_ms = _get_optional_float(
             body, "time_to_first_token_ms"
@@ -238,8 +284,6 @@ async def process_call_update(body: dict[str, object], session: Session) -> None
             call.time_to_first_token_ms = delta.total_seconds() * 1000
     if "provided_model_name" in body:
         call.provided_model_name = _get_optional_str(body, "provided_model_name")
-    if "internal_model_id" in body:
-        call.internal_model_id = _get_optional_str(body, "internal_model_id")
     if "tool_name" in body:
         call.tool_name = _get_optional_str(body, "tool_name")
     if "tool_parameters" in body:
@@ -253,12 +297,10 @@ async def process_call_update(body: dict[str, object], session: Session) -> None
     if "tags" in body:
         call.tags = _get_string_list(body, "tags")
 
-    if call.prompt_tokens is not None and call.completion_tokens is not None:
-        calculated = calculate_cost_for_model(
-            session, call.model, call.prompt_tokens, call.completion_tokens
-        )
-        if calculated is not None:
-            call.calculated_cost = calculated
+    # SPEC-136 ticket 06: re-normalize usage + re-freeze cost on update when
+    # the call is a priced GENERATION. Provided cost still wins verbatim.
+    if call.observation_type == "GENERATION" and call.model and call.model != "unknown":
+        _apply_ingestion_cost(session, call, body, call.created_at or datetime.now(timezone.utc))
 
     session.commit()
 
