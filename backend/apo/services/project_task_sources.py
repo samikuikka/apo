@@ -239,11 +239,21 @@ def ensure_demo_task_source(session: Session) -> None:
     Called during demo workspace seeding so the demo project advertises
     its source explicitly instead of relying on the legacy
     ``DEFAULT_TASK_ROOT`` fallback. Idempotent: if a demo source already
-    exists it is left untouched.
+    exists it is left untouched (apart from the inventory repair below).
 
     On first creation, also seeds the demo task inventory from the
     bundled example-service workspace so the project-scoped
     ``/v1/projects/demo/agent-tasks`` endpoint returns real tasks.
+
+    Existing deployments whose demo inventory was seeded with the wrong
+    task-id scheme (full relative paths like
+    ``e2e/agent-task-demo/tasks/<agent>/<task>`` instead of the
+    folder-scoped ``<agent>/<task>`` form that discovery produces and
+    ``agent_task_runs`` stores) are repaired here: the inventory is
+    compared against a fresh discovery, and any mismatch triggers a
+    re-seed. This matters because run-stats lookup joins inventory rows
+    to runs on ``task_id``, so a mismatched scheme silently drops every
+    demo run from the UI.
     """
     demo_project = session.get(ProjectDB, DEMO_PROJECT_ID)
     if demo_project is None:
@@ -251,6 +261,7 @@ def ensure_demo_task_source(session: Session) -> None:
 
     existing = get_task_source_db(session, DEMO_PROJECT_ID)
     if existing is not None:
+        _repair_demo_inventory_if_needed(session, existing)
         return
 
     now = datetime.now(timezone.utc)
@@ -275,6 +286,46 @@ def ensure_demo_task_source(session: Session) -> None:
     from .project_task_inventory import seed_demo_inventory
 
     _ = seed_demo_inventory(session, row)
+
+
+def _repair_demo_inventory_if_needed(
+    session: Session, source: ProjectTaskSourceDB
+) -> None:
+    """Re-seed the demo inventory if its task ids don't match discovery.
+
+    Demo inventory is seeded once and never re-synced (the sync endpoint
+    rejects the demo project), so a bad seed — e.g. from an older
+    ``DEMO_TASK_ROOT`` that pointed one directory too high and leaked
+    ``e2e/agent-task-demo/tasks/`` into every task id — would otherwise
+    persist forever and break run-stats joins. Running this on every
+    ``ensure_demo_task_source`` call lets existing deployments self-heal
+    on the next startup.
+
+    Cheap when the inventory is already correct: discovery is the only
+    filesystem work, and it short-circuits on an exact id-set match.
+    """
+    from .agent_task_discovery import discover_agent_tasks
+    from .paths import demo_task_root
+    from .project_task_inventory import (
+        list_inventory_for_project,
+        seed_demo_inventory,
+    )
+
+    discovered = discover_agent_tasks(demo_task_root())
+    expected_ids = {task.id for task in discovered}
+    if not expected_ids:
+        # Nothing to seed against (demo workspace not bundled in this
+        # image). Leave whatever is there rather than wiping real rows.
+        return
+
+    current_ids = {
+        row.task_id
+        for row in list_inventory_for_project(session, DEMO_PROJECT_ID)
+    }
+    if current_ids == expected_ids:
+        return
+
+    _ = seed_demo_inventory(session, source)
 
 
 def _default_display_name(source_type: str) -> str:
