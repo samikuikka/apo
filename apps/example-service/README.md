@@ -4,7 +4,8 @@ A Next.js app that hosts:
 
 1. **`POST /api/agent/chat`** — a small agent chat endpoint with tool-calling
 2. **The agent-task e2e demo** (`e2e/agent-task-demo/`) — the demo dataset and
-   adapters consumed by the agent-task evaluation feature and `pnpm e2e`
+   adapters consumed by the agent-task evaluation feature and the `apo` CLI
+   (`apo task run`)
 
 It runs on **:3001**. `pnpm dev` at the repo root starts it alongside the
 dashboard (:3000), backend (:8000), and Python example service (:3002).
@@ -55,8 +56,11 @@ four in-memory tools: `read_file`, `list_files`, `search_content`, `compute`.
 
 ## Agent-task e2e
 
+Tasks run through the `apo` CLI (the same command local dev, CI, and the
+dashboard use — there's no separate runner here):
+
 ```bash
-pnpm --filter example-service e2e -- --task e2e/agent-task-demo/tasks/real-agent/documents/data-extraction
+apo task run real-agent/documents/data-extraction --dir e2e/agent-task-demo
 ```
 
 The demo tree lives under `e2e/agent-task-demo/`:
@@ -103,8 +107,8 @@ pattern that works but couples agent concerns to apo. The `claude` adapter
 demonstrates the target separation.
 
 > **Note:** the Claude Agent SDK spawns a Claude Code subprocess, so its
-> platform binary must be available in the environment where `pnpm e2e` runs
-> (or in the Docker image).
+> platform binary must be available in the environment where `apo task run`
+> runs (or in the Docker image).
 
 The backend bundles this tree into its Docker image as `DEMO_TASK_ROOT`.
 

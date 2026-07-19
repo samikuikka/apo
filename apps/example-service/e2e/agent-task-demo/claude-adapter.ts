@@ -25,15 +25,9 @@
  *
  *   Result: the SDK's LLM-generation and tool-call spans land in the SAME apo
  *   trace as the run, nested under the active `task.turn` span. No
- *   `registerApoTracing()`, no `createApoAnthropic` — pure native OTel.
- *
- *   One caveat: because the SDK runs in a subprocess, its spans export over
- *   OTLP to the backend (visible in the apo UI) but do NOT pass through apo's
- *   in-process trace projection — the surface eval assertions like
- *   `t.calledTool(...)` read. To keep assertions meaningful, `sendUserTurn`
- *   mirrors each tool call the SDK reported (from its stream) into the
- *   projection as a TOOL span. The SDK stream remains the source of truth;
- *   this just bridges subprocess activity into the local assertion surface.
+ *   `registerApoTracing()`, no `createApoAnthropic`, no manual spans — pure
+ *   native OTel. The eval reads them back from the backend via Track C
+ *   (runTask.ts), so the adapter needs zero trace instrumentation.
  */
 import { join } from "path";
 import { defineAdapter } from "@apo/sdk/agent-task";
@@ -80,36 +74,13 @@ export const claudeAdapter = defineAdapter({
     const state = (ctx.state ?? EMPTY_STATE) as ClaudeSessionState;
 
     return {
-      async sendUserTurn(turn: unknown, { trace, parentSpanId }) {
+      async sendUserTurn(turn: unknown) {
         state.turnCount++;
-        const { text, is_error, num_turns, tool_calls } = await runClaudeAgent({
+        const { text, is_error, num_turns } = await runClaudeAgent({
           prompt: String(turn),
           cwd,
           env: buildOtelEnv(),
-          model: process.env.CLAUDE_MODEL,
         });
-
-        // The SDK runs in a separate subprocess. Its OTel spans export
-        // natively to the backend over OTLP (visible in the apo UI), but they
-        // do NOT pass through apo's in-process trace projection — the surface
-        // that `t.calledTool(...)` reads. To keep assertions meaningful, mirror
-        // each tool call the SDK reported into the projection as a TOOL span.
-        // This is the same thing the in-process wrappers do (see span-helpers);
-        // here the SDK stream is the source of truth instead of a Proxy.
-        for (const call of tool_calls) {
-          const spanId = trace.createSpan({
-            task_id: "trace",
-            parent_call_id: parentSpanId ?? trace.rootSpanId,
-            step_name: call.name,
-            observation_type: "TOOL",
-            input:
-              call.input && typeof call.input === "object"
-                ? (call.input as Record<string, unknown>)
-                : { value: call.input },
-            metadata: { toolName: call.name, source: "claude-agent-sdk" },
-          });
-          trace.endSpan(spanId, {});
-        }
 
         state.numTurns = num_turns;
         state.lastResponse = is_error ? `Error: ${text}` : text;

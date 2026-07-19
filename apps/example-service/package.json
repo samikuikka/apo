@@ -10,8 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:run": "vitest run",
-    "e2e": "node --experimental-strip-types scripts/run-agent-task-e2e.ts"
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.96",

@@ -15,13 +15,7 @@
  * Could run standalone outside apo — `runClaudeAgent({ ... })` is plain code.
  */
 import { query, type SDKMessage, type SDKAssistantMessage, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
-import type { BetaTextBlock, BetaToolUseBlock } from "@anthropic-ai/sdk/resources/beta/messages/messages.mjs";
-
-/** A tool call the SDK performed, surfaced so the adapter can mirror it. */
-export type ClaudeToolCall = {
-  name: string;
-  input: unknown;
-};
+import type { BetaTextBlock } from "@anthropic-ai/sdk/resources/beta/messages/messages.mjs";
 
 /** Pull the readable text out of an assistant message's content blocks. */
 function assistantText(message: SDKAssistantMessage): string {
@@ -34,13 +28,6 @@ function assistantText(message: SDKAssistantMessage): string {
     .join("");
 }
 
-/** Pull the tool calls out of an assistant message's content blocks. */
-function assistantToolCalls(message: SDKAssistantMessage): ClaudeToolCall[] {
-  return message.message.content
-    .filter((block): block is BetaToolUseBlock => block.type === "tool_use")
-    .map((block) => ({ name: block.name, input: block.input }));
-}
-
 /**
  * Run one agent turn against the Claude Agent SDK.
  *
@@ -49,8 +36,8 @@ function assistantToolCalls(message: SDKAssistantMessage): ClaudeToolCall[] {
  * @param env         Full environment for the subprocess — MUST include inherited
  *                    vars (PATH, HOME, ANTHROPIC_API_KEY) plus the OTel/TRACEPARENT
  *                    vars the adapter injects. The SDK REPLACES process.env with
- *                    this entirely; it does not merge.
- * @param model       Optional model override (defaults to the SDK's default)
+ *                    this entirely; it does not merge. The agent reads its own
+ *                    model config (CLAUDE_MODEL) from this env — apo never picks.
  * @param allowedTools  Built-in tools to auto-allow without prompting
  * @returns           The agent's final text response and whether it errored
  */
@@ -58,15 +45,16 @@ export async function runClaudeAgent(options: {
   prompt: string;
   cwd: string;
   env: Record<string, string | undefined>;
-  model?: string;
   allowedTools?: string[];
-}): Promise<{ text: string; is_error: boolean; num_turns: number; tool_calls: ClaudeToolCall[] }> {
+}): Promise<{ text: string; is_error: boolean; num_turns: number }> {
   const stream: AsyncGenerator<SDKMessage, void> = query({
     prompt: options.prompt,
     options: {
       cwd: options.cwd,
       env: options.env,
-      model: options.model,
+      // The model is the agent's concern — read CLAUDE_MODEL from the env apo
+      // passed (which spreads process.env), falling back to the SDK default.
+      model: options.env.CLAUDE_MODEL,
       // Unattended e2e run: allow the SDK's built-in read/search/exec tools
       // without prompting. bypassPermissions requires the explicit opt-in flag.
       permissionMode: "bypassPermissions",
@@ -82,15 +70,13 @@ export async function runClaudeAgent(options: {
     },
   });
 
-  // Walk the stream: collect assistant text + tool calls as they arrive, then
-  // capture the terminal result message (always the last message).
+  // Walk the stream: collect assistant text as it arrives, then capture the
+  // terminal result message (always the last message).
   let text = "";
-  const toolCalls: ClaudeToolCall[] = [];
   let result: SDKResultMessage | undefined;
   for await (const message of stream) {
     if (message.type === "assistant") {
       text += assistantText(message);
-      toolCalls.push(...assistantToolCalls(message));
     } else if (message.type === "result") {
       result = message;
     }
@@ -99,7 +85,7 @@ export async function runClaudeAgent(options: {
   if (!result) {
     // Stream ended without a result message — shouldn't happen in normal
     // operation, but report honestly rather than fabricating a success.
-    return { text, is_error: true, num_turns: 0, tool_calls: toolCalls };
+    return { text, is_error: true, num_turns: 0 };
   }
 
   // On success the SDK sets `result` to the assistant's final synthesized
@@ -110,13 +96,11 @@ export async function runClaudeAgent(options: {
       text: result.result || text,
       is_error: false,
       num_turns: result.num_turns,
-      tool_calls: toolCalls,
     };
   }
   return {
     text: result.errors.length > 0 ? result.errors.join("\n") : text || "Unknown error",
     is_error: true,
     num_turns: result.num_turns,
-    tool_calls: toolCalls,
   };
 }
