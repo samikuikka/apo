@@ -20,6 +20,25 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Build @apo/sdk
+        # The SDK's exports map points external consumers at dist/. Internal dev
+        # routes back to src/ via the `development` condition, but the build must
+        # still succeed for any external/publish path. This catches build breakage
+        # on every PR — previously no CI step built the SDK, which is how the
+        # broken `build: tsc` script survived unnoticed.
+        run: pnpm --filter @apo/sdk build
+      - name: Verify SDK dist entry points
+        # Belt-and-suspenders: assert each declared exports target actually
+        # exists on disk after the build.
+        run: |
+          for f in index.js index.d.ts otel/index.js otel/index.d.ts \
+                   agent-task/public.js agent-task/public.d.ts \
+                   agent-task/integrations/ai-sdk.js agent-task/integrations/ai-sdk.d.ts \
+                   agent-task/integrations/openai.js agent-task/integrations/openai.d.ts \
+                   agent-task/integrations/anthropic.js agent-task/integrations/anthropic.d.ts; do
+            test -f "packages/sdk/dist/$f" || { echo "MISSING dist/$f"; exit 1; }
+          done
+          echo "All SDK dist entry points present."
       - run: pnpm lint
       - run: pnpm typecheck
 

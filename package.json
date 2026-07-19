@@ -7,7 +7,7 @@
     "dev": "concurrently \"pnpm --filter dashboard dev\" \"pnpm --filter backend dev\" \"pnpm --filter example-service dev\" \"pnpm --filter example-service-py dev\"",
     "docs": "pnpm --filter docs dev",
     "docs:build": "pnpm --filter docs build",
-    "apo": "node --experimental-strip-types packages/cli/src/main.ts",
+    "apo": "node --experimental-strip-types --conditions development packages/cli/src/main.ts",
     "lint": "oxlint --ignore-pattern=\"**/*.astro\" apps/ packages/",
     "lint:fix": "oxlint --fix --ignore-pattern=\"**/*.astro\" apps/ packages/",
     "typecheck": "pnpm --filter dashboard --filter @apo/sdk --filter @apo/example-service --filter @apo/cli run typecheck",

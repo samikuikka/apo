@@ -7,12 +7,12 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "apo": "node --experimental-strip-types src/main.ts",
+    "apo": "node --experimental-strip-types --conditions development src/main.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@apo/sdk": "workspace:*"
+    "@apo/sdk": "github:samikuikka/apo#path:packages/sdk"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

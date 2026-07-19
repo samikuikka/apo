@@ -1,44 +1,48 @@
 {
   "name": "@apo/sdk",
   "version": "0.2.0",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts",
-      "default": "./src/index.ts"
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./otel": {
-      "types": "./src/otel/index.ts",
-      "import": "./src/otel/index.ts",
-      "default": "./src/otel/index.ts"
+      "development": "./src/otel/index.ts",
+      "types": "./dist/otel/index.d.ts",
+      "default": "./dist/otel/index.js"
     },
     "./agent-task": {
-      "types": "./src/agent-task/public.ts",
-      "import": "./src/agent-task/public.ts",
-      "default": "./src/agent-task/public.ts"
+      "development": "./src/agent-task/public.ts",
+      "types": "./dist/agent-task/public.d.ts",
+      "default": "./dist/agent-task/public.js"
     },
     "./agent-task/integrations/ai-sdk": {
-      "types": "./src/agent-task/integrations/ai-sdk.ts",
-      "import": "./src/agent-task/integrations/ai-sdk.ts",
-      "default": "./src/agent-task/integrations/ai-sdk.ts"
+      "development": "./src/agent-task/integrations/ai-sdk.ts",
+      "types": "./dist/agent-task/integrations/ai-sdk.d.ts",
+      "default": "./dist/agent-task/integrations/ai-sdk.js"
     },
     "./agent-task/integrations/openai": {
-      "types": "./src/agent-task/integrations/openai.ts",
-      "import": "./src/agent-task/integrations/openai.ts",
-      "default": "./src/agent-task/integrations/openai.ts"
+      "development": "./src/agent-task/integrations/openai.ts",
+      "types": "./dist/agent-task/integrations/openai.d.ts",
+      "default": "./dist/agent-task/integrations/openai.js"
     },
     "./agent-task/integrations/anthropic": {
-      "types": "./src/agent-task/integrations/anthropic.ts",
-      "import": "./src/agent-task/integrations/anthropic.ts",
-      "default": "./src/agent-task/integrations/anthropic.ts"
+      "development": "./src/agent-task/integrations/anthropic.ts",
+      "types": "./dist/agent-task/integrations/anthropic.d.ts",
+      "default": "./dist/agent-task/integrations/anthropic.js"
     }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsc -p tsconfig.json --watch",
+    "build": "tsup",
+    "build:watch": "tsup --watch",
     "build:agent-task-runtime": "node scripts/build-agent-task-runtime.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -48,7 +52,7 @@
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^4.1.9",
     "esbuild": "^0.21.5",
-    "next": "^15.5.18",
+    "tsup": "^8.5.1",
     "typescript": "^5.0.0",
     "vitest": "^4.1.9",
     "zod": "^3.22.0"
@@ -62,8 +66,5 @@
     "@opentelemetry/sdk-trace-base": "^2.9.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "effect": "^3.19.12"
-  },
-  "peerDependencies": {
-    "next": "^13.0.0 || ^14.0.0 || ^15.0.0 || ^16.0.0"
   }
 }

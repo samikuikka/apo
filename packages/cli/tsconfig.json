@@ -6,7 +6,8 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+    "customConditions": ["development"]
   },
   "include": ["src/**/*"]
 }
