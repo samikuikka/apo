@@ -144,6 +144,33 @@ describe("discoverTaskMeta", () => {
     expect(tasks[0].adapter).toBe("MyAdapter");
   });
 
+  it("marks factory-call adapters with trailing (...) to distinguish them from bare identifiers", () => {
+    // Real-world pattern: one parameterized adapter per flow family, built via a
+    // factory. The static scanner can't load the module to resolve the runtime
+    // name (adapter.name === "bind-chat" here), but it should at least make
+    // clear that the displayed identifier is a factory call, not the adapter.
+    writeTaskFile(join(testDir, "factory"), `
+      task("factory", {
+        adapter: createBindAdapter(chatAdapter),
+        deliverables: ["result"],
+      });
+    `);
+
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].adapter).toBe("createBindAdapter(...)");
+  });
+
+  it("keeps bare-identifier adapters as-is (no parens appended)", () => {
+    // Regression guard: the existing pattern \`adapter: realAgentAdapter\` must
+    // keep returning the bare identifier — the (...) suffix is only for calls.
+    writeTaskFile(join(testDir, "bare"), `
+      task("bare", { adapter: realAgentAdapter });
+    `);
+
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].adapter).toBe("realAgentAdapter");
+  });
+
   it("defaults adapter to unknown when no match", () => {
     writeTaskFile(join(testDir, "no-adapter"), `const t = { id: "no-adapter" };`);
     const tasks = discoverTaskMeta(testDir);

@@ -98,9 +98,15 @@ function extractTaskId(content: string): string | null {
 }
 
 function extractAdapter(content: string): string | null {
-  // New API: adapter: someAdapter (identifier inside config)
-  const adapterProp = content.match(/\badapter\s*:\s*(\w+)/);
-  if (adapterProp) return adapterProp[1];
+  // New API: adapter: someAdapter (identifier inside config). Capture an
+  // optional opening paren so factory calls like `adapter: createXxxAdapter(y)`
+  // are shown honestly as `createXxxAdapter(...)` — the scanner can't load the
+  // module to resolve the runtime adapter.name, but the parens make it obvious
+  // the displayed identifier is a factory, not the adapter itself.
+  const adapterProp = content.match(/\badapter\s*:\s*(\w+)(\()?/);
+  if (adapterProp) {
+    return adapterProp[2] ? `${adapterProp[1]}(...)` : adapterProp[1];
+  }
   // Legacy explicit adapter names take precedence over the defineTask variable.
   const adapterName = extractStringField(content, "adapter");
   if (adapterName) return adapterName;
