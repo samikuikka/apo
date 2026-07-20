@@ -130,7 +130,7 @@ t.check(deliverables.answer, includes("acme-corp"), "answer names acme");
 
 ### `t.judge(value, instruction, opts?)` — async
 
-- **Signature:** `(value: unknown | unknown[], instruction: string, opts?: { label?: string }) → Promise<void>`
+- **Signature:** `(value: unknown | unknown[], instruction: string, opts?: { label?: string; judge?: Partial<JudgeConfig> }) → Promise<void>`
 - **Asserts:** the configured judge model grades `value` against `instruction` (a natural-language rubric). **Must be awaited** — the check function must be `async`.
 
 ```typescript title="my-task.eval.ts"
@@ -143,6 +143,30 @@ test("answer-is-correct", async (t, { deliverables }) => {
 ```
 
 Records a single assertion tagged `evaluator_type: "llm"` with the judge's model, prompt, response, tokens, and latency attached — inspectable in the breakdown, not an opaque score. `value` accepts a single value or an array (the judge sees all of it).
+
+:::tip[Facts are `t.check`, taste is `t.judge`]
+A purely factual criterion — "every `Finland` was replaced by `Sweden`", "the JSON has these keys", "the answer contains `acme-corp`" — is cheaper and more reliable as a code matcher (`t.check` with `includes` / `matches` / `equals`). Reserve `t.judge` for taste, scoping, and quality. And when you do judge, pass only what the criterion actually grades — handing the judge both before *and* after text invites before/after confusion.
+:::
+
+#### Overriding the judge model per call
+
+`opts.judge` overrides the run's judge config for **this call only**, merging field-by-field — use it to escalate one finicky criterion to a stronger model without switching the whole run onto an expensive default.
+
+```typescript title="my-task.eval.ts"
+test("answer-quality", async (t, { deliverables }) => {
+  // Easy criteria stay on the run's cheap default judge.
+  await t.judge(deliverables.summary, "PASS when it's a single paragraph.");
+
+  // The subtle one escalates to a stronger model, just for this call.
+  await t.judge(
+    deliverables.analysis,
+    "PASS when the reasoning is sound and no claim is fabricated.",
+    { judge: { model: "anthropic/claude-sonnet-4.5" } },
+  );
+});
+```
+
+Absent fields inherit from the run's judge config (`runTask({ judge })`, or the `OPENROUTER_MODEL` / `AGENT_TASK_JUDGE_MODEL` env defaults), so `{ model }` alone is usually enough — `baseURL` and `apiKey` flow through unchanged. The overridden model is stamped on the assertion metadata and shown in the dashboard breakdown.
 
 ## Matchers
 

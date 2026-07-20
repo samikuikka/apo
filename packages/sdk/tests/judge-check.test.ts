@@ -176,7 +176,126 @@ describe("t.judge", () => {
     });
     expect(result?.reasoning).toContain("Judge API 503");
   });
+
+  it("overrides the judge model for a single call", async () => {
+    const fetchMock = stubCapturingJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "stronger model agreed" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("answer", "PASS when correct", {
+        judge: { model: "strong/override" },
+      });
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+    });
+
+    // The override model is what hits the provider...
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+    expect(body.model).toBe("strong/override");
+    // ...and what's stamped on the assertion metadata (shown in the dashboard).
+    expect(result).toMatchObject({
+      pass: true,
+      judge: { model: "strong/override" },
+    });
+  });
+
+  it("inherits unspecified fields from the base judge config", async () => {
+    const fetchMock = stubCapturingJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "ok" }),
+    });
+    defineCheck("quality", async (t) => {
+      // Override only the model; baseURL/apiKey should come from judgeConfig.
+      await t.judge("answer", "PASS when correct", {
+        judge: { model: "strong/override" },
+      });
+    });
+
+    await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+    expect(body.model).toBe("strong/override");
+    // judgeConfig.baseURL / apiKey flow through callJudge unchanged.
+    const init = fetchMock.mock.calls[0]![1]!;
+    expect(init.headers!["Authorization"]).toBe("Bearer secret");
+    expect(init.headers!["Content-Type"]).toBe("application/json");
+  });
+
+  it("overrides baseURL and apiKey per call too", async () => {
+    const fetchMock = stubCapturingJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "ok" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("answer", "PASS when correct", {
+        judge: {
+          model: "strong/override",
+          baseURL: "https://other.test/v1",
+          apiKey: "other-key",
+        },
+      });
+    });
+
+    await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toBe("https://other.test/v1/chat/completions");
+    expect(init!.headers!["Authorization"]).toBe("Bearer other-key");
+  });
+
+  it("uses a per-call override even when no run-level config is set", async () => {
+    const fetchMock = stubCapturingJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "ok" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("answer", "PASS when correct", {
+        judge: { model: "only/override" },
+      });
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      // No judgeConfig — the override alone must carry the call.
+    });
+
+    expect(result).toMatchObject({
+      pass: true,
+      judge: { model: "only/override" },
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+    expect(body.model).toBe("only/override");
+  });
 });
+
+/**
+ * Stubs `fetch` for a judge call AND captures the request so a test can assert
+ * on the model/baseURL/apiKey that actually reached the provider. Returns the
+ * mock for direct `.mock.calls` inspection.
+ */
+function stubCapturingJudgeResponse(args: {
+  content: string;
+  usage?: { prompt_tokens: number; completion_tokens: number };
+}): vi.Mock {
+  const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+    Response.json({
+      choices: [{ message: { content: args.content } }],
+      usage: args.usage,
+    }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
 
 function stubJudgeResponse(args: {
   content: string;

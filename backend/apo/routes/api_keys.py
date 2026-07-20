@@ -32,7 +32,10 @@ from ..models.schemas import (
     ApiKeyRotateResponse,
 )
 from ..services.demo_workspace import require_project_not_demo
-from ..services.project_memberships import require_project_role_or_legacy
+from ..services.project_memberships import (
+    require_project_role_or_legacy,
+    require_project_role_strict,
+)
 
 router = APIRouter(prefix="/v1", tags=["api-keys"])
 
@@ -150,9 +153,11 @@ def create_api_key(
 
     require_project_not_demo(body.project)
     # SPEC-122: API key creation requires admin role on the project.
-    # Legacy projects (no ProjectDB row) are tolerated via the legacy
-    # fallback so SDK bootstrap flows keep working.
-    _ = require_project_role_or_legacy(
+    # Issue #11: use the STRICT check — minting a key scoped to a
+    # nonexistent project would let any admin mint a ghost-scoped key.
+    # Real projects created through `POST /v1/projects` (or the
+    # dashboard) always pass this check.
+    _ = require_project_role_strict(
         session, body.project, user_id, minimum_role="admin"
     )
 
@@ -400,9 +405,13 @@ def bootstrap_api_key(
 
     require_project_not_demo(body.project)
     # SPEC-122: SDK bootstrap allows any project member to mint a key
-    # for the project they belong to. Legacy projects (no ProjectDB
-    # row) are tolerated so existing SDK workflows keep working.
-    _ = require_project_role_or_legacy(
+    # for the project they belong to. Issue #11: use the STRICT check
+    # — without it, any authenticated user could mint a `full`-scoped
+    # key stamped with an arbitrary nonexistent project value.
+    # `apo login` always sends a real project id (the CLI discovers
+    # projects via `/auth/verify-password`, which only returns rows
+    # from `ProjectDB`), so this does not break legitimate flows.
+    _ = require_project_role_strict(
         session, body.project, user.id, minimum_role="member"
     )
 

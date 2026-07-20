@@ -193,6 +193,11 @@ def require_project_role_or_legacy(
     exists, the caller is treated as an implicit owner — this preserves
     backward compatibility with SDK ingestion flows and tests that
     pre-date SPEC-122. Real projects always go through membership.
+
+    **Scope:** only for read/management paths against *existing* keys.
+    Never use this on a mint path (creating a new key): it would let any
+    authenticated user mint a key scoped to an arbitrary nonexistent
+    project. Use :func:`require_project_role_strict` for mint paths.
     """
     from ..models.db import ProjectDB
 
@@ -205,6 +210,43 @@ def require_project_role_or_legacy(
     if project is None:
         return _legacy_owner_membership(project_id, user_id)
 
+    return require_project_role(
+        session, project_id, user_id, minimum_role=minimum_role
+    )
+
+
+def require_project_role_strict(
+    session: Session,
+    project_id: str,
+    user_id: str,
+    *,
+    minimum_role: str,
+) -> ProjectMembershipDB:
+    """Strict variant for **mint** paths: demands a real project + membership.
+
+    Unlike :func:`require_project_role_or_legacy`, this never falls back
+    to the synthetic legacy owner. If ``project_id`` does not resolve to
+    a ``ProjectDB`` row, it raises 404 instead. This is the helper to
+    use when creating *new* resources scoped to a project (e.g. minting
+    an API key) — it prevents the quirk where any authenticated user
+    could mint a key against an arbitrary nonexistent project id.
+
+    See `apo issue #11 <https://github.com/samikuikka/apo/issues/11>`_.
+    """
+    from ..models.db import ProjectDB
+
+    if project_id == DEMO_PROJECT_ID:
+        # Demo is a real project row; normal membership rules apply.
+        return require_project_role(
+            session, project_id, user_id, minimum_role=minimum_role
+        )
+
+    project = session.get(ProjectDB, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found",
+        )
     return require_project_role(
         session, project_id, user_id, minimum_role=minimum_role
     )

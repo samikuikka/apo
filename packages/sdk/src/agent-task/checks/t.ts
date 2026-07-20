@@ -42,6 +42,26 @@ export type JudgeConfig = {
   apiKey?: string;
 };
 
+/**
+ * Resolves the judge config for a single ``t.judge`` call: merges a per-call
+ * ``opts.judge`` override onto the run-level ``judgeConfig``, field-by-field.
+ * Returns ``undefined`` when the result has no model — callers should treat
+ * that as "no judge configured" and record the env-setup guidance. (The model
+ * is the only required field, so it's the one worth gating on.)
+ */
+function resolveJudgeConfig(
+  judgeConfig: JudgeConfig | undefined,
+  override: Partial<JudgeConfig> | undefined,
+): JudgeConfig | undefined {
+  const model = override?.model ?? judgeConfig?.model;
+  if (!model) return undefined;
+  return {
+    model,
+    baseURL: override?.baseURL ?? judgeConfig?.baseURL,
+    apiKey: override?.apiKey ?? judgeConfig?.apiKey,
+  };
+}
+
 export interface TestContext {
   // ── trace / "did it run well" ──────────────────────────────────────────
   /** Asserts a matching tool was called. Pass `{ count }` for an exact count. */
@@ -78,8 +98,17 @@ export interface TestContext {
    * must `await` it. Records a single assertion tagged
    * ``evaluator_type: "llm"`` with judge metadata (model, prompt, response,
    * tokens, latency) attached.
+   *
+   * ``opts.judge`` overrides the run's judge config **for this call only**,
+   * merging field-by-field onto the config threaded in via ``runTask({ judge })``
+   * — set ``{ model }`` to escalate a finicky criterion to a stronger model
+   * without switching the whole run. Absent fields inherit from the base config.
    */
-  judge(values: unknown | unknown[], instruction: string, opts?: { label?: string }): Promise<void>;
+  judge(
+    values: unknown | unknown[],
+    instruction: string,
+    opts?: { label?: string; judge?: Partial<JudgeConfig> },
+  ): Promise<void>;
 }
 
 /**
@@ -300,7 +329,8 @@ export function createTestContext(
       // wrong line. Pinning it here lands the marker on `await t.judge(`.
       const location = rec.captureLocation();
       const valueArray = Array.isArray(values) ? values : [values];
-      if (!judgeConfig) {
+      const effective = resolveJudgeConfig(judgeConfig, opts?.judge);
+      if (!effective) {
         rec.record(
           label,
           false,
@@ -316,9 +346,9 @@ export function createTestContext(
         const { pass, reasoning, judge } = await callJudge({
           values: valueArray,
           instruction,
-          model: judgeConfig.model,
-          baseURL: judgeConfig.baseURL,
-          apiKey: judgeConfig.apiKey,
+          model: effective.model,
+          baseURL: effective.baseURL,
+          apiKey: effective.apiKey,
         });
         rec.record(label, pass, reasoning, {
           evaluator_type: "llm",
@@ -594,7 +624,8 @@ export function createTraceTestContext(
       const label = opts?.label ?? "judge";
       const location = rec.captureLocation();
       const valueArray = Array.isArray(values) ? values : [values];
-      if (!judgeConfig) {
+      const effective = resolveJudgeConfig(judgeConfig, opts?.judge);
+      if (!effective) {
         rec.record(
           label,
           false,
@@ -610,9 +641,9 @@ export function createTraceTestContext(
         const { pass, reasoning, judge } = await callJudge({
           values: valueArray,
           instruction,
-          model: judgeConfig.model,
-          baseURL: judgeConfig.baseURL,
-          apiKey: judgeConfig.apiKey,
+          model: effective.model,
+          baseURL: effective.baseURL,
+          apiKey: effective.apiKey,
         });
         rec.record(label, pass, reasoning, {
           evaluator_type: "llm",
