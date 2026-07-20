@@ -224,7 +224,8 @@ export async function run(argv: string[]): Promise<number> {
     chosenProject = result.item;
   } else if (projects.length === 0) {
     console.error(red("This account has no projects yet."));
-    console.error(dim("  Create one in the dashboard, then run `apo login` again."));
+    console.error(dim("  Run `apo project create <name> --email … --password …` to create one,"));
+    console.error(dim("  then run `apo login` again. (Or create it in the dashboard.)"));
     return 2;
   } else if (projects.length === 1) {
     chosenProject = projects[0];

@@ -18,6 +18,8 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, select
 from sqlmodel.sql.expression import SelectOfScalar
 
+from ..auth import verify_password
+from ..auth.rate_limit import LoginRateLimiter
 from ..db import get_session
 from ..db_helpers import _as_column
 from ..models.db import (
@@ -30,18 +32,22 @@ from ..models.db import (
     RunDB,
     RunMetricDB,
     SessionDB,
+    UserDB,
 )
 from ..models.schemas import (
     AgentTaskDetail,
     AgentTaskRunStats,
     AgentTaskRunSummary,
     AgentTaskSummary,
+    ApiKeyCreateResponse,
+    ProjectBootstrapRequest,
     ProjectDetail,
     ProjectSummary,
     ProjectTaskSource,
     UpdateProjectRequest,
     UpdateProjectTaskSourceRequest,
 )
+from ..routes.api_keys import _get_client_ip, mint_legacy_key
 from ..services.content_policy import normalize_trace_content_policy
 from ..services.project_memberships import (
     DEMO_PROJECT_ID,
@@ -71,12 +77,39 @@ from ..services.project_task_source_sync import (
 
 router = APIRouter(prefix="/v1/projects", tags=["projects"])
 
+# Separate from the api-keys bootstrap limiter so tests reset them independently
+# and one path's traffic doesn't consume the other's budget.
+_projects_bootstrap_rate_limiter = LoginRateLimiter(max_attempts=5, window_seconds=60)
+
 
 def _get_user_id(request: Request) -> str:
     user_id = getattr(request.state, "user_id", None)
     if user_id:
         return str(user_id)
     raise HTTPException(status_code=401, detail="Authentication required")
+
+
+def create_project_for_owner(
+    session: Session,
+    *,
+    name: str,
+    trace_content_policy: str,
+    user_id: str,
+) -> ProjectDB:
+    """Insert a ``ProjectDB`` row with a random 12-hex id and grant the caller
+    an ``owner`` membership. Shared by ``POST /v1/projects`` (authenticated
+    create) and ``POST /v1/projects/bootstrap`` (first-project create)."""
+    project = ProjectDB(
+        id=uuid4().hex[:12],
+        name=name,
+        trace_content_policy=trace_content_policy,
+        created_by=user_id,
+    )
+    session.add(project)
+    session.commit()
+    session.refresh(project)
+    _ = create_owner_membership(session, project.id, user_id)
+    return project
 
 
 def _format_project_summary(
@@ -202,18 +235,93 @@ async def create_project(
             detail="trace_content_policy must be off, redacted, or full",
         )
 
-    project = ProjectDB(
-        id=uuid4().hex[:12],
+    project = create_project_for_owner(
+        session,
         name=name.strip(),
         trace_content_policy=cast(str, content_policy),
-        created_by=user_id,
+        user_id=user_id,
     )
-    session.add(project)
-    session.commit()
-    session.refresh(project)
-    create_owner_membership(session, project.id, user_id)
     return _format_project_detail(
         session, project, None, current_user_role="owner"
+    )
+
+
+@router.post("/bootstrap", response_model=ApiKeyCreateResponse, status_code=201)
+def bootstrap_project(
+    body: ProjectBootstrapRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> ApiKeyCreateResponse:
+    """Create the first project on a fresh instance from email + password.
+
+    Solves the chicken-and-egg between ``apo login`` (which needs a project to
+    scope a key to) and ``POST /v1/projects`` (which needs an authenticated
+    key). This endpoint verifies the password directly, creates the project +
+    an owner membership, then mints a legacy ``sk-…`` API key scoped to the
+    new project — all in one call.
+
+    Because a real ``ProjectDB`` row is committed before the key is minted, the
+    legacy-project tolerance in ``require_project_role_or_legacy`` is never
+    reached. The endpoint is public (no Authorization header) — it authenticates
+    via email + password, exactly like ``POST /v1/api-keys/bootstrap``.
+
+    Rate-limited (5/min/IP) independently from the api-keys bootstrap path.
+    """
+    ip = _get_client_ip(request)
+    if not _projects_bootstrap_rate_limiter.is_allowed(ip):
+        retry_after = _projects_bootstrap_rate_limiter.get_retry_after(ip)
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts",
+            headers={"Retry-After": str(retry_after)},
+        )
+    _projects_bootstrap_rate_limiter.record_attempt(ip)
+
+    user = session.exec(select(UserDB).where(UserDB.email == body.email)).first()
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    # The id-based demo guard can't catch this (ids are random 12-hex), so
+    # reject the reserved name explicitly, case-insensitively.
+    if name.lower() == DEMO_PROJECT_ID:
+        raise HTTPException(
+            status_code=400,
+            detail="'demo' is a reserved project name",
+        )
+
+    project = create_project_for_owner(
+        session,
+        name=name,
+        trace_content_policy=body.trace_content_policy,
+        user_id=user.id,
+    )
+
+    # A real ProjectDB row now exists, so the key is scoped to a legitimate
+    # project — no legacy-project fallback is involved.
+    api_key, full_key = mint_legacy_key(
+        session,
+        name=body.key_name,
+        project=project.id,
+        user_id=user.id,
+        scope=body.scope,
+    )
+
+    return ApiKeyCreateResponse(
+        id=api_key.id,
+        name=api_key.name,
+        prefix=api_key.prefix,
+        project=api_key.project,
+        created_by=api_key.created_by,
+        scope=api_key.scope,
+        created_at=api_key.created_at.isoformat(),
+        last_used_at=api_key.last_used_at.isoformat() if api_key.last_used_at else None,
+        expires_at=api_key.expires_at.isoformat() if api_key.expires_at else None,
+        key=full_key,
     )
 
 

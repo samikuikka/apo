@@ -52,6 +52,36 @@ def _generate_legacy_api_key() -> tuple[str, str, str]:
     return full_key, prefix, hashed
 
 
+def mint_legacy_key(
+    session: Session,
+    *,
+    name: str,
+    project: str,
+    user_id: str,
+    scope: str,
+) -> tuple[ApiKeyDB, str]:
+    """Generate, persist, and return a legacy single-key ``sk-…`` token.
+
+    Shared by ``POST /v1/api-keys/bootstrap`` (existing CLI login flow) and
+    ``POST /v1/projects/bootstrap`` (first-project creation). Hashes the key
+    with SHA256 in storage and returns the row plus the plaintext key (shown
+    to the caller exactly once).
+    """
+    full_key, prefix, hashed_key = _generate_legacy_api_key()
+    api_key = ApiKeyDB(
+        name=name,
+        prefix=prefix,
+        hashed_key=hashed_key,
+        project=project,
+        created_by=user_id,
+        scope=scope,
+    )
+    session.add(api_key)
+    session.commit()
+    session.refresh(api_key)
+    return api_key, full_key
+
+
 def _get_user_id(request: Request) -> str:
     user_id = getattr(request.state, "user_id", None) if hasattr(request, "state") else None
     if user_id:
@@ -367,7 +397,6 @@ def bootstrap_api_key(
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     scope = _validate_scope(body.scope)
-    full_key, prefix, hashed_key = _generate_legacy_api_key()
 
     require_project_not_demo(body.project)
     # SPEC-122: SDK bootstrap allows any project member to mint a key
@@ -377,17 +406,13 @@ def bootstrap_api_key(
         session, body.project, user.id, minimum_role="member"
     )
 
-    api_key = ApiKeyDB(
+    api_key, full_key = mint_legacy_key(
+        session,
         name=body.name,
-        prefix=prefix,
-        hashed_key=hashed_key,
         project=body.project,
-        created_by=user.id,
+        user_id=user.id,
         scope=scope,
     )
-    session.add(api_key)
-    session.commit()
-    session.refresh(api_key)
 
     return ApiKeyCreateResponse(
         id=api_key.id,

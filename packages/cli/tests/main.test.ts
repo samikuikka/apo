@@ -129,6 +129,16 @@ describe("per-command help", () => {
     expect(output).toContain("filesystem");
   });
 
+  it("shows project create help with name arg and required email/password", async () => {
+    const { output, code } = await runCapture(["project", "create", "--help"]);
+    expect(code).toBe(0);
+    expect(output).toContain("apo project create");
+    expect(output).toContain("<name>");
+    expect(output).toContain("--email");
+    expect(output).toContain("--password");
+    expect(output).toContain("--trace-content-policy");
+  });
+
   it("falls back to global help for partial command (runs --help)", async () => {
     const { output, code } = await runCapture(["runs", "--help"]);
     expect(code).toBe(0);

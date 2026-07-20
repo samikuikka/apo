@@ -85,6 +85,25 @@ const commands: Record<string, CommandEntry> = {
     help: "List projects you can access",
     note: "Requires backend auth. Active project marked with *.",
   },
+  "project create": {
+    handler: loadCommand("project-create"),
+    help: "Create a project and mint an API key from email + password",
+    args: [
+      ["<name>", "Project name"],
+    ],
+    options: [
+      ["--email <email>", "Account email (required)"],
+      ["--password <password>", "Account password (required)"],
+      ["--trace-content-policy <off|redacted|full>", "Trace content policy (default: redacted)"],
+      ["--scope <full|ingest>", "API key scope (default: full)"],
+      ["--backend <url>", "Backend URL (default: http://localhost:8000)"],
+      ["--json", "Machine-readable JSON output"],
+    ],
+    examples: [
+      "apo project create my-project --email me@example.com --password secret",
+    ],
+    note: "Solves the first-run chicken-and-egg: creates the project and saves credentials in one call, so `apo login` can proceed without a dashboard round-trip.",
+  },
   "project use": {
     handler: loadCommand("project-use"),
     help: "Switch the active project",
