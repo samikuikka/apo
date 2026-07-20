@@ -620,6 +620,7 @@ def finalize_task_run_with_result(
     checks: list[dict[str, object]] | None,
     transcript: dict[str, object] | None,
     deliverables: dict[str, object] | None,
+    errored: bool = False,
     error_message: str | None = None,
 ) -> None:
     """Write an executor's result onto a task run and roll up the batch.
@@ -634,6 +635,11 @@ def finalize_task_run_with_result(
     otherwise a failed run with zero registered checks gets the no-tests
     notice (so the row explains itself instead of looking like a real check
     failure); otherwise it's cleared (a real success has no error).
+
+    ``errored`` (Issue #13) overrides the verdict: the executor threw before
+    producing a result, so the run lands as ``status: error`` with the
+    caller-supplied message preserved — ahead of the Issue #8 precedence,
+    which only applies to ``passed``/``failed`` verdicts.
     """
     task_run.adapter_name = adapter_name
     task_run.pass_result = pass_result
@@ -644,12 +650,19 @@ def finalize_task_run_with_result(
     trace_backend = get_trace_backend(batch.project)
     trace_backend.aggregate_costs(session, task_run, batch.project)
     trace_backend.confirm_and_link(session, task_run, batch.project)
-    task_run.status = "passed" if task_run.pass_result else "failed"
-    task_run.error_message = _resolve_run_error_message(
-        pass_result=task_run.pass_result,
-        checks=checks,
-        error_message=error_message,
-    )
+    if errored:
+        # The executor threw, not the judge — preserve the message so the
+        # dashboard shows *why* the run died. This wins over the Issue #8
+        # precedence below, which only applies to passed/failed verdicts.
+        task_run.status = "error"
+        task_run.error_message = error_message
+    else:
+        task_run.status = "passed" if task_run.pass_result else "failed"
+        task_run.error_message = _resolve_run_error_message(
+            pass_result=task_run.pass_result,
+            checks=checks,
+            error_message=error_message,
+        )
 
 
 def _resolve_run_error_message(
@@ -729,6 +742,7 @@ def finalize_external_task_run(
     checks: list[dict[str, object]] | None,
     transcript: dict[str, object] | None,
     deliverables: dict[str, object] | None,
+    errored: bool = False,
     error_message: str | None = None,
 ) -> None:
     """Apply an external executor's final result to a task run.
@@ -739,7 +753,9 @@ def finalize_external_task_run(
     to 409 by the route) if the run is already terminal.
 
     ``error_message`` flows through to ``finalize_task_run_with_result`` so an
-    externally-reported failure reason is persisted (Issue #8).
+    externally-reported failure reason is persisted (Issue #8). ``errored``
+    flows through so an executor that threw lands as ``status: error`` with
+    that message, ahead of the Issue #8 precedence (Issue #13).
     """
     if task_run.status in ("passed", "failed", "error"):
         raise ValueError(
@@ -760,6 +776,7 @@ def finalize_external_task_run(
         checks=checks,
         transcript=transcript,
         deliverables=deliverables,
+        errored=errored,
         error_message=error_message,
     )
     task_run.completed_at = datetime.now(timezone.utc)

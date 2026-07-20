@@ -538,6 +538,13 @@ async def report_agent_task_run_result(
     own machine.
 
     Idempotency: reporting against an already-terminal run returns 409.
+
+    Error reporting (Issue #13): ``errored=true`` with an ``error_message``
+    finalizes the run as ``status: error`` (executor threw before producing
+    a verdict), mirroring the in-process ``except Exception`` path. A
+    ``trace_run_id`` of ``None`` is accepted even when the run already owns
+    a trace claimed from the live OTLP stream — the backend trusts its own
+    claim, since the executor may not know the id (e.g. it errored early).
     """
     task_run = session.get(AgentTaskRunDB, task_run_id)
     if task_run is None:
@@ -558,6 +565,7 @@ async def report_agent_task_run_result(
             checks=request.checks,
             transcript=request.transcript,
             deliverables=request.deliverables,
+            errored=request.errored,
             error_message=request.error_message,
         )
     except ValueError as e:

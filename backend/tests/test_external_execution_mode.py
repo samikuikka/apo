@@ -502,6 +502,111 @@ class TestExternalClaimIntegration:
         assert task_run is not None
         assert task_run.trace_run_id == claimed_trace
 
+    def test_errored_run_after_trace_claim_finalizes_as_error_not_409(
+        self, client: TestClient, session: Session, force_service_token_secret: str
+    ) -> None:
+        """Issue #13: an errored local run whose trace was already claimed must
+        finalize as ``status: error`` — not 409 on the trace mismatch.
+
+        Repro: the executor throws after the OTLP stream has already claimed a
+        trace id, so the CLI reports ``trace_run_id: None`` (it never learned
+        the id). ``reconcile_trace_id`` must trust the backend's claim, and the
+        run must land in ``error`` with the executor's message.
+        """
+        task_run_id, _token = _external_run_with_token(client, session)
+
+        claimed_trace = "0badf00d0badf00d0badf00d0badf00d"
+        OtlpReceiver().ingest(
+            payload=_make_otlp_trace(claimed_trace, task_run_id=task_run_id),
+            content_type="application/json",
+            project_id=_PROJECT,
+            session=session,
+            context=TraceIngestionContext(
+                project_id=_PROJECT,
+                auth_method="service_token",
+                service_task_run_id=task_run_id,
+            ),
+        )
+
+        resp = client.post(
+            f"/v1/agent-task-runs/{task_run_id}/result",
+            json={
+                "pass_result": False,
+                "errored": True,
+                # No trace_run_id — the executor errored before reading its id.
+                "error_message": "chat adapter: inputs/instructions.txt is required",
+            },
+        )
+
+        assert resp.status_code == 200, resp.text
+        detail = resp.json()
+        assert detail["status"] == "error"
+        assert detail["pass_result"] is False
+        assert (
+            detail["error_message"] == "chat adapter: inputs/instructions.txt is required"
+        )
+        assert detail["completed_at"] is not None
+        # The claimed trace is preserved — None from the executor did not clobber it.
+        assert detail["trace_run_id"] == claimed_trace
+
+        # The row is terminal, not stuck in running.
+        task_run = session.get(AgentTaskRunDB, task_run_id)
+        assert task_run is not None
+        assert task_run.status == "error"
+        assert task_run.trace_run_id == claimed_trace
+
+    def test_errored_run_before_any_trace_finalizes_as_error(
+        self, client: TestClient, session: Session
+    ) -> None:
+        """Issue #13: an errored run that never claimed a trace still finalizes.
+
+        This is the executor-threw-immediately case — no OTLP span ever landed,
+        so ``trace_run_id`` is None on both sides. Must finalize as ``error``,
+        not hang in ``running``.
+        """
+        _batch_id, task_run_id = _external_batch_ids(client, session)
+
+        resp = client.post(
+            f"/v1/agent-task-runs/{task_run_id}/result",
+            json={
+                "pass_result": False,
+                "errored": True,
+                "error_message": "adapter precondition failed",
+            },
+        )
+
+        assert resp.status_code == 200, resp.text
+        detail = resp.json()
+        assert detail["status"] == "error"
+        assert detail["error_message"] == "adapter precondition failed"
+        assert detail["trace_run_id"] is None
+        assert detail["completed_at"] is not None
+
+    def test_report_result_without_errored_still_lands_failed_not_error(
+        self, client: TestClient, session: Session
+    ) -> None:
+        """Regression guard: ``error_message`` alone must NOT flip a checks-failed
+        run to ``status: error``. The ``errored`` flag is the only signal for
+        "the executor threw" (Issue #13). The caller-supplied message is still
+        persisted per Issue #8 precedence — but the status stays ``failed``."""
+        _batch_id, task_run_id = _external_batch_ids(client, session)
+
+        resp = client.post(
+            f"/v1/agent-task-runs/{task_run_id}/result",
+            json={
+                "pass_result": False,
+                # error_message present but errored omitted/false -> judge failure.
+                "error_message": "checks failed",
+                "checks": [{"id": "c1", "pass": False}],
+            },
+        )
+
+        assert resp.status_code == 200, resp.text
+        detail = resp.json()
+        assert detail["status"] == "failed"
+        # Issue #8: a caller-supplied message on a failed run is preserved.
+        assert detail["error_message"] == "checks failed"
+
 
 def _make_otlp_trace(trace_id: str, *, task_run_id: str) -> bytes:
     """Build a minimal OTLP/JSON root span carrying apo.task.run.id."""

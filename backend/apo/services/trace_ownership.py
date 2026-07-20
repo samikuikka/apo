@@ -184,9 +184,17 @@ def reconcile_trace_id(
 ) -> str | None:
     """Keep the ingestion-time trace claim consistent with subprocess output.
 
-    Raises ``RuntimeError`` if the subprocess returned a different trace id
-    than the one claimed at ingestion.
+    Raises ``RuntimeError`` if the subprocess returned a different non-empty
+    trace id than the one claimed at ingestion.
+
+    ``None`` is not a conflict — it means "the executor doesn't know the id"
+    (e.g. a local run that errored before reading its own trace id). In that
+    case we trust the id already claimed from the live OTLP stream, since the
+    backend is the source of truth for ingestion-time ownership. Only a
+    concrete mismatching id is a real conflict (Issue #13).
     """
+    if returned_trace_id is None:
+        return task_run.trace_run_id
     if (
         task_run.trace_run_id is not None
         and task_run.trace_run_id != returned_trace_id

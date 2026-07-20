@@ -353,8 +353,11 @@ async function runLocallyRecorded(config: Config, task: ResolvedTask): Promise<n
     const message = error instanceof Error ? error.message : String(error);
     console.error(red(`Error: ${message}`));
     // Report the failure so the dashboard row reflects reality, not a hang.
+    // `errored: true` tells the backend the executor threw before producing
+    // a verdict — it finalizes as status: error, not failed (Issue #13).
     await reportResultSafely(config, externalRun.id, {
       pass_result: false,
+      errored: true,
       error_message: message,
     });
     return 2;
@@ -388,6 +391,7 @@ async function reportResultSafely(
     checks?: CheckResult[];
     transcript?: Record<string, unknown>;
     deliverables?: Record<string, unknown>;
+    errored?: boolean;
     error_message?: string;
   },
 ): Promise<TaskRunSummary | null> {

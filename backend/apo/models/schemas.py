@@ -520,6 +520,11 @@ class ReportAgentTaskRunResultRequest(SQLModel):
     transcript: dict[str, object] = Field(default_factory=dict)
     deliverables: dict[str, object] = Field(default_factory=dict)
     error_message: str | None = None
+    # True when the executor threw before producing a result (e.g. an adapter
+    # precondition failed). Distinguishes ``status: error`` (the task never
+    # produced a verdict) from ``status: failed`` (the judge ran and said no),
+    # mirroring the in-process ``except Exception`` path. Issue #13.
+    errored: bool = False
 
 
 # ============================================================================
