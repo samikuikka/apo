@@ -4,7 +4,7 @@ import { parseArgs, getFlagValue } from "../lib/args.ts";
 import { resolveConfig } from "../lib/config.ts";
 import { bold, dim, formatJson } from "../lib/format.ts";
 import { apiPost } from "../lib/api.ts";
-import { discoverTaskMeta } from "../lib/task-meta.ts";
+import { discoverTaskMeta, resolveTaskRef } from "../lib/task-meta.ts";
 
 type TaskRunSummary = {
   id: string;
@@ -39,17 +39,17 @@ export async function run(argv: string[]): Promise<number> {
   let taskSelections = requestedIds;
   if (!config.projectId) {
     const tasks = discoverTaskMeta(config.taskRoot);
-    const found = tasks.filter((t) => requestedIds.includes(t.id));
-    const missingIds = requestedIds.filter(
-      (id) => !tasks.some((t) => t.id === id),
-    );
+    // Resolve each requested ref against the discovered tree so bare names
+    // resolve when unique and folder-scoped ids match exactly (issue #12).
+    const resolved = requestedIds.map((id) => resolveTaskRef(tasks, id));
+    const missingIds = requestedIds.filter((_, i) => !resolved[i]);
 
     if (missingIds.length > 0) {
       console.error(`Tasks not found: ${missingIds.join(", ")}`);
       return 2;
     }
 
-    taskSelections = found.map((t) => t.path);
+    taskSelections = resolved.map((t) => t!.path);
   }
 
   const body: Record<string, unknown> = {

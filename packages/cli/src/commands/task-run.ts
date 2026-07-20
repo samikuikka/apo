@@ -4,7 +4,7 @@ import { resolve } from "path";
 import { getBoolFlag, parseArgs, requirePositional } from "../lib/args.ts";
 import { resolveConfig, type Config } from "../lib/config.ts";
 import { apiGet, apiPost, isBackendReachable } from "../lib/api.ts";
-import { discoverTaskMeta } from "../lib/task-meta.ts";
+import { discoverTaskMeta, findTaskMetaById } from "../lib/task-meta.ts";
 import { bold, dim, formatJson, formatTime, passFail, formatTrigger, red } from "../lib/format.ts";
 import type { CheckResult } from "../lib/agent-task-types.ts";
 import { formatChecks, NO_CHECKS_REGISTERED_MESSAGE } from "../lib/checks-format.ts";
@@ -169,7 +169,7 @@ async function runBackendDispatch(
     return runLocally(config, resolved.taskDir);
   }
   void reason; // backend dispatch has no implicit notice to print.
-  return runViaBackend(config, resolved.taskDir);
+  return runViaBackend(config, resolved);
 }
 
 /**
@@ -200,6 +200,11 @@ type ResolvedTask = {
  * Resolve a user-provided task ref (id or filesystem path) to its directory,
  * id, and declared execution preference. Falls back to the raw path when the
  * ref isn't in the task root so existing path-based invocations keep working.
+ *
+ * The id branch goes through `findTaskMetaById` so a folder-scoped id
+ * (`chat/cost-inquiry`) resolves exactly, and a bare name (`cost-inquiry`)
+ * resolves when unique (issue #12). The resolved `taskId` is always the
+ * folder-scoped id — the form the backend inventory keys on.
  */
 function resolveTask(ref: string, taskRoot: string): ResolvedTask | null {
   const asPath = resolve(ref);
@@ -216,8 +221,7 @@ function resolveTask(ref: string, taskRoot: string): ResolvedTask | null {
     };
   }
 
-  const tasks = discoverTaskMeta(taskRoot);
-  const match = tasks.find((t) => t.id === ref);
+  const match = findTaskMetaById(taskRoot, ref);
   if (!match) return null;
   return {
     taskDir: match.path,
@@ -432,7 +436,7 @@ function printLocalRecordedSummary(
   }
 }
 
-async function runViaBackend(config: Config, taskDir: string): Promise<number> {
+async function runViaBackend(config: Config, task: ResolvedTask): Promise<number> {
   const ciTrigger = resolveCiTrigger(config._rawFlags);
   const trigger = ciTrigger ?? {
     source: "cli",
@@ -445,7 +449,11 @@ async function runViaBackend(config: Config, taskDir: string): Promise<number> {
   const body = {
     project: config.projectId,
     selection_type: "task",
-    task_paths: [taskDir],
+    // Prefer the task id for the backend's task-path resolution; fall back
+    // to the raw path when discovery couldn't attach an id. Same rule as
+    // runLocallyRecorded — the backend inventory keys on the folder-scoped
+    // id, so sending the absolute path misses for nested trees (issue #12).
+    task_paths: [task.taskId ?? task.taskDir],
     task_root: resolve(config.taskRoot),
     run_metadata: { trigger },
   };

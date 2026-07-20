@@ -1,10 +1,20 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "fs";
-import { join } from "path";
+import { join, relative } from "path";
 import { listTaskCandidateDirs, type ScanOptions } from "./scanner.ts";
 import type { TaskExecutionPreference } from "@apo/sdk/agent-task";
 
 export type TaskMeta = {
+  /**
+   * The task's globally-unique id: the declared task name scoped by its
+   * folder path relative to the task root (e.g. `chat/cost-inquiry`). A
+   * task at the root keeps its bare name. This **must** mirror
+   * `backend/apo/services/agent_task_discovery.py` so the CLI and the
+   * backend inventory key tasks by the same id — otherwise `task run`
+   * sends an id the backend can't match (issue #12).
+   */
   id: string;
+  /** The folder path relative to the task root (empty when at the root). */
+  folderPath: string;
   adapter: string;
   hasChecks: boolean;
   hasSimulator: boolean;
@@ -31,7 +41,7 @@ export function discoverTaskMeta(
   const results: TaskMeta[] = [];
 
   for (const taskDir of candidates) {
-    const meta = parseTaskMeta(taskDir);
+    const meta = parseTaskMeta(taskDir, rootDir);
     if (meta) {
       results.push(meta);
     }
@@ -40,15 +50,54 @@ export function discoverTaskMeta(
   return results;
 }
 
+/**
+ * Resolve a task id against the discovered tree.
+ *
+ * Ids are folder-scoped (see `TaskMeta.id`), so callers normally pass the
+ * full id (`chat/cost-inquiry`). As a convenience, a **bare name** (`cost-inquiry`)
+ * resolves when it's unique — matching the last segment of exactly one task's
+ * id. When two or more tasks share that bare name, the ref is ambiguous: this
+ * prints a hint listing the full ids to use and returns `undefined` (mirrors
+ * the backend's inventory-keying rule and issue #12's UX).
+ */
 export function findTaskMetaById(
   rootDir: string,
   taskId: string,
 ): TaskMeta | undefined {
   const tasks = discoverTaskMeta(rootDir);
-  return tasks.find((t) => t.id === taskId);
+  return resolveTaskRef(tasks, taskId);
 }
 
-function parseTaskMeta(taskDir: string): TaskMeta | undefined {
+/**
+ * Match a ref against an already-discovered task list. Exported so callers
+ * that resolve many refs from one discovery pass (e.g. `batch create`) can
+ * avoid re-scanning. Same resolution rule as `findTaskMetaById`: exact
+ * folder-scoped id first, then a bare-name fallback that resolves only when
+ * unique.
+ */
+export function resolveTaskRef(
+  tasks: TaskMeta[],
+  ref: string,
+): TaskMeta | undefined {
+  const exact = tasks.find((t) => t.id === ref);
+  if (exact) return exact;
+
+  const matches = tasks.filter((t) => bareTaskName(t.id) === ref);
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    const ids = matches.map((t) => t.id).sort().join(", ");
+    console.error(`Ambiguous task '${ref}' matches: ${ids}. Pass the full id.`);
+  }
+  return undefined;
+}
+
+/** The bare name (last segment) of a folder-scoped id. */
+export function bareTaskName(folderScopedId: string): string {
+  const slash = folderScopedId.lastIndexOf("/");
+  return slash < 0 ? folderScopedId : folderScopedId.slice(slash + 1);
+}
+
+function parseTaskMeta(taskDir: string, rootDir: string): TaskMeta | undefined {
   const evalFile = readdirSync(taskDir).find((f) => f.endsWith(".eval.ts"));
   if (!evalFile) {
     return undefined;
@@ -56,8 +105,8 @@ function parseTaskMeta(taskDir: string): TaskMeta | undefined {
   const taskFilePath = join(taskDir, evalFile);
 
   const content = readFileSync(taskFilePath, "utf-8");
-  const id = extractTaskId(content);
-  if (!id) {
+  const bareId = extractTaskId(content);
+  if (!bareId) {
     return undefined;
   }
 
@@ -67,6 +116,15 @@ function parseTaskMeta(taskDir: string): TaskMeta | undefined {
   const hasChecks = extractHasChecks(content, taskDir);
   const hasSimulator = /simulator\s*:/.test(content);
   const execution = extractExecution(content);
+
+  // Folder-scope the id so the CLI and the backend inventory agree on ids
+  // (issue #12). Mirrors backend agent_task_discovery._parse_task_file:
+  // folder_path is the path *above* the task folder (its parent relative to
+  // the root), and the id is "folder_path/bare_name" — NOT including the
+  // task's own folder name (which the bare name already covers).
+  const relTaskPath = normalizeRelative(relative(rootDir, taskDir));
+  const folderPath = parentDir(relTaskPath);
+  const id = folderPath ? `${folderPath}/${bareId}` : bareId;
 
   const filesDir = join(taskDir, "files");
   const files: string[] = [];
@@ -78,6 +136,7 @@ function parseTaskMeta(taskDir: string): TaskMeta | undefined {
 
   return {
     id,
+    folderPath,
     adapter,
     hasChecks,
     hasSimulator,
@@ -86,6 +145,21 @@ function parseTaskMeta(taskDir: string): TaskMeta | undefined {
     files,
     execution,
   };
+}
+
+/** Normalize a relative path to POSIX separators; empty string for the root. */
+function normalizeRelative(rel: string): string {
+  const posix = rel.split("\\").join("/");
+  if (posix === "." || posix === "") return "";
+  return posix;
+}
+
+/** POSIX dirname of a relative path; empty for a single segment or the root. */
+function parentDir(relPath: string): string {
+  if (!relPath) return "";
+  const slash = relPath.lastIndexOf("/");
+  if (slash < 0) return "";
+  return relPath.slice(0, slash);
 }
 
 function extractStringField(content: string, field: string): string | null {

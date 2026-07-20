@@ -40,6 +40,21 @@ describe("discoverTaskMeta", () => {
     expect(tasks[0].deliverables).toEqual(["summary", "stats"]);
   });
 
+  it("scopes the id by folder path for nested tasks (issue #12)", () => {
+    // Mirror of backend/test_agent_task_discovery.py: the id is the task name
+    // scoped by its folder path relative to the task root, so two folders can
+    // each define a task of the same name without colliding — and so the CLI
+    // and backend inventory key tasks by the same id.
+    writeTaskFile(join(testDir, "chat", "cost-inquiry"), `
+      task("cost-inquiry", { adapter: "a" });
+    `);
+
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].id).toBe("chat/cost-inquiry");
+    expect(tasks[0].folderPath).toBe("chat");
+  });
+
   it("discovers tasks in nested directories", () => {
     writeTaskFile(join(testDir, "group", "task-b"), `
       const task = {
@@ -50,7 +65,9 @@ describe("discoverTaskMeta", () => {
 
     const tasks = discoverTaskMeta(testDir);
     expect(tasks).toHaveLength(1);
-    expect(tasks[0].id).toBe("task-b");
+    // Folder-scoped id — see the issue #12 test above.
+    expect(tasks[0].id).toBe("group/task-b");
+    expect(tasks[0].folderPath).toBe("group");
   });
 
   it("discovers multiple tasks", () => {
@@ -248,6 +265,53 @@ describe("findTaskMetaById", () => {
 
     const task = findTaskMetaById(testDir, "nonexistent");
     expect(task).toBeUndefined();
+  });
+
+  it("matches a folder-scoped id exactly (issue #12)", () => {
+    writeTaskFile(join(testDir, "chat", "cost-inquiry"), `
+      task("cost-inquiry", { adapter: "a" });
+    `);
+
+    const task = findTaskMetaById(testDir, "chat/cost-inquiry");
+    expect(task).toBeDefined();
+    expect(task?.id).toBe("chat/cost-inquiry");
+  });
+
+  it("resolves a bare name when it is unique (issue #12 alias)", () => {
+    writeTaskFile(join(testDir, "chat", "cost-inquiry"), `
+      task("cost-inquiry", { adapter: "a" });
+    `);
+    writeTaskFile(join(testDir, "other", "report"), `
+      task("report", { adapter: "a" });
+    `);
+
+    const task = findTaskMetaById(testDir, "cost-inquiry");
+    expect(task).toBeDefined();
+    expect(task?.id).toBe("chat/cost-inquiry");
+  });
+
+  it("rejects an ambiguous bare name with a hint listing the full ids (issue #12)", () => {
+    writeTaskFile(join(testDir, "chat", "cost-inquiry"), `
+      task("cost-inquiry", { adapter: "a" });
+    `);
+    writeTaskFile(join(testDir, "redlining", "cost-inquiry"), `
+      task("cost-inquiry", { adapter: "a" });
+    `);
+
+    const errors: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => errors.push(args.join(" "));
+    try {
+      const task = findTaskMetaById(testDir, "cost-inquiry");
+      expect(task).toBeUndefined();
+    } finally {
+      console.error = original;
+    }
+
+    const joined = errors.join("\n");
+    expect(joined).toMatch(/ambiguous/i);
+    expect(joined).toContain("chat/cost-inquiry");
+    expect(joined).toContain("redlining/cost-inquiry");
   });
 });
 

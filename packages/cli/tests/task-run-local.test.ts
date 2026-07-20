@@ -328,6 +328,101 @@ describe("task run --local", () => {
     expect(out).toContain("test()");
   });
 
+  // Issue #12: when a project source is configured, the backend inventory
+  // keys tasks by their folder-scoped id (`chat/cost-inquiry`), not the bare
+  // `task("cost-inquiry")` literal. The CLI must POST that folder-scoped id
+  // so _resolve_inventory_rows matches — otherwise the run 409s with "No
+  // tasks found for the given selection". This nested-tree run is the
+  // regression guard for that bug.
+  it("POSTs the folder-scoped id for a nested task tree (issue #12)", async () => {
+    const taskDir = join(testDir, "chat", "cost-inquiry");
+    writeTaskFile(
+      taskDir,
+      `import { task } from "@apo/sdk/agent-task";\ntask("cost-inquiry", { adapter: "a" });`,
+    );
+
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "batch-nested",
+            project: "example-service",
+            status: "running",
+            task_runs: [
+              {
+                id: "run-nested",
+                task_id: "chat/cost-inquiry",
+                task_path: "chat/cost-inquiry",
+                status: "running",
+                started_at: "2026-07-20T10:00:00Z",
+                trace_token: "token-nested",
+              },
+            ],
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "run-nested",
+            batch_run_id: "batch-nested",
+            task_id: "chat/cost-inquiry",
+            task_path: "chat/cost-inquiry",
+            adapter_name: "demoAdapter",
+            status: "passed",
+            pass_result: true,
+            started_at: "2026-07-20T10:00:00Z",
+            completed_at: "2026-07-20T10:00:05Z",
+            trace_run_id: "trace-nested",
+            error_message: null,
+            total_cost: null,
+            total_tokens: null,
+            total_checks: 1,
+            passed_checks: 1,
+            failed_checks: 0,
+            trigger: null,
+            checks_json: [{ id: "c1", pass: true }],
+            transcript_json: { turns: [] },
+            deliverables_json: { summary: "ok" },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    // Bare name resolves to the folder-scoped id (unique in this tree).
+    const code = await run([
+      "cost-inquiry",
+      "--local",
+      "--dir",
+      testDir,
+      "--backend",
+      "http://backend.test",
+      "--project",
+      "example-service",
+    ]);
+
+    console.log = originalLog;
+
+    expect(code).toBe(0);
+
+    // The POST body MUST carry the folder-scoped id the backend inventory
+    // keys on — this is the exact field the bug sent bare.
+    const createBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    expect(createBody.task_paths).toEqual(["chat/cost-inquiry"]);
+
+    // The SDK got pointed at the nested task directory.
+    expect(_captured.dir).toBe(taskDir);
+    expect(_captured.env?.AGENT_TASK_RUN_ID).toBe("run-nested");
+    expect(logs.join("\n")).toContain("run-nested");
+  });
+
   it("prints the no-checks notice on a recorded --local run with zero checks", async () => {
     const taskDir = join(testDir, "silent-task");
     writeTaskFile(

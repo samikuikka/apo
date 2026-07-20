@@ -44,6 +44,24 @@ Runs a task. The argument is a **task id** (the folder name) or a filesystem pat
 
 The task id is **not** a run id — a run id is what this command *outputs*. A trace id is a separate field on the run, printed at the bottom of the output.
 
+### Nested task trees
+
+Tasks grouped into subfolders get a **folder-scoped id**: the declared name prefixed by its folder path relative to the task root. A task at `chat/cost-inquiry/cost-inquiry.eval.ts` that declares `task("cost-inquiry")` has id **`chat/cost-inquiry`** — and that's the id `apo task list` shows and the backend inventory keys on.
+
+```bash
+# Folder-scoped id (unambiguous)
+apo task run chat/cost-inquiry
+
+# Bare name resolves when it's unique in the tree
+apo task run cost-inquiry
+
+# Two tasks share the bare name → apo rejects the bare ref and lists the
+# full ids to disambiguate:
+#   Ambiguous task 'cost-inquiry' matches: chat/cost-inquiry, redlining/cost-inquiry
+```
+
+The folder scoping is why two families can each define `task("cost-inquiry")` without colliding, and why the CLI and the dashboard always agree on the same id.
+
 ## Options
 
 | Option | Default | Purpose |
