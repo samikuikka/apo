@@ -53,10 +53,16 @@ async function main(): Promise<void> {
     ...(taskRunId ? { taskRunId } : {}),
   } as AgentTaskTraceOptions;
 
+  // Thread the already-loaded task through so runTask does not re-import the
+  // eval module (Issue #7). loadTask above copied the eval to a temp file and
+  // imported it once with all registries reset; a second loadTask would run
+  // the eval's top level again and silently break evals whose load-time
+  // behavior is not idempotent across module systems.
   const result = await runTask(taskDir, {
     ...runtime,
     tracing,
     judge: { model: judgeModel },
+    loaded,
   });
 
   process.stdout.write(
