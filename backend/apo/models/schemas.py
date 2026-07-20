@@ -479,6 +479,49 @@ class CreateAgentTaskBatchRunRequest(SQLModel):
     run_metadata: dict[str, object] | None = None
 
 
+class AgentTaskRunExternalSummary(SQLModel):
+    """Task run summary for external execution — carries the scoped trace token.
+
+    The token's ``sub`` equals the run id; an external executor (e.g. the CLI
+    ``--local`` flag) presents it as ``APO_AUTH_TOKEN`` so ingestion claims
+    the trace via the existing SPEC-128/129 path.
+    """
+
+    id: str
+    task_id: str
+    task_path: str
+    status: str
+    started_at: datetime | None = None
+    trace_token: str
+
+
+class AgentTaskBatchRunExternalDetail(SQLModel):
+    """Response for ``POST /v1/agent-task-batch-runs/external``.
+
+    Like ``AgentTaskBatchRunDetail`` but each task run carries a scoped
+    ``trace_token`` instead of run-state fields. The backend does NOT execute
+    the runs — the caller reports results back via
+    ``POST /v1/agent-task-runs/{id}/result``.
+    """
+
+    id: str
+    project: str
+    status: str
+    task_runs: list[AgentTaskRunExternalSummary] = Field(default_factory=list)
+
+
+class ReportAgentTaskRunResultRequest(SQLModel):
+    """An external executor's final task-run result report."""
+
+    pass_result: bool
+    adapter_name: str | None = None
+    trace_run_id: str | None = None
+    checks: list[dict[str, object]] = Field(default_factory=list)
+    transcript: dict[str, object] = Field(default_factory=dict)
+    deliverables: dict[str, object] = Field(default_factory=dict)
+    error_message: str | None = None
+
+
 # ============================================================================
 # Scoring (SPEC-019)
 # ============================================================================

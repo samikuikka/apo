@@ -564,18 +564,17 @@ def _execute_task_run(
         # Ingestion runs in a separate request/session while the subprocess is
         # active, so reload its atomic trace claim before validating the result.
         session.refresh(task_run)
-        task_run.adapter_name = _read_optional_str(result, "adapterName")
-        task_run.pass_result = bool(result.get("pass"))
-        result_trace_run_id = _read_optional_str(result, "traceRunId")
-        task_run.trace_run_id = reconcile_trace_id(task_run, result_trace_run_id)
-        task_run.checks_json = _read_list_of_dicts(result.get("checks"))
-        task_run.transcript_json = _read_dict(result.get("transcript"))
-        task_run.deliverables_json = _read_dict(result.get("deliverables"))
-        trace_backend = get_trace_backend(batch.project)
-        trace_backend.aggregate_costs(session, task_run, batch.project)
-        trace_backend.confirm_and_link(session, task_run, batch.project)
-        task_run.status = "passed" if task_run.pass_result else "failed"
-        task_run.error_message = None
+        finalize_task_run_with_result(
+            session,
+            task_run,
+            batch,
+            adapter_name=_read_optional_str(result, "adapterName"),
+            pass_result=bool(result.get("pass")),
+            trace_run_id=_read_optional_str(result, "traceRunId"),
+            checks=_read_list_of_dicts(result.get("checks")),
+            transcript=_read_dict(result.get("transcript")),
+            deliverables=_read_dict(result.get("deliverables")),
+        )
     except Exception as error:
         task_run.status = "error"
         task_run.pass_result = False
@@ -598,6 +597,151 @@ def _execute_task_run(
             ).all()
         )
         emit_batch_run_event(batch.project, batch, task_runs)
+
+
+def finalize_task_run_with_result(
+    session: Session,
+    task_run: AgentTaskRunDB,
+    batch: AgentTaskBatchRunDB,
+    *,
+    adapter_name: str | None,
+    pass_result: bool,
+    trace_run_id: str | None,
+    checks: list[dict[str, object]] | None,
+    transcript: dict[str, object] | None,
+    deliverables: dict[str, object] | None,
+) -> None:
+    """Write an executor's result onto a task run and roll up the batch.
+
+    Shared between the in-process subprocess executor (``_execute_task_run``)
+    and external execution (``POST /v1/agent-task-runs/{id}/result``). Does
+    NOT set ``completed_at`` or emit events — callers own those because the
+    surrounding lifecycle differs (subprocess already has the row locked in
+    its own session; external route commits + emits in one shot).
+    """
+    task_run.adapter_name = adapter_name
+    task_run.pass_result = pass_result
+    task_run.trace_run_id = reconcile_trace_id(task_run, trace_run_id)
+    task_run.checks_json = checks
+    task_run.transcript_json = transcript
+    task_run.deliverables_json = deliverables
+    trace_backend = get_trace_backend(batch.project)
+    trace_backend.aggregate_costs(session, task_run, batch.project)
+    trace_backend.confirm_and_link(session, task_run, batch.project)
+    task_run.status = "passed" if task_run.pass_result else "failed"
+    task_run.error_message = None
+
+
+def prepare_external_batch_runs(
+    session: Session,
+    batch: AgentTaskBatchRunDB,
+) -> list[tuple[AgentTaskRunDB, str]]:
+    """Mark each task run as ``running`` and mint a scoped trace token.
+
+    Called by ``POST /v1/agent-task-batch-runs/external`` after the batch is
+    created. Returns ``(task_run, token)`` pairs so the route can surface the
+    tokens to the external executor (e.g. the CLI ``--local`` flag). Does NOT
+    spawn a subprocess — the executor runs out-of-band and reports results
+    via ``POST /v1/agent-task-runs/{id}/result``.
+    """
+    task_runs = session.exec(
+        select(AgentTaskRunDB)
+        .where(AgentTaskRunDB.batch_run_id == batch.id)
+        .order_by(AgentTaskRunDB.id)
+    ).all()
+
+    now = datetime.now(timezone.utc)
+    batch.status = "running"
+    batch.started_at = batch.started_at or now
+    session.add(batch)
+
+    pairs: list[tuple[AgentTaskRunDB, str]] = []
+    for task_run in task_runs:
+        task_run.status = "running"
+        task_run.started_at = now
+        mark_pending(task_run)
+        session.add(task_run)
+        token = create_agent_task_trace_token(
+            task_run_id=task_run.id,
+            project=batch.project,
+            expires_in_seconds=_external_token_ttl_seconds(),
+        )
+        pairs.append((task_run, token))
+
+    session.commit()
+    for task_run, _token in pairs:
+        session.refresh(task_run)
+    session.refresh(batch)
+    return pairs
+
+
+def finalize_external_task_run(
+    session: Session,
+    task_run: AgentTaskRunDB,
+    *,
+    pass_result: bool,
+    adapter_name: str | None,
+    trace_run_id: str | None,
+    checks: list[dict[str, object]] | None,
+    transcript: dict[str, object] | None,
+    deliverables: dict[str, object] | None,
+) -> None:
+    """Apply an external executor's final result to a task run.
+
+    Used by ``POST /v1/agent-task-runs/{id}/result``. Sets terminal state,
+    rolls up the batch, and emits the same events as the subprocess path so
+    the dashboard treats the run identically. Raises ``ValueError`` (mapped
+    to 409 by the route) if the run is already terminal.
+    """
+    if task_run.status in ("passed", "failed", "error"):
+        raise ValueError(
+            f"Task run {task_run.id} is already terminal (status={task_run.status})"
+        )
+
+    batch = session.get(AgentTaskBatchRunDB, task_run.batch_run_id)
+    if batch is None:
+        raise ValueError(f"Batch run {task_run.batch_run_id} not found for task run {task_run.id}")
+
+    finalize_task_run_with_result(
+        session,
+        task_run,
+        batch,
+        adapter_name=adapter_name,
+        pass_result=pass_result,
+        trace_run_id=trace_run_id,
+        checks=checks,
+        transcript=transcript,
+        deliverables=deliverables,
+    )
+    task_run.completed_at = datetime.now(timezone.utc)
+    session.add(task_run)
+    session.commit()
+    session.refresh(batch)
+
+    emit_task_run_event(batch.project, task_run)
+    update_batch_run_status(session, batch)
+
+    if batch.status in ("completed", "error"):
+        task_runs = list(
+            session.exec(
+                select(AgentTaskRunDB).where(AgentTaskRunDB.batch_run_id == batch.id)
+            ).all()
+        )
+        emit_batch_run_event(batch.project, batch, task_runs)
+
+
+def _external_token_ttl_seconds() -> int:
+    """TTL for external-execution trace tokens.
+
+    External runs (e.g. ``apo task run --local``) may take longer than the
+    default 15-minute subprocess token — they touch dev-machine credentials,
+    VPC tunnels, and personal stages. The TTL gates only trace ingestion
+    during execution; reporting the result uses regular project auth.
+    """
+    raw = os.environ.get("APO_EXTERNAL_TASK_TOKEN_TTL")
+    if raw and raw.isdigit():
+        return int(raw)
+    return 2 * 60 * 60  # 2 hours
 
 
 def _run_task_subprocess(

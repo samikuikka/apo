@@ -14,6 +14,14 @@ export type AgentTaskRunSummary = {
   taskId: string;
   pass: boolean;
   checks: EvaluationItemResult[];
+  /** Adapter that ran the task. Forwarded to the backend when recording locally. */
+  adapterName?: string;
+  /** Trace id this run claimed (when tracing was enabled). */
+  traceRunId?: string;
+  /** Deliverables the adapter produced. */
+  deliverables?: Record<string, unknown>;
+  /** Per-turn transcript of the run. */
+  transcript?: Record<string, unknown>;
 };
 
 export async function loadTaskRuntime(
@@ -54,6 +62,11 @@ export async function runTaskDir(
   // Falls back to noop tracing when no endpoint is configured (e.g. tests).
   const endpoint = process.env.AGENT_TASK_TRACE_ENDPOINT;
   const hasTracing = endpoint && process.env.AGENT_TASK_PROJECT;
+  // When the backend pre-created the task run (external execution mode,
+  // Issue #4), stamping apo.task.run.id on the root span lets the existing
+  // claim machinery atomically link this trace to the run row. Mirrors
+  // runner-entry.ts — never trust telemetry alone for ownership.
+  const taskRunId = process.env.AGENT_TASK_RUN_ID;
 
   const tracing = hasTracing
     ? {
@@ -64,6 +77,7 @@ export async function runTaskDir(
         }),
         project: process.env.AGENT_TASK_PROJECT!,
         environment: process.env.AGENT_TASK_ENVIRONMENT ?? "default",
+        ...(taskRunId ? { taskRunId } : {}),
       } as AgentTaskTraceOptions
     : undefined;
 
@@ -74,6 +88,10 @@ export async function runTaskDir(
     taskId: loaded.task.id,
     pass: result.result.pass,
     checks: result.result.checks,
+    adapterName: loaded.adapter.name,
+    traceRunId: result.traceRunId,
+    deliverables: result.deliverables,
+    transcript: result.transcript as unknown as Record<string, unknown>,
   };
 }
 

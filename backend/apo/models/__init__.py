@@ -8,9 +8,11 @@ This module re-exports all database models and API schemas for convenient import
 # noqa: F401 - These are intentional re-exports
 from ..models.schemas import (  # noqa: F401
     AgentTaskBatchRunDetail,
+    AgentTaskBatchRunExternalDetail,
     AgentTaskBatchRunSummary,
     AgentTaskDetail,
     AgentTaskRunDetail,
+    AgentTaskRunExternalSummary,
     AgentTaskRunStats,
     AgentTaskRunSummary,
     AgentTaskRunTrigger,
@@ -35,6 +37,7 @@ from ..models.schemas import (  # noqa: F401
     IngestionResponse,
     LoggedCall,
     LoggedCallBase,
+    ReportAgentTaskRunResultRequest,
     Run,
     RunDetail,
     RunMetric,
@@ -73,9 +76,11 @@ from ..models.db import (  # noqa: F401
 __all__ = [
     # Schemas
     "AgentTaskBatchRunDetail",
+    "AgentTaskBatchRunExternalDetail",
     "AgentTaskBatchRunSummary",
     "AgentTaskDetail",
     "AgentTaskRunDetail",
+    "AgentTaskRunExternalSummary",
     "AgentTaskRunStats",
     "AgentTaskRunSummary",
     "AgentTaskRunTrigger",
@@ -100,6 +105,7 @@ __all__ = [
     "IngestionResponse",
     "LoggedCall",
     "LoggedCallBase",
+    "ReportAgentTaskRunResultRequest",
     "Run",
     "RunDetail",
     "RunMetric",

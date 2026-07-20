@@ -21,15 +21,18 @@ from ..db_helpers import _as_column
 from ..models import (
     AgentTaskBatchRunDB,
     AgentTaskBatchRunDetail,
+    AgentTaskBatchRunExternalDetail,
     AgentTaskBatchRunSummary,
     AgentTaskDetail,
     AgentTaskRunDB,
     AgentTaskRunDetail,
+    AgentTaskRunExternalSummary,
     AgentTaskRunTrigger,
     AgentTaskRunSummary,
     AgentTaskSummary,
     CreateAgentTaskBatchRunRequest,
     LoggedCallDB,
+    ReportAgentTaskRunResultRequest,
     RunDB,
 )
 from ..services.agent_task_discovery import (
@@ -47,7 +50,12 @@ from ..services.agent_task_projection import (
 from ..services.agent_task_stats import compute_run_stats
 from ..services.demo_workspace import require_project_not_demo
 from ..services.project_task_sources import get_task_source_db
-from ..services.agent_task_runner import create_batch_run, start_batch_run_execution
+from ..services.agent_task_runner import (
+    create_batch_run,
+    finalize_external_task_run,
+    prepare_external_batch_runs,
+    start_batch_run_execution,
+)
 from ..services.project_task_source_sync import SyncError
 
 router = APIRouter(prefix="/v1", tags=["agent-tasks"])
@@ -312,6 +320,69 @@ async def create_agent_task_batch_run(
     return to_batch_run_detail(batch, task_runs)
 
 
+@router.post(
+    "/agent-task-batch-runs/external",
+    response_model=AgentTaskBatchRunExternalDetail,
+    status_code=201,
+)
+async def create_external_agent_task_batch_run(
+    request: CreateAgentTaskBatchRunRequest,
+    session: Session = Depends(get_session),
+):
+    """Create a batch run whose tasks execute out-of-band (Issue #4).
+
+    For tasks that cannot run inside the backend container (they need
+    dev-machine credentials, a VPC tunnel, a personal stage, etc.), the
+    external executor — typically ``apo task run --local`` — runs the task
+    on its own machine and reports the result back via
+    ``POST /v1/agent-task-runs/{id}/result``.
+
+    This endpoint creates the batch + task run rows, marks them ``running``,
+    and returns a scoped trace token per task run. The token's ``sub`` is
+    the task run id; the executor presents it as ``APO_AUTH_TOKEN`` so trace
+    ingestion claims the run via the existing SPEC-128/129 path.
+
+    No subprocess is spawned — the caller owns execution.
+    """
+    require_project_not_demo(request.project)
+    task_source = get_task_source_db(session, request.project)
+    try:
+        batch = create_batch_run(
+            session=session,
+            project=request.project,
+            selection_type=request.selection_type,
+            task_paths=request.task_paths,
+            task_root=request.task_root,
+            grep=request.grep,
+            environment=request.environment,
+            run_metadata=request.run_metadata,
+            task_source=task_source,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except SyncError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    pairs = prepare_external_batch_runs(session, batch)
+
+    return AgentTaskBatchRunExternalDetail(
+        id=batch.id,
+        project=batch.project,
+        status=batch.status,
+        task_runs=[
+            AgentTaskRunExternalSummary(
+                id=task_run.id,
+                task_id=task_run.task_id,
+                task_path=task_run.task_path,
+                status=task_run.status,
+                started_at=task_run.started_at,
+                trace_token=token,
+            )
+            for task_run, token in pairs
+        ],
+    )
+
+
 @router.get("/agent-task-batch-runs", response_model=list[AgentTaskBatchRunSummary])
 async def list_agent_task_batch_runs(
     project: str | None = Query(default=None),
@@ -448,3 +519,96 @@ async def get_agent_task_run(
             task_run.trace_persistence_status,
         ),
     )
+
+
+@router.post(
+    "/agent-task-runs/{task_run_id}/result",
+    response_model=AgentTaskRunDetail,
+)
+async def report_agent_task_run_result(
+    task_run_id: str,
+    request: ReportAgentTaskRunResultRequest,
+    session: Session = Depends(get_session),
+):
+    """Finalize a task run from an external executor (Issue #4).
+
+    Companion to ``POST /v1/agent-task-batch-runs/external``: the external
+    executor (typically ``apo task run --local``) reports the verdict,
+    checks, transcript, and deliverables back after running the task on its
+    own machine.
+
+    Idempotency: reporting against an already-terminal run returns 409.
+    """
+    task_run = session.get(AgentTaskRunDB, task_run_id)
+    if task_run is None:
+        raise HTTPException(status_code=404, detail="Task run not found")
+
+    batch = session.get(AgentTaskBatchRunDB, task_run.batch_run_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Batch run not found")
+    require_project_not_demo(batch.project)
+
+    try:
+        finalize_external_task_run(
+            session,
+            task_run,
+            pass_result=request.pass_result,
+            adapter_name=request.adapter_name,
+            trace_run_id=request.trace_run_id,
+            checks=request.checks,
+            transcript=request.transcript,
+            deliverables=request.deliverables,
+        )
+    except ValueError as e:
+        msg = str(e)
+        status_code = 409 if "already terminal" in msg else 400
+        raise HTTPException(status_code=status_code, detail=msg) from e
+    except RuntimeError as e:
+        # reconcile_trace_id raises when the reported trace id disagrees with
+        # the one already claimed at ingestion — surface it as 409 conflict.
+        raise HTTPException(status_code=409, detail=str(e)) from e
+
+    session.refresh(task_run)
+    trigger = _load_batch_triggers(session, [task_run.batch_run_id]).get(
+        task_run.batch_run_id
+    )
+
+    return AgentTaskRunDetail(
+        id=task_run.id,
+        batch_run_id=task_run.batch_run_id,
+        task_id=task_run.task_id,
+        task_path=task_run.task_path,
+        adapter_name=task_run.adapter_name,
+        status=task_run.status,
+        pass_result=task_run.pass_result,
+        started_at=task_run.started_at,
+        completed_at=task_run.completed_at,
+        trace_run_id=task_run.trace_run_id,
+        task_source_commit_sha=task_run.task_source_commit_sha,
+        error_message=task_run.error_message,
+        trace_persistence_status=task_run.trace_persistence_status,
+        trace_error_message=task_run.trace_error_message,
+        total_cost=task_run.total_cost,
+        total_tokens=task_run.total_tokens,
+        total_checks=len(task_run.checks_json or []),
+        passed_checks=sum(
+            1
+            for result in (task_run.checks_json or [])
+            if result.get("pass") is True
+        ),
+        failed_checks=sum(
+            1
+            for result in (task_run.checks_json or [])
+            if result.get("pass") is not True
+        ),
+        trigger=trigger,
+        checks_json=task_run.checks_json,
+        transcript_json=task_run.transcript_json,
+        deliverables_json=task_run.deliverables_json,
+        error_category=classify_run_outcome(
+            task_run.status,
+            task_run.error_message,
+            task_run.trace_persistence_status,
+        ),
+    )
+

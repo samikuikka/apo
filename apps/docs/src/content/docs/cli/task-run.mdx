@@ -35,7 +35,7 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 ## Synopsis
 
 ```bash
-apo task run <task-id | path> [--ci]
+apo task run <task-id | path> [--ci] [--local]
 ```
 
 ## Description
@@ -50,6 +50,7 @@ The task id is **not** a run id — a run id is what this command *outputs*. A t
 |---|---|---|
 | `<task-id \| path>` | (required) | Task id (folder name) or filesystem path. |
 | `--ci` | off | CI mode: records CI metadata, uses strict exit codes. |
+| `--local` | off | Run on this machine but record as a backend task run (see [Local execution](#local-execution)). |
 
 ## Output
 
@@ -90,6 +91,26 @@ A failing run exits non-zero whether or not `--ci` is set — so any script gati
 
 `--ci` doesn't change the exit codes; it records CI metadata (trigger source, actor, commit) on the run and reports a strict `0`/`1`/`2` mapping based on the pass result. Use it when you want the batch run tagged with its originating pipeline.
 
+## Local execution
+
+`apo task run` picks execution mode implicitly: if you've set a project (`apo login`) and the backend is reachable, the run executes inside the backend container as a subprocess. Otherwise it runs locally on your machine.
+
+That implicit choice breaks for tasks that **can only run on a dev machine** — end-to-end tests that need cloud credentials, a VPC tunnel to the database, or a live personal stage. The backend container has none of those, so a backend-executed run fails on the first network call. `--local` fixes it:
+
+```bash
+apo task run bind-e2e --local
+```
+
+With `--local`, apo:
+
+1. Creates the batch run + task run rows on the backend up front (status `running`) and mints a short-lived token scoped to the task run.
+2. Runs the task **on your machine**, threading the token + task-run id into the SDK so the trace claims the run via the standard attribute path.
+3. Reports the verdict, checks, transcript, and deliverables back to the backend, which finalizes the row.
+
+You get the full dashboard experience — run history, pass-rate trends, trace drill-down, run comparison — while execution stays where the credentials live. Combine with `--ci` to record CI metadata on a locally-executed run.
+
+If the backend is unreachable, `--local` degrades to today's unrecorded local run (the task still executes, but no dashboard row is created) and prints a warning. Schedules stay backend-only; `--local` only affects CLI-triggered runs.
+
 ## Example
 
 ```bash
@@ -101,6 +122,10 @@ apo task run extract-parties --ci
 
 # Run a task by path
 apo task run ./e2e/tasks/extract-parties
+
+# Run a task that needs dev-machine credentials / VPC / stage,
+# but still record it on the backend for dashboard history
+apo task run bind-e2e --local
 ```
 
 ## See also

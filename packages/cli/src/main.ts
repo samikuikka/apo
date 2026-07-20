@@ -133,13 +133,15 @@ const commands: Record<string, CommandEntry> = {
     ],
     options: [
       ["--ci", "CI mode: records CI metadata, uses strict exit codes"],
+      ["--local", "Run on this machine but record as a backend task run (for tasks needing dev-machine credentials / VPC / stage)"],
     ],
     examples: [
       "apo task run meeting-summary",
       "apo task run ./tasks/my-task",
       "apo task run meeting-summary --json",
+      "apo task run bind-e2e --local",
     ],
-    note: "Runs via backend (--project) or locally. Exit codes: 0=pass, 1=fail, 2=error.",
+    note: "Runs via backend (--project) or locally. --local runs on your machine but still creates a dashboard run row + links the trace. Exit codes: 0=pass, 1=fail, 2=error.",
   },
   "runs list": {
     handler: loadCommand("runs-list"),
