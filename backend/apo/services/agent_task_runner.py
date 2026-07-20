@@ -45,6 +45,16 @@ logger = logging.getLogger(__name__)
 
 TASK_SUBPROCESS_TIMEOUT_SECONDS = 600
 
+# Issue #8: stored on task_run.error_message when a run ends failed with zero
+# registered checks. Naming test() matches the documented registration fn
+# (apps/docs reference/task.md). Kept in sync with the SDK/CLI copies in
+# packages/sdk/src/agent-task/run/aggregate.ts and
+# packages/cli/src/lib/checks-format.ts — the wording is part of the UX contract.
+NO_CHECKS_REGISTERED_MESSAGE = (
+    "No tests were registered by the eval module "
+    "— a task must define at least one test()."
+)
+
 # ---------------------------------------------------------------------------
 # SPEC-132 Behavior 7: bounded batch execution pool.
 #
@@ -610,6 +620,7 @@ def finalize_task_run_with_result(
     checks: list[dict[str, object]] | None,
     transcript: dict[str, object] | None,
     deliverables: dict[str, object] | None,
+    error_message: str | None = None,
 ) -> None:
     """Write an executor's result onto a task run and roll up the batch.
 
@@ -618,6 +629,11 @@ def finalize_task_run_with_result(
     NOT set ``completed_at`` or emit events — callers own those because the
     surrounding lifecycle differs (subprocess already has the row locked in
     its own session; external route commits + emits in one shot).
+
+    ``error_message`` precedence (Issue #8): a caller-supplied message wins;
+    otherwise a failed run with zero registered checks gets the no-tests
+    notice (so the row explains itself instead of looking like a real check
+    failure); otherwise it's cleared (a real success has no error).
     """
     task_run.adapter_name = adapter_name
     task_run.pass_result = pass_result
@@ -629,7 +645,35 @@ def finalize_task_run_with_result(
     trace_backend.aggregate_costs(session, task_run, batch.project)
     trace_backend.confirm_and_link(session, task_run, batch.project)
     task_run.status = "passed" if task_run.pass_result else "failed"
-    task_run.error_message = None
+    task_run.error_message = _resolve_run_error_message(
+        pass_result=task_run.pass_result,
+        checks=checks,
+        error_message=error_message,
+    )
+
+
+def _resolve_run_error_message(
+    *,
+    pass_result: bool,
+    checks: list[dict[str, object]] | None,
+    error_message: str | None,
+) -> str | None:
+    """Pick the error_message to persist for a finalized run.
+
+    - Passing runs never carry an error (don't fabricate one for an empty-but-
+      passing run).
+    - A caller-supplied message (e.g. the executor's caught exception, or an
+      externally-reported error_message) always wins.
+    - A failed run with no checks is a registration bug — surface the notice.
+    - Otherwise clear it: a real check failure speaks for itself via checks_json.
+    """
+    if pass_result:
+        return None
+    if error_message:
+        return error_message
+    if not checks:
+        return NO_CHECKS_REGISTERED_MESSAGE
+    return None
 
 
 def prepare_external_batch_runs(
@@ -685,6 +729,7 @@ def finalize_external_task_run(
     checks: list[dict[str, object]] | None,
     transcript: dict[str, object] | None,
     deliverables: dict[str, object] | None,
+    error_message: str | None = None,
 ) -> None:
     """Apply an external executor's final result to a task run.
 
@@ -692,6 +737,9 @@ def finalize_external_task_run(
     rolls up the batch, and emits the same events as the subprocess path so
     the dashboard treats the run identically. Raises ``ValueError`` (mapped
     to 409 by the route) if the run is already terminal.
+
+    ``error_message`` flows through to ``finalize_task_run_with_result`` so an
+    externally-reported failure reason is persisted (Issue #8).
     """
     if task_run.status in ("passed", "failed", "error"):
         raise ValueError(
@@ -712,6 +760,7 @@ def finalize_external_task_run(
         checks=checks,
         transcript=transcript,
         deliverables=deliverables,
+        error_message=error_message,
     )
     task_run.completed_at = datetime.now(timezone.utc)
     session.add(task_run)

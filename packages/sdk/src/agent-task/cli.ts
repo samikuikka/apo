@@ -1,6 +1,7 @@
 import { relative, resolve } from "path";
 import { discoverAgentTaskDirs } from "./discovery.ts";
 import { runTaskDir, type AgentTaskRunSummary } from "./task-runtime.ts";
+import { NO_CHECKS_REGISTERED_MESSAGE } from "./run/aggregate.ts";
 
 export type AgentTaskCliOptions = {
   task?: string;
@@ -142,6 +143,13 @@ function printTaskSummary(summary: AgentTaskRunSummary, cwd: string): void {
   console.log(`Path: ${relativeTaskDir}`);
 
   printResultGroup("Checks", summary.checks);
+
+  // Issue #8: a failed run with zero checks is almost always a silent
+  // registration bug (e.g. a double-import that wiped the check registry).
+  // Don't print a bare FAIL — say what went wrong.
+  if (summary.checks.length === 0 && !summary.pass) {
+    console.log(NO_CHECKS_REGISTERED_MESSAGE);
+  }
 }
 
 function printResultGroup(

@@ -134,7 +134,7 @@ check("my-check", (t, { deliverables }) => {
 });
 ```
 
-`test` is an alias of `defineCheck`. Both work identically.
+`test` is the public name for `defineCheck`. To avoid repeating the deliverables type on every call, alias it locally: `const check = test<MyDeliverables>`.
 
 ### CheckContext
 

@@ -558,6 +558,7 @@ async def report_agent_task_run_result(
             checks=request.checks,
             transcript=request.transcript,
             deliverables=request.deliverables,
+            error_message=request.error_message,
         )
     except ValueError as e:
         msg = str(e)

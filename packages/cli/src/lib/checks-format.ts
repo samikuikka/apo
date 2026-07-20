@@ -6,6 +6,21 @@ import type {
 import { dim, green, passFail, red } from "./format.ts";
 
 /**
+ * Issue #8: shown when a run ends with zero registered checks. A bare
+ * `FAIL <task>` with no Checks section looked like a real failure but was
+ * almost always a silent registration bug (e.g. a double-import that wiped
+ * the check registry). Naming `test()` matches the documented registration
+ * function — `apps/docs` reference/task.md.
+ *
+ * Kept in sync with the SDK's copy in `packages/sdk/src/agent-task/run/aggregate.ts`.
+ * The CLI can't import the SDK's constant directly because vitest resolves
+ * `@apo/sdk/agent-task` without the `development` export condition (no source
+ * build in tests), so the value would be `undefined` at test time.
+ */
+export const NO_CHECKS_REGISTERED_MESSAGE =
+  "No tests were registered by the eval module — a task must define at least one test().";
+
+/**
  * Render a run's `checks_json` section, terminal-style.
  *
  * Passing checks stay compact (`✓ id`) so failures stand out. Failing checks

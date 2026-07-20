@@ -253,4 +253,29 @@ describe("runs show command", () => {
 
     expect(code).toBe(0);
   });
+
+  // Issue #8: a failed run with zero checks must explain itself, not render a
+  // bare FAIL with an empty Checks section.
+  it("prints the no-checks notice for a failed run with no checks", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(
+        makeRun({
+          status: "failed",
+          pass_result: false,
+          total_checks: 0,
+          passed_checks: 0,
+          failed_checks: 0,
+          checks_json: [],
+        }),
+      ),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain("No tests were registered");
+    expect(out).toContain("test()");
+  });
 });

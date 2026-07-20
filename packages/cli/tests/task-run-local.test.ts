@@ -26,6 +26,7 @@ vi.mock("@apo/sdk/agent-task", () => ({
 
 // Import after mocks.
 const { run } = await import("../src/commands/task-run.ts");
+const { stripAnsi } = await import("../src/lib/format.ts");
 
 let testDir: string;
 
@@ -279,5 +280,145 @@ describe("task run --local", () => {
     // The failed verdict was reported to the backend.
     const reportBody = JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body));
     expect(reportBody.pass_result).toBe(false);
+  });
+
+  // Issue #8: a run that ends with zero checks must not print a bare FAIL.
+  it("prints the no-checks notice on an unrecorded local run with zero checks", async () => {
+    const taskDir = join(testDir, "silent-task");
+    writeTaskFile(
+      taskDir,
+      `import { task } from "@apo/sdk/agent-task";\ntask("silent-task", { adapter: "a" });`,
+    );
+
+    // Override the SDK mock to return a failed run with NO checks registered.
+    const { runTaskDir } = await import("@apo/sdk/agent-task");
+    vi.mocked(runTaskDir).mockResolvedValueOnce({
+      taskDir,
+      taskId: "silent-task",
+      pass: false,
+      checks: [],
+      adapterName: "demoAdapter",
+      deliverables: {},
+      transcript: { turns: [] },
+    });
+
+    // No backend reachable -> unrecorded local run path (printLocalRunSummary).
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("ECONNREFUSED"));
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    const code = await run([
+      "silent-task",
+      "--dir",
+      testDir,
+      "--backend",
+      "http://backend.test",
+      "--project",
+      "example-service",
+    ]);
+
+    console.log = originalLog;
+
+    expect(code).toBe(1);
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain("FAIL silent-task");
+    expect(out).toContain("No tests were registered");
+    expect(out).toContain("test()");
+  });
+
+  it("prints the no-checks notice on a recorded --local run with zero checks", async () => {
+    const taskDir = join(testDir, "silent-task");
+    writeTaskFile(
+      taskDir,
+      `import { task } from "@apo/sdk/agent-task";\ntask("silent-task", { adapter: "a" });`,
+    );
+
+    const { runTaskDir } = await import("@apo/sdk/agent-task");
+    vi.mocked(runTaskDir).mockResolvedValueOnce({
+      taskDir,
+      taskId: "silent-task",
+      pass: false,
+      checks: [],
+      adapterName: "demoAdapter",
+      traceRunId: "trace-silent",
+      deliverables: {},
+      transcript: { turns: [] },
+    });
+
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "batch-silent",
+            project: "example-service",
+            status: "running",
+            task_runs: [
+              {
+                id: "run-silent",
+                task_id: "silent-task",
+                task_path: "silent-task",
+                status: "running",
+                started_at: "2026-07-20T10:00:00Z",
+                trace_token: "tok",
+              },
+            ],
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "run-silent",
+            batch_run_id: "batch-silent",
+            task_id: "silent-task",
+            task_path: "silent-task",
+            adapter_name: "demoAdapter",
+            status: "failed",
+            pass_result: false,
+            started_at: "2026-07-20T10:00:00Z",
+            completed_at: "2026-07-20T10:00:05Z",
+            trace_run_id: "trace-silent",
+            error_message: null,
+            total_cost: null,
+            total_tokens: null,
+            total_checks: 0,
+            passed_checks: 0,
+            failed_checks: 0,
+            trigger: null,
+            checks_json: [],
+            transcript_json: {},
+            deliverables_json: {},
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    const code = await run([
+      "silent-task",
+      "--local",
+      "--dir",
+      testDir,
+      "--backend",
+      "http://backend.test",
+      "--project",
+      "example-service",
+    ]);
+
+    console.log = originalLog;
+
+    expect(code).toBe(1);
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain("FAIL silent-task");
+    expect(out).toContain("No tests were registered");
+    expect(out).toContain("test()");
   });
 });

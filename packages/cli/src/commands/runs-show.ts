@@ -4,7 +4,7 @@ import { bold, dim, formatCost, formatJson, formatTime, passFail } from "../lib/
 import { apiGet } from "../lib/api.ts";
 import { findByPrefix } from "../lib/prefix.ts";
 import type { CheckResult } from "../lib/agent-task-types.ts";
-import { formatChecks } from "../lib/checks-format.ts";
+import { formatChecks, NO_CHECKS_REGISTERED_MESSAGE } from "../lib/checks-format.ts";
 
 type RunDetail = {
   id: string;
@@ -209,6 +209,11 @@ function printRunDetail(run: RunDetail, verbose: boolean): void {
   if (run.checks_json && run.checks_json.length > 0) {
     console.log(bold("\n  Checks:"));
     console.log(formatChecks(run.checks_json, verbose));
+  } else if (run.pass_result === false) {
+    // Issue #8: a failed run with no checks is a registration bug, not a real
+    // failure. The backend also stores this on error_message (see backend
+    // finalize_task_run_with_result) — show whichever is available.
+    console.log(`\n  ${run.error_message ?? NO_CHECKS_REGISTERED_MESSAGE}`);
   }
 
   if (verbose && run.deliverables_json) {

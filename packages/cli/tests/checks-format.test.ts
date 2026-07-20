@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatChecks } from "../src/lib/checks-format.ts";
+import { formatChecks, NO_CHECKS_REGISTERED_MESSAGE } from "../src/lib/checks-format.ts";
 import { stripAnsi } from "../src/lib/format.ts";
 import type { CheckResult } from "../src/lib/agent-task-types.ts";
 
@@ -243,5 +243,18 @@ describe("formatChecks", () => {
       expect(out).toContain(`${MINUS} Expected: 1`);
       expect(out).toContain("+ Received: 2");
     });
+  });
+});
+
+describe("NO_CHECKS_REGISTERED_MESSAGE", () => {
+  // Issue #8: a run that ends with zero checks must explain itself instead of
+  // printing a bare `FAIL <task>`. The message names `test()` because that's
+  // the documented registration function (see apps/docs reference/task.md).
+  it("names the test() registration function and the requirement", () => {
+    const out = stripAnsi(NO_CHECKS_REGISTERED_MESSAGE);
+
+    expect(out).toMatch(/no tests were registered/i);
+    expect(out).toContain("test()");
+    expect(out).toMatch(/at least one/i);
   });
 });

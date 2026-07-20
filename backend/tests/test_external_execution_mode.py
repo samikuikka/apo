@@ -339,6 +339,59 @@ class TestReportResult:
         assert detail["pass_result"] is False
         assert detail["total_checks"] == 2
         assert detail["passed_checks"] == 1
+        # Issue #8: an externally-reported error_message must be persisted, not
+        # silently dropped. Previously finalize_task_run_with_result always
+        # overwrote it to None.
+        assert detail["error_message"] == "checks failed"
+
+    def test_zero_checks_failed_run_records_no_tests_notice(
+        self, client: TestClient, session: Session
+    ) -> None:
+        """Issue #8: a failed run with zero checks explains itself on the row.
+
+        The dashboard and `apo runs show` read error_message to show *why* a
+        run failed. A bare status=failed with error_message=None made a silent
+        registration bug (e.g. double-import wiping the check registry) look
+        like a real check failure.
+        """
+        _batch_id, task_run_id = _external_batch_ids(client, session)
+
+        resp = client.post(
+            f"/v1/agent-task-runs/{task_run_id}/result",
+            json={"pass_result": False, "checks": []},
+        )
+
+        assert resp.status_code == 200, resp.text
+        detail = resp.json()
+        assert detail["status"] == "failed"
+        assert detail["pass_result"] is False
+        assert detail["total_checks"] == 0
+        assert detail["error_message"] is not None
+        assert "no tests were registered" in detail["error_message"].lower()
+        assert "test()" in detail["error_message"]
+
+    def test_zero_checks_passing_run_clears_error_message(
+        self, client: TestClient, session: Session
+    ) -> None:
+        """A passing run never sets a no-tests notice.
+
+        Guards against the naive implementation that fires the notice whenever
+        checks is empty — it must be scoped to the failed case only. (A passing
+        run with zero checks shouldn't normally happen, but if it does we don't
+        want to fabricate a misleading error.)
+        """
+        _batch_id, task_run_id = _external_batch_ids(client, session)
+
+        resp = client.post(
+            f"/v1/agent-task-runs/{task_run_id}/result",
+            json={"pass_result": True, "checks": []},
+        )
+
+        assert resp.status_code == 200, resp.text
+        detail = resp.json()
+        assert detail["status"] == "passed"
+        assert detail["pass_result"] is True
+        assert detail["error_message"] is None
 
 
 # ============================================================================

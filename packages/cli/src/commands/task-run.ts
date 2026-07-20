@@ -7,7 +7,7 @@ import { apiGet, apiPost, isBackendReachable } from "../lib/api.ts";
 import { discoverTaskMeta } from "../lib/task-meta.ts";
 import { bold, dim, formatJson, formatTime, passFail, formatTrigger, red } from "../lib/format.ts";
 import type { CheckResult } from "../lib/agent-task-types.ts";
-import { formatChecks } from "../lib/checks-format.ts";
+import { formatChecks, NO_CHECKS_REGISTERED_MESSAGE } from "../lib/checks-format.ts";
 import type { TaskExecutionPreference } from "@apo/sdk/agent-task";
 import {
   resolveExecutionMode,
@@ -423,6 +423,8 @@ function printLocalRecordedSummary(
   if (summary.checks.length > 0) {
     console.log(bold("  Checks:"));
     console.log(formatChecks(summary.checks));
+  } else if (!summary.pass) {
+    console.log(`  ${NO_CHECKS_REGISTERED_MESSAGE}`);
   }
 }
 
@@ -531,6 +533,11 @@ function printLocalRunSummary(summary: LocalRunSummary): void {
   if (summary.checks.length > 0) {
     console.log(bold("  Checks:"));
     console.log(formatChecks(summary.checks));
+  } else if (!summary.pass) {
+    // Issue #8: a failed run with zero checks is almost always a silent
+    // registration bug (e.g. a double-import that wiped the check registry).
+    // Don't leave the user staring at a bare FAIL — say what went wrong.
+    console.log(`  ${NO_CHECKS_REGISTERED_MESSAGE}`);
   }
 }
 
@@ -566,6 +573,8 @@ function printTaskRunDetail(run: TaskRunDetail): void {
   if (run.checks_json?.length) {
     console.log(bold("  Checks:"));
     console.log(formatChecks(run.checks_json));
+  } else if (run.pass_result === false) {
+    console.log(`  ${NO_CHECKS_REGISTERED_MESSAGE}`);
   }
 }
 
