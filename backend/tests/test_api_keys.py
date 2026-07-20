@@ -20,6 +20,7 @@ Test cases:
 
 import hashlib
 from collections.abc import Iterator
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
@@ -30,8 +31,10 @@ from apo.auth.api_key_auth import (
     validate_basic_auth,
     validate_bearer_public_key,
 )
-from apo.models.db import ApiKeyDB, UserDB
+from apo.models.db import ApiKeyDB, ProjectDB, UserDB
 from apo.routes.api_keys import validate_api_key
+
+from .conftest import TEST_PROJECT_ID, seed_project_for_user
 
 _TEST_EMAIL = "test@example.com"
 _TEST_PASSWORD = "TestPass123"
@@ -41,13 +44,18 @@ _TEST_NAME = "Test User"
 def _setup_and_get_authed_client(
     client: TestClient, session: Session, make_authed_client: Any
 ) -> TestClient:
-    """Create a user via the public setup endpoint, then return an authed client."""
+    """Create a user + a real project, then return an authed client.
+
+    The user is the owner of ``TEST_PROJECT_ID`` so the strict
+    project-role check on mint paths (issue #11) passes.
+    """
     client.post(
         "/auth/setup",
         json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD, "name": _TEST_NAME},
     )
     user = session.exec(select(UserDB)).first()
     assert user is not None
+    seed_project_for_user(session, user.id)
     return make_authed_client(user.id, session)
 
 
@@ -107,6 +115,22 @@ class TestCreateApiKey:
     def test_create_without_auth_returns_401(self, client: TestClient) -> None:
         resp = client.post("/v1/api-keys", json={"name": "Test"})
         assert resp.status_code == 401
+
+    def test_create_rejects_nonexistent_project_with_404(
+        self, client: TestClient, session: Session, make_authed_client: Any
+    ) -> None:
+        """Regression for issue #11: mint paths must require a real ProjectDB
+        row. An admin must not be able to mint a key scoped to an arbitrary
+        nonexistent project id."""
+        authed = _setup_and_get_authed_client(client, session, make_authed_client)
+        resp = authed.post(
+            "/v1/api-keys",
+            json={"name": "Ghost", "project": "nonexistent-project"},
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Project not found"
+        # No key was created.
+        assert session.exec(select(ApiKeyDB)).first() is None
 
 
 class TestListApiKeys:
@@ -283,17 +307,33 @@ class TestBootstrapApiKey:
         yield
         _bootstrap_rate_limiter._attempts.clear()
 
-    def test_bootstrap_with_valid_credentials_mints_key(
-        self, client: TestClient, session: Session
-    ) -> None:
+    def _setup_user_and_project(self, client: TestClient, session: Session) -> str:
+        """Create the test user plus a real project they own, return user id.
+
+        Issue #11 tightened the bootstrap mint path to require a real
+        ProjectDB row, so the happy-path tests must seed one.
+        """
         client.post(
             "/auth/setup",
             json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD, "name": _TEST_NAME},
         )
+        user = session.exec(select(UserDB)).first()
+        assert user is not None
+        seed_project_for_user(session, user.id)
+        return user.id
+
+    def test_bootstrap_with_valid_credentials_mints_key(
+        self, client: TestClient, session: Session
+    ) -> None:
+        self._setup_user_and_project(client, session)
 
         resp = client.post(
             "/v1/api-keys/bootstrap",
-            json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD},
+            json={
+                "email": _TEST_EMAIL,
+                "password": _TEST_PASSWORD,
+                "project": TEST_PROJECT_ID,
+            },
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -301,6 +341,7 @@ class TestBootstrapApiKey:
         assert data["prefix"] == data["key"][:8]
         assert data["created_by"]
         assert data["scope"] == "full"
+        assert data["project"] == TEST_PROJECT_ID
 
         from apo.routes.api_keys import validate_api_key
 
@@ -318,7 +359,11 @@ class TestBootstrapApiKey:
 
         resp = client.post(
             "/v1/api-keys/bootstrap",
-            json={"email": _TEST_EMAIL, "password": "wrong-password"},
+            json={
+                "email": _TEST_EMAIL,
+                "password": "wrong-password",
+                "project": TEST_PROJECT_ID,
+            },
         )
         assert resp.status_code == 401
         assert resp.json()["detail"] == "Invalid credentials"
@@ -328,35 +373,41 @@ class TestBootstrapApiKey:
     ) -> None:
         resp = client.post(
             "/v1/api-keys/bootstrap",
-            json={"email": "nobody@example.com", "password": "whatever"},
+            json={
+                "email": "nobody@example.com",
+                "password": "whatever",
+                "project": TEST_PROJECT_ID,
+            },
         )
         assert resp.status_code == 401
         assert resp.json()["detail"] == "Invalid credentials"
 
     def test_bootstrap_is_public_no_auth_header_required(
-        self, client: TestClient
+        self, client: TestClient, session: Session
     ) -> None:
         """Bootstrap must work without an Authorization header (chicken/egg)."""
-        client.post(
-            "/auth/setup",
-            json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD, "name": _TEST_NAME},
-        )
+        self._setup_user_and_project(client, session)
         resp = client.post(
             "/v1/api-keys/bootstrap",
-            json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD},
+            json={
+                "email": _TEST_EMAIL,
+                "password": _TEST_PASSWORD,
+                "project": TEST_PROJECT_ID,
+            },
         )
         assert resp.status_code == 200
 
     def test_bootstrap_hashes_key_in_storage(
         self, client: TestClient, session: Session
     ) -> None:
-        client.post(
-            "/auth/setup",
-            json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD, "name": _TEST_NAME},
-        )
+        self._setup_user_and_project(client, session)
         resp = client.post(
             "/v1/api-keys/bootstrap",
-            json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD},
+            json={
+                "email": _TEST_EMAIL,
+                "password": _TEST_PASSWORD,
+                "project": TEST_PROJECT_ID,
+            },
         )
         full_key = resp.json()["key"]
 
@@ -368,15 +419,77 @@ class TestBootstrapApiKey:
     def test_bootstrap_assigns_user_id_as_creator(
         self, client: TestClient, session: Session
     ) -> None:
+        user_id = self._setup_user_and_project(client, session)
+
+        resp = client.post(
+            "/v1/api-keys/bootstrap",
+            json={
+                "email": _TEST_EMAIL,
+                "password": _TEST_PASSWORD,
+                "project": TEST_PROJECT_ID,
+            },
+        )
+        assert resp.json()["created_by"] == user_id
+
+    def test_bootstrap_rejects_nonexistent_project_with_404(
+        self, client: TestClient, session: Session
+    ) -> None:
+        """Regression for issue #11: a logged-in user must NOT be able to mint
+        a key scoped to an arbitrary nonexistent project id. The legacy
+        fallback would have returned 200 with a ghost-scoped key."""
+        self._setup_user_and_project(client, session)
+        resp = client.post(
+            "/v1/api-keys/bootstrap",
+            json={
+                "email": _TEST_EMAIL,
+                "password": _TEST_PASSWORD,
+                "project": "literally-anything",
+            },
+        )
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Project not found"
+
+        # No key was minted.
+        assert session.exec(select(ApiKeyDB)).first() is None
+
+    def test_bootstrap_rejects_nonexistent_default_project_with_404(
+        self, client: TestClient
+    ) -> None:
+        """The schema default (``example-service``) is also a ghost unless a
+        real project row exists for it. A fresh user with no project must
+        get 404, not a ghost key — this is the exact quirk from issue #11."""
         client.post(
             "/auth/setup",
             json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD, "name": _TEST_NAME},
         )
-        user = session.exec(select(UserDB)).first()
-        assert user is not None
-
+        # No project seeded — relies on the schema default.
         resp = client.post(
             "/v1/api-keys/bootstrap",
             json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD},
         )
-        assert resp.json()["created_by"] == user.id
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Project not found"
+
+    def test_bootstrap_rejects_project_user_is_not_a_member_of(
+        self, client: TestClient, session: Session
+    ) -> None:
+        """Even when the project exists, the caller must be a member."""
+        self._setup_user_and_project(client, session)
+        # Create a second project the user has no membership in.
+        other = ProjectDB(
+            id="other-project",
+            name="other",
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(other)
+        session.commit()
+
+        resp = client.post(
+            "/v1/api-keys/bootstrap",
+            json={
+                "email": _TEST_EMAIL,
+                "password": _TEST_PASSWORD,
+                "project": "other-project",
+            },
+        )
+        assert resp.status_code == 403

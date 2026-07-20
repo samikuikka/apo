@@ -25,6 +25,8 @@ from apo.auth.api_key_auth import (
 )
 from apo.models.db import ApiKeyDB, UserDB
 
+from .conftest import TEST_PROJECT_ID, seed_project_for_user
+
 _TEST_EMAIL = "test@example.com"
 _TEST_PASSWORD = "TestPass123"
 _TEST_NAME = "Test User"
@@ -39,6 +41,8 @@ def _setup_and_get_authed_client(
     )
     user = session.exec(select(UserDB)).first()
     assert user is not None
+    # Issue #11: mint paths require a real project + membership.
+    seed_project_for_user(session, user.id)
     return make_authed_client(user.id, session)
 
 
@@ -310,9 +314,16 @@ class TestMiddlewareLegacyBearer:
             "/auth/setup",
             json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD, "name": _TEST_NAME},
         )
+        user = session.exec(select(UserDB)).first()
+        assert user is not None
+        seed_project_for_user(session, user.id)
         bootstrap_resp = client.post(
             "/v1/api-keys/bootstrap",
-            json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD},
+            json={
+                "email": _TEST_EMAIL,
+                "password": _TEST_PASSWORD,
+                "project": TEST_PROJECT_ID,
+            },
         )
         legacy_key = bootstrap_resp.json()["key"]
 
@@ -335,9 +346,16 @@ class TestRotationUpgradesLegacyKey:
             "/auth/setup",
             json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD, "name": _TEST_NAME},
         )
+        user = session.exec(select(UserDB)).first()
+        assert user is not None
+        seed_project_for_user(session, user.id)
         bootstrap_resp = client.post(
             "/v1/api-keys/bootstrap",
-            json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD},
+            json={
+                "email": _TEST_EMAIL,
+                "password": _TEST_PASSWORD,
+                "project": TEST_PROJECT_ID,
+            },
         )
         key_id = bootstrap_resp.json()["id"]
         old_legacy_key = bootstrap_resp.json()["key"]

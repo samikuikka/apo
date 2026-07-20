@@ -39,6 +39,8 @@ from apo.auth.middleware import _is_expired
 from apo.db import engine as db_engine
 from apo.models.db import ApiKeyDB, UserDB
 
+from .conftest import TEST_PROJECT_ID, seed_project_for_user
+
 _TEST_EMAIL = "test@example.com"
 _TEST_PASSWORD = "TestPass123"
 _TEST_NAME = "Test User"
@@ -54,6 +56,8 @@ def _setup_and_get_authed_client(
     )
     user = session.exec(select(UserDB)).first()
     assert user is not None
+    # Issue #11: mint paths require a real project + membership.
+    seed_project_for_user(session, user.id)
     return make_authed_client(user.id, session)
 
 
@@ -64,7 +68,7 @@ class TestCreateWithScopeAndExpiry:
         authed = _setup_and_get_authed_client(client, session, make_authed_client)
         resp = authed.post(
             "/v1/api-keys",
-            json={"name": "Ingest Key", "project": "my-app", "scope": "ingest"},
+            json={"name": "Ingest Key", "project": TEST_PROJECT_ID, "scope": "ingest"},
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -81,7 +85,7 @@ class TestCreateWithScopeAndExpiry:
         future = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
         resp = authed.post(
             "/v1/api-keys",
-            json={"name": "Expiring Key", "project": "my-app", "expires_at": future},
+            json={"name": "Expiring Key", "project": TEST_PROJECT_ID, "expires_at": future},
         )
         assert resp.status_code == 200
         assert resp.json()["expires_at"] is not None
@@ -92,7 +96,7 @@ class TestCreateWithScopeAndExpiry:
         authed = _setup_and_get_authed_client(client, session, make_authed_client)
         resp = authed.post(
             "/v1/api-keys",
-            json={"name": "Default Key", "project": "my-app"},
+            json={"name": "Default Key", "project": TEST_PROJECT_ID},
         )
         assert resp.status_code == 200
         assert resp.json()["scope"] == "full"
@@ -103,7 +107,7 @@ class TestCreateWithScopeAndExpiry:
         authed = _setup_and_get_authed_client(client, session, make_authed_client)
         resp = authed.post(
             "/v1/api-keys",
-            json={"name": "Bad Scope", "project": "my-app", "scope": "admin"},
+            json={"name": "Bad Scope", "project": TEST_PROJECT_ID, "scope": "admin"},
         )
         assert resp.status_code == 422
         assert "Invalid scope" in resp.json()["detail"]
@@ -115,7 +119,7 @@ class TestCreateWithScopeAndExpiry:
         past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
         resp = authed.post(
             "/v1/api-keys",
-            json={"name": "Past Key", "project": "my-app", "expires_at": past},
+            json={"name": "Past Key", "project": TEST_PROJECT_ID, "expires_at": past},
         )
         assert resp.status_code == 422
         assert "future" in resp.json()["detail"].lower()
@@ -128,7 +132,7 @@ class TestListReturnsScopeAndExpiry:
         authed = _setup_and_get_authed_client(client, session, make_authed_client)
         authed.post(
             "/v1/api-keys",
-            json={"name": "Scoped", "project": "app", "scope": "ingest"},
+            json={"name": "Scoped", "project": TEST_PROJECT_ID, "scope": "ingest"},
         )
         resp = authed.get("/v1/api-keys")
         assert resp.status_code == 200
@@ -143,7 +147,7 @@ class TestRotation:
         authed = _setup_and_get_authed_client(client, session, make_authed_client)
         create_resp = authed.post(
             "/v1/api-keys",
-            json={"name": "To Rotate", "project": "app"},
+            json={"name": "To Rotate", "project": TEST_PROJECT_ID},
         )
         key_id = create_resp.json()["id"]
         old_public_key = create_resp.json()["public_key"]
@@ -164,7 +168,7 @@ class TestRotation:
         authed = _setup_and_get_authed_client(client, session, make_authed_client)
         create_resp = authed.post(
             "/v1/api-keys",
-            json={"name": "Rotate Me", "project": "app"},
+            json={"name": "Rotate Me", "project": TEST_PROJECT_ID},
         )
         key_id = create_resp.json()["id"]
         old_public_key = create_resp.json()["public_key"]
@@ -182,7 +186,7 @@ class TestRotation:
         authed = _setup_and_get_authed_client(client, session, make_authed_client)
         create_resp = authed.post(
             "/v1/api-keys",
-            json={"name": "Prod", "project": "prod-app", "scope": "ingest"},
+            json={"name": "Prod", "project": TEST_PROJECT_ID, "scope": "ingest"},
         )
         key_id = create_resp.json()["id"]
         created_by = create_resp.json()["created_by"]
@@ -192,7 +196,7 @@ class TestRotation:
         db_key = session.get(ApiKeyDB, key_id)
         assert db_key is not None
         assert db_key.name == "Prod"
-        assert db_key.project == "prod-app"
+        assert db_key.project == TEST_PROJECT_ID
         assert db_key.scope == "ingest"
         assert db_key.created_by == created_by
 

@@ -38,6 +38,18 @@ Verifies any existing saved key against the backend first — so you don't get s
 
 A new key is minted server-side (`POST /v1/api-keys/bootstrap`) and scoped to the chosen project. The key is written to `~/.apo/credentials` alongside the backend URL, project id, and task root.
 
+:::caution[You need a project first]
+`apo login` lists the projects your account can access and asks you to pick one. On a fresh backend with no projects yet, it exits with:
+
+```text
+This account has no projects yet.
+  Run `apo project create <name> --email … --password …` to create one,
+  then run `apo login` again.
+```
+
+The mint endpoint rejects any project id that has no `ProjectDB` row (a `404`), so you cannot log in against a project that doesn't exist. See [`apo project create`](/cli/project/).
+:::
+
 ### Options
 
 | Option | Default | Description |

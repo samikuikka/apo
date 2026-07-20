@@ -2,12 +2,13 @@ import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 from sqlmodel.pool import StaticPool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -15,6 +16,56 @@ from starlette.responses import Response
 
 from apo.api import app
 from apo.db import get_session
+from apo.models.db import ProjectDB, ProjectMembershipDB
+
+# A stable project id used across the API-key tests. Issue #11 tightened
+# mint paths to require a real ProjectDB row, so tests that mint keys must
+# seed this project (and make the caller its owner) before POSTing.
+TEST_PROJECT_ID = "example-service"
+
+
+def seed_project_for_user(
+    session: Session, owner_id: str, *, project_id: str = TEST_PROJECT_ID
+) -> str:
+    """Insert a real ProjectDB row + owner membership, return its id.
+
+    Used by API-key / bootstrap tests so the strict project-role check
+    (issue #11) passes. Idempotent: if the project already exists, the
+    membership is still ensured.
+    """
+    project = session.get(ProjectDB, project_id)
+    if project is None:
+        project = ProjectDB(
+            id=project_id,
+            name=project_id,
+            created_by=owner_id,
+            created_at=datetime.now(timezone.utc),
+        )
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+    if (
+        session.exec(
+            select(ProjectMembershipDB).where(
+                ProjectMembershipDB.project_id == project_id,
+                ProjectMembershipDB.user_id == owner_id,
+            )
+        ).first()
+        is None
+    ):
+        now = datetime.now(timezone.utc)
+        session.add(
+            ProjectMembershipDB(
+                project_id=project_id,
+                user_id=owner_id,
+                role="owner",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.commit()
+    return project_id
+
 
 # Setup in-memory DB
 # StaticPool is required for in-memory SQLite to share the same DB across connections

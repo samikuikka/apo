@@ -8,6 +8,49 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
 Project commands manage which project you're operating against and where its tasks come from. Every command respects the global `--project` flag (or the saved project from `apo login`).
 
+## `apo project create`
+
+Create the first project on a fresh instance and mint an API key for it in one call. This is the only legitimate way to bootstrap a project — `apo login` will refuse if your account has no projects yet.
+
+### Synopsis
+
+```bash
+apo project create <name> --email <addr> --password <pw> [--trace-content-policy <off|redacted|full>] [--scope <full|ingest>]
+```
+
+### What it does
+
+1. Verifies your email + password against the backend.
+2. Creates a new `ProjectDB` row with a random id and makes you its **owner**.
+3. Mints a `full`-scoped API key (shown once) and writes it to `~/.apo/credentials`, so the new project becomes the active one.
+
+Because a real project row is committed before the key is minted, the new strict mint-path check (a nonexistent project id is rejected with `404`) is never an obstacle here.
+
+### Output
+
+<TerminalOutput
+  lines={[
+    { text: "✓ Created project acme-evals (a1b2c3d4).", tone: "success" },
+    { text: "  API key: sk-apo_abc… (saved to ~/.apo/credentials)" },
+    { text: "  Trace content policy: redacted" },
+    { text: "  Run `apo task list` to verify task discovery." },
+  ]}
+/>
+
+### Examples
+
+```bash
+# First project on a fresh backend
+apo project create acme-evals --email me@example.com --password '*****'
+
+# Full-trace policy for an internal staging project
+apo project create staging --email me@example.com --password '*****' --trace-content-policy full
+```
+
+:::tip[First-run flow]
+On a brand-new backend: `apo project create <name>` → `apo project init-tasks --repo …`. You never need to touch the dashboard to get going.
+:::
+
 ## `apo project list`
 
 List projects you can access. The active project is marked with `*`.

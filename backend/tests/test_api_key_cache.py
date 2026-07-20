@@ -37,6 +37,8 @@ from apo.auth.api_key_cache import (
 from apo.auth.middleware import _is_expired
 from apo.models.db import ApiKeyDB, UserDB
 
+from .conftest import TEST_PROJECT_ID, seed_project_for_user
+
 _TEST_EMAIL = "test@example.com"
 _TEST_PASSWORD = "TestPass123"
 _TEST_NAME = "Test User"
@@ -63,6 +65,8 @@ def _setup_and_get_authed_client(
     )
     user = session.exec(select(UserDB)).first()
     assert user is not None
+    # Issue #11: mint paths require a real project + membership.
+    seed_project_for_user(session, user.id)
     return make_authed_client(user.id, session)
 
 
@@ -559,7 +563,7 @@ class TestCacheInvalidationOnRevoke:
         authed = _setup_and_get_authed_client(client, session, make_authed_client)
         create_resp = authed.post(
             "/v1/api-keys",
-            json={"name": "To Revoke", "project": "app"},
+            json={"name": "To Revoke", "project": TEST_PROJECT_ID},
         )
         assert create_resp.status_code == 200
         public_key = create_resp.json()["public_key"]
@@ -596,7 +600,7 @@ class TestCacheInvalidationOnRotate:
         authed = _setup_and_get_authed_client(client, session, make_authed_client)
         create_resp = authed.post(
             "/v1/api-keys",
-            json={"name": "To Rotate", "project": "app"},
+            json={"name": "To Rotate", "project": TEST_PROJECT_ID},
         )
         assert create_resp.status_code == 200
         old_public_key = create_resp.json()["public_key"]
