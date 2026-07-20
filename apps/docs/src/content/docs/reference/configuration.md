@@ -18,7 +18,7 @@ The backend reads these on start. Set them in `backend/.env` (or your container 
 
 ### LLM (agent-task runs)
 
-Passed through to agent-task subprocesses so judge calls and adapter LLM calls reach the model:
+These defaults are deliberately cheap (`google/gemini-2.5-flash-lite`) — stronger models are opt-in only, never forced. See [Cost-aware defaults](/self-hosting/configuration/#cost-aware-defaults) for the full policy. Passed through to agent-task subprocesses so judge calls and adapter LLM calls reach the model:
 
 | Variable | Default | Purpose |
 |---|---|---|

@@ -150,7 +150,7 @@ A purely factual criterion — "every `Finland` was replaced by `Sweden`", "the 
 
 #### Overriding the judge model per call
 
-`opts.judge` overrides the run's judge config for **this call only**, merging field-by-field — use it to escalate one finicky criterion to a stronger model without switching the whole run onto an expensive default.
+apo's judge default is deliberately cheap (`google/gemini-2.5-flash-lite`) — stronger models are always opt-in, never a surprise (see [Cost-aware defaults](/self-hosting/configuration/#cost-aware-defaults)). `opts.judge` is the most surgical opt-in: it overrides the run's judge config for **this call only**, merging field-by-field — use it to escalate one finicky criterion without switching the whole run onto an expensive model.
 
 ```typescript title="my-task.eval.ts"
 test("answer-quality", async (t, { deliverables }) => {
