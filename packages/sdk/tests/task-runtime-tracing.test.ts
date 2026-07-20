@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Mock the heavy collaborators so runTaskDir can be exercised in isolation.
 // We capture what `tracing` object it builds and passes to runTask, plus the
 // shape of the summary it returns.
-const _captured: { tracing?: unknown; runtime?: unknown } = {};
+const _captured: { tracing?: unknown; runtime?: unknown; loaded?: unknown } = {};
 
 vi.mock("../src/agent-task/task/loadTask", () => ({
   loadTask: vi.fn(async () => ({
@@ -19,8 +19,9 @@ vi.mock("../src/agent-task/task/loadTask", () => ({
 }));
 
 vi.mock("../src/agent-task/run/runTask", () => ({
-  runTask: vi.fn(async (_taskDir: string, options?: { tracing?: unknown }) => {
+  runTask: vi.fn(async (_taskDir: string, options?: { tracing?: unknown; loaded?: unknown }) => {
     _captured.tracing = options?.tracing;
+    _captured.loaded = options?.loaded;
     return {
       task: { id: "fake-task" },
       taskDir: "/tmp/fake",
@@ -35,6 +36,8 @@ vi.mock("../src/agent-task/run/runTask", () => ({
 
 // Import after mocks are registered.
 const { runTaskDir } = await import("../src/agent-task/task-runtime");
+const { loadTask } = await import("../src/agent-task/task/loadTask");
+const { runTask } = await import("../src/agent-task/run/runTask");
 
 describe("runTaskDir threading (Issue #4)", () => {
   const originalEnv = { ...process.env };
@@ -42,6 +45,7 @@ describe("runTaskDir threading (Issue #4)", () => {
   beforeEach(() => {
     _captured.tracing = undefined;
     _captured.runtime = undefined;
+    _captured.loaded = undefined;
   });
 
   afterEach(() => {
@@ -99,5 +103,31 @@ describe("runTaskDir threading (Issue #4)", () => {
     expect(summary).toHaveProperty("adapterName");
     expect(summary).toHaveProperty("deliverables");
     expect(summary).toHaveProperty("transcript");
+  });
+});
+
+describe("runTaskDir loads the eval exactly once (Issue #7)", () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it("threads the LoadedTask into runTask so loadTask is not called twice", async () => {
+    vi.mocked(loadTask).mockClear();
+    vi.mocked(runTask).mockClear();
+
+    await runTaskDir("/tmp/fake");
+
+    // loadTask fires exactly once (the runTaskDir call itself), not again
+    // inside runTask — the eval module's top level must run only once per run.
+    expect(loadTask).toHaveBeenCalledTimes(1);
+    expect(runTask).toHaveBeenCalledTimes(1);
+
+    // runTask received the already-loaded task via options.loaded, so it has
+    // no reason to re-import the eval file.
+    const loadedArg = _captured.loaded as { task?: { id?: string } } | undefined;
+    expect(loadedArg).toBeDefined();
+    expect(loadedArg?.task?.id).toBe("fake-task");
   });
 });

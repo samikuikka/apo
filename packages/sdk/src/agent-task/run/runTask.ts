@@ -40,13 +40,32 @@ export type RunTaskOptions = {
     userAction: TaskTranscriptTurn["userAction"],
     agentResponse: unknown,
   ) => void;
+  /**
+   * Skip the internal `loadTask(taskDir)` call and reuse an already-loaded
+   * task definition.
+   *
+   * The eval module's top level runs once per `loadTask` (it is copied to a
+   * temp file and imported with all registries reset), so loading twice per
+   * run breaks evals whose load-time behavior is not idempotent across module
+   * systems (e.g. a helper that re-exports CJS `require()`-cached registrations
+   * — the second import hits the cache and registers zero checks). Callers
+   * that already need a `LoadedTask` for their own purposes (`runTaskDir`,
+   * `runner-entry.ts`) should always pass it through here to keep the eval
+   * import count at exactly one per run.
+   *
+   * When omitted, `runTask` calls `loadTask(taskDir)` itself. The `taskDir`
+   * argument is still required for that fallback and is otherwise unused.
+   */
+  loaded?: LoadedTask;
 };
 
 export async function runTask(
   taskDir: string,
   options?: RunTaskOptions,
 ): Promise<TaskRunResult> {
-  const loaded = await loadTask(taskDir);
+  // Reuse an already-loaded task when provided — see `RunTaskOptions.loaded`.
+  // Otherwise load it here (the eval module is imported exactly once either way).
+  const loaded = options?.loaded ?? (await loadTask(taskDir));
   const trace = options?.tracing;
 
   if (!trace) {
