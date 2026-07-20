@@ -61,6 +61,15 @@ export function defineTask<
  *   maxTurns: 2,
  * });
  *
+ * // A task that needs dev-machine resources (cloud creds, VPC, stage) can
+ * // declare execution: "local" so `apo task run` runs it on the caller's
+ * // machine while still recording a backend run row (SPEC-136).
+ * task("bind-e2e", {
+ *   adapter: bindAdapter,
+ *   deliverables: ["summary"],
+ *   execution: "local",
+ * });
+ *
  * check("reviewed-methodically", (t) => { ... });
  * ```
  */

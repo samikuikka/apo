@@ -121,6 +121,34 @@ describe("per-command help", () => {
     expect(output).toContain("0=pass");
   });
 
+  it("lists --local and --remote as symmetric dispatch overrides on task run --help", async () => {
+    const { output, code } = await runCapture(["task", "run", "--help"]);
+    expect(code).toBe(0);
+    expect(output).toContain("--local");
+    expect(output).toContain("--remote");
+  });
+
+  it("documents the implicit-local precedence in the task run note", async () => {
+    const { output } = await runCapture(["task", "run", "--help"]);
+    // The note should mention that local execution can be implicit (task/project).
+    expect(output).toMatch(/execution|implicit|project default/i);
+  });
+
+  it("shows project config help with set/unset/show subcommands", async () => {
+    const { output, code } = await runCapture(["project", "config", "--help"]);
+    expect(code).toBe(0);
+    expect(output).toContain("apo project config");
+    expect(output).toContain("set");
+    expect(output).toContain("unset");
+    expect(output).toContain("show");
+    expect(output).toContain("default-execution");
+  });
+
+  it("lists project config in the global command list", async () => {
+    const { output } = await runCapture(["--help"]);
+    expect(output).toContain("project config");
+  });
+
   it("shows project source set help with type options", async () => {
     const { output, code } = await runCapture(["project", "source", "set", "--help"]);
     expect(code).toBe(0);

@@ -2,8 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import * as credentials from "../src/lib/credentials.ts";
 
 import { run } from "../src/commands/task-run.ts";
+
+// Mock credentials so the test doesn't read the machine's real ~/.apo/credentials
+// (which may carry a default_execution that would change dispatch — SPEC-136).
+beforeEach(() => {
+  vi.spyOn(credentials, "readCredentials").mockReturnValue(null);
+});
 
 let testDir: string;
 

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { listTaskCandidateDirs, type ScanOptions } from "./scanner.ts";
+import type { TaskExecutionPreference } from "@apo/sdk/agent-task";
 
 export type TaskMeta = {
   id: string;
@@ -10,6 +11,14 @@ export type TaskMeta = {
   path: string;
   deliverables: string[];
   files: string[];
+  /**
+   * The task's declared execution preference (SPEC-136), read statically
+   * from the `.eval.ts` file. `undefined` when absent or `"auto"` — both
+   * mean "no preference, defer to project default / reachability". Read
+   * without loading the task module so we don't pay for double registration
+   * of checks at dispatch time.
+   */
+  execution?: TaskExecutionPreference;
 };
 
 export type DiscoverOptions = Omit<ScanOptions, "rootDir">;
@@ -57,6 +66,7 @@ function parseTaskMeta(taskDir: string): TaskMeta | undefined {
   const deliverables = extractArrayField(content, "deliverables");
   const hasChecks = extractHasChecks(content, taskDir);
   const hasSimulator = /simulator\s*:/.test(content);
+  const execution = extractExecution(content);
 
   const filesDir = join(taskDir, "files");
   const files: string[] = [];
@@ -74,6 +84,7 @@ function parseTaskMeta(taskDir: string): TaskMeta | undefined {
     path: taskDir,
     deliverables,
     files,
+    execution,
   };
 }
 
@@ -136,4 +147,19 @@ function extractArrayField(content: string, field: string): string[] {
         .replace(/^["']|["']$/g, ""),
     )
     .filter(Boolean);
+}
+
+/**
+ * Read a task's `execution` preference statically (SPEC-136). Mirrors the
+ * other `extract*` helpers so `task-run` can pick a dispatch mode without
+ * executing the user's module (which would re-register checks). Strips `//`
+ * line comments first so a documented example doesn't get mistaken for a
+ * real declaration. `"auto"` and unknown values collapse to `undefined`
+ * (== "no preference"), matching the semantics of `resolveExecutionMode`.
+ */
+function extractExecution(content: string): TaskExecutionPreference | undefined {
+  const withoutComments = content.replace(/^[ \t]*\/\/.*$/gm, "");
+  const value = extractStringField(withoutComments, "execution");
+  if (value === "local" || value === "backend") return value;
+  return undefined;
 }

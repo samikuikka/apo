@@ -8,6 +8,11 @@ import { discoverTaskMeta } from "../lib/task-meta.ts";
 import { bold, dim, formatJson, formatTime, passFail, formatTrigger, red } from "../lib/format.ts";
 import type { CheckResult } from "../lib/agent-task-types.ts";
 import { formatChecks } from "../lib/checks-format.ts";
+import type { TaskExecutionPreference } from "@apo/sdk/agent-task";
+import {
+  resolveExecutionMode,
+  type ExecutionReason,
+} from "../lib/execution-mode.ts";
 
 type LocalRunSummary = {
   taskId: string;
@@ -88,33 +93,137 @@ export async function run(argv: string[]): Promise<number> {
   const config = resolveConfig(flags);
   const taskRef = requirePositional(positional, 0, "task-id | path");
 
-  const forceLocal = getBoolFlag(flags, "local");
-  if (forceLocal) {
-    if (config.projectId && await isBackendReachable(config.backendUrl)) {
-      return runLocallyRecorded(config, resolveProjectTaskSelection(taskRef, config.taskRoot));
-    }
-    // Backend not reachable — degrade to today's unrecorded local run.
-    console.warn(
-      dim("--local: backend not reachable or no project set; running unrecorded."),
-    );
-    const taskDir = resolveTaskDir(taskRef, config.taskRoot);
-    if (!taskDir) {
-      console.error(`Task not found: ${taskRef}`);
-      return 2;
-    }
-    return runLocally(config, taskDir);
-  }
+  const flagLocal = getBoolFlag(flags, "local");
+  const flagRemote = getBoolFlag(flags, "remote");
 
-  if (config.projectId && await isBackendReachable(config.backendUrl)) {
-    return runViaBackend(config, resolveProjectTaskSelection(taskRef, config.taskRoot));
-  }
-
-  const taskDir = resolveTaskDir(taskRef, config.taskRoot);
-  if (!taskDir) {
+  // Resolve the task's filesystem path + its declared execution preference.
+  // We read `execution` statically (no module load) so we don't re-register
+  // checks just to pick a dispatch mode (SPEC-136).
+  const resolved = resolveTask(taskRef, config.taskRoot);
+  if (!resolved) {
     console.error(`Task not found: ${taskRef}`);
     return 2;
   }
-  return runLocally(config, taskDir);
+
+  // Pure dispatch decision (SPEC-136): flag > task > project > reachability.
+  const decision = resolveExecutionMode({
+    flagLocal,
+    flagRemote,
+    taskExecution: resolved.execution,
+    projectDefault: config.defaultExecution,
+    hasProject: Boolean(config.projectId),
+  });
+
+  switch (decision.mode) {
+    case "local-recorded":
+      return runLocalRecordedDispatch(config, resolved, decision.reason);
+    case "backend":
+      return runBackendDispatch(config, resolved, decision.reason);
+    case "local-unrecorded":
+    default:
+      return runLocally(config, resolved.taskDir);
+  }
+}
+
+/**
+ * Dispatch to the Issue #4 local-recorded path, applying the reachability
+ * fallback it has always had: if the backend isn't reachable (or no project
+ * is set), degrade to an unrecorded local run with a warning. The implicit
+ * task/project paths (SPEC-136) inherit the exact same fallback.
+ */
+async function runLocalRecordedDispatch(
+  config: Config,
+  resolved: ResolvedTask,
+  reason: ExecutionReason,
+): Promise<number> {
+  if (!config.projectId || !(await isBackendReachable(config.backendUrl))) {
+    if (reason === "flag") {
+      // Today's exact wording for the explicit --local fallback.
+      console.warn(
+        dim("--local: backend not reachable or no project set; running unrecorded."),
+      );
+    } else {
+      console.warn(
+        dim(
+          `Local execution requested but backend not reachable; running unrecorded.`,
+        ),
+      );
+    }
+    return runLocally(config, resolved.taskDir);
+  }
+
+  printImplicitLocalNotice(resolved, reason);
+  return runLocallyRecorded(config, resolved);
+}
+
+/**
+ * Dispatch to the backend-subprocess path. Reachability gates it the same way
+ * it always has: backend down (or no project) → unrecorded local fallback.
+ */
+async function runBackendDispatch(
+  config: Config,
+  resolved: ResolvedTask,
+  reason: ExecutionReason,
+): Promise<number> {
+  if (!config.projectId || !(await isBackendReachable(config.backendUrl))) {
+    return runLocally(config, resolved.taskDir);
+  }
+  void reason; // backend dispatch has no implicit notice to print.
+  return runViaBackend(config, resolved.taskDir);
+}
+
+/**
+ * Print the one-line notice explaining *why* local execution was chosen
+ * implicitly (SPEC-136 §"CLI output"). Only for task/project reasons —
+ * the explicit `--local` path keeps today's output unchanged.
+ */
+function printImplicitLocalNotice(resolved: ResolvedTask, reason: ExecutionReason): void {
+  if (reason === "task") {
+    console.log(
+      dim(`Running locally: task '${resolved.taskId}' declares execution=local`),
+    );
+    return;
+  }
+  if (reason === "project") {
+    console.log(dim(`Running locally: project default is local-execution`));
+  }
+}
+
+type ResolvedTask = {
+  taskDir: string;
+  /** The task id, when the ref resolved via discovery; undefined for raw paths. */
+  taskId: string | undefined;
+  execution: TaskExecutionPreference | undefined;
+};
+
+/**
+ * Resolve a user-provided task ref (id or filesystem path) to its directory,
+ * id, and declared execution preference. Falls back to the raw path when the
+ * ref isn't in the task root so existing path-based invocations keep working.
+ */
+function resolveTask(ref: string, taskRoot: string): ResolvedTask | null {
+  const asPath = resolve(ref);
+  if (existsSync(asPath)) {
+    // Path given directly: try to attach discovery metadata (id + execution),
+    // but always honor the explicit path.
+    const meta = discoverTaskMeta(taskRoot).find(
+      (t) => resolve(t.path) === asPath,
+    );
+    return {
+      taskDir: asPath,
+      taskId: meta?.id,
+      execution: meta?.execution,
+    };
+  }
+
+  const tasks = discoverTaskMeta(taskRoot);
+  const match = tasks.find((t) => t.id === ref);
+  if (!match) return null;
+  return {
+    taskDir: match.path,
+    taskId: match.id,
+    execution: match.execution,
+  };
 }
 
 function resolveCiTrigger(flags: Record<string, string | boolean>): Record<string, unknown> | null {
@@ -155,20 +264,6 @@ function resolveFlagOrEnv(
   return process.env[envVar] ?? null;
 }
 
-function resolveTaskDir(
-  ref: string,
-  taskRoot: string,
-): string | null {
-  const asPath = resolve(ref);
-  if (existsSync(asPath)) {
-    return asPath;
-  }
-
-  const tasks = discoverTaskMeta(taskRoot);
-  const match = tasks.find((t) => t.id === ref);
-  return match?.path ?? null;
-}
-
 async function runLocally(config: Config, taskDir: string): Promise<number> {
   loadEnvFiles(taskDir);
   const { runTaskDir } = await import("@apo/sdk/agent-task");
@@ -192,7 +287,7 @@ async function runLocally(config: Config, taskDir: string): Promise<number> {
   return summary.pass ? 0 : 1;
 }
 
-async function runLocallyRecorded(config: Config, taskRef: string): Promise<number> {
+async function runLocallyRecorded(config: Config, task: ResolvedTask): Promise<number> {
   // Issue #4: run on the dev machine (where credentials / VPC / stage live)
   // but still create a backend task run + link the trace, so the dashboard
   // records history, trends, and trace drill-down.
@@ -208,7 +303,9 @@ async function runLocallyRecorded(config: Config, taskRef: string): Promise<numb
   const createBody = {
     project: config.projectId,
     selection_type: "task",
-    task_paths: [taskRef],
+    // Prefer the task id for the backend's task-path resolution; fall back
+    // to the raw path when discovery couldn't attach an id.
+    task_paths: [task.taskId ?? task.taskDir],
     task_root: resolve(config.taskRoot),
     run_metadata: { trigger },
   };
@@ -245,14 +342,13 @@ async function runLocallyRecorded(config: Config, taskRef: string): Promise<numb
   process.env.AGENT_TASK_TRACE_REQUIRED = "true";
   process.env.APO_AUTH_TOKEN = externalRun.trace_token;
 
-  const taskDir = resolveTaskDir(taskRef, config.taskRoot) ?? taskRef;
-  loadEnvFiles(taskDir);
+  loadEnvFiles(task.taskDir);
 
   const { runTaskDir } = await import("@apo/sdk/agent-task");
   let summary: LocalRunSummary;
   try {
-    console.log(dim(`Running task locally from ${taskDir} (run ${externalRun.id})...`));
-    summary = await runTaskDir(taskDir);
+    console.log(dim(`Running task locally from ${task.taskDir} (run ${externalRun.id})...`));
+    summary = await runTaskDir(task.taskDir);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(red(`Error: ${message}`));
@@ -385,17 +481,6 @@ async function runViaBackend(config: Config, taskDir: string): Promise<number> {
   }
 
   return taskRun.pass_result === false ? 1 : taskRun.status === "passed" ? 0 : 2;
-}
-
-function resolveProjectTaskSelection(ref: string, taskRoot: string): string {
-  const asPath = resolve(ref);
-  if (!existsSync(asPath)) {
-    return ref;
-  }
-
-  const tasks = discoverTaskMeta(taskRoot);
-  const match = tasks.find((task) => resolve(task.path) === asPath);
-  return match?.id ?? ref;
 }
 
 async function waitForTaskRun(

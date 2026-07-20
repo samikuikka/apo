@@ -12,6 +12,14 @@ export type StoredCredentials = {
   task_root?: string;
   project?: string;
   created_at?: string;
+  /**
+   * Project-level default for where `apo task run` executes
+   * (SPEC-136). Stored per credential set so different backends can have
+   * different defaults. Lower priority than a task's own `execution`
+   * declaration; overrideable per-invocation by `--local` / `--remote`.
+   * Old credential files lack the field → treated as unset.
+   */
+  default_execution?: "local" | "backend";
 };
 
 export function readCredentials(): StoredCredentials | null {

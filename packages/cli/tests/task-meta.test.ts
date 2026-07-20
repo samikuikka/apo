@@ -250,3 +250,68 @@ describe("findTaskMetaById", () => {
     expect(task).toBeUndefined();
   });
 });
+
+describe("task execution preference (SPEC-136)", () => {
+  it("extracts execution: 'local'", () => {
+    writeTaskFile(join(testDir, "local-task"), `
+      task("local-task", {
+        adapter: myAdapter,
+        deliverables: ["result"],
+        execution: "local",
+      });
+    `);
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].execution).toBe("local");
+  });
+
+  it("extracts execution: 'backend'", () => {
+    writeTaskFile(join(testDir, "backend-task"), `
+      task("backend-task", { adapter: a, execution: "backend" });
+    `);
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].execution).toBe("backend");
+  });
+
+  it("extracts execution: 'auto' as undefined (auto == no preference)", () => {
+    writeTaskFile(join(testDir, "auto-task"), `
+      task("auto-task", { adapter: a, execution: "auto" });
+    `);
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].execution).toBeUndefined();
+  });
+
+  it("execution is undefined when the field is absent (legacy tasks)", () => {
+    writeTaskFile(join(testDir, "legacy"), `
+      task("legacy", { adapter: a, deliverables: ["result"] });
+    `);
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].execution).toBeUndefined();
+  });
+
+  it("supports single-quoted values", () => {
+    writeTaskFile(join(testDir, "single-q"), `
+      task("single-q", { adapter: a, execution: 'local' });
+    `);
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].execution).toBe("local");
+  });
+
+  it("ignores unknown execution values (undefined, not propagated)", () => {
+    writeTaskFile(join(testDir, "typo"), `
+      task("typo", { adapter: a, execution: "remotely" });
+    `);
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].execution).toBeUndefined();
+  });
+
+  it("does not mistake an unrelated 'execution' substring for the field", () => {
+    // A comment or different key must not trigger a match.
+    writeTaskFile(join(testDir, "comment-only"), `
+      // execution: "local"
+      task("comment-only", { adapter: a });
+    `);
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].execution).toBeUndefined();
+  });
+});
+

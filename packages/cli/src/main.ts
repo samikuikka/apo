@@ -119,6 +119,22 @@ const commands: Record<string, CommandEntry> = {
     ],
     note: "Opens interactive picker if no argument given. Requires prior login.",
   },
+  "project config": {
+    handler: loadCommand("project-config"),
+    help: "Read or write project-level CLI preferences",
+    args: [
+      ["<set|unset|show>", "Subcommand"],
+      ["<key>", "Config key (currently: default-execution)"],
+      ["[value]", "Value for set (local | backend)"],
+    ],
+    examples: [
+      "apo project config set default-execution local",
+      "apo project config set default-execution backend",
+      "apo project config unset default-execution",
+      "apo project config show default-execution",
+    ],
+    note: "default-execution is the project-level default for where `apo task run` dispatches (SPEC-136). Stored per-machine in ~/.apo/credentials — lower priority than a task's own execution declaration.",
+  },
   "project sync-tasks": {
     handler: loadCommand("project-sync-tasks"),
     help: "Sync the configured project task inventory",
@@ -152,7 +168,8 @@ const commands: Record<string, CommandEntry> = {
     ],
     options: [
       ["--ci", "CI mode: records CI metadata, uses strict exit codes"],
-      ["--local", "Run on this machine but record as a backend task run (for tasks needing dev-machine credentials / VPC / stage)"],
+      ["--local", "Run on this machine but record as a backend task run (override; for tasks needing dev-machine credentials / VPC / stage)"],
+      ["--remote", "Force backend execution (symmetric to --local); overrides a task's execution: 'local' or a 'local' project default"],
     ],
     examples: [
       "apo task run meeting-summary",
@@ -160,7 +177,7 @@ const commands: Record<string, CommandEntry> = {
       "apo task run meeting-summary --json",
       "apo task run bind-e2e --local",
     ],
-    note: "Runs via backend (--project) or locally. --local runs on your machine but still creates a dashboard run row + links the trace. Exit codes: 0=pass, 1=fail, 2=error.",
+    note: "Dispatch order: --local/--remote flag > task's execution declaration > project default-execution > reachability. A task with execution: \"local\" (or a project with default-execution local) runs locally with no flag. Set project default via `apo project config set default-execution local`. Exit codes: 0=pass, 1=fail, 2=error.",
   },
   "runs list": {
     handler: loadCommand("runs-list"),

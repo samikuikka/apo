@@ -39,6 +39,32 @@ describe("resolveConfig", () => {
     expect(config.projectId).toBe("stored-proj");
   });
 
+  it("surfaces stored default_execution as config.defaultExecution", () => {
+    vi.spyOn(credentials, "readCredentials").mockReturnValue({
+      backend_url: "http://stored:8000",
+      api_key: "stored-key",
+      project: "stored-proj",
+      default_execution: "local",
+    });
+    const config = resolveConfig({});
+    expect(config.defaultExecution).toBe("local");
+  });
+
+  it("defaultExecution is undefined when credentials lack default_execution (backward compat)", () => {
+    vi.spyOn(credentials, "readCredentials").mockReturnValue({
+      backend_url: "http://stored:8000",
+      api_key: "stored-key",
+      project: "stored-proj",
+    });
+    const config = resolveConfig({});
+    expect(config.defaultExecution).toBeUndefined();
+  });
+
+  it("defaultExecution is undefined with no stored credentials", () => {
+    const config = resolveConfig({});
+    expect(config.defaultExecution).toBeUndefined();
+  });
+
   it("uses stored project as default but flag overrides it", () => {
     vi.spyOn(credentials, "readCredentials").mockReturnValue({
       backend_url: "http://stored:8000",

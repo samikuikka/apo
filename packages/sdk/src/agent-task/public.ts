@@ -1,6 +1,7 @@
 export type {
   TaskDefinition,
   TaskConfig,
+  TaskExecutionPreference,
   FileEntry,
 } from "./task/types.ts";
 export { defineTask, task, resetTaskRegistry } from "./task/defineTask.ts";

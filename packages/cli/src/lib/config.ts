@@ -10,6 +10,13 @@ export type Config = {
   apiKey: string | undefined;
   json: boolean;
   ci: boolean;
+  /**
+   * Project-level default for `apo task run` execution
+   * (SPEC-136). Populated from `StoredCredentials.default_execution`.
+   * Lower priority than a task's own `execution` declaration; overrideable
+   * per-invocation by `--local` / `--remote`.
+   */
+  defaultExecution: "local" | "backend" | undefined;
   _rawFlags: Record<string, string | boolean>;
 };
 
@@ -46,6 +53,7 @@ export function resolveConfig(
     ) ?? stored?.api_key,
     json: flags.json === true,
     ci: flags.ci === true || process.env.CI === "true",
+    defaultExecution: stored?.default_execution,
     _rawFlags: flags,
   };
 }
