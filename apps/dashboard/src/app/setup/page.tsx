@@ -325,7 +325,22 @@ export default function SetupPage() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        setError(data?.detail ?? "Failed to create account")
+        if (data?.detail) {
+          setError(data.detail)
+        } else {
+          // No usable JSON detail — usually means the response wasn't JSON
+          // (e.g. a 404 HTML page from a misconfigured proxy, or a 502 from
+          // a dead backend). Log the raw status + content type so the cause
+          // is visible in the browser console instead of a generic error.
+          console.error(
+            `[setup] POST /auth/setup returned HTTP ${res.status} ` +
+              `with content-type "${res.headers.get("content-type") ?? "unknown"}"`,
+          )
+          setError(
+            `Couldn't reach the server (HTTP ${res.status}). ` +
+              "Check the browser console for details.",
+          )
+        }
         return
       }
 

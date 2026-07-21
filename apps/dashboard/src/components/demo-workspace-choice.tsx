@@ -4,8 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Sparkles, ArrowRight, Loader2, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { enterDemo } from "@/lib/demo-workspace";
 import { createProject } from "@/lib/projects-api";
+import { isApiError } from "@/lib/api-error";
 
 export function DemoWorkspaceChoice() {
   const router = useRouter();
@@ -37,8 +39,19 @@ export function DemoWorkspaceChoice() {
     try {
       const project = await createProject(newName.trim());
       router.push(`/project/${project.id}/tasks`);
-    } catch {
+    } catch (error) {
       setCreating(false);
+      // Surface the real failure instead of silently stopping the spinner.
+      // The backend returns detail for validation/auth errors; a missing
+      // message usually means a proxy/transport problem (e.g. 404 HTML),
+      // so fall back to a generic but actionable string.
+      toast.error(
+        isApiError(error)
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Failed to create project",
+      );
     }
   }
 
