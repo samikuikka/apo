@@ -82,7 +82,7 @@ This is the canonical alpha deploy path. It assumes Docker and Docker Compose on
 
    Expect `{"ok": true, "checks": {...}}`. A 503 with a `checks` payload tells you exactly which prerequisite failed.
 
-4. **Configure the reverse proxy** to terminate TLS and forward to the dashboard container on port 3000. The dashboard already proxies backend calls under `/backend-proxy/*`, so you only need one public origin.
+4. **Configure the reverse proxy** to terminate TLS and forward to the dashboard container on port 3000. Browsers use the dashboard's `/backend-proxy/*` path, while server-rendered pages call the backend directly through the internal `BACKEND_URL`. The public origin does not need to be reachable from inside the frontend container, so host-port remapping is supported.
 
 5. **Create the first admin user.** Either visit the dashboard and walk the account-creation flow, or — for headless first boot only — set `INIT_USER_EMAIL` / `INIT_USER_PASSWORD` / `INIT_USER_NAME` env vars on the backend. The bootstrap runs once (idempotent — no-op when any users exist). **These env vars are unset by default**; operators set them explicitly when they want a headless first boot, never as a baked-in default.
 

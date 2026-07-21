@@ -1,13 +1,13 @@
 import { getBrowserBackendBaseUrl } from "./config";
 
 /**
- * Universal fetch wrapper that forwards cookies and rewrites URLs to
- * the same-origin `/backend-proxy` path.
+ * Universal fetch wrapper that forwards cookies and routes backend URLs
+ * through the correct network path for the current runtime.
  *
  * On the server, dynamically imports `backend-fetch.server.ts` (which
  * reads `next/headers` and `process.env.BACKEND_URL`) so those
- * server-only references never enter the client bundle. On the browser,
- * rewrites URLs directly to the relative proxy path.
+ * server-only references never enter the client bundle. Server calls go
+ * directly to the internal backend; browser calls use the relative proxy.
  */
 export async function backendFetch(
   input: RequestInfo | URL,
@@ -17,14 +17,14 @@ export async function backendFetch(
   let target: RequestInfo | URL = input;
 
   if (typeof window === "undefined") {
-    const { getServerCookieHeader, toServerProxyUrl } = await import(
+    const { getServerCookieHeader, toServerBackendUrl } = await import(
       "./backend-fetch.server"
     );
     const cookieHeader = await getServerCookieHeader();
     if (cookieHeader && !headers.has("cookie")) {
       headers.set("cookie", cookieHeader);
     }
-    target = await toServerProxyUrl(input);
+    target = toServerBackendUrl(input);
   } else {
     target = toBrowserProxyUrl(input);
   }

@@ -28,53 +28,63 @@ export async function getServerCookieHeader(): Promise<string | null> {
 }
 
 /**
- * Rewrites a backend-origin URL to the same-origin `/backend-proxy`
- * path so server-side fetches go through Next's route handler (which
- * forwards to the real backend with the correct origin).
+ * Rewrites a backend URL to the container-reachable backend origin.
  *
  * `apiClient` builds URLs with `getBrowserBackendBaseUrl()`, which
  * returns `/backend-proxy` (relative) when no `NEXT_PUBLIC_APO_BACKEND_URL`
- * is set. On the server, `fetch()` needs an absolute URL, so relative
- * paths are resolved against the server request origin. Full backend
- * URLs (e.g. `http://localhost:8000/v1/...`) are rewritten to the
- * same-origin proxy path.
+ * is set. Server components must not resolve that path against the public
+ * request host: published ports and reverse-proxy origins are often not
+ * reachable from inside the frontend container. `BACKEND_URL` is the
+ * explicit internal network contract for those calls.
  */
-export async function toServerProxyUrl(
+export function toServerBackendUrl(
   input: RequestInfo | URL,
-): Promise<RequestInfo | URL> {
+): RequestInfo | URL {
   if (typeof input !== "string" && !(input instanceof URL)) {
     return input;
   }
 
   const inputStr = typeof input === "string" ? input : input.toString();
-  const serverOrigin = await getServerRequestOrigin();
+  const backendBaseUrl = getServerBackendBaseUrl();
 
-  // Already a relative proxy path — resolve to an absolute same-origin
-  // URL so server-side `fetch()` can parse it.
+  // Relative inputs are backendFetch's normal contract. Strip the browser-only
+  // proxy prefix before resolving them against the internal backend.
   if (inputStr.startsWith("/")) {
-    return `${serverOrigin}${inputStr}`;
+    return resolveBackendUrl(backendBaseUrl, stripProxyPrefix(inputStr));
   }
 
-  const backendBaseUrl = getServerBackendBaseUrl();
-  const backendOrigin = new URL(backendBaseUrl).origin;
-  const resolved = new URL(inputStr, serverOrigin);
+  const resolved = new URL(inputStr);
+  if (hasProxyPrefix(resolved.pathname)) {
+    return resolveBackendUrl(
+      backendBaseUrl,
+      `${stripProxyPrefix(resolved.pathname)}${resolved.search}`,
+    );
+  }
 
-  if (resolved.origin !== backendOrigin) {
+  if (resolved.origin !== new URL(backendBaseUrl).origin) {
     return input;
   }
 
-  return `${serverOrigin}/backend-proxy${resolved.pathname}${resolved.search}`;
+  return inputStr;
 }
 
-async function getServerRequestOrigin(): Promise<string> {
-  const { headers } = await import("next/headers");
-  const headerStore = await headers();
-  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host");
-  const proto = headerStore.get("x-forwarded-proto") ?? "http";
+function resolveBackendUrl(backendBaseUrl: string, path: string): string {
+  const normalizedBaseUrl = backendBaseUrl.endsWith("/")
+    ? backendBaseUrl
+    : `${backendBaseUrl}/`;
+  return new URL(path.replace(/^\//, ""), normalizedBaseUrl).toString();
+}
 
-  if (host) {
-    return `${proto}://${host}`;
+function stripProxyPrefix(path: string): string {
+  if (!hasProxyPrefix(path)) {
+    return path;
   }
 
-  return process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  return path.slice("/backend-proxy".length) || "/";
+}
+
+function hasProxyPrefix(pathname: string): boolean {
+  return (
+    pathname === "/backend-proxy" || pathname.startsWith("/backend-proxy/")
+  );
 }

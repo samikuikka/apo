@@ -50,7 +50,7 @@ These defaults are deliberately cheap (`google/gemini-2.5-flash-lite`) — stron
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `BACKEND_URL` | `http://127.0.0.1:8000` | Backend URL (CORS, redirects, runtime-config descriptor). |
+| `BACKEND_URL` | `http://127.0.0.1:8000` | Backend URL for CORS, redirects, and runtime config; the frontend also uses it for direct server-rendered requests. In Compose this is the internal service URL (`http://backend:8000`), not the public dashboard origin. |
 | `FRONTEND_URL` | `http://localhost:3000` | Frontend URL (CORS, redirects). |
 
 ### Email (optional)

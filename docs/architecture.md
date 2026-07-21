@@ -57,8 +57,13 @@ The system has three distinct authentication modes. They should not be mixed.
 
 2. **Dashboard-to-backend bridge**
    - browser-side protected requests go through the dashboard's same-origin proxy
-   - server-side dashboard fetches that target protected backend routes must also route through the same bridge instead of calling FastAPI directly with raw forwarded cookies
-   - the proxy forwards the user session to the backend
+   - server-rendered dashboard requests use `BACKEND_URL` directly; they never
+     self-fetch the public dashboard origin, which may be unreachable behind a
+     reverse proxy or published on a different host port
+   - server-side dashboard fetches that target protected backend routes must use
+     the same `backendFetch` bridge so the session cookie is forwarded; the
+     bridge chooses the internal URL instead of the public proxy path
+   - both paths forward the user session to the backend
    - FastAPI re-validates the same session before returning protected data
 
 3. **Backend-owned service auth**

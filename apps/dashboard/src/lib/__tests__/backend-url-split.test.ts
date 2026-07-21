@@ -44,6 +44,58 @@ describe("getServerBackendBaseUrl (server-only)", () => {
   });
 });
 
+describe("backendFetch server path", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.stubEnv("BACKEND_URL", "http://backend:8000");
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the internal backend when the public host has a remapped port", async () => {
+    const { toServerBackendUrl } = await import("../backend-fetch.server");
+
+    expect(toServerBackendUrl("/backend-proxy/v1/projects?limit=10")).toBe(
+      "http://backend:8000/v1/projects?limit=10",
+    );
+    expect(
+      toServerBackendUrl(
+        "http://localhost:3100/backend-proxy/v1/projects?limit=10",
+      ),
+    ).toBe("http://backend:8000/v1/projects?limit=10");
+  });
+
+  it("routes the universal fetch wrapper directly to the internal backend", async () => {
+    vi.stubGlobal("window", undefined);
+    vi.doMock("next/headers", () => ({
+      cookies: async () => ({
+        getAll: () => [{ name: "session", value: "signed-cookie" }],
+      }),
+    }));
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal("fetch", (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      return Promise.resolve(new Response("{}"));
+    });
+
+    const { backendFetch } = await import("../backend-fetch");
+    await backendFetch("/backend-proxy/v1/projects");
+
+    expect(calls[0].url).toBe("http://backend:8000/v1/projects");
+    expect(new Headers(calls[0].init?.headers).get("cookie")).toBe(
+      "session=signed-cookie",
+    );
+  });
+
+  it("leaves non-backend absolute URLs untouched", async () => {
+    const { toServerBackendUrl } = await import("../backend-fetch.server");
+    const externalUrl = "https://example.com/assets/data.json";
+
+    expect(toServerBackendUrl(externalUrl)).toBe(externalUrl);
+  });
+});
+
 describe("getBrowserBackendBaseUrl (browser-only)", () => {
   beforeEach(() => {
     vi.resetModules();
