@@ -37,6 +37,26 @@ export async function backendFetch(
 }
 
 /**
+ * Path prefixes that belong to the backend, not the Next.js server.
+ *
+ * Browser code calls e.g. `backendFetch("/auth/setup")` or
+ * `apiClient("/v1/projects")` with bare paths. These routes do NOT exist on
+ * the Next.js server — they live on the backend and are only reachable
+ * through the same-origin `/backend-proxy` rewrite. Without rewriting,
+ * the browser POSTs to `/auth/setup` literally and Next.js returns a 404
+ * HTML page, which surfaces as a generic "Failed to create account" style
+ * error (the JSON detail is missing from the HTML body).
+ *
+ * `/api/auth/*` is intentionally NOT here — that is NextAuth's own route
+ * handler on the Next.js server, not a backend route.
+ */
+const BACKEND_PATH_PREFIXES = ["/v1/", "/auth/", "/public/", "/health/"];
+
+function isBackendPath(pathname: string): boolean {
+  return BACKEND_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+/**
  * Rewrites a backend-origin URL to the relative `/backend-proxy` path
  * for browser-side fetches. Keeps the browser on the public origin.
  */
@@ -48,23 +68,29 @@ export function toBrowserProxyUrl(input: RequestInfo | URL): RequestInfo | URL {
   const inputStr = typeof input === "string" ? input : input.toString();
   const resolved = new URL(inputStr, window.location.origin);
 
-  // Relative paths are already same-origin — send them through as-is.
-  // This covers the common backendFetch("/v1/...") case.
-  if (inputStr.startsWith("/")) {
+  // Absolute backend-origin URL (e.g. http://localhost:8000/v1/...).
+  // Rewrite it to the relative proxy path so the browser stays same-origin.
+  if (resolved.origin !== window.location.origin) {
+    const backendBaseUrl = getBrowserBackendBaseUrl();
+    if (backendBaseUrl.startsWith("/")) {
+      return `/backend-proxy${resolved.pathname}${resolved.search}`;
+    }
+    const backendOrigin = new URL(backendBaseUrl).origin;
+    if (resolved.origin === backendOrigin) {
+      return `/backend-proxy${resolved.pathname}${resolved.search}`;
+    }
+    // Different origin entirely — not a backend URL, leave untouched.
     return input;
   }
 
-  const backendBaseUrl = getBrowserBackendBaseUrl();
-  // If the browser helper fell back to the relative proxy, rewrite
-  // any backend-origin URL to the relative proxy path.
-  if (backendBaseUrl.startsWith("/")) {
+  // Same-origin relative path. Only rewrite it if it is a backend path:
+  // `/v1/...`, `/auth/...`, `/public/...`, `/health/...` live on the
+  // backend, while `/api/auth/...` (NextAuth) and app routes live on the
+  // Next.js server. Returning a bare `/auth/setup` as-is would POST to a
+  // non-existent Next.js route and 404.
+  if (isBackendPath(resolved.pathname)) {
     return `/backend-proxy${resolved.pathname}${resolved.search}`;
   }
 
-  const backendOrigin = new URL(backendBaseUrl).origin;
-  if (resolved.origin !== backendOrigin) {
-    return input;
-  }
-
-  return `/backend-proxy${resolved.pathname}${resolved.search}`;
+  return input;
 }

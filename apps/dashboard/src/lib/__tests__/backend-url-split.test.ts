@@ -110,4 +110,60 @@ describe("backendFetch browser path (the real contract)", () => {
     expect(calls[0]).not.toContain("localhost:8000");
     expect(calls[0].startsWith("/backend-proxy/")).toBe(true);
   });
+
+  it("rewrites bare backend paths (/auth, /v1) to /backend-proxy (regression: setup/login 404)", async () => {
+    // The setup form calls backendFetch("/auth/setup") from the browser.
+    // The Next.js server has no /auth/* route, so without rewriting the
+    // POST hit a 404 HTML page and the form showed "Failed to create
+    // account" with no usable detail. Every backend path prefix must be
+    // rewritten to the proxy.
+    vi.stubGlobal("window", { location: { origin: "https://apo.example.com" } });
+    vi.stubEnv("NEXT_PUBLIC_APO_BACKEND_URL", "");
+
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", (url: string) => {
+      calls.push(url);
+      return Promise.resolve(new Response("{}"));
+    });
+
+    const { backendFetch } = await import("../backend-fetch");
+    await backendFetch("/auth/setup", { method: "POST" });
+    await backendFetch("/v1/projects");
+
+    expect(calls[0]).toBe("/backend-proxy/auth/setup");
+    expect(calls[1]).toBe("/backend-proxy/v1/projects");
+  });
+
+  it("does NOT rewrite NextAuth's /api/auth/* route (lives on the Next.js server)", async () => {
+    vi.stubGlobal("window", { location: { origin: "https://apo.example.com" } });
+    vi.stubEnv("NEXT_PUBLIC_APO_BACKEND_URL", "");
+
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", (url: string) => {
+      calls.push(url);
+      return Promise.resolve(new Response("{}"));
+    });
+
+    const { backendFetch } = await import("../backend-fetch");
+    await backendFetch("/api/auth/session");
+
+    // Untouched — this is NextAuth's own handler, not a backend route.
+    expect(calls[0]).toBe("/api/auth/session");
+  });
+
+  it("preserves query strings when rewriting to the proxy", async () => {
+    vi.stubGlobal("window", { location: { origin: "https://apo.example.com" } });
+    vi.stubEnv("NEXT_PUBLIC_APO_BACKEND_URL", "");
+
+    const calls: string[] = [];
+    vi.stubGlobal("fetch", (url: string) => {
+      calls.push(url);
+      return Promise.resolve(new Response("{}"));
+    });
+
+    const { backendFetch } = await import("../backend-fetch");
+    await backendFetch("/v1/projects?limit=10&offset=20");
+
+    expect(calls[0]).toBe("/backend-proxy/v1/projects?limit=10&offset=20");
+  });
 });
