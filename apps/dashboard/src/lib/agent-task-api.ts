@@ -362,9 +362,9 @@ export const listTaskRuns = (
   taskId: string,
   project?: string,
 ): Promise<AgentTaskRunSummary[]> =>
-  apiClient(`/v1/agent-tasks/${encodeURIComponent(taskId)}/runs`, {
+  apiClient("/v1/agent-task-runs", {
     ...NO_CACHE,
-    query: { project },
+    query: { task_id: taskId, project },
   });
 
 export const createAgentTaskBatchRun = (

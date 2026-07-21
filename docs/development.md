@@ -238,6 +238,11 @@ Current route grouping:
 - Legacy:
   - `/optimization`
 
+Task IDs are hierarchical and use FastAPI's `{task_id:path}` converter. Treat
+that catch-all detail route as terminal: task-run collections belong at
+`/agent-task-runs?task_id=...`, not at a suffix such as
+`/agent-tasks/{task_id:path}/runs`, which collides with the detail route.
+
 Page-level content should reinforce the same grouping:
 
 - `Traces` should be the canonical route and label for the shared trace inspector.

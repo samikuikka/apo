@@ -258,25 +258,6 @@ async def get_agent_task(
     )
 
 
-@router.get("/agent-tasks/{task_id:path}/runs", response_model=list[AgentTaskRunSummary])
-async def list_task_runs(
-    task_id: str,
-    project: str | None = Query(default=None),
-    session: Session = Depends(get_session),
-):
-    """List all task runs for a specific task."""
-    query: SelectOfScalar[AgentTaskRunDB] = select(AgentTaskRunDB).where(
-        AgentTaskRunDB.task_id == task_id
-    )
-    query = _apply_project_filter_to_task_runs(query, project)
-    query = query.order_by(
-        desc(_as_column(cast(object, AgentTaskRunDB.started_at)))
-    )
-    task_runs = session.exec(query).all()
-    triggers = _load_batch_triggers(session, [tr.batch_run_id for tr in task_runs])
-    return [to_task_run_summary(tr, triggers.get(tr.batch_run_id)) for tr in task_runs]
-
-
 # ============================================================================
 # Batch Run Endpoints
 # ============================================================================
@@ -620,4 +601,3 @@ async def report_agent_task_run_result(
             task_run.trace_persistence_status,
         ),
     )
-
