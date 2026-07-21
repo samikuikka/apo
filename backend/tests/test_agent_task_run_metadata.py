@@ -16,6 +16,7 @@ from apo.models.db import (
     ProjectDB,
     ProjectTaskInventoryDB,
     ProjectTaskSourceDB,
+    UserDB,
 )
 from apo.routes.agent_task_runs import (
     list_agent_tasks,
@@ -310,6 +311,18 @@ def test_project_detail_marks_inventory_stale(
     session: Session,
 ):
     now = datetime.now(timezone.utc)
+    # The project's created_by FKs users.id — seed the user so the project
+    # insert satisfies PRAGMA foreign_keys=ON (now enabled in the test engine).
+    session.add(
+        UserDB(
+            id="user-stale-project",
+            email="stale@test.com",
+            name="Stale Owner",
+            password_hash="x",
+            is_active=True,
+        )
+    )
+    session.flush()
     project = ProjectDB(
         id="proj-stale",
         name="Stale Project",
@@ -345,8 +358,12 @@ def test_project_detail_marks_inventory_stale(
         source_subpath="tasks/old-root",
         discovered_at=now,
     )
+    # Insert in FK-safe order with a flush between each layer so each child
+    # row sees its parent (PRAGMA foreign_keys=ON is now enforced in tests).
     session.add(project)
+    session.flush()
     session.add(source)
+    session.flush()
     session.add(inventory)
     session.commit()
 
@@ -360,6 +377,16 @@ def test_create_batch_run_returns_conflict_for_stale_task_source(
     session: Session,
 ):
     now = datetime.now(timezone.utc)
+    session.add(
+        UserDB(
+            id="user-stale-batch",
+            email="batch-stale@test.com",
+            name="Batch Stale Owner",
+            password_hash="x",
+            is_active=True,
+        )
+    )
+    session.flush()
     project = ProjectDB(
         id="proj-batch-stale",
         name="Batch Stale",
@@ -395,8 +422,11 @@ def test_create_batch_run_returns_conflict_for_stale_task_source(
         source_subpath="tasks/old-root",
         discovered_at=now,
     )
+    # FK-safe insert order with flushes between layers (see test above).
     session.add(project)
+    session.flush()
     session.add(source)
+    session.flush()
     session.add(inventory)
     session.commit()
 

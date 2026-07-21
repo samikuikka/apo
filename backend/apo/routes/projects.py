@@ -25,13 +25,9 @@ from ..db_helpers import _as_column
 from ..models.db import (
     AgentTaskBatchRunDB,
     AgentTaskRunDB,
-    AgentTaskScheduleDB,
-    LoggedCallDB,
     ProjectDB,
     ProjectTaskSourceDB,
     RunDB,
-    RunMetricDB,
-    SessionDB,
     UserDB,
 )
 from ..models.schemas import (
@@ -49,6 +45,7 @@ from ..models.schemas import (
 )
 from ..routes.api_keys import _get_client_ip, mint_legacy_key
 from ..services.content_policy import normalize_trace_content_policy
+from ..services.project_deletion import delete_project_data
 from ..services.project_memberships import (
     DEMO_PROJECT_ID,
     compute_permissions,
@@ -382,7 +379,13 @@ async def delete_project(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    """Delete a project. Cannot delete the demo project. Owner-only."""
+    """Delete a project and all of its data. Cannot delete the demo project. Owner-only.
+
+    Cascades to every dependent table — memberships, invitations, task source
+    + inventory, github connection, traces, task runs, scores, comments, API
+    keys, OTLP spans, etc. — so the delete succeeds under
+    ``PRAGMA foreign_keys=ON`` (issue #14) and leaves no orphaned rows.
+    """
     if project_id == DEMO_PROJECT_ID:
         raise HTTPException(status_code=400, detail="Cannot delete demo project")
 
@@ -390,10 +393,12 @@ async def delete_project(
     _project, _role = _load_project_with_role(
         session, project_id, user_id, minimum_role="owner"
     )
-    project = session.get(ProjectDB, project_id)
-    assert project is not None
-    session.delete(project)
-    session.commit()
+    delete_project_data(
+        session,
+        project_id,
+        keep_project=False,
+        keep_api_keys=False,
+    )
     return {"ok": True}
 
 
@@ -660,10 +665,12 @@ async def reset_project_data(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    """Delete ALL data for a project (traces, calls, runs, schedules, sessions).
-    
-    The project itself and its API keys are kept.
-    Useful for debugging — clears everything so you can start fresh.
+    """Delete ALL observation data for a project (traces, calls, runs, schedules, sessions).
+
+    The project itself and its API keys are kept — useful for debugging when
+    you want to clear everything and start fresh without re-issuing
+    credentials. Shares the cascade logic with ``delete_project`` (issue #14)
+    so the two endpoints can't drift as new tables land.
     """
     if project_id == DEMO_PROJECT_ID:
         raise HTTPException(status_code=400, detail="Cannot reset demo project")
@@ -672,73 +679,11 @@ async def reset_project_data(
     _project, _role = _load_project_with_role(
         session, project_id, user_id, minimum_role="owner"
     )
-    project = session.get(ProjectDB, project_id)
-    assert project is not None
 
-    deleted_counts: dict[str, int] = {}
-
-    # Delete run metrics
-    run_ids = [r.id for r in session.exec(
-        select(RunDB).where(RunDB.project == project_id)
-    ).all()]
-    metric_result = session.exec(
-        select(RunMetricDB).where(RunMetricDB.run_id.in_(run_ids))  # pyright: ignore[reportAttributeAccessIssue]
-    ).all() if run_ids else []
-    for m in metric_result:
-        session.delete(m)
-    deleted_counts["run_metrics"] = len(metric_result)
-
-    # Delete logged calls
-    calls = session.exec(
-        select(LoggedCallDB).where(LoggedCallDB.project == project_id)
-    ).all()
-    for c in calls:
-        session.delete(c)
-    deleted_counts["logged_calls"] = len(calls)
-
-    # Delete runs/traces
-    runs = session.exec(
-        select(RunDB).where(RunDB.project == project_id)
-    ).all()
-    for r in runs:
-        session.delete(r)
-    deleted_counts["traces"] = len(runs)
-
-    # Delete task runs
-    batch_ids = [b.id for b in session.exec(
-        select(AgentTaskBatchRunDB).where(AgentTaskBatchRunDB.project == project_id)
-    ).all()]
-    task_runs = session.exec(
-        select(AgentTaskRunDB).where(AgentTaskRunDB.batch_run_id.in_(batch_ids))  # pyright: ignore[reportAttributeAccessIssue]
-    ).all() if batch_ids else []
-    for tr in task_runs:
-        session.delete(tr)
-    deleted_counts["task_runs"] = len(task_runs)
-
-    # Delete batch runs
-    batches = session.exec(
-        select(AgentTaskBatchRunDB).where(AgentTaskBatchRunDB.project == project_id)
-    ).all()
-    for b in batches:
-        session.delete(b)
-    deleted_counts["batch_runs"] = len(batches)
-
-    # Delete schedules
-    schedules = session.exec(
-        select(AgentTaskScheduleDB).where(AgentTaskScheduleDB.project == project_id)
-    ).all()
-    for s in schedules:
-        session.delete(s)
-    deleted_counts["schedules"] = len(schedules)
-
-    # Delete sessions
-    sessions = session.exec(
-        select(SessionDB).where(SessionDB.project == project_id)
-    ).all()
-    for ses in sessions:
-        session.delete(ses)
-    deleted_counts["sessions"] = len(sessions)
-
-    session.commit()
-
+    deleted_counts = delete_project_data(
+        session,
+        project_id,
+        keep_project=True,
+        keep_api_keys=True,
+    )
     return {"ok": True, "deleted": deleted_counts}

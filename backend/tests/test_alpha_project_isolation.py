@@ -138,7 +138,18 @@ def _seed_project_state(
         next_run_at=datetime.now(timezone.utc) + timedelta(days=1),
         created_at=datetime.now(timezone.utc),
     )
-    session.add_all([source, inventory, batch, task_run, trace, schedule])
+    # Insert in FK-safe order with a flush between dependency layers so each
+    # child row sees its parent (PRAGMA foreign_keys=ON is now enforced in tests).
+    # source → inventory; batch → task_run. trace/schedule only need the project.
+    session.add(source)
+    session.flush()
+    session.add(inventory)
+    session.flush()
+    session.add(batch)
+    session.flush()
+    session.add(task_run)
+    session.flush()
+    session.add_all([trace, schedule])
     session.commit()
 
 

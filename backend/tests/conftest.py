@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 from sqlmodel import Session, SQLModel, create_engine, select
 from sqlmodel.pool import StaticPool
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -71,6 +72,18 @@ def seed_project_for_user(
 # StaticPool is required for in-memory SQLite to share the same DB across connections
 # Use check_same_thread=False to allow pytest to access it from different threads if needed
 engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+
+# Mirror production's PRAGMA foreign_keys=ON (apo/db.py) so tests catch the
+# same FOREIGN KEY constraint failures production does. Issue #14 shipped
+# because the old test engine left FK enforcement off, so a delete that
+# 500'd in prod passed vacuously in the suite. The WAL / busy_timeout /
+# synchronous pragmas are production concurrency/perf hardening and are
+# irrelevant to a single-connection in-memory DB, so they're not mirrored.
+@event.listens_for(engine, "connect")
+def _enable_foreign_keys(dbapi_conn, _connection_record):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 SyncASGIClient = TestClient
 

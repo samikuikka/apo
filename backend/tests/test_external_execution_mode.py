@@ -28,6 +28,7 @@ from apo.models.db import (
     ProjectDB,
     ProjectTaskInventoryDB,
     ProjectTaskSourceDB,
+    UserDB,
 )
 from apo.models.trace_ingestion import TraceIngestionContext
 from apo.services import agent_task_runner
@@ -79,6 +80,19 @@ _TASK_ID = "api-testing"
 def _seed_project(session: Session, *, project: str = _PROJECT) -> None:
     """Create a project + ready task source + one task inventory row."""
     now = datetime.now(timezone.utc)
+    # Seed the owner user first so projects.created_by (FK → users.id) holds,
+    # then insert project → source → inventory with a flush between each layer
+    # so each child row sees its parent (PRAGMA foreign_keys=ON is enforced in tests).
+    session.add(
+        UserDB(
+            id="user-ext",
+            email="ext@test.com",
+            name="External Owner",
+            password_hash="x",
+            is_active=True,
+        )
+    )
+    session.flush()
     session.add(
         ProjectDB(
             id=project,
@@ -88,6 +102,7 @@ def _seed_project(session: Session, *, project: str = _PROJECT) -> None:
             updated_at=now,
         )
     )
+    session.flush()
     source = ProjectTaskSourceDB(
         id=f"src-{project}",
         project=project,
@@ -103,6 +118,7 @@ def _seed_project(session: Session, *, project: str = _PROJECT) -> None:
         updated_at=now,
     )
     session.add(source)
+    session.flush()
     session.add(
         ProjectTaskInventoryDB(
             id=f"inv-{project}",

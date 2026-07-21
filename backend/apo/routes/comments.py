@@ -124,6 +124,10 @@ async def delete_comment(
     ).all()
     for r in reactions:
         session.delete(r)
+    # Flush the reaction deletes before removing the comment row. Without
+    # this SQLAlchemy's unit-of-work may issue the comment DELETE first and
+    # trip PRAGMA foreign_keys=ON (CommentReactionDB.comment_id FKs comments.id).
+    session.flush()
     session.delete(comment)
     session.commit()
 
