@@ -4,6 +4,12 @@ node_modules/
 __pycache__/
 .uv-cache/
 *.pyc
+# Match .env at any depth. A bare `.env` only excludes the repo-root file,
+# so a local `backend/.env` slips into the image via `COPY backend/` as
+# root-owned `/app/.env` and crashes the appuser-owned uvicorn with
+# PermissionError on load_dotenv(). `**/.env` covers every nested copy.
 .env
+**/.env
+.env.*
 data/
 backend/data/

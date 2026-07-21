@@ -53,6 +53,11 @@ PUBLIC_PATHS: tuple[str, ...] = (
     "/auth/invitations/preview",
     "/auth/invitations/accept/create-account",
     "/v1/api-keys/bootstrap",
+    # CLI first-project bootstrap: authenticates via email + password in the
+    # handler (mirrors /v1/api-keys/bootstrap). Must be reachable without a
+    # session/API key, otherwise the middleware 401-blocks it before the
+    # handler runs and `apo project create` can never succeed.
+    "/v1/projects/bootstrap",
 )
 
 _COOKIE_NAMES = ("authjs.session-token", "__Secure-authjs.session-token")
