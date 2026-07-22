@@ -69,6 +69,7 @@ from ..services.project_task_sources import (
 from ..services.project_task_source_sync import (
     GitError,
     SyncError,
+    refresh_filesystem_source,
     sync_task_source,
 )
 
@@ -601,6 +602,9 @@ async def list_project_agent_tasks(
             detail="Project has no task source configured.",
         )
 
+    # Filesystem sources are cheap to re-scan (no clone), so lazily refresh on
+    # list — newly added/edited tasks show up without a manual sync (issue #17).
+    refresh_filesystem_source(session, source)
     rows = list_inventory_for_project(session, project_id, grep=grep)
     summaries = [to_summary(row) for row in rows]
     if not summaries:

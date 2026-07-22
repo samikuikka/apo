@@ -37,7 +37,10 @@ from .trace_ownership import (
     reconcile_trace_id,
     roll_up_batch,
 )
-from .project_task_source_sync import resolve_inventory_task_dir
+from .project_task_source_sync import (
+    refresh_filesystem_source,
+    resolve_inventory_task_dir,
+)
 from .project_task_inventory import task_source_inventory_is_stale
 from .run_events import emit_batch_run_event, emit_task_run_event
 
@@ -179,6 +182,10 @@ def create_batch_run(
             raise ValueError(
                 "Project task inventory is stale because the task source changed. Sync tasks before running."
             )
+        # Filesystem sources are cheap to re-scan (no clone), so lazily refresh
+        # on run — makes "edit a task file, run it" work without a manual sync
+        # (issue #17). Git/demo sources are intentionally not refreshed here.
+        refresh_filesystem_source(session, task_source)
         inventory_rows = _resolve_inventory_rows(
             session,
             project=project,
@@ -188,7 +195,7 @@ def create_batch_run(
             grep=grep,
         )
         if not inventory_rows:
-            raise ValueError("No tasks found for the given selection")
+            raise ValueError(_no_tasks_found_message(task_source))
     else:
         resolved = resolve_task_paths(resolved_task_root, selection_type, task_paths, grep)
         if not resolved:
@@ -345,6 +352,25 @@ def _resolve_inventory_rows(
         ]
 
     return []
+
+
+def _no_tasks_found_message(task_source: ProjectTaskSourceDB) -> str:
+    """Actionable "no tasks" message (issue #17).
+
+    Filesystem sources are lazily re-synced on run, so if the selection still
+    matches nothing the task genuinely isn't on disk. Other sources (git/demo)
+    are not auto-refreshed, so the most useful nudge is to run a sync.
+    """
+    if task_source.source_type == "filesystem":
+        return (
+            "No tasks found for the given selection. The filesystem source was "
+            "re-scanned and no matching task exists on disk."
+        )
+    return (
+        "No tasks found for the given selection. If you recently added or "
+        "renamed a task, run `apo project source sync` to refresh the project "
+        "inventory."
+    )
 
 
 def start_batch_run_execution(batch_id: str) -> None:

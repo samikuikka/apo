@@ -114,6 +114,32 @@ def sync_task_source(session: Session, source: ProjectTaskSourceDB) -> SyncResul
     raise SyncError(message)
 
 
+def refresh_filesystem_source(session: Session, source: ProjectTaskSourceDB) -> None:
+    """Lazily re-sync a *filesystem* task source so tasks added or edited on
+    disk are visible without a manual ``project source sync`` (issue #17).
+
+    Filesystem discovery is a cheap, server-local directory walk (no clone, no
+    network), so refreshing on read is the natural local-dev loop. Git/demo
+    sources are left untouched — re-syncing those is expensive (clone/fetch).
+
+    Best-effort: any failure is swallowed so a list/run never hard-fails
+    because the path is momentarily unavailable; the inventory simply stays
+    as it was.
+    """
+    if source.source_type != "filesystem":
+        return
+    if source.status == "syncing":
+        return
+    path = (source.filesystem_path or "").strip()
+    if not path or not os.path.isdir(path):
+        return
+    try:
+        _ = sync_task_source(session, source)
+    except Exception:
+        # Best-effort refresh — never break a list/run because a refresh failed.
+        pass
+
+
 class SyncError(Exception):
     """Raised when a sync operation cannot complete for internal reasons."""
 
