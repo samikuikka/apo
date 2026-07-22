@@ -96,6 +96,7 @@ class TraceProjector:
 
         # Route writes through the TraceRepository boundary (SPEC-129 §4).
         from .trace_repository import NativeTraceRepository
+
         repo = NativeTraceRepository()
 
         # Detect state transitions BEFORE upsert so we can broadcast the right
@@ -156,23 +157,43 @@ class TraceProjector:
         # Update run-level fields from the root span
         if is_root:
             attrs = span.attributes or {}
-            if attrs.get("apo.run.flow_name"):
-                run.flow_name = str(attrs["apo.run.flow_name"])
+            # SPEC-137: prefer canonical apo.trace.* attributes; fall back to
+            # legacy apo.run.* for compatibility with older senders.
+            flow_name = attrs.get("apo.trace.name") or attrs.get("apo.run.flow_name")
+            if flow_name:
+                run.flow_name = str(flow_name)
             if attrs.get("apo.run.task_id"):
                 run.task_id = str(attrs["apo.run.task_id"])
             if attrs.get("apo.run.version"):
                 run.version = str(attrs["apo.run.version"])
-            # SPEC-129 §5: propagate tags and metadata from root span
-            if attrs.get("apo.run.tags"):
+            tags_value = attrs.get("apo.trace.tags")
+            if tags_value is None:
+                tags_value = attrs.get("apo.run.tags")
+            if tags_value:
                 try:
-                    run.tags = json.loads(str(attrs["apo.run.tags"]))
-                except (json.JSONDecodeError, ValueError):
+                    if isinstance(tags_value, list):
+                        run.tags = [str(t) for t in tags_value]
+                    else:
+                        run.tags = json.loads(str(tags_value))
+                except (json.JSONDecodeError, ValueError, TypeError):
                     pass
-            if attrs.get("apo.run.metadata"):
+            metadata_value = attrs.get("apo.trace.metadata")
+            if metadata_value is None:
+                metadata_value = attrs.get("apo.run.metadata")
+            if metadata_value:
                 try:
-                    run.run_metadata = json.loads(str(attrs["apo.run.metadata"]))
-                except (json.JSONDecodeError, ValueError):
+                    if isinstance(metadata_value, dict):
+                        run.run_metadata = metadata_value
+                    else:
+                        run.run_metadata = json.loads(str(metadata_value))
+                except (json.JSONDecodeError, ValueError, TypeError):
                     pass
+            # SPEC-137: provenance on imported traces augments run metadata.
+            provenance = attrs.get("apo.trace.provenance")
+            if isinstance(provenance, dict) and provenance:
+                merged = dict(run.run_metadata or {})
+                merged.setdefault("source", provenance.get("source"))
+                run.run_metadata = merged
             # Run-level scalar fields propagated through canonical attributes
             # (SPEC-129 Track 6 parity — legacy ingestion wrote these directly).
             if attrs.get("apo.run.user_id"):
@@ -198,7 +219,8 @@ class TraceProjector:
                 run.completed_at = span.end_time
                 if run.created_at:
                     raw_duration = (
-                        span.end_time.replace(tzinfo=None) - run.created_at.replace(tzinfo=None)
+                        span.end_time.replace(tzinfo=None)
+                        - run.created_at.replace(tzinfo=None)
                     ).total_seconds() * 1000
                     run.duration_ms = max(0.0, raw_duration)
 
@@ -221,6 +243,12 @@ class TraceProjector:
         # didn't extract them (e.g. legacy adapter writes free-form dicts).
         raw_input = _raw_attr(span, "input")
         raw_output = _raw_attr(span, "output")
+        # SPEC-137: also fall back to canonical apo.observation.input/output
+        # (used by Trace Source Connectors that emit non-gen_ai.* I/O).
+        if raw_input is None:
+            raw_input = _raw_attr(span, "apo.observation.input")
+        if raw_output is None:
+            raw_output = _raw_attr(span, "apo.observation.output")
         input_value = normalized.input or raw_input or {}
         output_value = normalized.output or raw_output or {}
 
@@ -272,7 +300,9 @@ class TraceProjector:
 
         # total_tokens (SPEC-129 Track 6 parity with legacy ingestion.py).
         if call.prompt_tokens is not None or call.completion_tokens is not None:
-            call.total_tokens = (call.prompt_tokens or 0) + (call.completion_tokens or 0)
+            call.total_tokens = (call.prompt_tokens or 0) + (
+                call.completion_tokens or 0
+            )
 
         if normalized.tool_name:
             call.tool_name = normalized.tool_name
@@ -285,7 +315,8 @@ class TraceProjector:
         call.end_time = span.end_time
         if span.start_time and span.end_time:
             call.latency_ms = (
-                span.end_time.replace(tzinfo=None) - span.start_time.replace(tzinfo=None)
+                span.end_time.replace(tzinfo=None)
+                - span.start_time.replace(tzinfo=None)
             ).total_seconds() * 1000
 
         # Error
@@ -410,7 +441,23 @@ def _apply_cost(session: Session, call: LoggedCallDB, span: OtlpSpanDB) -> None:
     Only GENERATION calls get cost — child spans like ``ai.generateText.doGenerate``
     carry per-step token data but are not separate billable API calls. Computing
     cost for them would double-count against the parent ``ai.generateText`` span.
+
+    SPEC-137: a finite, non-negative ``apo.observation.cost.amount`` is the
+    authoritative reported cost for imported observations. It populates
+    ``provided_cost`` and wins over any server-side model-price calculation.
+    Currency is recorded in ``call.metadata`` when supplied.
     """
+    attrs = span.attributes or {}
+    reported = attrs.get("apo.observation.cost.amount")
+    if (
+        isinstance(reported, (int, float))
+        and reported >= 0
+        and not (isinstance(reported, bool))
+    ):
+        call.provided_cost = float(reported)
+        call.cost = float(reported)
+        return
+
     if not call.model or call.observation_type != "GENERATION":
         return
     try:

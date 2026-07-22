@@ -1,0 +1,487 @@
+{
+  "description": "Deterministic expected OTLP request produced by the Langfuse converter for backend/tests/fixtures/langfuse/single-trace-v2.json. Used by backend scene tests (SPEC-137 #2) and as a regression anchor when the converter changes.",
+  "sourceTraceId": "8f38c27a2c4b4bafb87a78e3a3d62b90",
+  "expectedTraceId": "1c8e69d970579e05740de59fc2917b04",
+  "spanCount": 3,
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "apo-trace-source"
+            }
+          },
+          {
+            "key": "apo.trace.source.system",
+            "value": {
+              "stringValue": "langfuse"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "apo.langfuse-import"
+          },
+          "spans": [
+            {
+              "traceId": "1c8e69d970579e05740de59fc2917b04",
+              "spanId": "aaf7e92106161541",
+              "name": "agent session",
+              "kind": 0,
+              "startTimeUnixNano": "1784714400000000000",
+              "status": {
+                "code": 0
+              },
+              "attributes": [
+                {
+                  "key": "apo.trace.source.system",
+                  "value": {
+                    "stringValue": "langfuse"
+                  }
+                },
+                {
+                  "key": "apo.trace.source.observation_id",
+                  "value": {
+                    "stringValue": "root-obs"
+                  }
+                },
+                {
+                  "key": "apo.trace.source.observation_type",
+                  "value": {
+                    "stringValue": "TRACE"
+                  }
+                },
+                {
+                  "key": "apo.trace.provenance",
+                  "value": {
+                    "kvlistValue": {
+                      "values": [
+                        {
+                          "key": "source",
+                          "value": {
+                            "kvlistValue": {
+                              "values": [
+                                {
+                                  "key": "system",
+                                  "value": {
+                                    "stringValue": "langfuse"
+                                  }
+                                },
+                                {
+                                  "key": "host",
+                                  "value": {
+                                    "stringValue": "https://cloud.langfuse.com"
+                                  }
+                                },
+                                {
+                                  "key": "traceId",
+                                  "value": {
+                                    "stringValue": "8f38c27a2c4b4bafb87a78e3a3d62b90"
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "key": "release",
+                          "value": {
+                            "stringValue": "v1.4.0"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "apo.trace.source.trace_id",
+                  "value": {
+                    "stringValue": "8f38c27a2c4b4bafb87a78e3a3d62b90"
+                  }
+                },
+                {
+                  "key": "apo.trace.name",
+                  "value": {
+                    "stringValue": "Imported Langfuse session"
+                  }
+                },
+                {
+                  "key": "apo.trace.tags",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "imported"
+                        },
+                        {
+                          "stringValue": "source:langfuse"
+                        },
+                        {
+                          "stringValue": "prod"
+                        },
+                        {
+                          "stringValue": "experiment-7"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "apo.trace.metadata",
+                  "value": {
+                    "kvlistValue": {
+                      "values": [
+                        {
+                          "key": "release",
+                          "value": {
+                            "stringValue": "v1.4.0"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "apo.observation.type",
+                  "value": {
+                    "stringValue": "SPAN"
+                  }
+                }
+              ],
+              "endTimeUnixNano": "1784714410000000000"
+            },
+            {
+              "traceId": "1c8e69d970579e05740de59fc2917b04",
+              "spanId": "8d1cb9997c3f8642",
+              "name": "chat gpt-4o",
+              "kind": 0,
+              "startTimeUnixNano": "1784714401000000000",
+              "status": {
+                "code": 0
+              },
+              "attributes": [
+                {
+                  "key": "apo.trace.source.system",
+                  "value": {
+                    "stringValue": "langfuse"
+                  }
+                },
+                {
+                  "key": "apo.trace.source.observation_id",
+                  "value": {
+                    "stringValue": "gen-obs"
+                  }
+                },
+                {
+                  "key": "apo.trace.source.observation_type",
+                  "value": {
+                    "stringValue": "GENERATION"
+                  }
+                },
+                {
+                  "key": "apo.observation.type",
+                  "value": {
+                    "stringValue": "GENERATION"
+                  }
+                },
+                {
+                  "key": "apo.observation.input",
+                  "value": {
+                    "kvlistValue": {
+                      "values": [
+                        {
+                          "key": "value",
+                          "value": {
+                            "kvlistValue": {
+                              "values": [
+                                {
+                                  "key": "messages",
+                                  "value": {
+                                    "arrayValue": {
+                                      "values": [
+                                        {
+                                          "kvlistValue": {
+                                            "values": [
+                                              {
+                                                "key": "role",
+                                                "value": {
+                                                  "stringValue": "user"
+                                                }
+                                              },
+                                              {
+                                                "key": "content",
+                                                "value": {
+                                                  "stringValue": "Summarize the weekly report."
+                                                }
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "gen_ai.input.messages",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "kvlistValue": {
+                            "values": [
+                              {
+                                "key": "role",
+                                "value": {
+                                  "stringValue": "user"
+                                }
+                              },
+                              {
+                                "key": "content",
+                                "value": {
+                                  "stringValue": "Summarize the weekly report."
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "apo.observation.output",
+                  "value": {
+                    "kvlistValue": {
+                      "values": [
+                        {
+                          "key": "value",
+                          "value": {
+                            "kvlistValue": {
+                              "values": [
+                                {
+                                  "key": "messages",
+                                  "value": {
+                                    "arrayValue": {
+                                      "values": [
+                                        {
+                                          "kvlistValue": {
+                                            "values": [
+                                              {
+                                                "key": "role",
+                                                "value": {
+                                                  "stringValue": "assistant"
+                                                }
+                                              },
+                                              {
+                                                "key": "content",
+                                                "value": {
+                                                  "stringValue": "Here is the summary."
+                                                }
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "gen_ai.output.messages",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "kvlistValue": {
+                            "values": [
+                              {
+                                "key": "role",
+                                "value": {
+                                  "stringValue": "assistant"
+                                }
+                              },
+                              {
+                                "key": "content",
+                                "value": {
+                                  "stringValue": "Here is the summary."
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "apo.observation.metadata",
+                  "value": {
+                    "kvlistValue": {
+                      "values": [
+                        {
+                          "key": "request_id",
+                          "value": {
+                            "stringValue": "req-1"
+                          }
+                        },
+                        {
+                          "key": "team",
+                          "value": {
+                            "stringValue": "data"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "gen_ai.request.model",
+                  "value": {
+                    "stringValue": "gpt-4o"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.input_tokens",
+                  "value": {
+                    "intValue": "220"
+                  }
+                },
+                {
+                  "key": "gen_ai.usage.output_tokens",
+                  "value": {
+                    "intValue": "80"
+                  }
+                },
+                {
+                  "key": "apo.observation.cost.amount",
+                  "value": {
+                    "doubleValue": 0.0456
+                  }
+                },
+                {
+                  "key": "apo.observation.cost.currency",
+                  "value": {
+                    "stringValue": "USD"
+                  }
+                }
+              ],
+              "endTimeUnixNano": "1784714404000000000",
+              "parentSpanId": "aaf7e92106161541"
+            },
+            {
+              "traceId": "1c8e69d970579e05740de59fc2917b04",
+              "spanId": "8f7b739245ea212f",
+              "name": "search_docs",
+              "kind": 0,
+              "startTimeUnixNano": "1784714402000000000",
+              "status": {
+                "code": 0
+              },
+              "attributes": [
+                {
+                  "key": "apo.trace.source.system",
+                  "value": {
+                    "stringValue": "langfuse"
+                  }
+                },
+                {
+                  "key": "apo.trace.source.observation_id",
+                  "value": {
+                    "stringValue": "tool-obs"
+                  }
+                },
+                {
+                  "key": "apo.trace.source.observation_type",
+                  "value": {
+                    "stringValue": "TOOL"
+                  }
+                },
+                {
+                  "key": "apo.observation.type",
+                  "value": {
+                    "stringValue": "TOOL"
+                  }
+                },
+                {
+                  "key": "apo.observation.level",
+                  "value": {
+                    "stringValue": "DEBUG"
+                  }
+                },
+                {
+                  "key": "apo.observation.input",
+                  "value": {
+                    "kvlistValue": {
+                      "values": [
+                        {
+                          "key": "value",
+                          "value": {
+                            "kvlistValue": {
+                              "values": [
+                                {
+                                  "key": "query",
+                                  "value": {
+                                    "stringValue": "weekly report"
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "apo.observation.output",
+                  "value": {
+                    "kvlistValue": {
+                      "values": [
+                        {
+                          "key": "value",
+                          "value": {
+                            "kvlistValue": {
+                              "values": [
+                                {
+                                  "key": "hits",
+                                  "value": {
+                                    "intValue": "3"
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ],
+              "endTimeUnixNano": "1784714403000000000",
+              "parentSpanId": "8d1cb9997c3f8642"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

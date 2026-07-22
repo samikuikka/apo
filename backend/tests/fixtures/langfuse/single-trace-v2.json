@@ -1,0 +1,64 @@
+{
+  "description": "Single representative Langfuse v2 trace with two pages of observations: root, GENERATION child with usage/cost/I/O, and a TOOL grandchild. Drives the converter's identity mapping, semantic mapping, and chunking tests; its expected OTLP output is in single-trace-otlp.json.",
+  "pages": [
+    {
+      "data": [
+        {
+          "id": "root-obs",
+          "traceId": "8f38c27a2c4b4bafb87a78e3a3d62b90",
+          "type": "TRACE",
+          "startTime": "2026-07-22T10:00:00.000000Z",
+          "endTime": "2026-07-22T10:00:10.000000Z",
+          "name": "agent session",
+          "level": "DEFAULT",
+          "traceName": "Imported Langfuse session",
+          "tags": ["prod", "experiment-7"],
+          "release": "v1.4.0"
+        },
+        {
+          "id": "gen-obs",
+          "traceId": "8f38c27a2c4b4bafb87a78e3a3d62b90",
+          "parentObservationId": "root-obs",
+          "type": "GENERATION",
+          "startTime": "2026-07-22T10:00:01.000000Z",
+          "endTime": "2026-07-22T10:00:04.000000Z",
+          "name": "chat gpt-4o",
+          "level": "DEFAULT",
+          "providedModelName": "gpt-4o",
+          "usageDetails": { "input": 220, "output": 80, "total": 300 },
+          "costDetails": { "total": 0.0456 },
+          "totalCost": 0.0456,
+          "input": {
+            "messages": [
+              { "role": "user", "content": "Summarize the weekly report." }
+            ]
+          },
+          "output": {
+            "messages": [
+              { "role": "assistant", "content": "Here is the summary." }
+            ]
+          },
+          "metadata": { "request_id": "req-1", "team": "data" }
+        }
+      ],
+      "meta": { "cursor": "page-2-cursor" }
+    },
+    {
+      "data": [
+        {
+          "id": "tool-obs",
+          "traceId": "8f38c27a2c4b4bafb87a78e3a3d62b90",
+          "parentObservationId": "gen-obs",
+          "type": "TOOL",
+          "startTime": "2026-07-22T10:00:02.000000Z",
+          "endTime": "2026-07-22T10:00:03.000000Z",
+          "name": "search_docs",
+          "level": "DEBUG",
+          "input": { "query": "weekly report" },
+          "output": { "hits": 3 }
+        }
+      ],
+      "meta": { "cursor": null }
+    }
+  ]
+}
