@@ -17,6 +17,10 @@ import { cn } from "@/lib/utils";
 import { formatDuration, runDurationMs, usdFormat } from "@/lib/format";
 import { extractJudgeReasoning } from "@/lib/judge-reasoning";
 import { extractCheckBlock } from "@/lib/extract-check-block";
+import {
+  buildSourceCandidates,
+  shouldAcceptSource,
+} from "@/lib/check-source-candidates";
 import { locateAssertionsInBlock } from "@/lib/locate-assertion";
 import type { LineAssertion } from "./compare-markers";
 
@@ -791,9 +795,7 @@ function CheckSourceWithResults({
     let cancelled = false;
     const controller = new AbortController();
 
-    const candidates = sourceFile
-      ? [sourceFile, `${taskId}.eval.ts`]
-      : [`${taskId}.eval.ts`, "task.ts", "checks.ts"];
+    const candidates = buildSourceCandidates(sourceFile, taskId);
 
     (async () => {
       let lastError: unknown;
@@ -812,7 +814,14 @@ function CheckSourceWithResults({
             );
           }
           const block = extractCheckBlock(source.content, { id: checkId });
-          if (block || candidates.length === 1) {
+          if (
+            shouldAcceptSource({
+              candidate,
+              recordedSourceFile: sourceFile,
+              containsKnownCheck: block !== null,
+              isLastCandidate: candidate === candidates[candidates.length - 1],
+            })
+          ) {
             if (cancelled) return;
             setState({
               status: "ready",

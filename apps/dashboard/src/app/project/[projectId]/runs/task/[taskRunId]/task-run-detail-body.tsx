@@ -27,6 +27,10 @@ import { extractJudgeReasoning } from "@/lib/judge-reasoning";
 import type { CheckAssertionResult, CheckResult, JudgeMetadata } from "@/lib/agent-task-api";
 import { buildCheckDiagnostics } from "@/lib/check-diagnostics";
 import { extractCheckBlock } from "@/lib/extract-check-block";
+import {
+  buildSourceCandidates,
+  shouldAcceptSource,
+} from "@/lib/check-source-candidates";
 import { locateAssertionsInBlock } from "@/lib/locate-assertion";
 import { formatTokenBreakdown } from "@/lib/format";
 import { buildAssertionParam, parseOwnAssertionId } from "@/lib/assertion-select";
@@ -669,7 +673,14 @@ export function TaskRunDetailBody({
           const containsKnownCheck = checks.some((check) =>
             extractCheckBlock(source.content, { id: check.id }) !== null
           );
-          if (containsKnownCheck || candidates.length === 1) {
+          if (
+            shouldAcceptSource({
+              candidate,
+              recordedSourceFile,
+              containsKnownCheck,
+              isLastCandidate: candidate === candidates[candidates.length - 1],
+            })
+          ) {
             return source;
           }
         } catch (error) {
@@ -680,18 +691,18 @@ export function TaskRunDetailBody({
       if (lastError instanceof Error) throw lastError;
       throw new Error("Could not load check source — no .eval.ts, task.ts, or checks.ts found");
     },
-    [taskId, projectId, commitSha, checks],
+    [taskId, projectId, commitSha, checks, recordedSourceFile],
   );
 
   useEffect(() => {
     if (checks.length === 0 || !projectId) return;
     const controller = new AbortController();
-    const candidates = recordedSourceFile
-      ? [recordedSourceFile, `${taskId}.eval.ts`]
-      : [`${taskId}.eval.ts`, "task.ts", "checks.ts"];
 
     setSourceState({ data: null, error: null });
-    void loadCheckSource(candidates, controller.signal)
+    void loadCheckSource(
+      buildSourceCandidates(recordedSourceFile, taskId),
+      controller.signal,
+    )
       .then((data: TaskFileContentResponse) => setSourceState({ data, error: null }))
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
