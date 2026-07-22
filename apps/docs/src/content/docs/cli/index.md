@@ -31,6 +31,7 @@ The core loop: run a task, read its verdict, open its trace when something fails
 | [`apo runs show`](/cli/runs-show/) | Show a run's verdict, checks, and failures. |
 | [`apo traces list`](/cli/traces-list/) | List recent traces. |
 | [`apo traces show`](/cli/traces-show/) | Show a trace's call tree, timing, tokens, cost. |
+| [`apo traces import langfuse`](/cli/traces-import-langfuse/) | Import one Langfuse-captured trace into apo. |
 
 ## Batch runs
 

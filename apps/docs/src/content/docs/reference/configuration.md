@@ -86,6 +86,18 @@ The `apo` CLI reads these. Precedence: flag > env > stored credentials (`~/.apo/
 | `APO_ACTOR` | Actor name for runs (who triggered them). |
 | `APO_API_KEY` | API key for backend auth. |
 
+### Langfuse connector (`apo traces import langfuse`)
+
+:::caution
+These variables are read **only** by the CLI for the [`traces import langfuse`](/cli/traces-import-langfuse/) command. They are never sent to apo, logged, persisted to `~/.apo/credentials`, or attached to the imported trace. There is intentionally no `--langfuse-secret-key` flag.
+:::
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `LANGFUSE_PUBLIC_KEY` | yes | Langfuse project public key for the source trace. |
+| `LANGFUSE_SECRET_KEY` | yes | Langfuse project secret key for the source trace. |
+| `LANGFUSE_HOST` | no | Source Langfuse deployment (default `https://cloud.langfuse.com`). Overrideable with `--langfuse-host`. |
+
 ## SDK (`@apo/sdk`)
 
 The tracing SDK reads these (or their `NEXT_PUBLIC_` variants for browser use):

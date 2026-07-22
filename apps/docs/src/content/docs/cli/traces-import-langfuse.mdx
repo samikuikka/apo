@@ -1,0 +1,125 @@
+---
+title: "apo traces import langfuse"
+description: "Import one Langfuse-captured trace into apo through the OTLP receiver."
+---
+
+import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
+
+`apo traces import langfuse` reads a single trace from a Langfuse deployment's public Observations API, converts the observation graph into standard OTLP/JSON, and submits it to apo's authenticated OTLP receiver. The imported execution projects into the normal Trace model — no Langfuse-specific tables, no vendor dashboard branch.
+
+This is the right command when the agent or sandbox can reach Langfuse but not your `localhost` apo backend. When the agent can reach apo directly, prefer native OTLP export — see [OTLP framework setup](/ecosystem/otel-framework-setup/).
+
+## Synopsis
+
+```bash
+apo traces import langfuse <trace-id> [options]
+```
+
+## Description
+
+Imports **one** Langfuse trace by id. The connector:
+
+1. Resolves connector configuration (Langfuse host + keys from the environment; apo backend + project + API key from normal apo config).
+2. Fetches every page of the source trace from `GET /api/public/v2/observations?traceId=<id>` using HTTP Basic auth.
+3. Validates the graph, maps identity deterministically (SHA-256 of source host + source IDs into OTel trace/span IDs), and converts semantics into canonical `gen_ai.*` and `apo.*` attributes.
+4. POSTs the resulting OTLP/JSON to apo's existing authenticated receiver.
+5. Polls the trace detail endpoint until the projected Trace becomes readable (up to 15s), then prints the inspect command.
+
+Re-importing the same source trace is idempotent: deterministic IDs fill the same canonical trace and spans without duplicating rows.
+
+## Arguments
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `<trace-id>` | yes | The Langfuse source trace id (the value you'd see in the Langfuse UI URL). |
+
+## Options
+
+| Option | Default | Purpose |
+|---|---|---|
+| `--langfuse-host <url>` | `LANGFUSE_HOST` or `https://cloud.langfuse.com` | Override the source Langfuse deployment. Only the origin is retained (no path, query, or credentials). |
+| `--max-observations <count>` | `10000` | Safety ceiling on the number of observations fetched before any apo write. Range `1..50000`. |
+| `--json` | off | Emit a `LangfuseImportResult` JSON document instead of human-readable output. |
+
+## Environment
+
+:::caution[Credentials are environment-only]
+There is **no** `--langfuse-secret-key` flag. Langfuse keys are read from the environment and stay in the CLI process. They are never sent to apo, logged, persisted to `~/.apo/credentials`, or attached to the imported trace.
+:::
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `LANGFUSE_PUBLIC_KEY` | yes | Langfuse project public key. |
+| `LANGFUSE_SECRET_KEY` | yes | Langfuse project secret key. |
+| `LANGFUSE_HOST` | no | Defaults to `https://cloud.langfuse.com`. Set for self-hosted Langfuse. Overrideable with `--langfuse-host`. |
+
+Standard apo configuration also applies — `APO_BACKEND_URL` / `--backend`, `APO_API_KEY` / saved login credentials, `--project` / saved active project.
+
+## Example
+
+```bash
+export LANGFUSE_PUBLIC_KEY=pk-lf-example
+export LANGFUSE_SECRET_KEY=sk-lf-example
+
+apo traces import langfuse 8f38c27a2c4b4bafb87a78e3a3d62b90
+```
+
+<TerminalOutput
+  lines={[
+    { text: "Imported Langfuse trace 8f38c27a2c4b4bafb87a78e3a3d62b90" },
+    { text: "  Apo trace:     1c8e69d970579e05740de59fc2917b04" },
+    { text: "  Observations:  42" },
+    { text: "  OTLP batches:  1" },
+    { text: "  Source:        https://cloud.langfuse.com" },
+    { text: "  Inspect:       apo traces show 1c8e69d970579e05740de59fc2917b04" },
+  ]}
+/>
+
+Self-hosted Langfuse with a non-default ceiling:
+
+```bash
+apo traces import langfuse <id> \
+  --langfuse-host https://langfuse.internal.corp \
+  --max-observations 25000
+```
+
+Machine-readable output for scripting:
+
+```bash
+apo traces import langfuse <id> --json
+```
+
+```json
+{
+  "source": "langfuse",
+  "sourceHost": "https://cloud.langfuse.com",
+  "sourceTraceId": "8f38c27a2c4b4bafb87a78e3a3d62b90",
+  "traceId": "1c8e69d970579e05740de59fc2917b04",
+  "observationsFetched": 42,
+  "spansSubmitted": 42,
+  "spansAccepted": 42,
+  "spansRejected": 0,
+  "otlpBatchIds": ["batch-..."],
+  "projected": true
+}
+```
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Every source observation was accepted and the projected Trace became readable before the visibility deadline. |
+| `2` | Configuration, Langfuse read, conversion, apo ingestion, partial OTLP rejection, or projection visibility failure. |
+
+The command never returns `1`. Partial success prints accepted/rejected counts, the mapped trace ID, and OTLP batch IDs — re-running is safe.
+
+## Notes
+
+- The destination project's **trace content policy** remains authoritative. A project configured as `redacted` or `off` will intentionally not retain all source I/O/metadata.
+- Imported traces carry the root tags `imported` and `source:langfuse` plus any tags from the Langfuse trace itself, so they are filterable in the dashboard alongside native runs.
+- Task checks cannot be run against imported traces in this release — that requires the **Task Evaluation** model, which is a separate spec. The connector does not synthesize Task Runs, verdicts, Scores, or deliverables.
+
+## See also
+
+- [Ecosystem: Import a Langfuse trace](/ecosystem/langfuse-import/) — when to use the connector, identity mapping, troubleshooting.
+- [`apo traces show`](/cli/traces-show/) — inspect the imported trace.

@@ -109,14 +109,15 @@ export default defineConfig({
 							{ label: 'runs show', slug: 'cli/runs-show' },
 						],
 					},
-					{
-						label: 'traces',
-						collapsed: false,
-						items: [
-							{ label: 'traces list', slug: 'cli/traces-list' },
-							{ label: 'traces show', slug: 'cli/traces-show' },
-						],
-					},
+				{
+					label: 'traces',
+					collapsed: false,
+					items: [
+						{ label: 'traces list', slug: 'cli/traces-list' },
+						{ label: 'traces show', slug: 'cli/traces-show' },
+						{ label: 'traces import langfuse', slug: 'cli/traces-import-langfuse' },
+					],
+				},
 					{
 						label: 'batch',
 						collapsed: false,
@@ -126,12 +127,14 @@ export default defineConfig({
 					},
 				],
 			},
-				{
-					label: 'Ecosystem',
-					items: [
-						{ label: 'Overview', slug: 'ecosystem' },
-					],
-				},
+			{
+				label: 'Ecosystem',
+				items: [
+					{ label: 'Overview', slug: 'ecosystem' },
+					{ label: 'OTLP framework setup', slug: 'ecosystem/otel-framework-setup' },
+					{ label: 'Import a Langfuse trace', slug: 'ecosystem/langfuse-import' },
+				],
+			},
 			],
 			customCss: ['./src/styles/custom.css'],
 			components: {
