@@ -186,4 +186,24 @@ describe("per-command help", () => {
     expect(output).toContain("apo logout");
     expect(output).toContain("~/.apo/credentials");
   });
+
+  it("resolves the longest three-word command to traces import langfuse", async () => {
+    const { output, code } = await runCapture(["traces", "import", "langfuse", "--help"]);
+    expect(code).toBe(0);
+    expect(output).toContain("apo traces import langfuse");
+    expect(output).toContain("<trace-id>");
+    expect(output).toContain("--langfuse-host");
+    expect(output).toContain("--max-observations");
+    expect(output).toContain("LANGFUSE_PUBLIC_KEY");
+    expect(output).toContain("LANGFUSE_SECRET_KEY");
+    expect(output).toContain("LANGFUSE_HOST");
+    expect(output).toContain("Examples:");
+    expect(output).toMatch(/environment-only|never leave/i);
+    expect(output).toMatch(/exit code|0.*imported.*2|2.*fail/i);
+  });
+
+  it("lists traces import langfuse in the global command list", async () => {
+    const { output } = await runCapture(["--help"]);
+    expect(output).toContain("traces import langfuse");
+  });
 });

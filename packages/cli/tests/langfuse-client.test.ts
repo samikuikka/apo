@@ -26,7 +26,7 @@ function captureFetch(
     if (!next) throw new Error(`fetch called more times than mocked; last url: ${url}`);
     return new Response(JSON.stringify(next.body ?? {}), {
       status: next.status ?? 200,
-      headers: { "Content-Type": "application/json", ...(next.headers ?? {}) },
+      headers: { "Content-Type": "application/json", ...next.headers },
     });
   });
   return { calls, mock };

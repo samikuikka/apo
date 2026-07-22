@@ -240,6 +240,23 @@ const commands: Record<string, CommandEntry> = {
     ],
     note: "Accepts trace-id prefixes. Requires backend auth.",
   },
+  "traces import langfuse": {
+    handler: loadCommand("traces-import-langfuse"),
+    help: "Import a Langfuse trace into apo via the OTLP receiver",
+    args: [
+      ["<trace-id>", "Langfuse source trace id"],
+    ],
+    options: [
+      ["--langfuse-host <url>", "Override LANGFUSE_HOST"],
+      ["--max-observations <count>", "Safety ceiling (default 10000, range 1..50000)"],
+      ["--json", "Machine-readable LangfuseImportResult JSON"],
+    ],
+    examples: [
+      "apo traces import langfuse 8f38c27a2c4b4bafb87a78e3a3d62b90",
+      "apo traces import langfuse <id> --langfuse-host https://us.langfuse.com",
+    ],
+    note: "Credentials are environment-only: LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY (required) and LANGFUSE_HOST (optional, defaults to https://cloud.langfuse.com). Keys never leave the CLI process. Exit codes: 0 = imported and visible, 2 = config / Langfuse read / conversion / OTLP partial rejection / projection visibility failure. Native OTEL remains the preferred path when the agent can reach apo directly.",
+  },
   "batch list": {
     handler: loadCommand("batch-list"),
     help: "List batch runs from backend",
