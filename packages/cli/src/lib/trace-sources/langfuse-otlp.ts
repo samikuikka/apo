@@ -201,14 +201,16 @@ function appendSemanticAttributes(
   }
 
   if (observation.input !== undefined) {
-    attributes.push(anyValueAttr("apo.observation.input", { value: observation.input }));
+    // Raw input is stored directly — no envelope wrapper. The explicit
+    // nullValue marker distinguishes null input from absent input.
+    attributes.push(anyValueAttr("apo.observation.input", observation.input));
     const inputMessages = extractMessageShapedJson(observation.input);
     if (inputMessages !== undefined) {
       attributes.push(anyValueAttr("gen_ai.input.messages", inputMessages));
     }
   }
   if (observation.output !== undefined) {
-    attributes.push(anyValueAttr("apo.observation.output", { value: observation.output }));
+    attributes.push(anyValueAttr("apo.observation.output", observation.output));
     const outputMessages = extractMessageShapedJson(observation.output);
     if (outputMessages !== undefined) {
       attributes.push(anyValueAttr("gen_ai.output.messages", outputMessages));
@@ -224,8 +226,30 @@ function appendSemanticAttributes(
     );
   }
 
+  // TOOL observations emit the canonical gen_ai.tool.* triple so the
+  // normalizer populates tool_name / tool_parameters / tool_result.
+  // Non-TOOL types don't get these — a generation isn't a tool call.
+  if (canonicalType === "TOOL") {
+    appendToolAttributes(attributes, observation);
+  }
+
   appendUsage(attributes, observation.usageDetails);
   appendCost(attributes, observation.totalCost);
+}
+
+function appendToolAttributes(
+  attributes: OtlpAttribute[],
+  observation: LangfuseObservation,
+): void {
+  if (observation.name) {
+    attributes.push(stringAttr("gen_ai.tool.name", observation.name));
+  }
+  if (observation.input !== undefined && observation.input !== null) {
+    attributes.push(anyValueAttr("gen_ai.tool.call.arguments", observation.input));
+  }
+  if (observation.output !== undefined && observation.output !== null) {
+    attributes.push(anyValueAttr("gen_ai.tool.call.result", observation.output));
+  }
 }
 
 function appendUsage(

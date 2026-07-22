@@ -169,13 +169,23 @@ class TestLangfuseConnectorProjectsFixture:
             # I/O came through apo.observation.input/output (wrapped as
             # { value: ... }) and landed in the call columns.
             assert isinstance(gen.input, dict)
+            assert "messages" in gen.input
+            assert gen.input["messages"][0]["role"] == "user"
             assert isinstance(gen.output, dict)
+            assert gen.output.get("text") == "Here is the summary."
 
             # Hierarchy: tool is a grandchild of root via the generation.
             tool = next(
                 c for c in calls if c.step_name and "search_docs" in c.step_name
             )
             assert tool.parent_call_id == gen.id
+            # Tool semantic fields — extracted via gen_ai.tool.* by the
+            # normalizer. No {value:...} envelope on raw input/output.
+            assert tool.tool_name == "search_docs"
+            assert tool.tool_parameters == {"query": "weekly report"}
+            assert tool.tool_result == {"hits": 3}
+            assert tool.input == {"query": "weekly report"}
+            assert tool.output == {"hits": 3}
 
     def test_otlp_error_status_projects_to_call_level_error(self):
         # Reuse the fixture but flip the generation to ERROR via a custom payload.

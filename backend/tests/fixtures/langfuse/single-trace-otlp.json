@@ -194,35 +194,26 @@
                     "kvlistValue": {
                       "values": [
                         {
-                          "key": "value",
+                          "key": "messages",
                           "value": {
-                            "kvlistValue": {
+                            "arrayValue": {
                               "values": [
                                 {
-                                  "key": "messages",
-                                  "value": {
-                                    "arrayValue": {
-                                      "values": [
-                                        {
-                                          "kvlistValue": {
-                                            "values": [
-                                              {
-                                                "key": "role",
-                                                "value": {
-                                                  "stringValue": "user"
-                                                }
-                                              },
-                                              {
-                                                "key": "content",
-                                                "value": {
-                                                  "stringValue": "Summarize the weekly report."
-                                                }
-                                              }
-                                            ]
-                                          }
+                                  "kvlistValue": {
+                                    "values": [
+                                      {
+                                        "key": "role",
+                                        "value": {
+                                          "stringValue": "user"
                                         }
-                                      ]
-                                    }
+                                      },
+                                      {
+                                        "key": "content",
+                                        "value": {
+                                          "stringValue": "Summarize the weekly report."
+                                        }
+                                      }
+                                    ]
                                   }
                                 }
                               ]
@@ -266,35 +257,26 @@
                     "kvlistValue": {
                       "values": [
                         {
-                          "key": "value",
+                          "key": "messages",
                           "value": {
-                            "kvlistValue": {
+                            "arrayValue": {
                               "values": [
                                 {
-                                  "key": "messages",
-                                  "value": {
-                                    "arrayValue": {
-                                      "values": [
-                                        {
-                                          "kvlistValue": {
-                                            "values": [
-                                              {
-                                                "key": "role",
-                                                "value": {
-                                                  "stringValue": "assistant"
-                                                }
-                                              },
-                                              {
-                                                "key": "content",
-                                                "value": {
-                                                  "stringValue": "Here is the summary."
-                                                }
-                                              }
-                                            ]
-                                          }
+                                  "kvlistValue": {
+                                    "values": [
+                                      {
+                                        "key": "role",
+                                        "value": {
+                                          "stringValue": "assistant"
                                         }
-                                      ]
-                                    }
+                                      },
+                                      {
+                                        "key": "content",
+                                        "value": {
+                                          "stringValue": "Here is the summary."
+                                        }
+                                      }
+                                    ]
                                   }
                                 }
                               ]
@@ -433,18 +415,9 @@
                     "kvlistValue": {
                       "values": [
                         {
-                          "key": "value",
+                          "key": "query",
                           "value": {
-                            "kvlistValue": {
-                              "values": [
-                                {
-                                  "key": "query",
-                                  "value": {
-                                    "stringValue": "weekly report"
-                                  }
-                                }
-                              ]
-                            }
+                            "stringValue": "weekly report"
                           }
                         }
                       ]
@@ -457,18 +430,45 @@
                     "kvlistValue": {
                       "values": [
                         {
-                          "key": "value",
+                          "key": "hits",
                           "value": {
-                            "kvlistValue": {
-                              "values": [
-                                {
-                                  "key": "hits",
-                                  "value": {
-                                    "intValue": "3"
-                                  }
-                                }
-                              ]
-                            }
+                            "intValue": "3"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.name",
+                  "value": {
+                    "stringValue": "search_docs"
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.arguments",
+                  "value": {
+                    "kvlistValue": {
+                      "values": [
+                        {
+                          "key": "query",
+                          "value": {
+                            "stringValue": "weekly report"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "gen_ai.tool.call.result",
+                  "value": {
+                    "kvlistValue": {
+                      "values": [
+                        {
+                          "key": "hits",
+                          "value": {
+                            "intValue": "3"
                           }
                         }
                       ]

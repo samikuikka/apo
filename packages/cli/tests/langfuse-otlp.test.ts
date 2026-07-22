@@ -238,7 +238,7 @@ describe("langfuse-otlp semantic mapping", () => {
     expect(attrValue(genAttrs.get("apo.observation.cost.amount"))).toBeCloseTo(0.0123, 6);
     expect(attrValue(genAttrs.get("apo.observation.cost.currency"))).toBe("USD");
     const inputKv = attrValue(genAttrs.get("apo.observation.input"));
-    expect(inputKv).toMatchObject({ value: { messages: [{ role: "user", content: "hi" }] } });
+    expect(inputKv).toMatchObject({ messages: [{ role: "user", content: "hi" }] });
     expect(attrValue(genAttrs.get("gen_ai.input.messages"))).toMatchObject([
       { role: "user", content: "hi" },
     ]);
@@ -279,6 +279,78 @@ describe("langfuse-otlp semantic mapping", () => {
     expect(attrValue(spanAttrs(weird).get("apo.trace.source.observation_type"))).toBe("TOTALLY_UNKNOWN");
   });
 
+  it("emits gen_ai.tool.* attributes for TOOL observations so the normalizer extracts them", () => {
+    const observations = [
+      obs({
+        id: "tool",
+        type: "TOOL",
+        name: "search_docs",
+        input: { query: "weekly report", limit: 5 },
+        output: { hits: 3, results: ["a", "b", "c"] },
+      }),
+    ];
+    const result = convertLangfuseTraceToOtlp(graph(observations));
+    const span = allSpans(result)[0] as { attributes?: Array<{ key: string; value: unknown }> };
+    const attrs = spanAttrs(span);
+
+    // The normalizer reads these three canonical keys to populate
+    // tool_name / tool_parameters / tool_result.
+    expect(attrValue(attrs.get("gen_ai.tool.name"))).toBe("search_docs");
+    expect(attrValue(attrs.get("gen_ai.tool.call.arguments"))).toMatchObject({
+      query: "weekly report",
+      limit: 5,
+    });
+    expect(attrValue(attrs.get("gen_ai.tool.call.result"))).toMatchObject({
+      hits: 3,
+      results: ["a", "b", "c"],
+    });
+  });
+
+  it("does NOT emit gen_ai.tool.* for non-TOOL observations", () => {
+    const observations = [
+      obs({
+        id: "gen",
+        type: "GENERATION",
+        name: "chat",
+        input: { messages: [{ role: "user", content: "hi" }] },
+        output: { messages: [{ role: "assistant", content: "hi" }] },
+      }),
+    ];
+    const result = convertLangfuseTraceToOtlp(graph(observations));
+    const span = allSpans(result)[0] as { attributes?: Array<{ key: string; value: unknown }> };
+    const attrs = spanAttrs(span);
+    expect(attrs.get("gen_ai.tool.name")).toBeUndefined();
+    expect(attrs.get("gen_ai.tool.call.arguments")).toBeUndefined();
+    expect(attrs.get("gen_ai.tool.call.result")).toBeUndefined();
+  });
+
+  it("emits raw input/output without a {value:...} wrapper so the projector stores clean dicts", () => {
+    const observations = [
+      obs({
+        id: "plain",
+        type: "TOOL",
+        input: { query: "weekly report" },
+        output: { hits: 3 },
+      }),
+    ];
+    const result = convertLangfuseTraceToOtlp(graph(observations));
+    const span = allSpans(result)[0] as { attributes?: Array<{ key: string; value: unknown }> };
+    const attrs = spanAttrs(span);
+    // No wrapper envelope — the value IS the dict.
+    expect(attrValue(attrs.get("apo.observation.input"))).toEqual({ query: "weekly report" });
+    expect(attrValue(attrs.get("apo.observation.output"))).toEqual({ hits: 3 });
+  });
+
+  it("encodes JSON null explicitly (without {value:...} wrapper) using nullValue", () => {
+    const observations = [obs({ id: "n", type: "TOOL", input: null, output: null })];
+    const result = convertLangfuseTraceToOtlp(graph(observations));
+    const span = allSpans(result)[0] as { attributes?: Array<{ key: string; value: unknown }> };
+    const attrs = spanAttrs(span);
+    // Decoded value is the explicit null, not an envelope.
+    expect(attrValue(attrs.get("apo.observation.input"))).toBeNull();
+    expect(attrValue(attrs.get("apo.observation.output"))).toBeNull();
+  });
+
   it("preserves a finite, non-negative reported cost and ignores invalid values", () => {
     const observations = [
       obs({ id: "ok", totalCost: "0.5" }),
@@ -312,28 +384,23 @@ describe("langfuse-otlp JSON AnyValue encoding", () => {
     const result = convertLangfuseTraceToOtlp(graph(observations));
     const span = allSpans(result)[0] as { attributes?: Array<{ key: string; value: unknown }> };
     const attrs = spanAttrs(span);
-    // Non-object JSON values are wrapped as { value: ... }.
-    expect(attrValue(attrs.get("apo.observation.input"))).toEqual({ value: payload });
-    expect(attrValue(attrs.get("apo.observation.output"))).toEqual({ value: payload });
+    // Objects are stored as the object directly, no envelope.
+    expect(attrValue(attrs.get("apo.observation.input"))).toEqual(payload);
+    expect(attrValue(attrs.get("apo.observation.output"))).toEqual(payload);
     expect(attrValue(attrs.get("apo.observation.metadata"))).toEqual(payload);
   });
 
-  it("encodes JSON null as an explicit AnyValue, not an empty value", () => {
+  it("encodes JSON null as an explicit AnyValue marker, decoded back to bare null", () => {
     const observations = [obs({ id: "root", input: null })];
     const result = convertLangfuseTraceToOtlp(graph(observations));
     const span = allSpans(result)[0] as { attributes?: Array<{ key: string; value: unknown }> };
     const attrs = spanAttrs(span);
-    // The wire value must carry an explicit null marker (not an empty object).
-    const raw = attrs.get("apo.observation.input") as Record<string, unknown> | undefined;
+    const raw = attrs.get("apo.observation.input");
     expect(raw).toBeDefined();
-    expect(raw).toHaveProperty("kvlistValue");
-    // Decoding the kvlistValue yields { value: null } (wrapped null), and the
-    // null is represented explicitly — not as `{}`.
-    const decoded = attrValue(raw);
-    expect(decoded).toEqual({ value: null });
-    const inner = (raw as { kvlistValue: { values: Array<{ key: string; value: unknown }> } })
-      .kvlistValue.values[0]!.value;
-    expect(inner).toHaveProperty("nullValue", "NULL_VALUE");
+    // Decodes to bare null, not {} and not { value: null }.
+    expect(attrValue(raw)).toBeNull();
+    // Wire form uses the explicit nullValue marker.
+    expect(raw).toHaveProperty("nullValue");
   });
 });
 
