@@ -374,3 +374,12 @@ Operator-visible runtime state is exposed via:
 - `GET /v1/system/runtime-config` — admin-only descriptor of the running topology (backend URL, frontend URL, database URL, cache dir, scheduler state, supported topology).
 
 Both are surfaced in the dashboard under **Settings → System → Deployment Topology**. The Compose healthchecks use `/health/ready` instead of the basic liveness probe so a deployed backend is only marked healthy when it can actually serve.
+
+The public Server Profile adds Caddy as the only internet-facing service. Caddy
+terminates HTTPS and forwards every request to the frontend; browser API calls
+use the same-origin `/backend-proxy/*` bridge, while the canonical public OTLP
+route `/api/public/otel/v1/traces` is rewritten by Next.js to the backend.
+Frontend and backend diagnostic ports bind to `127.0.0.1`, and the database is
+never published publicly. Caddy is a replaceable reference ingress: an existing
+TLS proxy may forward the same public origin to the frontend without changing
+the application contract.

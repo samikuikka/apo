@@ -16,7 +16,8 @@
     "test:alpha:ui": "pnpm --filter dashboard exec playwright test --grep @alpha --project=chromium",
     "test:alpha:ui:all": "pnpm --filter dashboard exec playwright test e2e/alpha-project-setup-and-run.spec.ts e2e/alpha-schedule-lifecycle.spec.ts e2e/alpha-trace-drilldown.spec.ts",
     "test:alpha:backend": "cd backend && uv run pytest tests/test_alpha_scheduler_recovery.py tests/test_alpha_project_isolation.py tests/test_runtime_config.py tests/test_agent_task_runtime.py tests/test_task_dependency_installer.py -q",
-    "test:alpha:smoke": "bash scripts/self-hosted-alpha-smoke.sh"
+    "test:alpha:smoke": "bash scripts/self-hosted-alpha-smoke.sh",
+    "test:public-ingress": "bash scripts/test-public-ingress-contract.sh"
   },
   "devDependencies": {
     "basedpyright": "^1.38.2",

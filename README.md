@@ -44,6 +44,16 @@ docker compose up -d --build
 
 Operator guide — single-host topology, env vars, TLS, deployment profiles — is in [`docs/self-hosted-alpha.md`](docs/self-hosted-alpha.md).
 
+To make the same installation reachable by teammates and sandboxed agents,
+set `APO_PUBLIC_URL` to your HTTPS domain and start the public Server Profile:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build
+# dashboard  → https://apo.example.com
+# CLI API    → https://apo.example.com/backend-proxy
+# OTLP       → https://apo.example.com/api/public/otel/v1/traces
+```
+
 ## Define a task
 
 A task is a folder convention, not a config file you fight with:

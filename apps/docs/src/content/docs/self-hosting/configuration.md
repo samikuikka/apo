@@ -11,10 +11,10 @@ tooling is required to get a trial or small team running.
 
 Choose Postgres when the installation is long-lived, several users will write
 concurrently, or your operations already standardize on Postgres. This changes
-the database, not apo's topology: both profiles still run exactly one backend
+the database, not apo's topology: both database choices still run exactly one backend
 and one scheduler owner.
 
-| Profile | Use it for | Start command |
+| Database | Use it for | Start command |
 |---|---|---|
 | SQLite (default) | Trials and small single-node alpha teams | `docker compose up -d --build` |
 | Postgres (optional) | Longer-lived shared installations, heavier concurrent writes, existing Postgres operations | `docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build` |
@@ -31,6 +31,19 @@ Expected database services:
 ```text
 SQLite:    frontend, backend
 Postgres:  frontend, backend, postgres
+```
+
+The database choice composes with public ingress. To run a public Server
+Profile with Postgres, apply both overrides:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml -f docker-compose.server.yml up -d --build
+```
+
+Expected public services:
+
+```text
+frontend, backend, postgres, caddy
 ```
 
 :::caution[Database profiles are not scaling profiles]
@@ -118,6 +131,6 @@ Before declaring an internal alpha instance production-ready for coworkers:
       supported for a small alpha, while Postgres is preferred for sustained
       shared use.
 - [ ] `task_source_cache` is on a persistent volume.
-- [ ] Reverse proxy terminates TLS with a valid certificate.
+- [ ] The [Server Profile smoke test](/self-hosting/public-server/#3-prove-the-public-route) passes from outside the host.
 - [ ] `/health/ready` returns 200 from outside the host.
 - [ ] At least one end-to-end task run has been completed successfully.

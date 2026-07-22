@@ -33,7 +33,7 @@ export async function apiGet<T>(
   params?: Record<string, string>,
   config?: Config,
 ): Promise<T> {
-  const url = new URL(path, baseUrl);
+  const url = resolveApiUrl(baseUrl, path);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== "") {
@@ -71,7 +71,7 @@ export async function apiPost<T>(
   body: unknown,
   config?: Config,
 ): Promise<T> {
-  const url = new URL(path, baseUrl);
+  const url = resolveApiUrl(baseUrl, path);
   let response: Response;
   try {
     response = await fetch(url.toString(), {
@@ -104,7 +104,7 @@ export async function apiPatch<T>(
   body: unknown,
   config?: Config,
 ): Promise<T> {
-  const url = new URL(path, baseUrl);
+  const url = resolveApiUrl(baseUrl, path);
   let response: Response;
   try {
     response = await fetch(url.toString(), {
@@ -133,12 +133,18 @@ export async function apiPatch<T>(
 
 export async function isBackendReachable(baseUrl: string): Promise<boolean> {
   try {
-    const url = new URL("/health", baseUrl);
+    const url = resolveApiUrl(baseUrl, "/health");
     const response = await fetch(url.toString(), { method: "GET" });
     return response.ok;
   } catch {
     return false;
   }
+}
+
+function resolveApiUrl(baseUrl: string, path: string): URL {
+  const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  const relativePath = path.replace(/^\/+/, "");
+  return new URL(relativePath, normalizedBaseUrl);
 }
 
 function bold(text: string): string {

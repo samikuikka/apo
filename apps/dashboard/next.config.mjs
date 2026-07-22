@@ -45,6 +45,13 @@ const nextConfig = {
   async rewrites() {
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
     return [
+      // Preserve the canonical OTLP path when traces enter through the public
+      // frontend origin. The generic /api rewrite below intentionally strips
+      // /api for dashboard routes, so telemetry needs this specific rule first.
+      {
+        source: '/api/public/otel/:path*',
+        destination: `${backendUrl}/api/public/otel/:path*`,
+      },
       {
         source: '/api/:path((?!auth(?:/|$)).*)',
         destination: `${backendUrl}/:path*`,

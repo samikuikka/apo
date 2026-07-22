@@ -1,0 +1,45 @@
+# Public Server Profile — automatic HTTPS through one Caddy ingress.
+#
+# Prerequisites:
+#   1. APO_PUBLIC_URL is an HTTPS origin whose DNS points to this host.
+#   2. Inbound TCP ports 80 and 443 (and optionally UDP 443) are open.
+#
+# Start with:
+#   docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build
+
+services:
+  frontend:
+    environment:
+      - NEXTAUTH_URL=${APO_PUBLIC_URL:?Set APO_PUBLIC_URL to https://your-apo-host.example}
+
+  backend:
+    environment:
+      - APO_DEPLOYMENT_PROFILE=server
+      - APO_PUBLIC_URL=${APO_PUBLIC_URL:?Set APO_PUBLIC_URL to https://your-apo-host.example}
+      - FRONTEND_URL=${APO_PUBLIC_URL:?Set APO_PUBLIC_URL to https://your-apo-host.example}
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      - APO_PUBLIC_URL=${APO_PUBLIC_URL:?Set APO_PUBLIC_URL to https://your-apo-host.example}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/self-host/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_started
+
+volumes:
+  caddy_data:
+  caddy_config:

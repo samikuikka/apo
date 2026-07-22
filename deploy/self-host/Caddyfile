@@ -1,0 +1,6 @@
+# Caddy obtains and renews the public TLS certificate automatically when the
+# APO_PUBLIC_URL hostname resolves to this server and ports 80/443 are open.
+{$APO_PUBLIC_URL} {
+	encode zstd gzip
+	reverse_proxy frontend:3000
+}

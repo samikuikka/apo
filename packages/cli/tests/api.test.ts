@@ -31,6 +31,18 @@ describe("apiGet", () => {
     expect(calledUrl).toContain("status=completed");
   });
 
+  it("preserves a public backend-proxy base path", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("[]", { status: 200 }),
+    );
+
+    await apiGet("https://apo.example.com/backend-proxy", "/v1/runs");
+
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe(
+      "https://apo.example.com/backend-proxy/v1/runs",
+    );
+  });
+
   it("skips empty/undefined params", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("[]", { status: 200 }),
@@ -154,5 +166,17 @@ describe("isBackendReachable", () => {
 
     const result = await isBackendReachable("http://localhost:8000");
     expect(result).toBe(false);
+  });
+
+  it("checks health through a public backend-proxy base path", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 200 }),
+    );
+
+    await isBackendReachable("https://apo.example.com/backend-proxy");
+
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toBe(
+      "https://apo.example.com/backend-proxy/health",
+    );
   });
 });

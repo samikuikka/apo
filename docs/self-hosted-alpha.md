@@ -50,7 +50,18 @@ Components:
 
 If you need any of the above, you are outside the alpha contract.
 
-## Deploy path
+## Deployment profiles
+
+| Profile | Reachability | Start command |
+|---|---|---|
+| Local | This machine only; ports bind to `127.0.0.1` | `docker compose up -d --build` |
+| Server | Public HTTPS domain through Caddy | `docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build` |
+
+The Server Profile makes one installation reachable by browsers, the CLI, and
+sandboxed agents. Caddy is the included reference ingress; an existing nginx,
+Traefik, tunnel, or load balancer can replace it by forwarding to the frontend.
+
+## Local deploy path
 
 This is the canonical alpha deploy path. It assumes Docker and Docker Compose on a single host.
 
@@ -59,14 +70,14 @@ This is the canonical alpha deploy path. It assumes Docker and Docker Compose on
    ```bash
    cat > .env <<EOF
    AUTH_SECRET=$(openssl rand -hex 32)
-   NEXTAUTH_URL=https://your-host.example
+   APO_DEPLOYMENT_PROFILE=local
+   APO_PUBLIC_URL=http://localhost:3000
    SCHEDULER_ENABLED=true
    EOF
    ```
 
    The unquoted `EOF` is intentional: it evaluates `openssl` and writes the
-   generated secret, not the literal command. Replace `NEXTAUTH_URL` with the
-   URL people will actually open.
+   generated secret, not the literal command.
 
 2. **Bring up the default SQLite stack:**
 
@@ -86,11 +97,44 @@ This is the canonical alpha deploy path. It assumes Docker and Docker Compose on
 
    Expect `{"ok": true, "checks": {...}}`. A 503 with a `checks` payload tells you exactly which prerequisite failed.
 
-4. **Configure the reverse proxy** to terminate TLS and forward to the dashboard container on port 3000. Browsers use the dashboard's `/backend-proxy/*` path, while server-rendered pages call the backend directly through the internal `BACKEND_URL`. The public origin does not need to be reachable from inside the frontend container, so host-port remapping is supported.
-
-5. **Create the first admin user.** Either visit the dashboard and walk the account-creation flow, or — for headless first boot only — set `INIT_USER_EMAIL` / `INIT_USER_PASSWORD` / `INIT_USER_NAME` env vars on the backend. The bootstrap runs once (idempotent — no-op when any users exist). **These env vars are unset by default**; operators set them explicitly when they want a headless first boot, never as a baked-in default.
+4. **Create the first admin user.** Either visit the dashboard and walk the account-creation flow, or — for headless first boot only — set `INIT_USER_EMAIL` / `INIT_USER_PASSWORD` / `INIT_USER_NAME` env vars on the backend. The bootstrap runs once (idempotent — no-op when any users exist). **These env vars are unset by default**; operators set them explicitly when they want a headless first boot, never as a baked-in default.
 
 After the first user exists, all further onboarding goes through normal account creation + project invite (see Settings → Members). Invitations are copy-link by default — no email setup needed (see [Email delivery](#email-delivery-optional)). Do not rotate `INIT_USER_*` to provision additional users — that path is closed by the idempotency check.
+
+## Publish the Server Profile
+
+Point a hostname such as `apo.example.com` at the Docker host, allow inbound
+TCP 80/443, and set the public profile in `.env`:
+
+```bash
+APO_DEPLOYMENT_PROFILE=server
+APO_PUBLIC_URL=https://apo.example.com
+```
+
+Start the base stack with the Caddy override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build
+```
+
+Caddy obtains and renews HTTPS automatically. The frontend and backend keep
+their loopback-only diagnostic ports; only Caddy accepts internet traffic.
+From a different machine, prove all three public routes:
+
+```bash
+scripts/public-ingress-smoke.sh https://apo.example.com
+```
+
+```text
+public ingress: ok
+  dashboard: https://apo.example.com/
+  API:       https://apo.example.com/backend-proxy
+  OTLP:      https://apo.example.com/api/public/otel/v1/traces
+```
+
+Configure the CLI with
+`APO_BACKEND_URL=https://apo.example.com/backend-proxy` and telemetry exporters
+with `APO_OTLP_ENDPOINT=https://apo.example.com/api/public/otel/v1/traces`.
 
 ## Email delivery (optional)
 
@@ -192,7 +236,7 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --buil
 ```
 
 The Postgres override changes only the database. It does not make multiple apo
-backend replicas safe; both profiles retain one backend and one scheduler owner.
+backend replicas safe; both database choices retain one backend and one scheduler owner.
 
 ## Scheduler ownership
 

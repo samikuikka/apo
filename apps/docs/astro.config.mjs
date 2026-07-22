@@ -50,6 +50,7 @@ export default defineConfig({
 					label: 'Self-Hosting',
 					items: [
 						{ label: 'Alpha Topology', slug: 'self-hosting/topology' },
+						{ label: 'Publish on a Domain', slug: 'self-hosting/public-server' },
 						{ label: 'Configuration', slug: 'self-hosting/configuration' },
 					],
 				},

@@ -401,6 +401,10 @@ entrypoint and can accidentally execute library code as a second CLI.
 - **Integration**: Use the `example-service` to verify that SDK changes correctly log to the backend
 - **Linting**: Ensure all TypeScript code passes `eslint`
 - **Alpha release gate**: `pnpm test:alpha` combines focused backend tests with the structural Playwright alpha specs. Run `pnpm test:alpha:smoke` for the deploy-shaped Compose smoke test.
+- **Public ingress contract**: `pnpm test:public-ingress` renders the Server
+  Profile and asserts Caddy is the only public ingress, runtime URLs agree, and
+  frontend/backend diagnostic ports remain loopback-only. Probe a deployed
+  domain from another machine with `scripts/public-ingress-smoke.sh https://apo.example.com`.
 
 ### API Documentation
 

@@ -10,7 +10,9 @@ services:
         max-size: "10m"
         max-file: "3"
     ports:
-      - "3000:3000"
+      # Local access only. The Server Profile publishes Caddy on 80/443;
+      # frontend and backend remain private to the host and Compose network.
+      - "127.0.0.1:3000:3000"
     deploy:
       resources:
         limits:
@@ -19,7 +21,9 @@ services:
       - BACKEND_URL=http://backend:8000
       - AUTH_SECRET=${AUTH_SECRET}
       - AUTH_TRUST_HOST=true
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      # Keep NEXTAUTH_URL as a fallback for existing installations; new
+      # deployments use APO_PUBLIC_URL as the single public-origin setting.
+      - NEXTAUTH_URL=${APO_PUBLIC_URL:-${NEXTAUTH_URL:-http://localhost:3000}}
       - NEXT_PUBLIC_AUTH_DISABLED=false
     depends_on:
       backend:
@@ -36,7 +40,7 @@ services:
         max-size: "10m"
         max-file: "3"
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       # Persistent task-source cache so re-syncs fetch instead of re-cloning.
       - task_source_cache:/var/lib/apo/task-sources
@@ -48,12 +52,14 @@ services:
       # For a longer-lived shared installation or heavier concurrent writes,
       # apply docker-compose.postgres.yml (see comments there).
       - AUTH_SECRET=${AUTH_SECRET}
+      - APO_DEPLOYMENT_PROFILE=${APO_DEPLOYMENT_PROFILE:-local}
+      - APO_PUBLIC_URL=${APO_PUBLIC_URL:-${NEXTAUTH_URL:-http://localhost:3000}}
       # FRONTEND_URL is the browser-facing URL: used for CORS allow-list and
       # for generating links (password reset, invitations) that the user opens
       # in their browser. It must match NEXTAUTH_URL, NOT the docker-internal
       # hostname, otherwise CORS blocks browser fetches and generated links
       # resolve to unreachable docker-internal addresses.
-      - FRONTEND_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - FRONTEND_URL=${APO_PUBLIC_URL:-${NEXTAUTH_URL:-http://localhost:3000}}
       # Alpha topology (SPEC-124): scheduler runs in the single backend process.
       - SCHEDULER_ENABLED=${SCHEDULER_ENABLED:-true}
       - TASK_SOURCE_CACHE_DIR=/var/lib/apo/task-sources

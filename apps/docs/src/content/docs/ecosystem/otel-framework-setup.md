@@ -20,7 +20,7 @@ bootstrap only when apo is allowed to own the process-wide provider.
 All frameworks use the same endpoint:
 
 ```
-OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://your-apo-host:8000/api/public/otel/v1/traces
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://apo.example.com/api/public/otel/v1/traces
 ```
 
 Authentication uses Basic auth with your apo API key pair:

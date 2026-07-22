@@ -36,7 +36,7 @@ The agent-testing platform has exactly **one supported self-host topology for al
 
 | Component | Alpha role |
 |-----------|-----------|
-| Reverse proxy | TLS termination, single ingress, no path-based routing tricks. |
+| Reverse proxy | TLS termination and one public ingress. The Server Profile includes Caddy. |
 | Frontend dashboard (Next.js) | One container, one replica. |
 | Backend (FastAPI) | One container, **one replica**. Owns API, scheduler, task execution. |
 | Database | SQLite is the supported default. Postgres is an explicit opt-in for longer-lived shared installations or heavier concurrent writes. |
@@ -53,7 +53,16 @@ The agent-testing platform has exactly **one supported self-host topology for al
 If you need any of the above, you are outside the alpha contract. apo will break in subtle ways (duplicate dispatch, lost SSE events, stale rate-limit state) on a multi-replica backend.
 :::
 
-## Deploy path
+## Choose a deployment profile
+
+| Profile | Reachability | Start command |
+|---|---|---|
+| Local | This machine only on `127.0.0.1:3000` | `docker compose up -d --build` |
+| Server | Public HTTPS domain through Caddy | `docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build` |
+
+Use [Publish Apo on Your Domain](/self-hosting/public-server/) for the complete Server Profile procedure and external smoke test.
+
+## Local deploy path
 
 This is the canonical alpha deploy path. It assumes Docker and Docker Compose on a single host.
 
@@ -62,14 +71,14 @@ This is the canonical alpha deploy path. It assumes Docker and Docker Compose on
    ```bash
    cat > .env <<EOF
    AUTH_SECRET=$(openssl rand -hex 32)
-   NEXTAUTH_URL=https://your-host.example
+   APO_DEPLOYMENT_PROFILE=local
+   APO_PUBLIC_URL=http://localhost:3000
    SCHEDULER_ENABLED=true
    EOF
    ```
 
    The unquoted `EOF` is intentional: it evaluates `openssl` and writes the
-   generated secret, not the literal command. Replace `NEXTAUTH_URL` with the
-   URL people will actually open.
+   generated secret, not the literal command.
 
 2. **Bring up the default SQLite stack:**
 
@@ -89,8 +98,6 @@ This is the canonical alpha deploy path. It assumes Docker and Docker Compose on
 
    Expect `{"ok": true, "checks": {...}}`. A 503 with a `checks` payload tells you exactly which prerequisite failed.
 
-4. **Configure the reverse proxy** to terminate TLS and forward to the dashboard container on port 3000. Browsers use `/backend-proxy/*`; server-rendered pages use the internal `BACKEND_URL` directly. The public origin does not need to be reachable from inside the frontend container, so host-port remapping works without changing the container's listen port.
-
-5. **Create the first admin user.** Either visit the dashboard and walk the account-creation flow, or (for headless first boot only) set `INIT_USER_EMAIL` / `INIT_USER_PASSWORD` / `INIT_USER_NAME` env vars on the backend. The bootstrap runs once (idempotent: no-op when any users exist).
+4. **Create the first admin user.** Either visit the dashboard and walk the account-creation flow, or (for headless first boot only) set `INIT_USER_EMAIL` / `INIT_USER_PASSWORD` / `INIT_USER_NAME` env vars on the backend. The bootstrap runs once (idempotent: no-op when any users exist).
 
 After the first user exists, all further onboarding goes through normal account creation + project invite. See [Configuration](/self-hosting/configuration/) for env vars and email delivery.
