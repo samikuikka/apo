@@ -3,9 +3,41 @@ title: Configuration
 description: Env vars, databases, scheduler, email, and troubleshooting for self-hosting.
 ---
 
-## SQLite vs Postgres
+## Choose a database
 
-The Docker stack uses Postgres. SQLite remains the default for non-Docker local dev (`pnpm dev`) because it requires no setup, but it is **single-user and concurrency-limited**. Never use it for shared internal alpha.
+The default Docker stack uses SQLite in a persistent `apo_db` volume. It is the
+supported alpha default: no separate database service, credentials, or backup
+tooling is required to get a trial or small team running.
+
+Choose Postgres when the installation is long-lived, several users will write
+concurrently, or your operations already standardize on Postgres. This changes
+the database, not apo's topology: both profiles still run exactly one backend
+and one scheduler owner.
+
+| Profile | Use it for | Start command |
+|---|---|---|
+| SQLite (default) | Trials and small single-node alpha teams | `docker compose up -d --build` |
+| Postgres (optional) | Longer-lived shared installations, heavier concurrent writes, existing Postgres operations | `docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build` |
+
+To enable Postgres, add its credentials to `.env` without printing the secret:
+
+```bash
+printf '\nPOSTGRES_PASSWORD=%s\nPOSTGRES_DB=apo\n' "$(openssl rand -hex 16)" >> .env
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
+```
+
+Expected database services:
+
+```text
+SQLite:    frontend, backend
+Postgres:  frontend, backend, postgres
+```
+
+:::caution[Database profiles are not scaling profiles]
+Postgres does not make multiple apo backend replicas safe. The scheduler,
+rate limiter, and live trace broadcaster still require one backend process in
+the alpha topology.
+:::
 
 ## Readiness endpoint
 
@@ -59,7 +91,8 @@ apo never forces an expensive model. Every hardcoded default is a deliberately c
 Alpha defaults are intentionally cheap across the rest of the stack too:
 
 - **One node.** Do not provision extra capacity unless you see real pressure.
-- **Postgres over SQLite** for shared use.
+- **SQLite first.** Start with the default and move to Postgres when concurrent
+  writes or your operational requirements justify the extra service.
 - **Cheap default model** for agent tasks (`google/gemini-2.5-flash-lite` via OpenRouter by default; override with `AGENT_TASK_OPENROUTER_MODEL`).
 - **Per-call judge escalation.** Escalate a single finicky criterion without switching the whole run: `t.judge(value, instruction, { judge: { model: "anthropic/claude-sonnet-4.5" } })`. Every other call stays on the cheap default. See [Assertions → Overriding the judge model per call](/reference/assertions/#overriding-the-judge-model-per-call).
 - **Conservative schedules**: adaptive cadence defaults to ≥ 1 day between runs.
@@ -73,7 +106,7 @@ Alpha defaults are intentionally cheap across the rest of the stack too:
 | `/health/ready` returns 503 with `auth_secret` failing | `AUTH_SECRET` is the placeholder or unset in non-dev mode. | Generate a strong secret with `openssl rand -hex 32`. |
 | Schedules visible but never fire | `SCHEDULER_ENABLED=false`. | Set it to `true` (one backend process only). |
 | Tasks fail with "agent-task runtime not installed" | The backend image is missing the packaged runtime. | Rebuild the backend image. |
-| Multi-user latency on SQLite | SQLite is dev-only; the canonical Docker stack uses Postgres. | Restart with Postgres: `docker compose down -v && docker compose up -d --build`. |
+| SQLite shows sustained lock contention or write latency | The installation has outgrown the default database profile. | Back up the installation, configure the Postgres override, and migrate the data deliberately. Do not use `docker compose down -v`; it deletes volumes. |
 
 ## Operator checklist
 
@@ -81,7 +114,9 @@ Before declaring an internal alpha instance production-ready for coworkers:
 
 - [ ] One host, one backend container, one scheduler owner.
 - [ ] `AUTH_SECRET` is a strong random value (not the placeholder).
-- [ ] Postgres is used, not SQLite.
+- [ ] The chosen database profile matches the expected write load; SQLite is
+      supported for a small alpha, while Postgres is preferred for sustained
+      shared use.
 - [ ] `task_source_cache` is on a persistent volume.
 - [ ] Reverse proxy terminates TLS with a valid certificate.
 - [ ] `/health/ready` returns 200 from outside the host.

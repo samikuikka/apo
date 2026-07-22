@@ -24,9 +24,9 @@ The agent-testing platform has exactly **one supported self-hosted topology for 
         │             ┌────────────────┼─────────┐  │
         │             ▼                ▼         ▼  │
         │      ┌────────────┐  ┌────────────┐ ┌───┐ │
-        │      │ Postgres   │  │ task-source│ │ … │ │
-        │      │ (or SQLite │  │ cache vol  │ │   │ │
-        │      │ for dev)   │  │            │ │   │ │
+        │      │ SQLite     │  │ task-source│ │ … │ │
+        │      │ default or │  │ cache vol  │ │   │ │
+        │      │ Postgres   │  │            │ │   │ │
         │      └────────────┘  └────────────┘ └───┘ │
         └───────────────────────────────────────────┘
 ```
@@ -38,7 +38,7 @@ Components:
 | Reverse proxy | TLS termination, single ingress, no path-based routing tricks. |
 | Frontend dashboard (Next.js) | One container, one replica. |
 | Backend (FastAPI) | One container, **one replica**. Owns API, scheduler, task execution. |
-| Postgres | Recommended for any shared use. SQLite is dev/single-user only. |
+| Database | SQLite is the supported default. Postgres is an explicit opt-in for longer-lived shared installations or heavier concurrent writes. |
 | Persistent volumes | Database data + task-source cache must survive container restarts. |
 
 ## What is explicitly unsupported in alpha
@@ -57,22 +57,26 @@ This is the canonical alpha deploy path. It assumes Docker and Docker Compose on
 1. **Create an env file** with strong secrets:
 
    ```bash
-   cat > .env <<'EOF'
+   cat > .env <<EOF
    AUTH_SECRET=$(openssl rand -hex 32)
-   POSTGRES_PASSWORD=$(openssl rand -hex 16)
-   POSTGRES_DB=apo
    NEXTAUTH_URL=https://your-host.example
    SCHEDULER_ENABLED=true
    EOF
    ```
 
-   Use real values — do not copy the placeholders verbatim.
+   The unquoted `EOF` is intentional: it evaluates `openssl` and writes the
+   generated secret, not the literal command. Replace `NEXTAUTH_URL` with the
+   URL people will actually open.
 
-2. **Bring up the stack** — one canonical Postgres-backed compose file:
+2. **Bring up the default SQLite stack:**
 
    ```bash
    docker compose up -d --build
    ```
+
+   SQLite data is persisted in the `apo_db` Docker volume. Use the Postgres
+   override below when you want Postgres; it is not required to try apo or run
+   a small alpha team.
 
 3. **Wait for readiness** — the backend healthcheck uses `/health/ready`, which verifies the database, task-source cache, and auth secret are actually usable:
 
@@ -135,11 +139,11 @@ This endpoint is intentionally separate from the basic `/health` liveness probe,
   "backend_url": "http://backend:8000",
   "frontend_url": "http://frontend:3000",
   "database": {
-    "engine": "postgres",
-    "host": "postgres",
-    "name": "apo",
-    "credentials_configured": true,
-    "shared_use_recommended": true
+    "engine": "sqlite",
+    "host": null,
+    "name": "optimizer.db",
+    "credentials_configured": false,
+    "shared_use_recommended": false
   },
   "task_source_cache_dir": "/var/lib/apo/task-sources",
   "task_execution_mode": "local_subprocess",
@@ -174,9 +178,21 @@ Real synced Git sources almost always need their own dependencies installed befo
 - The install cache should live on a persistent volume so it survives container restarts. The default location already inherits from `TASK_SOURCE_CACHE_DIR`, so the Compose `task_source_cache` volume covers it.
 - If a source repo intentionally ships without a lockfile (e.g. the bundled example-service tasks that rely on the SDK resolved via the monorepo), no install runs and execution proceeds normally.
 
-## SQLite vs Postgres
+## Choose a database
 
-The Docker stack uses Postgres. SQLite remains the default for non-Docker local dev (`pnpm dev`) because it requires no setup, but it is single-user and concurrency-limited — never use it for shared internal alpha. The runtime-config descriptor explicitly marks SQLite as not-recommended for shared use.
+The default Docker stack uses SQLite in the persistent `apo_db` volume. It is
+the supported default for trials and small single-node alpha teams.
+
+Choose Postgres for a longer-lived shared installation, heavier concurrent
+writes, or when your operations already standardize on Postgres:
+
+```bash
+printf '\nPOSTGRES_PASSWORD=%s\nPOSTGRES_DB=apo\n' "$(openssl rand -hex 16)" >> .env
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
+```
+
+The Postgres override changes only the database. It does not make multiple apo
+backend replicas safe; both profiles retain one backend and one scheduler owner.
 
 ## Scheduler ownership
 
@@ -192,7 +208,8 @@ Never run two backend processes with `SCHEDULER_ENABLED=true` against the same d
 Alpha defaults are intentionally cheap:
 
 - **One node.** Do not provision extra capacity unless you see real pressure.
-- **Postgres over SQLite** for shared use (cheaper than fighting SQLite locks).
+- **SQLite first.** Move to Postgres when sustained concurrent writes or your
+  operational requirements justify the extra service.
 - **Cheap default model** for agent tasks (`google/gemini-2.5-flash-lite` via OpenRouter by default; override with `AGENT_TASK_OPENROUTER_MODEL`).
 - **Conservative schedules** — adaptive cadence defaults to ≥ 1 day between runs.
 - **Log rotation** is already configured in every Compose service (`max-size: 10m`, `max-file: 3`). Add cache pruning via cron if you sync many large Git sources.
@@ -207,7 +224,7 @@ Alpha defaults are intentionally cheap:
 | Tasks fail with "agent-task runtime not installed" | The backend image is missing the packaged runtime (SPEC-125). | Rebuild the backend image; if pre-SPEC-125, run dev mode with the repo mounted. |
 | Tasks fail with "Task dependency install failed" | The synced Git source's lockfile requires a package manager that isn't in the backend image (e.g. `pnpm`, `uv`), or the install command returned non-zero. | Bake the missing package manager into the image; or set `TASK_INSTALL_DISABLE=true` and pre-install dependencies in the source repo. |
 | Tasks fail with "Task dependency install timed out" | The workspace has a large dependency tree. | Raise `TASK_INSTALL_TIMEOUT_SECONDS` or pre-install dependencies in the image. |
-| Multi-user latency on SQLite | SQLite is dev-only — the canonical Docker stack uses Postgres. | Run `docker compose down -v && docker compose up -d --build` to start fresh with Postgres. |
+| SQLite shows sustained lock contention or write latency | The installation has outgrown the default database profile. | Back up the installation, configure the Postgres override, and migrate the data deliberately. Do not use `docker compose down -v`; it deletes volumes. |
 
 ## Operator checklist
 
@@ -215,7 +232,9 @@ Before declaring an internal alpha instance production-ready for coworkers:
 
 - [ ] One host, one backend container, one scheduler owner.
 - [ ] `AUTH_SECRET` is a strong random value (not the placeholder).
-- [ ] Postgres is used, not SQLite.
+- [ ] The chosen database profile matches the expected write load; SQLite is
+      supported for a small alpha, while Postgres is preferred for sustained
+      shared use.
 - [ ] `task_source_cache` is on a persistent volume.
 - [ ] Reverse proxy terminates TLS with a valid certificate.
 - [ ] `/health/ready` returns 200 from outside the host.

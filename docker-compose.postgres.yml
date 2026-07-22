@@ -1,14 +1,14 @@
 # Postgres override — opt in to Postgres instead of the default SQLite.
 #
-# The default docker-compose.yml runs SQLite (identical to local dev). Apply
-# this file ONLY when you need Postgres, e.g. for horizontal scaling:
+# The default docker-compose.yml runs SQLite. Apply this file when you prefer
+# Postgres for a longer-lived shared installation, external database tooling,
+# or heavier concurrent writes:
 #
 #   cp .env.example .env   # fill AUTH_SECRET + POSTGRES_PASSWORD
 #   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
 #
-# Why you usually don't need this: the app is single-instance (in-memory
-# broadcaster + rate limiter), so SQLite covers the same deployment shape at
-# lower operational cost. See docs/design.md / the SQLite discussion.
+# This changes only the database. apo remains a single-node, single-backend
+# deployment; the Postgres profile does not enable horizontal scaling.
 
 services:
   backend:

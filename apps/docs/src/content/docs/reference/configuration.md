@@ -14,7 +14,7 @@ The backend reads these on start. Set them in `backend/.env` (or your container 
 | Variable | Purpose |
 |---|---|
 | `AUTH_SECRET` | Session signing secret. **Required for any non-dev deploy.** Empty in dev → open-dev mode (auth bypassed). Generate with `openssl rand -hex 32`. Must be ≥16 chars, not a placeholder. |
-| `DATABASE_URL` | Database DSN. Defaults to `sqlite:///./apo.db`. Use Postgres (`postgresql://...`) for shared/multi-user deploys. |
+| `DATABASE_URL` | Database DSN. When unset, apo uses its persistent SQLite file; this is the supported default for trials and small single-node alpha teams. The optional Compose Postgres profile sets a `postgresql://...` DSN for longer-lived shared installations or heavier concurrent writes. |
 
 ### LLM (agent-task runs)
 

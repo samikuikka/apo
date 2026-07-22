@@ -27,9 +27,9 @@ The agent-testing platform has exactly **one supported self-host topology for al
         │             ┌────────────────┼─────────┐  │
         │             ▼                ▼         ▼  │
         │      ┌────────────┐  ┌────────────┐ ┌───┐ │
-        │      │ Postgres   │  │ task-source│ │ … │ │
-        │      │ (or SQLite │  │ cache vol  │ │   │ │
-        │      │ for dev)   │  │            │ │   │ │
+        │      │ SQLite     │  │ task-source│ │ … │ │
+        │      │ default or │  │ cache vol  │ │   │ │
+        │      │ Postgres   │  │            │ │   │ │
         │      └────────────┘  └────────────┘ └───┘ │
         └───────────────────────────────────────────┘
 ```
@@ -39,7 +39,7 @@ The agent-testing platform has exactly **one supported self-host topology for al
 | Reverse proxy | TLS termination, single ingress, no path-based routing tricks. |
 | Frontend dashboard (Next.js) | One container, one replica. |
 | Backend (FastAPI) | One container, **one replica**. Owns API, scheduler, task execution. |
-| Postgres | Use for any shared deployment. SQLite is dev/single-user only. |
+| Database | SQLite is the supported default. Postgres is an explicit opt-in for longer-lived shared installations or heavier concurrent writes. |
 | Persistent volumes | Database data + task-source cache must survive container restarts. |
 
 ## What is explicitly unsupported in alpha
@@ -60,22 +60,26 @@ This is the canonical alpha deploy path. It assumes Docker and Docker Compose on
 1. **Create an env file** with strong secrets:
 
    ```bash
-   cat > .env <<'EOF'
+   cat > .env <<EOF
    AUTH_SECRET=$(openssl rand -hex 32)
-   POSTGRES_PASSWORD=$(openssl rand -hex 16)
-   POSTGRES_DB=apo
    NEXTAUTH_URL=https://your-host.example
    SCHEDULER_ENABLED=true
    EOF
    ```
 
-   Use real values; do not copy the placeholders verbatim.
+   The unquoted `EOF` is intentional: it evaluates `openssl` and writes the
+   generated secret, not the literal command. Replace `NEXTAUTH_URL` with the
+   URL people will actually open.
 
-2. **Bring up the stack** with one canonical Postgres-backed compose file:
+2. **Bring up the default SQLite stack:**
 
    ```bash
    docker compose up -d --build
    ```
+
+   SQLite data is persisted in the `apo_db` Docker volume. Use the
+   [Postgres profile](/self-hosting/configuration/#choose-a-database) when you
+   want Postgres; it is not required to try apo or run a small alpha team.
 
 3. **Wait for readiness**: the backend healthcheck uses `/health/ready`, which verifies the database, task-source cache, and auth secret are actually usable.
 
