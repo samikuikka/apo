@@ -217,6 +217,48 @@ async def list_models(
     return [_build_document(session, r) for r in rows]
 
 
+# /match MUST be declared BEFORE /{model_id}: FastAPI resolves routes in
+# declaration order, and a literal "match" segment would otherwise hit the
+# {model_id}: int route and fail validation (422) instead of falling through.
+# See AGENTS.md "Catch-All Routes Are Terminal".
+@router.get("/api/v1/models/match", response_model=MatchResponse)
+async def match_model_route(
+    model: str = Query(...),
+    usage: str = Query(
+        default="{}",
+        description='JSON object: canonical usage_key -> token count, e.g. {"input":1000,"output":500}',
+    ),
+    start_time: datetime = Query(default_factory=lambda: datetime.now(timezone.utc)),
+    project: str = Query(default=GLOBAL_PROJECT),
+    session: Session = Depends(get_session),
+) -> MatchResponse:
+    """Resolve model+usage -> matched tier + per-key breakdown.
+
+    Same compute pipeline as ingestion (compute_cost). Era selected by
+    ``start_time``. ``usage`` is a JSON-encoded canonical-key -> token-count map
+    (dict query params are not supported by FastAPI, so the map is passed as a
+    JSON string).
+    """
+    try:
+        usage_map_raw = json.loads(usage) if usage else {}
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail=f"invalid usage JSON: {exc}") from exc
+    usage_map = {k: int(v) for k, v in usage_map_raw.items()} if isinstance(usage_map_raw, dict) else {}
+
+    result = compute_cost(session, model, usage_map, project, start_time)
+    if result is None:
+        return MatchResponse(matched=False)
+    return MatchResponse(
+        matched=True,
+        model_id=result.model_id,
+        provider=None,
+        matched_tier_id=result.tier_id,
+        matched_tier_name=result.tier_name,
+        cost_breakdown=result.breakdown or None,
+        total_cost=result.total,
+    )
+
+
 @router.get("/api/v1/models/{model_id}", response_model=ModelDocument)
 async def get_model(
     model_id: int,
@@ -301,41 +343,3 @@ async def delete_model(
         raise HTTPException(status_code=409, detail=_GLOBAL_WRITE_DETAIL)
     _delete_model_graph(session, model_id)
     session.commit()
-
-
-@router.get("/api/v1/models/match", response_model=MatchResponse)
-async def match_model(
-    model: str = Query(...),
-    usage: str = Query(
-        default="{}",
-        description='JSON object: canonical usage_key -> token count, e.g. {"input":1000,"output":500}',
-    ),
-    start_time: datetime = Query(default_factory=lambda: datetime.now(timezone.utc)),
-    project: str = Query(default=GLOBAL_PROJECT),
-    session: Session = Depends(get_session),
-) -> MatchResponse:
-    """Resolve model+usage -> matched tier + per-key breakdown.
-
-    Same compute pipeline as ingestion (compute_cost). Era selected by
-    ``start_time``. ``usage`` is a JSON-encoded canonical-key -> token-count map
-    (dict query params are not supported by FastAPI, so the map is passed as a
-    JSON string).
-    """
-    try:
-        usage_map_raw = json.loads(usage) if usage else {}
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=422, detail=f"invalid usage JSON: {exc}") from exc
-    usage_map = {k: int(v) for k, v in usage_map_raw.items()} if isinstance(usage_map_raw, dict) else {}
-
-    result = compute_cost(session, model, usage_map, project, start_time)
-    if result is None:
-        return MatchResponse(matched=False)
-    return MatchResponse(
-        matched=True,
-        model_id=result.model_id,
-        provider=None,
-        matched_tier_id=result.tier_id,
-        matched_tier_name=result.tier_name,
-        cost_breakdown=result.breakdown or None,
-        total_cost=result.total,
-    )

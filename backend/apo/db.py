@@ -880,73 +880,70 @@ def _migrate_to_v9() -> None:
 def _migrate_to_v10() -> None:
     """Version 10: cost system redesign (SPEC-136 ticket 09, big-bang).
 
+    Thin wrapper that opens the module engine transaction; the real work is in
+    ``_migrate_cost_schema(conn)`` so the migration is directly testable
+    against a hand-rolled old-schema engine.
+    """
+    with engine.begin() as conn:
+        _migrate_cost_schema(conn)
+
+
+def _migrate_cost_schema(conn: Connection) -> None:
+    """The v10 cost migration, runnable against any connection.
+
     1. The new 3-table pricing shape (models, pricing_tiers, prices) is created
        by ``SQLModel.metadata.create_all`` (these tables are new, so create_all
-       is enough; no ALTER needed).
+       is enough; no ALTER needed here).
     2. Add the new ``logged_calls`` cost columns (cost_breakdown, raw_usage,
        matched_tier_id, matched_tier_name, cost_provenance).
     3. Transform existing ``cost`` and ``provided_cost``: float-USD ->
-       INTEGER micro-USD via ``ROUND(v * 1000000)``.
+       INTEGER micro-USD via ``ROUND(v * 1000000)`` (idempotent guard: only when
+       the value is < 1e6, i.e. still in USD scale).
     4. Drop ``calculated_cost`` (replaced by the provenance flag).
     5. Drop the old ``model_definitions`` table (the JSON loader seeds fresh).
 
-    ``internal_model_id`` already exists as TEXT; since historical values are
-    client-supplied free-form strings that don't map to the new models.id FK,
-    existing values are nulled (new calls get the real FK at compute time).
+    ``internal_model_id`` already exists as TEXT; historical client-supplied
+    free-form strings don't map to the new models.id, so existing values are
+    nulled (new calls get the real id at compute time).
     """
-    with engine.begin() as conn:
-        tables = _get_table_names(conn)
-        if "logged_calls" not in tables:
-            return  # nothing to migrate (baseline create handles it)
+    if "logged_calls" not in _get_table_names(conn):
+        return  # nothing to migrate (baseline create handles it)
 
-        cols = _get_column_names(conn, "logged_calls")
+    cols = _get_column_names(conn, "logged_calls")
 
-        # New cost-storage columns.
-        _add_column_if_missing(conn, "logged_calls", "cost_breakdown", "TEXT")
-        _add_column_if_missing(conn, "logged_calls", "raw_usage", "TEXT")
-        _add_column_if_missing(conn, "logged_calls", "matched_tier_id", "INTEGER")
-        _add_column_if_missing(conn, "logged_calls", "matched_tier_name", "TEXT")
-        _add_column_if_missing(conn, "logged_calls", "cost_provenance", "TEXT")
+    # New cost-storage columns.
+    _add_column_if_missing(conn, "logged_calls", "cost_breakdown", "TEXT")
+    _add_column_if_missing(conn, "logged_calls", "raw_usage", "TEXT")
+    _add_column_if_missing(conn, "logged_calls", "matched_tier_id", "INTEGER")
+    _add_column_if_missing(conn, "logged_calls", "matched_tier_name", "TEXT")
+    _add_column_if_missing(conn, "logged_calls", "cost_provenance", "TEXT")
 
-        # float-USD -> micro-USD int on cost/provided_cost (idempotent: only when
-        # any value is < 1e6, i.e. still in USD scale). Historical USD costs are
-        # small (< $1000 typically -> < 1e6 micro); micro-USD ints are >= 1e6 for
-        # any $1+ cost, so the guard correctly distinguishes pre/post-migration.
-        if _is_sqlite():
-            # SQLite stores REAL; the UPDATE converts in place. ROUND() returns a
-            # float here; storing into a REAL column is fine and Python reads it
-            # back as a float whose value is a whole number -> int() in the model.
-            conn.exec_driver_sql(
-                "UPDATE logged_calls SET cost = ROUND(cost * 1000000) "
-                "WHERE cost IS NOT NULL AND cost < 1000000"
-            )
-            conn.exec_driver_sql(
-                "UPDATE logged_calls SET provided_cost = ROUND(provided_cost * 1000000) "
-                "WHERE provided_cost IS NOT NULL AND provided_cost < 1000000"
-            )
-        else:
-            conn.exec_driver_sql(
-                "UPDATE logged_calls SET cost = ROUND(cost * 1000000) "
-                "WHERE cost IS NOT NULL AND cost < 1000000"
-            )
-            conn.exec_driver_sql(
-                "UPDATE logged_calls SET provided_cost = ROUND(provided_cost * 1000000) "
-                "WHERE provided_cost IS NOT NULL AND provided_cost < 1000000"
-            )
+    # float-USD -> micro-USD int via ROUND(v * 1000000). Idempotency is
+    # guaranteed by the schema-version stamp (v10 runs once per DB), NOT by
+    # value inspection: a USD value and a micro-USD value are not reliably
+    # distinguishable by magnitude, so there is no safe re-run guard here.
+    # SQLite ROUND() returns a float; the value is a whole number, so int() in
+    # the model layer reads it back cleanly.
+    conn.exec_driver_sql(
+        "UPDATE logged_calls SET cost = ROUND(cost * 1000000) WHERE cost IS NOT NULL"
+    )
+    conn.exec_driver_sql(
+        "UPDATE logged_calls SET provided_cost = ROUND(provided_cost * 1000000) "
+        "WHERE provided_cost IS NOT NULL"
+    )
 
-        # Null legacy internal_model_id values (free-form strings, not FKs).
-        # New calls populate this with the real models.id at compute time.
-        conn.exec_driver_sql(
-            "UPDATE logged_calls SET internal_model_id = NULL WHERE internal_model_id IS NOT NULL"
-        )
+    # Null legacy internal_model_id values (free-form strings, not FKs).
+    conn.exec_driver_sql(
+        "UPDATE logged_calls SET internal_model_id = NULL WHERE internal_model_id IS NOT NULL"
+    )
 
-        # Drop calculated_cost (replaced by cost_provenance).
-        if "calculated_cost" in cols:
-            _drop_column_if_exists(conn, "logged_calls", "calculated_cost")
+    # Drop calculated_cost (replaced by cost_provenance).
+    if "calculated_cost" in cols:
+        _drop_column_if_exists(conn, "logged_calls", "calculated_cost")
 
-        # Drop the old flat model_definitions table (JSON loader seeds fresh).
-        if "model_definitions" in _get_table_names(conn):
-            conn.exec_driver_sql("DROP TABLE IF EXISTS model_definitions")
+    # Drop the old flat model_definitions table (JSON loader seeds fresh).
+    if "model_definitions" in _get_table_names(conn):
+        conn.exec_driver_sql("DROP TABLE IF EXISTS model_definitions")
 
 
 def _add_metric_project_column(conn: Connection, table_name: str, id_column: str) -> None:
