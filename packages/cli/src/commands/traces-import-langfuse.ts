@@ -2,9 +2,14 @@ import { parseArgs, requirePositional } from "../lib/args.ts";
 import { resolveConfig } from "../lib/config.ts";
 import {
   DEFAULT_MAX_OBSERVATIONS,
+  DEFAULT_LANGFUSE_POLL_TIMING,
   fetchLangfuseTrace,
-  resolveConnectorConfig,
+  LangfuseEmptyTraceError,
+  type LangfuseConnectorConfig,
+  type LangfusePollTiming,
   type LangfuseTraceGraph,
+  pollLangfuseTrace,
+  resolveConnectorConfig,
 } from "../lib/trace-sources/langfuse-client.ts";
 import { convertLangfuseTraceToOtlp } from "../lib/trace-sources/langfuse-otlp.ts";
 import {
@@ -31,7 +36,21 @@ type LangfuseImportResult = {
 const VISIBILITY_DEADLINE_MS = 15_000;
 const VISIBILITY_INTERVAL_MS = 250;
 
-export async function run(argv: string[]): Promise<number> {
+const EXIT_FAILURE = 2;
+const EXIT_RETRYABLE = 75;
+
+export interface LangfuseRunDeps {
+  pollTiming?: LangfusePollTiming;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+type WaitResolution =
+  | { kind: "none" }
+  | { kind: "ok"; seconds: number }
+  | { kind: "error"; message: string };
+
+export async function run(argv: string[], deps: LangfuseRunDeps = {}): Promise<number> {
   const { positional, flags } = parseArgs(argv);
   const config = resolveConfig(flags);
 
@@ -40,7 +59,13 @@ export async function run(argv: string[]): Promise<number> {
     sourceTraceId = requirePositional(positional, 0, "trace-id");
   } catch (error) {
     console.error((error as Error).message);
-    return 2;
+    return EXIT_FAILURE;
+  }
+
+  const wait = resolveWaitFlag(flags["wait"]);
+  if (wait.kind === "error") {
+    console.error(wait.message);
+    return EXIT_FAILURE;
   }
 
   const connector = (() => {
@@ -53,14 +78,18 @@ export async function run(argv: string[]): Promise<number> {
       return null;
     }
   })();
-  if (connector === null) return 2;
+  if (connector === null) return EXIT_FAILURE;
 
   let graph: LangfuseTraceGraph;
   try {
-    graph = await fetchLangfuseTrace(sourceTraceId, connector);
+    graph = await fetchSourceTrace(sourceTraceId, connector, wait, deps);
   } catch (error) {
+    if (error instanceof LangfuseEmptyTraceError) {
+      console.error(formatEmptyTraceError(error, wait, connector.host));
+      return EXIT_RETRYABLE;
+    }
     console.error(formatConnectorError(error, connector.host, sourceTraceId));
-    return 2;
+    return EXIT_FAILURE;
   }
 
   let converted;
@@ -68,7 +97,7 @@ export async function run(argv: string[]): Promise<number> {
     converted = convertLangfuseTraceToOtlp(graph);
   } catch (error) {
     console.error(`Failed to convert Langfuse trace ${sourceTraceId}: ${(error as Error).message}`);
-    return 2;
+    return EXIT_FAILURE;
   }
 
   const apoConfig = {
@@ -94,7 +123,7 @@ export async function run(argv: string[]): Promise<number> {
         );
       }
       reportPartialFailure(converted.traceId, batchIds, accepted, rejected);
-      return 2;
+      return EXIT_FAILURE;
     }
     accepted += response.acceptedSpans;
     rejected += response.rejectedSpans;
@@ -106,7 +135,7 @@ export async function run(argv: string[]): Promise<number> {
           `. Already-accepted batches remain durable; re-running is safe.`,
       );
       reportPartialFailure(converted.traceId, batchIds, accepted, rejected);
-      return 2;
+      return EXIT_FAILURE;
     }
   }
 
@@ -128,7 +157,7 @@ export async function run(argv: string[]): Promise<number> {
       );
     }
     reportPartialFailure(converted.traceId, batchIds, accepted, rejected);
-    return 2;
+    return EXIT_FAILURE;
   }
 
   const result: LangfuseImportResult = {
@@ -191,6 +220,60 @@ function formatVisibilityTimeout(
 ): string {
   const batches = batchIds.length > 0 ? ` batch ids=[${batchIds.join(", ")}]` : "";
   return `Source trace ${sourceTraceId} → ${error.message}${batches}`;
+}
+
+function fetchSourceTrace(
+  sourceTraceId: string,
+  connector: LangfuseConnectorConfig,
+  wait: WaitResolution,
+  deps: LangfuseRunDeps,
+): Promise<LangfuseTraceGraph> {
+  if (wait.kind !== "ok" || wait.seconds <= 0) {
+    return fetchLangfuseTrace(sourceTraceId, connector);
+  }
+  const timing = deps.pollTiming ?? DEFAULT_LANGFUSE_POLL_TIMING;
+  return pollLangfuseTrace(sourceTraceId, connector, {
+    totalDeadlineMs: wait.seconds * 1000,
+    initialIntervalMs: timing.initialIntervalMs,
+    maxIntervalMs: timing.maxIntervalMs,
+    backoffFactor: timing.backoffFactor,
+    ...(deps.now ? { now: deps.now } : {}),
+    ...(deps.sleep ? { sleep: deps.sleep } : {}),
+  });
+}
+
+function resolveWaitFlag(raw: string | boolean | undefined): WaitResolution {
+  if (raw === undefined) return { kind: "none" };
+  if (raw === true) {
+    return {
+      kind: "error",
+      message: "--wait requires a number of seconds (e.g. --wait 60)",
+    };
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+    return {
+      kind: "error",
+      message: `--wait must be a non-negative integer number of seconds; got ${raw}`,
+    };
+  }
+  return { kind: "ok", seconds: n };
+}
+
+function formatEmptyTraceError(
+  error: LangfuseEmptyTraceError,
+  wait: WaitResolution,
+  host: string,
+): string {
+  if (wait.kind === "ok" && wait.seconds > 0) {
+    return `${error.message} (source ${host}). Exit code 75: retryable.`;
+  }
+  return (
+    `${error.message} (source ${host}). The trace may not be ingested yet —` +
+    ` Langfuse Cloud typically lags ~30-90s after a run ends.` +
+    ` Re-run, or pass --wait <seconds> to poll the source.` +
+    ` Exit code 75: retryable.`
+  );
 }
 
 export { DEFAULT_MAX_OBSERVATIONS };

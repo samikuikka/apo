@@ -249,13 +249,15 @@ const commands: Record<string, CommandEntry> = {
     options: [
       ["--langfuse-host <url>", "Override LANGFUSE_HOST"],
       ["--max-observations <count>", "Safety ceiling (default 10000, range 1..50000)"],
+      ["--wait <seconds>", "Poll the source until observations appear (absorbs Langfuse ingestion lag)"],
       ["--json", "Machine-readable LangfuseImportResult JSON"],
     ],
     examples: [
       "apo traces import langfuse 8f38c27a2c4b4bafb87a78e3a3d62b90",
       "apo traces import langfuse <id> --langfuse-host https://us.langfuse.com",
+      "apo traces import langfuse <id> --wait 120",
     ],
-    note: "Credentials are environment-only: LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY (required) and LANGFUSE_HOST (optional, defaults to https://cloud.langfuse.com). Keys never leave the CLI process. Exit codes: 0 = imported and visible, 2 = config / Langfuse read / conversion / OTLP partial rejection / projection visibility failure. Native OTEL remains the preferred path when the agent can reach apo directly.",
+    note: "Credentials are environment-only: LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY (required) and LANGFUSE_HOST (optional, defaults to https://cloud.langfuse.com). Keys never leave the CLI process. Exit codes: 0 = imported and visible; 75 = source trace not yet available / empty (retryable — Langfuse Cloud ingestion lags ~30-90s after a run; use --wait <seconds> or re-run); 2 = config / Langfuse hard read error / conversion / OTLP partial rejection / projection visibility failure. Native OTEL remains the preferred path when the agent can reach apo directly.",
   },
   "batch list": {
     handler: loadCommand("batch-list"),

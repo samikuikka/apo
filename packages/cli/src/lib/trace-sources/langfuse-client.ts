@@ -13,6 +13,33 @@ export interface LangfuseTraceGraph {
   observations: readonly LangfuseObservation[];
 }
 
+export class LangfuseEmptyTraceError extends Error {
+  readonly sourceTraceId: string;
+  constructor(sourceTraceId: string, message: string) {
+    super(message);
+    this.name = "LangfuseEmptyTraceError";
+    this.sourceTraceId = sourceTraceId;
+  }
+}
+
+export interface LangfusePollTiming {
+  initialIntervalMs: number;
+  maxIntervalMs: number;
+  backoffFactor: number;
+}
+
+export interface LangfusePollOptions extends LangfusePollTiming {
+  totalDeadlineMs: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export const DEFAULT_LANGFUSE_POLL_TIMING: LangfusePollTiming = {
+  initialIntervalMs: 2_000,
+  maxIntervalMs: 15_000,
+  backoffFactor: 1.5,
+};
+
 export const DEFAULT_MAX_OBSERVATIONS = 10_000;
 const MIN_MAX_OBSERVATIONS = 1;
 const MAX_MAX_OBSERVATIONS = 50_000;
@@ -81,7 +108,8 @@ export async function fetchLangfuseTrace(
   } while (cursor !== null);
 
   if (rows.length === 0) {
-    throw new Error(
+    throw new LangfuseEmptyTraceError(
+      sourceTraceId,
       `Langfuse returned no observations for source trace ${sourceTraceId}`,
     );
   }
@@ -96,6 +124,44 @@ export async function fetchLangfuseTrace(
     sourceTraceId,
     observations: rows,
   };
+}
+
+export async function pollLangfuseTrace(
+  sourceTraceId: string,
+  config: LangfuseConnectorConfig,
+  options: LangfusePollOptions,
+): Promise<LangfuseTraceGraph> {
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? defaultSleep;
+  const deadline = now() + options.totalDeadlineMs;
+  let interval = options.initialIntervalMs;
+  let attempts = 0;
+
+  for (;;) {
+    attempts += 1;
+    try {
+      return await fetchLangfuseTrace(sourceTraceId, config);
+    } catch (error) {
+      if (!(error instanceof LangfuseEmptyTraceError)) throw error;
+    }
+
+    const remaining = deadline - now();
+    if (remaining <= 0) {
+      throw new LangfuseEmptyTraceError(
+        sourceTraceId,
+        `Langfuse returned no observations for source trace ${sourceTraceId}` +
+          ` after waiting ${Math.round(options.totalDeadlineMs / 1000)}s` +
+          ` across ${attempts} attempt${attempts === 1 ? "" : "s"}.` +
+          ` Ingestion may still be pending; safe to retry.`,
+      );
+    }
+    await sleep(Math.min(interval, options.maxIntervalMs, remaining));
+    interval = Math.min(interval * options.backoffFactor, options.maxIntervalMs);
+  }
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 type LangfuseObservationPage = {
@@ -175,7 +241,9 @@ function buildObservationsUrl(
   const url = new URL("/api/public/v2/observations", host);
   url.searchParams.set("traceId", sourceTraceId);
   url.searchParams.set("fields", FIELD_GROUPS);
-  url.searchParams.set("parseIoAsJson", "true");
+  // parseIoAsJson is intentionally NOT sent: Langfuse Cloud removed it from
+  // the v2 observations endpoint and now 400s on it. I/O always comes back as
+  // raw JSON strings and is parsed client-side in coerceIoField().
   url.searchParams.set("limit", String(PAGE_LIMIT));
   if (cursor) url.searchParams.set("cursor", cursor);
   return url;
@@ -220,7 +288,32 @@ function validateObservation(
       `Langfuse observation ${r.id} traceId (${r.traceId}) does not match requested source trace ${sourceTraceId}`,
     );
   }
-  return row as LangfuseObservation;
+  return {
+    ...(row as object),
+    input: coerceIoField(r.input),
+    output: coerceIoField(r.output),
+    metadata: coerceIoField(r.metadata),
+  } as LangfuseObservation;
+}
+
+// Langfuse Cloud's v2 observations endpoint always returns input/output/metadata
+// as raw JSON strings (the deprecated parseIoAsJson param is gone). Parse them
+// back into structured JsonValue objects so the downstream converter can map
+// gen_ai.input.messages etc. without special-casing strings.
+//
+//   undefined  -> undefined  (absent field)
+//   null       -> null       (explicit JSON null)
+//   "<json>"   -> parsed JSON value (falls back to the raw string on bad JSON)
+//   <object>   -> unchanged  (self-hosted/older Langfuse may still send parsed)
+function coerceIoField(value: unknown): JsonValue | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") return value as JsonValue;
+  try {
+    return JSON.parse(value) as JsonValue;
+  } catch {
+    // Not valid JSON — preserve the raw string rather than dropping data.
+    return value;
+  }
 }
 
 function normalizeHost(input: string): string {

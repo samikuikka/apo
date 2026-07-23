@@ -112,13 +112,14 @@ describe("apo traces import langfuse — happy path (scene 1)", () => {
     expect(calls.length).toBeGreaterThanOrEqual(4);
 
     // Langfuse calls carry Basic auth, the right traceId, and field list.
+    // parseIoAsJson must not be sent (Langfuse Cloud removed it; 400s now).
     const lfCalls = calls.filter((c) => c.url.includes("/api/public/v2/observations"));
     expect(lfCalls).toHaveLength(2);
     for (const c of lfCalls) {
       const headers = new Headers(c.init?.headers);
       expect(headers.get("authorization")).toMatch(/^Basic /);
       expect(c.url).toContain(`traceId=${SOURCE_TRACE_ID}`);
-      expect(c.url).toContain("parseIoAsJson=true");
+      expect(c.url).not.toContain("parseIoAsJson");
       expect(c.url).toContain("fields=");
     }
 
@@ -285,5 +286,176 @@ describe("apo traces import langfuse — config + arg errors", () => {
 
     expect(code).toBe(2);
     expect(err.lines.join("\n")).toMatch(/trace-id|missing/i);
+  });
+});
+
+describe("apo traces import langfuse — source not yet available (empty)", () => {
+  it("exits 75 (retryable) with an actionable hint when Langfuse has no observations yet, without polling", async () => {
+    const { run } = await import("../src/commands/traces-import-langfuse.ts");
+    const { calls } = captureFetch([
+      { body: langfusePage([], null) },
+    ]);
+
+    const err = captureStderr();
+    const code = await run([
+      SOURCE_TRACE_ID,
+      "--backend",
+      "http://apo.test",
+      "--api-key",
+      "apo-key-test",
+    ]);
+    err.restore();
+
+    expect(code).toBe(75);
+    const combined = err.lines.join("\n");
+    expect(combined).toContain(SOURCE_TRACE_ID);
+    expect(combined).toMatch(/no observations/i);
+    expect(combined).toMatch(/--wait/i);
+    expect(combined).toMatch(/retryable/i);
+    // No --wait means exactly one source fetch and no apo write.
+    const lfCalls = calls.filter((c) => c.url.includes("/api/public/v2/observations"));
+    expect(lfCalls).toHaveLength(1);
+    expect(calls.some((c) => c.url.includes("/api/public/otel/v1/traces"))).toBe(false);
+  });
+});
+
+describe("apo traces import langfuse — --wait source polling", () => {
+  it("polls Langfuse until observations appear, then imports → exit 0", async () => {
+    const { run } = await import("../src/commands/traces-import-langfuse.ts");
+    const { calls } = captureFetch([
+      { body: langfusePage([], null) },
+      { body: langfusePage([], null) },
+      { body: langfusePage([basicRow({ id: "a" })], null) },
+      {
+        status: 200,
+        body: {},
+        headers: { "X-Otlp-Accepted": "1", "X-Otlp-Rejected": "0", "X-Otlp-Batch-Id": "batch-1" },
+      },
+      { status: 200, body: { run: { id: "trace-1" }, calls: [], metrics: [] } },
+    ]);
+
+    const out = captureStdout();
+    const code = await run(
+      [
+        SOURCE_TRACE_ID,
+        "--wait",
+        "60",
+        "--backend",
+        "http://apo.test",
+        "--api-key",
+        "apo-key-test",
+      ],
+      { now: () => 1_000_000, sleep: async () => {} },
+    );
+    out.restore();
+
+    expect(code).toBe(0);
+    const lfCalls = calls.filter((c) => c.url.includes("/api/public/v2/observations"));
+    expect(lfCalls).toHaveLength(3);
+    expect(out.lines.join("\n")).toContain(SOURCE_TRACE_ID);
+  });
+
+  it("exits 75 (retryable) when --wait deadline elapses with no observations", async () => {
+    const { run } = await import("../src/commands/traces-import-langfuse.ts");
+    const { calls } = captureFetch([
+      { body: langfusePage([], null) },
+    ]);
+    let first = true;
+    const now = () => {
+      if (first) { first = false; return 0; }
+      return 10_000_000;
+    };
+
+    const err = captureStderr();
+    const code = await run(
+      [
+        SOURCE_TRACE_ID,
+        "--wait",
+        "60",
+        "--backend",
+        "http://apo.test",
+        "--api-key",
+        "apo-key-test",
+      ],
+      { now, sleep: async () => {} },
+    );
+    err.restore();
+
+    expect(code).toBe(75);
+    const combined = err.lines.join("\n");
+    expect(combined).toMatch(/after waiting/i);
+    expect(combined).toMatch(/retryable/i);
+    const lfCalls = calls.filter((c) => c.url.includes("/api/public/v2/observations"));
+    expect(lfCalls.length).toBeGreaterThanOrEqual(1);
+    // Never wrote to apo while waiting.
+    expect(calls.some((c) => c.url.includes("/api/public/otel/v1/traces"))).toBe(false);
+  });
+
+  it("still exits 2 (hard error) on Langfuse 401 even with --wait", async () => {
+    const { run } = await import("../src/commands/traces-import-langfuse.ts");
+    captureFetch([{ status: 401, body: {} }]);
+
+    const err = captureStderr();
+    const code = await run(
+      [
+        SOURCE_TRACE_ID,
+        "--wait",
+        "60",
+        "--backend",
+        "http://apo.test",
+        "--api-key",
+        "apo-key-test",
+      ],
+      { now: () => 0, sleep: async () => {} },
+    );
+    err.restore();
+
+    expect(code).toBe(2);
+    expect(err.lines.join("\n")).toMatch(/auth/i);
+  });
+});
+
+describe("apo traces import langfuse — --wait validation", () => {
+  it("exits 2 when --wait is given without a value, before any network I/O", async () => {
+    const { run } = await import("../src/commands/traces-import-langfuse.ts");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const err = captureStderr();
+    const code = await run([
+      SOURCE_TRACE_ID,
+      "--wait",
+      "--backend",
+      "http://apo.test",
+      "--api-key",
+      "apo-key-test",
+    ]);
+    err.restore();
+
+    expect(code).toBe(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(err.lines.join("\n")).toMatch(/--wait/i);
+  });
+
+  it("exits 2 when --wait is non-numeric or negative, before any network I/O", async () => {
+    const { run } = await import("../src/commands/traces-import-langfuse.ts");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    for (const bad of ["abc", "-5"]) {
+      const err = captureStderr();
+      const code = await run([
+        SOURCE_TRACE_ID,
+        "--wait",
+        bad,
+        "--backend",
+        "http://apo.test",
+        "--api-key",
+        "apo-key-test",
+      ]);
+      err.restore();
+
+      expect(code).toBe(2);
+      expect(err.lines.join("\n")).toMatch(/--wait/i);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

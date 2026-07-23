@@ -137,9 +137,10 @@ apo does not store Langfuse credentials, do not open a Langfuse-specific databas
 | Code | Meaning |
 |---|---|
 | `0` | Every source observation was accepted and the projected Trace became readable before the visibility deadline (15s). |
-| `2` | Configuration, Langfuse read, conversion, apo ingestion, partial OTLP rejection, or projection visibility failure. |
+| `75` | The source trace returned no observations yet — Langfuse Cloud ingestion lags ~30-90s after a run ends. Retryable: re-run, or pass `--wait <seconds>` to poll the source in-process. No apo write was attempted. |
+| `2` | Configuration, Langfuse hard read error (auth / 404 / 5xx), conversion, apo ingestion, partial OTLP rejection, or projection visibility failure. |
 
-The connector never returns `1`: an import is not a test verdict. Partial state is always reported honestly with mapped trace ID, accepted/rejected counts, and OTLP batch IDs, so re-running is safe — already-accepted chunks are durable and deterministic IDs prevent duplicates.
+The connector never returns `1`: an import is not a test verdict. Exit `75` (`sysexits.h` `EX_TEMPFAIL`) lets CI/e2e callers distinguish "not ingested yet" from a real failure without parsing stderr — loop on `75`, surface `2`. Partial state is always reported honestly with mapped trace ID, accepted/rejected counts, and OTLP batch IDs, so re-running is safe — already-accepted chunks are durable and deterministic IDs prevent duplicates.
 
 ## Troubleshooting
 
@@ -147,7 +148,7 @@ The connector never returns `1`: an import is not a test verdict. Partial state 
 |---|---|
 | `Missing required environment variable: LANGFUSE_PUBLIC_KEY` | Both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` must be set in the environment. Flags like `--langfuse-secret-key` are intentionally not supported. |
 | `Langfuse authentication failed (401)` | The keys belong to a different Langfuse project, or were rotated. Confirm the keys match the trace you're trying to import. |
-| `Langfuse returned no observations` | The trace ID is wrong, or the trace is empty in Langfuse. |
+| `Langfuse returned no observations` (exit 75) | The trace isn't queryable in Langfuse yet. Langfuse Cloud ingestion typically lags ~30-90s after a run finishes — this is the common case right after a `task run`. Re-run, or pass `--wait <seconds>` (e.g. `--wait 120`) to poll the source until observations appear. If it persists, the trace ID is wrong or the trace is genuinely empty in Langfuse. |
 | `apo accepted the OTLP writes but trace … was still not readable after 15000ms` | All spans were accepted, but projection is still pending. The mapped trace ID and batch IDs are printed so you can inspect the durable inbox queue. This is **not** data loss. |
 | `apo rejected N span(s) from batch …` | Some chunks were durable, some were rejected. Re-running is safe; the rejected spans will re-convert and the accepted ones will idempotently re-project. |
 | `--max-observations` exceeded | Raise the ceiling (`--max-observations 20000`, max 50000), or break the source trace into smaller pieces — the connector is single-trace by design. |

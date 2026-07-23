@@ -39,6 +39,7 @@ Re-importing the same source trace is idempotent: deterministic IDs fill the sam
 |---|---|---|
 | `--langfuse-host <url>` | `LANGFUSE_HOST` or `https://cloud.langfuse.com` | Override the source Langfuse deployment. Only the origin is retained (no path, query, or credentials). |
 | `--max-observations <count>` | `10000` | Safety ceiling on the number of observations fetched before any apo write. Range `1..50000`. |
+| `--wait <seconds>` | off | Poll the Langfuse Observations API with exponential backoff until the source trace has at least one observation, or the deadline elapses. Absorbs the ~30-90s ingestion lag typical of Langfuse Cloud right after a run. `0` disables polling. |
 | `--json` | off | Emit a `LangfuseImportResult` JSON document instead of human-readable output. |
 
 ## Environment
@@ -104,14 +105,21 @@ apo traces import langfuse <id> --json
 }
 ```
 
+Wait for source ingestion before giving up — the right flag for a CI/e2e loop that runs a task and then imports its trace:
+
+```bash
+apo traces import langfuse <id> --wait 120
+```
+
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | `0` | Every source observation was accepted and the projected Trace became readable before the visibility deadline. |
-| `2` | Configuration, Langfuse read, conversion, apo ingestion, partial OTLP rejection, or projection visibility failure. |
+| `75` | The source trace returned no observations yet — Langfuse Cloud ingestion typically lags ~30-90s after a run ends. Retryable: re-run, or pass `--wait <seconds>` to poll the source in-process. No apo write was attempted. |
+| `2` | Configuration, Langfuse hard read error (auth / 404 / 5xx), conversion, apo ingestion, partial OTLP rejection, or projection visibility failure. |
 
-The command never returns `1`. Partial success prints accepted/rejected counts, the mapped trace ID, and OTLP batch IDs — re-running is safe.
+The command never returns `1`. Exit `75` mirrors `sysexits.h` `EX_TEMPFAIL` so callers can distinguish "not ingested yet" from a real failure without parsing stderr — loop on `75`, surface `2`. Partial success prints accepted/rejected counts, the mapped trace ID, and OTLP batch IDs — re-running is safe.
 
 ## Notes
 

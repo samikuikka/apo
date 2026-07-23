@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_MAX_OBSERVATIONS,
   fetchLangfuseTrace,
+  LangfuseEmptyTraceError,
   type LangfuseConnectorConfig,
+  pollLangfuseTrace,
   resolveConnectorConfig,
 } from "../src/lib/trace-sources/langfuse-client.ts";
 
@@ -159,13 +161,14 @@ describe("fetchLangfuseTrace pagination", () => {
     expect(graph.sourceTraceId).toBe(TRACE_ID);
     expect(graph.observations.map((o) => o.id)).toEqual(["a", "b", "c", "d"]);
 
-    // Every request carries the same traceId, full field list, parseIoAsJson,
-    // and Basic auth.
+    // Every request carries the same traceId, full field list, and Basic auth.
+    // parseIoAsJson must NOT be sent: Langfuse Cloud removed it from the v2
+    // observations endpoint and now 400s on it. I/O is parsed client-side.
     for (const { url, init } of calls) {
       expect(url).toContain("/api/public/v2/observations");
       expect(url).toContain(`traceId=${TRACE_ID}`);
       expect(url).toContain("fields=");
-      expect(url).toContain("parseIoAsJson=true");
+      expect(url).not.toContain("parseIoAsJson");
       expect(url).toMatch(/limit=1000/);
       const headers = new Headers(init?.headers);
       const auth = headers.get("authorization") ?? "";
@@ -203,6 +206,13 @@ describe("fetchLangfuseTrace pagination", () => {
     captureFetch([{ body: page([], { cursor: null }) }]);
     await expect(fetchLangfuseTrace(TRACE_ID, basicConfig())).rejects.toThrow(
       /empty|no observations/i,
+    );
+  });
+
+  it("throws a LangfuseEmptyTraceError (distinguishable) when the page is empty", async () => {
+    captureFetch([{ body: page([], { cursor: null }) }]);
+    await expect(fetchLangfuseTrace(TRACE_ID, basicConfig())).rejects.toBeInstanceOf(
+      LangfuseEmptyTraceError,
     );
   });
 
@@ -245,5 +255,231 @@ describe("fetchLangfuseTrace pagination", () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
     // The signal must not already be aborted (the timer is what aborts it).
     expect((init.signal as AbortSignal).aborted).toBe(false);
+  });
+});
+
+describe("pollLangfuseTrace", () => {
+  beforeEach(() => {
+    withKeys();
+  });
+
+  it("retries on empty with exponential backoff until observations appear", async () => {
+    const { calls } = captureFetch([
+      { body: page([], { cursor: null }) },
+      { body: page([], { cursor: null }) },
+      { body: page([obsRow({ id: "a" })], { cursor: null }) },
+    ]);
+    const sleeps: number[] = [];
+
+    const graph = await pollLangfuseTrace(TRACE_ID, basicConfig(), {
+      totalDeadlineMs: 60_000,
+      initialIntervalMs: 2_000,
+      maxIntervalMs: 15_000,
+      backoffFactor: 1.5,
+      now: () => 1_000_000,
+      sleep: async (ms) => { sleeps.push(ms); },
+    });
+
+    expect(graph.observations.map((o) => o.id)).toEqual(["a"]);
+    expect(calls).toHaveLength(3);
+    // Two backoffs before the successful third attempt: 2000 then 3000.
+    expect(sleeps).toEqual([2_000, 3_000]);
+  });
+
+  it("throws LangfuseEmptyTraceError once the deadline elapses", async () => {
+    captureFetch([{ body: page([], { cursor: null }) }]);
+    let first = true;
+    const now = () => {
+      if (first) { first = false; return 0; }
+      return 10_000_000;
+    };
+
+    let caught: unknown;
+    try {
+      await pollLangfuseTrace(TRACE_ID, basicConfig(), {
+        totalDeadlineMs: 3_500,
+        initialIntervalMs: 1_000,
+        maxIntervalMs: 5_000,
+        backoffFactor: 2,
+        now,
+        sleep: async () => {},
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(LangfuseEmptyTraceError);
+    expect((caught as Error).message).toMatch(/after waiting \d+s across \d+ attempt/i);
+  });
+
+  it("propagates hard errors (401) immediately without retrying", async () => {
+    const { mock } = captureFetch([{ status: 401, body: {} }]);
+
+    await expect(
+      pollLangfuseTrace(TRACE_ID, basicConfig(), {
+        totalDeadlineMs: 60_000,
+        initialIntervalMs: 1_000,
+        maxIntervalMs: 5_000,
+        backoffFactor: 2,
+        now: () => 0,
+        sleep: async () => {},
+      }),
+    ).rejects.toThrow(/auth/i);
+
+    expect(mock).toHaveBeenCalledTimes(1);
+  });
+
+  it("clamps each backoff sleep to maxIntervalMs and the remaining time", async () => {
+    captureFetch([
+      { body: page([], { cursor: null }) },
+      { body: page([obsRow()], { cursor: null }) },
+    ]);
+    const sleeps: number[] = [];
+
+    await pollLangfuseTrace(TRACE_ID, basicConfig(), {
+      totalDeadlineMs: 500,
+      initialIntervalMs: 10_000,
+      maxIntervalMs: 8_000,
+      backoffFactor: 2,
+      now: () => 0,
+      sleep: async (ms) => { sleeps.push(ms); },
+    });
+
+    // remaining (500) is smaller than maxIntervalMs (8000) and the raw
+    // interval (10000), so the single sleep is clamped to 500.
+    expect(sleeps).toEqual([500]);
+  });
+});
+
+describe("fetchLangfuseTrace I/O coercion (parseIoAsJson removed)", () => {
+  // Langfuse Cloud's v2 observations endpoint no longer supports
+  // parseIoAsJson=true — input/output/metadata always come back as raw JSON
+  // strings. The connector must parse them client-side so the downstream
+  // converter still receives structured JsonValue objects.
+  beforeEach(() => {
+    withKeys();
+  });
+
+  function rowWithRawIo(over: Record<string, unknown> = {}): unknown {
+    // Respect explicit values (including null) via key-presence checks.
+    // Using `??` would drop an intentional null input back to the default.
+    const pick = (key: string, fallback: unknown): unknown =>
+      key in over ? over[key] : fallback;
+    return {
+      id: pick("id", "obs-1"),
+      traceId: pick("traceId", TRACE_ID),
+      type: pick("type", "GENERATION"),
+      startTime: pick("startTime", "2026-07-22T10:00:00.000000Z"),
+      input: pick("input", JSON.stringify({ messages: [{ role: "user", content: "hi" }] })),
+      output: pick("output", JSON.stringify({ messages: [{ role: "assistant", content: "hello" }] })),
+      metadata: pick("metadata", JSON.stringify({ request_id: "req-1" })),
+    };
+  }
+
+  it("parses raw JSON-string input/output/metadata into structured values", async () => {
+    captureFetch([{ body: page([rowWithRawIo()], { cursor: null }) }]);
+
+    const graph = await fetchLangfuseTrace(TRACE_ID, basicConfig());
+    const obs = graph.observations[0]!;
+
+    expect(obs.input).toEqual({ messages: [{ role: "user", content: "hi" }] });
+    expect(obs.output).toEqual({ messages: [{ role: "assistant", content: "hello" }] });
+    expect(obs.metadata).toEqual({ request_id: "req-1" });
+  });
+
+  it("parses arrays and primitives encoded as JSON strings", async () => {
+    captureFetch([
+      {
+        body: page(
+          [
+            rowWithRawIo({
+              id: "arr",
+              input: JSON.stringify([1, "two", { nested: true }]),
+              output: JSON.stringify(42),
+              metadata: JSON.stringify("plain-string-meta"),
+            }),
+          ],
+          { cursor: null },
+        ),
+      },
+    ]);
+
+    const graph = await fetchLangfuseTrace(TRACE_ID, basicConfig());
+    const obs = graph.observations[0]!;
+
+    expect(obs.input).toEqual([1, "two", { nested: true }]);
+    expect(obs.output).toBe(42);
+    expect(obs.metadata).toBe("plain-string-meta");
+  });
+
+  it("preserves explicit JSON null input/output (not coerced to absent)", async () => {
+    captureFetch([
+      { body: page([rowWithRawIo({ id: "n", input: null, output: null })], { cursor: null }) },
+    ]);
+
+    const graph = await fetchLangfuseTrace(TRACE_ID, basicConfig());
+    const obs = graph.observations[0]!;
+
+    expect(obs.input).toBeNull();
+    expect(obs.output).toBeNull();
+  });
+
+  it("leaves absent I/O fields absent (undefined), distinct from null", async () => {
+    captureFetch([
+      {
+        body: page(
+          [
+            {
+              id: "absent",
+              traceId: TRACE_ID,
+              type: "SPAN",
+              startTime: "2026-07-22T10:00:00.000000Z",
+            },
+          ],
+          { cursor: null },
+        ),
+      },
+    ]);
+
+    const graph = await fetchLangfuseTrace(TRACE_ID, basicConfig());
+    const obs = graph.observations[0]!;
+
+    expect(obs.input).toBeUndefined();
+    expect(obs.output).toBeUndefined();
+    expect(obs.metadata).toBeUndefined();
+  });
+
+  it("falls back to the raw string when input is not valid JSON (defensive, no crash)", async () => {
+    captureFetch([
+      {
+        body: page(
+          [rowWithRawIo({ id: "bad", input: "not valid json {" })],
+          { cursor: null },
+        ),
+      },
+    ]);
+
+    const graph = await fetchLangfuseTrace(TRACE_ID, basicConfig());
+    const obs = graph.observations[0]!;
+
+    expect(obs.input).toBe("not valid json {");
+  });
+
+  it("passes through already-structured I/O unchanged (self-hosted/older Langfuse)", async () => {
+    const structured = { messages: [{ role: "user", content: "already object" }] };
+    captureFetch([
+      {
+        body: page(
+          [rowWithRawIo({ id: "obj", input: structured, output: structured })],
+          { cursor: null },
+        ),
+      },
+    ]);
+
+    const graph = await fetchLangfuseTrace(TRACE_ID, basicConfig());
+    const obs = graph.observations[0]!;
+
+    expect(obs.input).toEqual(structured);
+    expect(obs.output).toEqual(structured);
   });
 });
