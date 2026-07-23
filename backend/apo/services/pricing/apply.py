@@ -37,6 +37,7 @@ def apply_cost_to_call(
     provider: str | None = None,
     project: str,
     at_time: datetime,
+    is_update: bool = False,
 ) -> None:
     """Normalize usage + freeze cost onto ``call`` (in place).
 
@@ -44,6 +45,12 @@ def apply_cost_to_call(
     the same usage keys). ``provider`` may be supplied directly; otherwise the
     normalizer detects it from the attributes + model name. ``project`` scopes
     pricing resolution; ``at_time`` selects the era (the call's start_time).
+
+    ``is_update``: when True (the legacy update path), the patch body may carry
+    only a partial usage picture. If the normalized attributes yield no usage,
+    the existing frozen cost is left untouched (a partial patch must not erase a
+    previously-computed cost). For fresh ingestion (the default), an empty usage
+    map legitimately means "no usage -> no cost".
 
     Only mutates ``call``; does not commit. Swallows compute errors (cost is
     non-fatal to ingestion) but logs them at debug level.
@@ -56,18 +63,25 @@ def apply_cost_to_call(
         logger.debug("usage normalization failed for call %s; skipping cost", call.id)
         return
 
-    # Store the normalized raw usage (for re-pricing + debug), even on no-match.
-    call.raw_usage = raw_usage or None
-
     # Provided-wins-verbatim: if the SDK supplied a cost, freeze it and stop.
+    # The provided value is authoritative, so it overwrites cost (not just fills
+    # a null). A provided breakdown stays whatever the caller set (None unless
+    # the SDK gave one).
     if call.provided_cost is not None:
+        call.cost = call.provided_cost
         call.cost_provenance = "provided"
-        if call.cost is None:
-            call.cost = call.provided_cost
-        # No breakdown from compute; a provided breakdown would have to be
-        # supplied separately by the SDK (not currently plumbed). Breakdown
-        # stays whatever the caller set (None unless the SDK gave one).
         return
+
+    # No usage to price: on a fresh ingest this means "no cost"; on an update it
+    # means the patch carried no usage, so leave any previously-frozen cost alone.
+    if not raw_usage:
+        if is_update:
+            return
+        call.cost_provenance = None
+        return
+
+    # Store the normalized raw usage (for re-pricing + debug), even on no-match.
+    call.raw_usage = raw_usage
 
     try:
         result = compute_cost(session, call.model, raw_usage, project, at_time)

@@ -104,12 +104,16 @@ def _apply_ingestion_cost(
     call: LoggedCallDB,
     body: dict[str, object],
     at_time: datetime,
+    *,
+    is_update: bool = False,
 ) -> None:
     """Normalize usage + freeze cost on a legacy-ingested call (SPEC-136 ticket 06).
 
     Shared seam with the canonical projector: build an attribute map from the
     legacy body, then provided-wins-verbatim-else-compute. The body's
     ``cost``/``provided_cost`` (micro-USD int) are already on ``call``.
+    ``is_update`` is forwarded to ``apply_cost_to_call`` so a partial patch (no
+    usage) doesn't erase a previously-frozen cost.
     """
     attrs = _ingestion_usage_attributes(body)
     provider = _get_optional_str(body, "provider")
@@ -120,6 +124,7 @@ def _apply_ingestion_cost(
         provider=provider,
         project=call.project,
         at_time=at_time,
+        is_update=is_update,
     )
 
 
@@ -309,9 +314,13 @@ async def process_call_update(body: dict[str, object], session: Session) -> None
         call.tags = _get_string_list(body, "tags")
 
     # SPEC-136 ticket 06: re-normalize usage + re-freeze cost on update when
-    # the call is a priced GENERATION. Provided cost still wins verbatim.
+    # the call is a priced GENERATION. Provided cost still wins verbatim. A
+    # partial patch (no usage) must not erase a previously-frozen cost, so the
+    # update path only recomputes when the patch actually carries usage.
     if call.observation_type == "GENERATION" and call.model and call.model != "unknown":
-        _apply_ingestion_cost(session, call, body, call.created_at or datetime.now(timezone.utc))
+        _apply_ingestion_cost(
+            session, call, body, call.created_at or datetime.now(timezone.utc), is_update=True
+        )
 
     session.commit()
 

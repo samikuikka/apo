@@ -122,4 +122,43 @@ describe("reprice command", () => {
     const parsed = JSON.parse(logs.join("\n"));
     expect(parsed.summary.repriced).toBe(12437);
   });
+
+  it("rejects a non-integer --model-id instead of broadening the reprice", async () => {
+    // Regression (audit P1 #5): Number("abc") -> NaN -> JSON null -> no filter,
+    // which would reprice EVERY call. Must error instead.
+    const { errors, restore } = captureError();
+    const code = await run([
+      "--backend",
+      "http://backend.test",
+      "--admin-key",
+      "k",
+      "--model-id",
+      "abc",
+    ]);
+    restore();
+    expect(code).toBe(2);
+    expect(errors.join("\n")).toContain("--model-id must be an integer");
+  });
+
+  it("reports a job error in --json mode (exit 2, not silent success)", async () => {
+    // Regression (audit P1 #5): --json must surface an error status, not
+    // silently succeed.
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(mockResponse({ job_id: "jerr" }))
+      .mockResolvedValueOnce(
+        mockResponse({ job_id: "jerr", status: "error", summary: null, error: "db locked" }),
+      );
+    const { errors, restore } = captureError();
+
+    const code = await run([
+      "--backend",
+      "http://backend.test",
+      "--admin-key",
+      "k",
+      "--json",
+    ]);
+    restore();
+    expect(code).toBe(2);
+    expect(errors.join("\n")).toContain("db locked");
+  });
 });

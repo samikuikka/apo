@@ -232,3 +232,42 @@ class TestBundledFile:
             for p in session.exec(select(PriceDB).where(PriceDB.tier_id == large.id)).all()
         }
         assert large_prices["input"] == 2_500_000  # $2.50/MTok -> 2_500_000 micro
+
+
+class TestMultipleErasPerPattern:
+    def test_two_eras_for_same_pattern_coexist(self, session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Regression (audit P2 #7): two time-windowed eras sharing a
+        match_pattern must both load (not collapse to one)."""
+        path = _write_defaults(
+            tmp_path,
+            [
+                {
+                    "match_pattern": "(?i)^model-x$",
+                    "provider": "openai",
+                    "start_date": "2026-01-01T00:00:00Z",
+                    "end_date": "2026-06-01T00:00:00Z",
+                    "updated_at": "2026-01-01T00:00:00Z",
+                    "pricing_tiers": [
+                        {"name": "default", "is_default": True, "conditions": [], "prices": {"input": 1.0, "output": 2.0}}
+                    ],
+                },
+                {
+                    "match_pattern": "(?i)^model-x$",
+                    "provider": "openai",
+                    "start_date": "2026-06-01T00:00:00Z",
+                    "end_date": None,
+                    "updated_at": "2026-06-01T00:00:00Z",
+                    "pricing_tiers": [
+                        {"name": "default", "is_default": True, "conditions": [], "prices": {"input": 3.0, "output": 6.0}}
+                    ],
+                },
+            ],
+        )
+        monkeypatch.setattr("apo.services.pricing.loader.DEFAULTS_PATH", path)
+        load_default_prices(session)
+        rows = list(
+            session.exec(select(ModelRowDB).where(ModelRowDB.match_pattern == "(?i)^model-x$")).all()
+        )
+        assert len(rows) == 2  # both eras coexist
+        starts = sorted(r.start_date.isoformat() for r in rows if r.start_date)
+        assert starts == ["2026-01-01T00:00:00", "2026-06-01T00:00:00"]

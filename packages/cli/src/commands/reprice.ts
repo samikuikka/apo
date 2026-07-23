@@ -38,16 +38,28 @@ export async function run(argv: string[]): Promise<number> {
   const config = resolveConfig(flags);
 
   const project = getFlagValue(flags, "project");
-  const modelId = getFlagValue(flags, "model-id");
+  const modelIdRaw = getFlagValue(flags, "model-id");
   const since = getFlagValue(flags, "since");
   const until = getFlagValue(flags, "until");
   const dryRun = getBoolFlag(flags, "dry-run");
   const adminKey =
     getFlagValue(flags, "admin-key") ?? process.env.APO_ADMIN_KEY ?? "";
 
+  // Validate --model-id: a non-numeric value must error, not silently broaden
+  // the reprice to every eligible call (Number("abc") -> NaN -> JSON null -> no
+  // filter, which would be a destructive surprise).
+  let modelId: number | undefined;
+  if (modelIdRaw !== undefined) {
+    modelId = Number(modelIdRaw);
+    if (!Number.isInteger(modelId)) {
+      console.error(`--model-id must be an integer, got ${modelIdRaw!}`);
+      return 2;
+    }
+  }
+
   const body: Record<string, unknown> = { dry_run: dryRun };
   if (project) body.project = project;
-  if (modelId) body.model_id = Number(modelId);
+  if (modelId !== undefined) body.model_id = modelId;
   if (since) body.since = since;
   if (until) body.until = until;
 
@@ -56,7 +68,12 @@ export async function run(argv: string[]): Promise<number> {
 
   if (config.json) {
     const final = await pollJob(config, kickOff.job_id, adminKey);
-    if (final === null) return 2;
+    if (final === null || final.status === "error") {
+      console.error(
+        formatJson(final ?? { status: "error", error: "could not retrieve job status" }),
+      );
+      return 2;
+    }
     console.log(formatJson(final));
     return 0;
   }

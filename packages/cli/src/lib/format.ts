@@ -126,11 +126,20 @@ export function formatTime(iso: string): string {
   }
 }
 
+/**
+ * Format a cost value as USD. Costs are stored as micro-USD integers
+ * (SPEC-136: USD * 1e6), so divide by 1e6 before formatting.
+ */
 export function formatCost(value: number | null): string {
   if (value == null) return "-";
-  if (value === 0) return "$0.00";
-  if (value < 0.01) return `$${value.toFixed(6)}`;
-  return `$${value.toFixed(4)}`;
+  return formatUsd(value / 1_000_000);
+}
+
+/** Format a USD-denominated float (NOT micro-USD) as a dollar string. */
+export function formatUsd(usd: number): string {
+  if (usd === 0) return "$0.00";
+  if (usd < 0.01) return `$${usd.toFixed(6)}`;
+  return `$${usd.toFixed(4)}`;
 }
 
 export function formatDuration(startedAt: string | null, completedAt: string | null): string {

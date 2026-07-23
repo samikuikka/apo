@@ -119,6 +119,22 @@ class TestRepriceScope:
         assert summary["repriced"] == 0
         assert summary["skipped_no_match"] == 1
 
+    def test_does_not_zero_computed_call_without_raw_usage(self, session: Session) -> None:
+        """Regression (audit P1 #4): a computed call with raw_usage=None must be
+        skipped, not recomputed to 0 (which would destroy a frozen cost)."""
+        call = _make_call(
+            session,
+            span_id="c-no-usage",
+            raw_usage=None,
+            cost=123,
+            provenance="computed",
+        )
+        summary = reprice_calls(session)
+        session.refresh(call)
+        assert summary["repriced"] == 0
+        assert summary["skipped_no_usage"] == 1
+        assert call.cost == 123  # NOT zeroed
+
     def test_dry_run_commits_nothing(self, session: Session) -> None:
         call = _make_call(
             session,

@@ -49,22 +49,31 @@ def load_default_prices(session: Session, *, path: Path | None = None) -> int:
     raw = _read_and_parse(source)
     docs = _parse_entries(raw)
 
-    existing = {m.match_pattern: m for m in _global_models(session)}
-    seen_patterns: set[str] = set()
+    # Key by era identity (match_pattern, start_date) so multiple time-windowed
+    # eras of the same pattern coexist. start_date IS NULL is the legacy/seed
+    # era; two eras differ by their start_date.
+    def _era_key(m: object) -> tuple[str, str]:
+        mp = getattr(m, "match_pattern", "")
+        sd = getattr(m, "start_date", None)
+        return (mp, sd.isoformat() if sd is not None else "")
+
+    existing = {_era_key(m): m for m in _global_models(session)}
+    seen_eras: set[tuple[str, str]] = set()
     written = 0
 
     for doc in docs:
-        seen_patterns.add(doc.match_pattern)
-        existing_row = existing.get(doc.match_pattern)
+        doc_key = _era_key(doc)
+        seen_eras.add(doc_key)
+        existing_row = existing.get(doc_key)
         if existing_row is not None and existing_row.updated_at == doc.updated_at:
             # No-op: same updated_at -> skip the write (idempotency gate).
             continue
         _upsert_global(session, doc)
         written += 1
 
-    # Delete globals absent from the file.
-    for pattern, row in existing.items():
-        if pattern not in seen_patterns and row.id is not None:
+    # Delete globals (eras) absent from the file.
+    for era_key, row in existing.items():
+        if era_key not in seen_eras and row.id is not None:
             _delete_model_cascade(session, row.id)
 
     session.commit()
@@ -144,11 +153,30 @@ def _global_models(session: Session) -> list[ModelRowDB]:
     )
 
 
+def _era_match(model_cls: type[ModelRowDB], doc: ModelDocumentCreate) -> Any:
+    """SQLAlchemy filter matching the doc's era on start_date (NULL-aware).
+
+    For a NULL start_date (legacy seed era), match rows where start_date IS NULL;
+    otherwise match rows where start_date equals the doc's start_date.
+    """
+    from sqlmodel import col
+
+    if doc.start_date is None:
+        return col(model_cls.start_date).is_(None)
+    return col(model_cls.start_date) == doc.start_date
+
+
 def _upsert_global(session: Session, doc: ModelDocumentCreate) -> None:
-    """Insert or replace the full tier/price graph for one __global__ model."""
+    """Insert or replace the full tier/price graph for one __global__ model era.
+
+    Scoped to the era identity ``(match_pattern, start_date)`` so a new era for
+    the same pattern does not delete a sibling era (time-windowed pricing).
+    """
     existing = session.exec(
         select(ModelRowDB).where(
-            ModelRowDB.project == GLOBAL_PROJECT, ModelRowDB.match_pattern == doc.match_pattern
+            ModelRowDB.project == GLOBAL_PROJECT,
+            ModelRowDB.match_pattern == doc.match_pattern,
+            _era_match(ModelRowDB, doc),
         )
     ).first()
     if existing is not None and existing.id is not None:
