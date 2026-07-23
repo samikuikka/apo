@@ -2,9 +2,6 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-const CREDENTIALS_DIR = join(homedir(), ".apo");
-const CREDENTIALS_FILE = join(CREDENTIALS_DIR, "credentials");
-
 export type StoredCredentials = {
   backend_url: string;
   api_key: string;
@@ -23,11 +20,12 @@ export type StoredCredentials = {
 };
 
 export function readCredentials(): StoredCredentials | null {
-  if (!existsSync(CREDENTIALS_FILE)) {
+  const path = credentialsPath();
+  if (!existsSync(path)) {
     return null;
   }
   try {
-    const raw = readFileSync(CREDENTIALS_FILE, "utf8");
+    const raw = readFileSync(path, "utf8");
     const parsed = JSON.parse(raw) as StoredCredentials;
     if (
       typeof parsed.backend_url === "string" &&
@@ -42,25 +40,27 @@ export function readCredentials(): StoredCredentials | null {
 }
 
 export function writeCredentials(creds: StoredCredentials): string {
-  mkdirSync(dirname(CREDENTIALS_FILE), { recursive: true });
+  const path = credentialsPath();
+  mkdirSync(dirname(path), { recursive: true });
   const payload: StoredCredentials = {
     ...creds,
     created_at: new Date().toISOString(),
   };
-  writeFileSync(CREDENTIALS_FILE, JSON.stringify(payload, null, 2) + "\n", {
+  writeFileSync(path, JSON.stringify(payload, null, 2) + "\n", {
     mode: 0o600,
   });
-  return CREDENTIALS_FILE;
+  return path;
 }
 
 export function clearCredentials(): boolean {
-  if (!existsSync(CREDENTIALS_FILE)) {
+  const path = credentialsPath();
+  if (!existsSync(path)) {
     return false;
   }
-  rmSync(CREDENTIALS_FILE, { force: false });
+  rmSync(path, { force: false });
   return true;
 }
 
 export function credentialsPath(): string {
-  return CREDENTIALS_FILE;
+  return join(homedir(), ".apo", "credentials");
 }
