@@ -30,7 +30,7 @@ export type JudgeMetadata = {
   /** Raw LLM response text before parsing into {pass, reasoning}. */
   response?: string;
   /** Token usage if available from the provider. */
-  tokens?: { input: number; output: number };
+  tokens?: { input: number; output: number; cache_creation?: number; cache_read?: number };
   /** Estimated cost in USD, if available. */
   cost?: number;
   /** Wall-clock latency of the judge call in milliseconds. */

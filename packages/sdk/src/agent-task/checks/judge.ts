@@ -55,6 +55,46 @@ function formatJudgeValues(values: unknown[]): string {
  * buries the verdict and reasoning the user actually needs. Instead: try the
  * raw text, strip fences, then extract the first balanced `{...}` block.
  */
+
+// Provider token usage for a judge call. Cached-prefix accounting arrives in
+// two shapes depending on the route: direct Anthropic exposes
+// cache_creation_input_tokens / cache_read_input_tokens, while OpenRouter
+// (and OpenAI) normalize them into prompt_tokens_details.cache_write_tokens /
+// prompt_tokens_details.cached_tokens. Their presence proves the cached
+// deliverable prefix was written once and read on subsequent criteria (#21).
+type JudgeUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+    cache_write_tokens?: number;
+  };
+};
+
+type JudgeTokens = {
+  input: number;
+  output: number;
+  cache_creation?: number;
+  cache_read?: number;
+};
+
+function parseJudgeUsage(usage: JudgeUsage | undefined): JudgeTokens | undefined {
+  if (!usage) return undefined;
+  const cacheCreation =
+    usage.cache_creation_input_tokens ?? usage.prompt_tokens_details?.cache_write_tokens;
+  const cacheRead =
+    usage.cache_read_input_tokens ?? usage.prompt_tokens_details?.cached_tokens;
+  const tokens: JudgeTokens = {
+    input: usage.prompt_tokens ?? 0,
+    output: usage.completion_tokens ?? 0,
+  };
+  if (typeof cacheCreation === "number") tokens.cache_creation = cacheCreation;
+  if (typeof cacheRead === "number") tokens.cache_read = cacheRead;
+  return tokens;
+}
+
 function parseJudgeJson(raw: string): { pass?: boolean; reasoning?: string } {
   // 1. Direct parse (the common, well-behaved case).
   try {
@@ -182,7 +222,7 @@ export async function callJudge(args: {
 
     const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
-      usage?: { prompt_tokens?: number; completion_tokens?: number };
+      usage?: JudgeUsage;
     };
 
     const text = data.choices?.[0]?.message?.content ?? "";
@@ -208,15 +248,13 @@ export async function callJudge(args: {
           model: args.model,
           prompt: { system: systemPromptText, user: instructionText },
           response: text,
-          tokens: data.usage
-            ? { input: data.usage.prompt_tokens ?? 0, output: outputTokens ?? 0 }
-            : undefined,
-          latency_ms: Date.now() - startedAt,
-        },
-      };
-    }
+        tokens: parseJudgeUsage(data.usage),
+        latency_ms: Date.now() - startedAt,
+      },
+    };
+  }
 
-    // Models routinely wrap their JSON in markdown fences (```json … ```) or
+  // Models routinely wrap their JSON in markdown fences (```json … ```) or
     // add prose around it despite the json_object response_format. Parse
     // tolerantly so the verdict + reasoning aren't lost to a parse error:
     // try the raw text, then strip fences, then extract the first {...}.
@@ -229,12 +267,7 @@ export async function callJudge(args: {
         model: args.model,
         prompt: { system: systemPromptText, user: instructionText },
         response: text,
-        tokens: data.usage
-          ? {
-              input: data.usage.prompt_tokens ?? 0,
-              output: data.usage.completion_tokens ?? 0,
-            }
-          : undefined,
+        tokens: parseJudgeUsage(data.usage),
         latency_ms: Date.now() - startedAt,
       },
     };

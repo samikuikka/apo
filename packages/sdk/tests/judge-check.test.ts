@@ -384,6 +384,67 @@ describe("t.judge prompt caching", () => {
     expect(result?.judge?.prompt?.system).toContain("payload here");
     expect(result?.judge?.prompt?.user).toContain("PASS when correct");
   });
+
+  it("surfaces provider cache-token fields in judge metadata", async () => {
+    // OpenRouter passes Anthropic's cache_creation_input_tokens /
+    // cache_read_input_tokens through in usage. They must reach the metadata
+    // so a cache hit/miss is observable in the dashboard.
+    stubJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "ok" }),
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 4,
+        cache_creation_input_tokens: 9000,
+        cache_read_input_tokens: 0,
+      } as never,
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("payload", "PASS when correct");
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+    });
+
+    expect(result?.judge?.tokens).toMatchObject({
+      input: 10,
+      output: 4,
+      cache_creation: 9000,
+      cache_read: 0,
+    });
+  });
+
+  it("surfaces OpenRouter-normalized cache fields (prompt_tokens_details)", async () => {
+    // OpenRouter normalizes Anthropic cache tokens into the OpenAI-style
+    // prompt_tokens_details.{cache_write_tokens, cached_tokens} instead of the
+    // Anthropic-native top-level fields. apo supports both routes.
+    stubJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "ok" }),
+      usage: {
+        prompt_tokens: 12,
+        completion_tokens: 4,
+        prompt_tokens_details: { cached_tokens: 5987, cache_write_tokens: 0 },
+      } as never,
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("payload", "PASS when correct");
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+    });
+
+    expect(result?.judge?.tokens).toMatchObject({
+      input: 12,
+      output: 4,
+      cache_creation: 0,
+      cache_read: 5987,
+    });
+  });
 });
 
 describe("callJudge prefix serialization", () => {
