@@ -379,6 +379,15 @@ pnpm --filter @apo/sdk build:agent-task-runtime
 
 The Dockerfile runs this for you during `docker compose build`. Locally, you only need to rebuild when you want to test the packaged path (set `AGENT_TASK_RUNTIME_DIR=packages/sdk/dist/agent-task-runtime` before starting the backend).
 
+The backend image also runs the regular `@apo/sdk` build before assembling
+the runner. Demo and synced task modules import the package through its
+published `dist` exports, so copying SDK source without those artifacts makes
+the runner start successfully but fail as soon as it loads a task definition.
+Install the copied SDK package's production dependencies at its final
+`/app/_sdk-source` location before installing it into the bundled demo
+workspace. Local npm installs link back to that real path, so dependencies
+installed only beside the demo task tree are invisible to ESM resolution.
+
 The output is ESM, but some bundled Node dependencies (including
 OpenTelemetry) still load built-ins through CommonJS `require`. Keep the
 `createRequire(import.meta.url)` bridge in the generated banner; without it,

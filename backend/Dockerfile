@@ -20,15 +20,19 @@ FROM node:22-slim AS agent-task-builder
 WORKDIR /workspace
 
 # Install only the SDK package + its dev deps so esbuild is available.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/sdk/package.json ./packages/sdk/package.json
 COPY packages/cli/package.json ./packages/cli/package.json
 COPY apps/dashboard/package.json ./apps/dashboard/package.json
 RUN npm install -g pnpm && pnpm install --frozen-lockfile --filter @apo/sdk...
 
-# Copy SDK source and build the runtime bundle.
+# Copy SDK source, build its published entry points for task imports, then
+# build the standalone runner. The demo task package resolves
+# `@apo/sdk/agent-task` through the package's default `dist` export; building
+# only runner.mjs leaves that export dangling inside the backend image.
 COPY packages/sdk/ ./packages/sdk/
-RUN pnpm --filter @apo/sdk build:agent-task-runtime
+RUN pnpm --filter @apo/sdk build \
+    && pnpm --filter @apo/sdk build:agent-task-runtime
 
 # ---- Python builder: compile C extensions, install deps ----
 FROM python:3.13-slim AS builder
@@ -108,14 +112,12 @@ COPY apps/example-service/e2e/agent-task-demo /app/apps/example-service/e2e/agen
 
 # Make the demo task tree self-contained so its tasks can run without the
 # monorepo's node_modules. Demo files import:
-#   - @apo/sdk/agent-task  (workspace package — link the SDK source; the
-#     runtime runs under --experimental-strip-types so .ts imports resolve
-#     exactly as in dev)
+#   - @apo/sdk/agent-task  (install the locally built SDK package)
 #   - zod, ai, @ai-sdk/openai (real npm deps the demo adapters use)
 # Installing these here (rather than relying on the task-dependency installer)
 # bakes them into the image so first-run latency is zero and there's no
-# committed lockfile to keep in sync with the monorepo. The @apo/sdk link goes
-# AFTER npm install, which would otherwise recreate node_modules and wipe it.
+# committed lockfile to keep in sync with the monorepo. Installing the local
+# SDK package also installs its runtime dependencies beside the task tree.
 #
 # Versions are pinned exactly (not ^ranges) because the demo tree intentionally
 # has no lockfile: a fresh build re-resolves from npm, and a caret range lets
@@ -124,10 +126,12 @@ COPY apps/example-service/e2e/agent-task-demo /app/apps/example-service/e2e/agen
 # has a hard peer dependency on zod ^4.0.0; installing zod 3.x makes npm abort
 # with ERESOLVE. ai@^6 and @ai-sdk/openai@^3 both accept zod 3 or 4.
 COPY --from=agent-task-builder /workspace/packages/sdk /app/_sdk-source
+RUN rm -rf /app/_sdk-source/node_modules \
+    && cd /app/_sdk-source \
+    && npm install --omit=dev --no-audit --no-fund --package-lock=false
 RUN cd /app/apps/example-service/e2e/agent-task-demo \
-    && npm install --no-save --no-audit --no-fund zod@4.4.3 ai@6.0.230 @ai-sdk/openai@3.0.86 \
-    && mkdir -p node_modules/@apo \
-    && ln -sf /app/_sdk-source node_modules/@apo/sdk
+    && npm install --no-save --no-audit --no-fund \
+        zod@4.4.3 ai@6.0.230 @ai-sdk/openai@3.0.86 /app/_sdk-source
 
 RUN mkdir -p /app/data \
         /var/lib/apo/task-sources \
