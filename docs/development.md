@@ -387,6 +387,10 @@ Install the copied SDK package's production dependencies at its final
 `/app/_sdk-source` location before installing it into the bundled demo
 workspace. Local npm installs link back to that real path, so dependencies
 installed only beside the demo task tree are invisible to ESM resolution.
+The image also copies `apps/example-service/app/lib/agent`, because the demo
+adapters drive that real agent implementation. Its parent
+`apps/example-service/node_modules` is linked to the demo workspace's installed
+dependencies so imports resolve from both the adapter and agent source paths.
 
 The output is ESM, but some bundled Node dependencies (including
 OpenTelemetry) still load built-ins through CommonJS `require`. Keep the

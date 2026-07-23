@@ -109,6 +109,9 @@ COPY --from=agent-task-builder \
 # SPEC-126 fixture: bundle the example-service demo task tree so the
 # demo workspace works in the container without mounting the repo.
 COPY apps/example-service/e2e/agent-task-demo /app/apps/example-service/e2e/agent-task-demo
+# The demo adapters deliberately exercise the real example agent instead of
+# duplicating its model/tool loop inside the fixture.
+COPY apps/example-service/app/lib/agent /app/apps/example-service/app/lib/agent
 
 # Make the demo task tree self-contained so its tasks can run without the
 # monorepo's node_modules. Demo files import:
@@ -131,7 +134,9 @@ RUN rm -rf /app/_sdk-source/node_modules \
     && npm install --omit=dev --no-audit --no-fund --package-lock=false
 RUN cd /app/apps/example-service/e2e/agent-task-demo \
     && npm install --no-save --no-audit --no-fund \
-        zod@4.4.3 ai@6.0.230 @ai-sdk/openai@3.0.86 /app/_sdk-source
+        zod@4.4.3 ai@6.0.230 @ai-sdk/openai@3.0.86 /app/_sdk-source \
+    && ln -s /app/apps/example-service/e2e/agent-task-demo/node_modules \
+        /app/apps/example-service/node_modules
 
 RUN mkdir -p /app/data \
         /var/lib/apo/task-sources \
