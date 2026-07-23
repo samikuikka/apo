@@ -68,7 +68,8 @@ def _ingestion_usage_attributes(body: dict[str, object]) -> dict[str, object]:
     (and optionally richer usage under ``usage`` / ``raw_usage``). Map these onto
     the canonical OTel gen_ai.usage.* keys the normalizer reads. If the body
     already carries a ``usage``/``raw_usage`` map (post-SPEC-136 SDK), forward
-    it losslessly.
+    canonical keys under their OTel attribute names so the normalizer picks
+    them up.
     """
     attrs: dict[str, object] = {}
     prompt = _get_optional_int(body, "prompt_tokens")
@@ -78,13 +79,23 @@ def _ingestion_usage_attributes(body: dict[str, object]) -> dict[str, object]:
     if completion is not None:
         attrs["gen_ai.usage.output_tokens"] = completion
 
-    # Forward any richer usage the SDK carried (canonical keys or aliases).
+    # Forward any richer usage the SDK carried. Canonical usage keys map to the
+    # OTel attribute names the normalizer reads; unknown keys pass through.
+    canonical_to_attr = {
+        "input": "gen_ai.usage.input_tokens",
+        "output": "gen_ai.usage.output_tokens",
+        "cache_read": "gen_ai.usage.cache_read.input_tokens",
+        "reasoning": "gen_ai.usage.reasoning.output_tokens",
+        "cache_write_5m": "gen_ai.usage.cache_creation.ephemeral_5m_input_tokens",
+        "cache_write_1h": "gen_ai.usage.cache_creation.ephemeral_1h_input_tokens",
+    }
     for key in ("usage", "raw_usage"):
         extra = body.get(key)
         if isinstance(extra, dict):
             for k, v in cast(dict[str, object], extra).items():
                 if isinstance(v, (int, float)) and not isinstance(v, bool):
-                    _ = attrs.setdefault(k, int(v))
+                    attr_key = canonical_to_attr.get(str(k), str(k))
+                    _ = attrs.setdefault(attr_key, int(v))
     return attrs
 
 
