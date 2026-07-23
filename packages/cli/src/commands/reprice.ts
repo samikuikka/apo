@@ -84,7 +84,7 @@ function printSummary(summary: RepriceSummary | null): void {
     return;
   }
   const deltaUsd = summary.net_delta / 1_000_000;
-  const deltaStr = deltaUsd >= 0 ? `+$$${deltaUsd.toFixed(6)}` : `-$$${Math.abs(deltaUsd).toFixed(6)}`;
+  const deltaStr = deltaUsd >= 0 ? `+$${deltaUsd.toFixed(6)}` : `-$${Math.abs(deltaUsd).toFixed(6)}`;
   console.log(
     `Repriced ${summary.repriced} calls (${deltaStr} net delta).`,
   );
@@ -130,6 +130,7 @@ async function postReprice(
         Authorization: `Bearer ${config.apiKey ?? ""}`,
         "x-admin-key": adminKey,
       },
+      body: JSON.stringify(body),
     });
     if (!response.ok) {
       const text = await response.text();
