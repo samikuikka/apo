@@ -78,6 +78,8 @@ export default async function TraceDetailPage({
         <UrlSelectionProvider runId={runId} projectId={projectId}>
           <TraceWorkspacePage
             run={trace}
+            backHref={`/project/${projectId}/traces`}
+            backLabel="Traces"
             adjacentPrevId={adjacent.prev_id}
             adjacentNextId={adjacent.next_id}
           />

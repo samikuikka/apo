@@ -4,8 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { backendFetch } from "@/lib/backend-fetch";
 import { toast } from "sonner";
-import Link from "next/link";
-import { AlertTriangle, Database, FlaskConical, Settings, Workflow } from "lucide-react";
+import { AlertTriangle, Database, Settings } from "lucide-react";
 
 interface DbStats {
   [key: string]: number;
@@ -87,20 +86,6 @@ export function SystemSection({ initialStats = null }: { initialStats?: DbStats 
                 Internal system operations for the agent-testing platform. This surface is operational only,
                 not part of the primary product workflow for tasks, runs, or traces.
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button type="button" asChild variant="outline" size="sm" className="h-8 text-[13px] font-normal">
-                <Link href="/tasks">
-                  <FlaskConical className="mr-1.5 h-3.5 w-3.5" />
-                  Tasks
-                </Link>
-              </Button>
-              <Button type="button" asChild variant="outline" size="sm" className="h-8 text-[13px] font-normal">
-                <Link href="/traces">
-                  <Workflow className="mr-1.5 h-3.5 w-3.5" />
-                  Traces
-                </Link>
-              </Button>
             </div>
           </div>
 
