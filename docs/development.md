@@ -379,6 +379,13 @@ pnpm --filter @apo/sdk build:agent-task-runtime
 
 The Dockerfile runs this for you during `docker compose build`. Locally, you only need to rebuild when you want to test the packaged path (set `AGENT_TASK_RUNTIME_DIR=packages/sdk/dist/agent-task-runtime` before starting the backend).
 
+The output is ESM, but some bundled Node dependencies (including
+OpenTelemetry) still load built-ins through CommonJS `require`. Keep the
+`createRequire(import.meta.url)` bridge in the generated banner; without it,
+the image builds successfully but every remote task exits before loading with
+`Dynamic require of "util" is not supported`. A packaged-runtime smoke check
+should reach the runner's own `AGENT_TASK_DIR is required` validation instead.
+
 Task modules load the SDK outside the bundled runner, so
 cross-module runtime state must use `Symbol.for(...)` keys on `globalThis`
 rather than module-local singleton arrays. Also keep imported SDK modules free
