@@ -1,4 +1,5 @@
 import { apiClient } from "./api-client";
+import { ApiError } from "./api-error";
 
 // ============================================================================
 // Types
@@ -346,17 +347,25 @@ export const listProjectAgentTasks = (
   });
 
 /**
- * SPEC-119: canonical project-scoped task detail backed by inventory.
- * Throws HTTP 404 when the task is missing or the project has no source.
+ * Resolve one project task through the inventory collection endpoint.
+ *
+ * Task ids are hierarchical (for example `claude-agent/data-extraction`).
+ * Keeping the id in a query parameter avoids relying on encoded slashes in a
+ * catch-all backend path, which can be decoded differently by SSR fetches and
+ * production proxies. The exact-id check is still required because `grep` is
+ * intentionally a substring search.
  */
-export const getProjectAgentTask = (
+export const getProjectAgentTask = async (
   projectId: string,
   taskId: string,
-): Promise<AgentTaskDetail> =>
-  apiClient(
-    `/v1/projects/${encodeURIComponent(projectId)}/agent-tasks/${encodeURIComponent(taskId)}`,
-    NO_CACHE,
-  );
+): Promise<AgentTaskDetail> => {
+  const tasks = await listProjectAgentTasks(projectId, taskId);
+  const task = tasks.find((candidate) => candidate.id === taskId);
+  if (!task) {
+    throw new ApiError(404, "Task not found in inventory.");
+  }
+  return { ...task, latest_run: null };
+};
 
 export const listTaskRuns = (
   taskId: string,
