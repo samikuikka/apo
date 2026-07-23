@@ -8,7 +8,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { usdFormat } from "@/lib/format";
+import { formatCostMicro } from "@/lib/format";
 import { TriggerInline } from "@/components/trigger-badge";
 import { TaskRunListHeader, TaskRunRow } from "@/components/task-run-list";
 import { BatchRunAutoRefresh } from "@/components/agent-task-execution/batch-run-auto-refresh";
@@ -170,7 +170,7 @@ export default async function BatchRunDetailPage({
               },
               {
                 icon: DollarSign,
-                value: usdFormat(batchRun.total_cost),
+                value: formatCostMicro(batchRun.total_cost),
                 label: "cost",
               },
             ]}

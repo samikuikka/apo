@@ -4,19 +4,17 @@ import { useMemo, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { CopyIdPopover } from "./CopyIdPopover";
-import { RunCostBreakdownTooltip } from "./CostBreakdownTooltip";
+import { RunCostBreakdownTooltip } from "./DimensionBreakdownTooltip";
+import { DimensionMixBar } from "./DimensionMixBar";
 import { CallDetailTabs } from "./CallDetailTabs";
 import { useSelection } from "./contexts/SelectionContext";
+import { formatCostMicro } from "@/lib/format";
 
 export interface TraceDetailTabsProps {
   run: any;
 }
 
 const VALID_RUN_TABS = new Set(["preview", "metadata", "tokens", "costs"]);
-
-function formatCost(value: number) {
-  return value >= 1 ? `$${value.toFixed(2)}` : `$${value.toFixed(4)}`;
-}
 
 function Section({
   title,
@@ -112,19 +110,28 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
     () =>
       Object.entries(
         calls.reduce(
-          (acc: Record<string, { count: number; tokens: number; cost: number }>, c: any) => {
+          (
+            acc: Record<string, { count: number; tokens: number; cost: number; breakdown: Record<string, number> }>,
+            c: any,
+          ) => {
             const model = c.model || "unknown";
             if (!acc[model]) {
-              acc[model] = { count: 0, tokens: 0, cost: 0 };
+              acc[model] = { count: 0, tokens: 0, cost: 0, breakdown: {} };
             }
             acc[model].count += 1;
             acc[model].tokens += c.total_tokens || 0;
             acc[model].cost += c.cost || 0;
+            // Aggregate per-dimension breakdown for the mix bar (SPEC-136 ticket 11).
+            if (c.cost_breakdown) {
+              for (const [key, val] of Object.entries(c.cost_breakdown as Record<string, number>)) {
+                acc[model].breakdown[key] = (acc[model].breakdown[key] ?? 0) + val;
+              }
+            }
             return acc;
           },
           {},
         ),
-      ) as Array<[string, { count: number; tokens: number; cost: number }]>,
+      ) as Array<[string, { count: number; tokens: number; cost: number; breakdown: Record<string, number> }]>,
     [calls],
   );
 
@@ -252,13 +259,13 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
                 label="Total cost"
                 value={totalCost > 0 ? (
                   <RunCostBreakdownTooltip calls={calls}>
-                    <span className="font-mono text-sm tabular-nums text-foreground">{formatCost(totalCost)}</span>
+                    <span className="font-mono text-sm tabular-nums text-foreground">{formatCostMicro(totalCost)}</span>
                   </RunCostBreakdownTooltip>
                 ) : "—"}
               />
               <MetricRow
                 label="Avg / call"
-                value={calls.length > 0 ? formatCost(totalCost / calls.length) : "—"}
+                value={calls.length > 0 ? formatCostMicro(totalCost / calls.length) : "—"}
               />
               <MetricRow
                 label="Avg latency"
@@ -274,14 +281,17 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
                   key={model}
                   className="flex items-center justify-between gap-4 border-b border-border/60 py-3 last:border-b-0"
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="truncate font-mono text-xs text-foreground">{model}</div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {stats.count} call{stats.count === 1 ? "" : "s"}
                     </div>
+                    {Object.keys(stats.breakdown).length > 0 && (
+                      <DimensionMixBar breakdown={stats.breakdown} />
+                    )}
                   </div>
                   <div className="text-right font-mono text-xs tabular-nums text-muted-foreground">
-                    <div>{stats.cost > 0 ? formatCost(stats.cost) : "—"}</div>
+                    <div>{stats.cost > 0 ? formatCostMicro(stats.cost) : "—"}</div>
                   </div>
                 </div>
               ))}

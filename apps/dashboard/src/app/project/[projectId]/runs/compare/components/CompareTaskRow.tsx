@@ -14,7 +14,7 @@ import {
   type CheckResult,
 } from "@/lib/agent-task-api";
 import { cn } from "@/lib/utils";
-import { formatDuration, runDurationMs, usdFormat } from "@/lib/format";
+import { formatDuration, runDurationMs, formatCostMicro } from "@/lib/format";
 import { extractJudgeReasoning } from "@/lib/judge-reasoning";
 import { extractCheckBlock } from "@/lib/extract-check-block";
 import {
@@ -605,8 +605,8 @@ function CheckDiff({
                   label="cost"
                   leftValue={leftCost}
                   rightValue={rightCost}
-                  formatLeft={leftCost != null ? usdFormat(leftCost) : "—"}
-                  formatRight={rightCost != null ? usdFormat(rightCost) : "—"}
+                  formatLeft={leftCost != null ? formatCostMicro(leftCost) : "\u2014"}
+                  formatRight={rightCost != null ? formatCostMicro(rightCost) : "\u2014"}
                 />
               )}
               {(leftTime != null || rightTime != null) && (

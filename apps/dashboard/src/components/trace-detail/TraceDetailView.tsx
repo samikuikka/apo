@@ -8,10 +8,11 @@ import { CallDetailTabs } from "./CallDetailTabs";
 import { TraceDetailTabs } from "./TraceDetailTabs";
 import { CopyIdPopover } from "./CopyIdPopover";
 import { ScoreInputPanel } from "./ScoreInputPanel";
-import { CallCostBreakdownTooltip, RunCostBreakdownTooltip } from "./CostBreakdownTooltip";
+import { CallCostBreakdownTooltip, RunCostBreakdownTooltip } from "./DimensionBreakdownTooltip";
 import { DiffView } from "./DiffView";
 import { CorrectionDialog } from "./CorrectionDialog";
 import { saveCorrection } from "@/lib/traces-api";
+import { formatCostMicro } from "@/lib/format";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { toggleBookmark } from "@/lib/traces-api";
@@ -80,7 +81,7 @@ function TraceDetailRootView({
   const totalTokens = run.calls.reduce((sum: number, c: any) => sum + (c.total_tokens || 0), 0);
   const summaryParts = formatMetaParts([
     run.run.duration_ms != null ? formatDuration(run.run.duration_ms) : null,
-    totalCost > 0 ? `$${totalCost.toFixed(4)}` : null,
+    totalCost > 0 ? formatCostMicro(totalCost) : null,
     totalTokens > 0 ? formatTokenTotal(totalTokens) : null,
     `${run.run.call_count} calls`,
     run.run.project ? `project ${run.run.project}` : null,
@@ -251,7 +252,7 @@ function CallDetailView({ call, readOnly = false }: { call: any; readOnly?: bool
     call.latency_ms != null ? `${call.latency_ms.toFixed(0)}ms` : null,
     call.time_to_first_token_ms != null ? `TTFT ${call.time_to_first_token_ms.toFixed(0)}ms` : null,
     call.total_tokens != null && call.total_tokens > 0 ? formatTokenTotal(call.total_tokens) : null,
-    call.cost != null ? `$${call.cost.toFixed(6)}` : null,
+    call.cost != null ? formatCostMicro(call.cost) : null,
     eventType ? formatEventLabel(eventType) : null,
   ]);
 
@@ -272,7 +273,7 @@ function CallDetailView({ call, readOnly = false }: { call: any; readOnly?: bool
 
   const cumulativeParts = hasDescendants ? formatMetaParts([
     cumulative.total_tokens > 0 ? `\u03A3 ${formatTokenTotal(cumulative.total_tokens)}` : null,
-    cumulative.cost > 0 ? `\u03A3 $${cumulative.cost.toFixed(4)}` : null,
+    cumulative.cost > 0 ? `\u03A3 ${formatCostMicro(cumulative.cost)}` : null,
     `${cumulative.descendant_count} descendant${cumulative.descendant_count === 1 ? "" : "s"}`,
   ]) : [];
 
@@ -325,7 +326,14 @@ function CallDetailView({ call, readOnly = false }: { call: any; readOnly?: bool
             );
             if (isCost && call.cost != null) {
               return (
-                <CallCostBreakdownTooltip key={part} call={call}>
+                <CallCostBreakdownTooltip
+                  key={part}
+                  breakdown={call.cost_breakdown}
+                  rawUsage={call.raw_usage}
+                  modelName={call.model}
+                  provenance={call.cost_provenance}
+                  cost={call.cost}
+                >
                   {pill}
                 </CallCostBreakdownTooltip>
               );
@@ -481,7 +489,7 @@ function CallDetailView({ call, readOnly = false }: { call: any; readOnly?: bool
               <MetadataRow label="Latency" value={call.latency_ms != null ? `${call.latency_ms.toFixed(0)}ms` : "—"} />
               <MetadataRow label="TTFT" value={call.time_to_first_token_ms != null ? `${call.time_to_first_token_ms.toFixed(0)}ms` : "—"} />
               <MetadataRow label="Tokens" value={call.total_tokens != null && call.total_tokens > 0 ? (call.prompt_tokens != null || call.completion_tokens != null ? formatTokenBreakdown(call.prompt_tokens ?? 0, call.completion_tokens ?? 0) : formatTokenTotal(call.total_tokens)) : "\u2014"} />
-              <MetadataRow label="Cost" value={call.cost != null ? <CallCostBreakdownTooltip call={call}><span className="font-mono">{`$${call.cost.toFixed(6)}`}</span></CallCostBreakdownTooltip> : "—"} />
+              <MetadataRow label="Cost" value={call.cost != null ? <CallCostBreakdownTooltip breakdown={call.cost_breakdown} rawUsage={call.raw_usage} modelName={call.model} provenance={call.cost_provenance} cost={call.cost}><span className="font-mono">{formatCostMicro(call.cost)}</span></CallCostBreakdownTooltip> : "\u2014"} />
               {call.end_time ? <MetadataRow label="Ended" value={formatDate(call.end_time)} /> : null}
               {call.status_message ? <MetadataRow label="Status" value={<span className={call.level === "ERROR" ? "text-destructive font-medium" : ""}>{call.status_message}</span>} /> : null}
               {call.environment && call.environment !== "default" ? <MetadataRow label="Environment" value={<span className="inline-flex items-center border border-border/70 bg-muted/10 px-1.5 py-0.5 text-[11px]">{call.environment}</span>} /> : null}

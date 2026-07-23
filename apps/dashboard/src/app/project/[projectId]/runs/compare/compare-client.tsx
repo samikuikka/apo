@@ -16,7 +16,7 @@ import {
   type AgentTaskSummary,
 } from "@/lib/agent-task-api";
 import { cn } from "@/lib/utils";
-import { formatDuration, formatRelativeTime, runDurationMs, usdFormat } from "@/lib/format";
+import { formatDuration, formatRelativeTime, runDurationMs, formatCostMicro } from "@/lib/format";
 import { useUrlParamSet } from "@/hooks/use-url-state";
 import { conclusionStyle } from "@/components/run-outcome";
 
@@ -328,7 +328,7 @@ function BatchSlot({
             ) : null;
           })()}
           {batch.total_cost != null && batch.total_cost > 0 && (
-            <span>{usdFormat(batch.total_cost)}</span>
+            <span>{formatCostMicro(batch.total_cost)}</span>
           )}
         </div>
       </div>

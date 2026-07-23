@@ -43,6 +43,17 @@ export function usdFormat(value: number | null): string {
 
 export const formatCost = usdFormat;
 
+/**
+ * Format a micro-USD integer (SPEC-136 cost storage unit) as a USD string.
+ * Costs are stored as integers (micro-USD = USD * 1e6); divide by 1e6 first.
+ * Use this for call.cost / run.total_cost / breakdown values coming from the
+ * backend post-SPEC-136.
+ */
+export function formatCostMicro(microUsd: number | null | undefined): string {
+  if (microUsd == null) return "\u2014";
+  return usdFormat(microUsd / 1_000_000);
+}
+
 export function tokenFormat(value: number | null): string {
   if (value == null) return "\u2014";
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;

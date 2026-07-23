@@ -36,7 +36,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { parseUTC } from "@/lib/format";
+import { parseUTC, formatCostMicro } from "@/lib/format";
 
 import { useProjectId } from "@/lib/project-router";
 import { useClientNow } from "@/hooks/use-client-now";
@@ -777,7 +777,7 @@ function InlineTaskRunRow({ run, projectId, clientNow }: { run: AgentTaskRunSumm
         </div>
         {run.total_cost != null && run.total_cost > 0 && (
           <div className="mt-1 font-mono text-[11px] tabular-nums text-muted-foreground">
-            ${run.total_cost.toFixed(4)}
+            {formatCostMicro(run.total_cost)}
           </div>
         )}
       </TableCell>

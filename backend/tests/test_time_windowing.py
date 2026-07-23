@@ -1,4 +1,4 @@
-# pyright: reportUnusedImport=false, reportUnusedCallResult=false, reportAny=false
+# pyright: reportUnusedImport=false, reportUnusedCallResult=false, reportAny=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownLambdaType=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportCallIssue=false, reportAttributeAccessIssue=false, reportReturnType=false
 
 """SPEC-136 ticket 04: time-windowed era selection."""
 

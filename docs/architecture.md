@@ -118,6 +118,54 @@ The write path has explicit ownership boundaries:
 This separation is the intended extension point: add framework convention
 normalizers over canonical spans, not provider-specific ingestion endpoints.
 
+### Cost System (SPEC-136)
+
+Cost is data, not code. apo prices calls against a normalized
+`(model, tier, usage_key) → price` table and computes the per-dimension
+breakdown once at ingestion, freezing it on the call. The dashboard and CLI
+read stored breakdowns; there is no client-side pricing fetch or recompute.
+
+**Three tables** (`backend/apo/models/pricing.py`):
+- `models` — one row per (model era, project). Same `match_pattern` across
+  eras; `[start_date, end_date)` selects the era (time-windowed pricing).
+- `pricing_tiers` — a tier within a model. Exactly one default tier;
+  non-default tiers match on usage-only threshold conditions
+  (`{keys, operator, threshold}`, summing canonical keys).
+- `prices` — micro-USD per 1M tokens (INTEGER) for one `(model, tier, usage_key)`.
+
+**Six canonical usage keys** (`models/usage_keys.py`): `input`,
+`cache_read`, `cache_write_5m`, `cache_write_1h`, `output`, `reasoning`.
+Provider SDK aliases are mapped onto these by the normalizer.
+
+**Single normalizer** (`services/usage_normalization/`): maps each provider's
+raw usage attributes onto the canonical keys at ingestion, enforcing the OTel
+GenAI non-overlap invariant (cache/reasoning subtracted from input/output so
+families don't double-count). Per-provider resolvers: OpenAI, Anthropic,
+Bedrock, Gemini, plus a generic fallback. Provider detection is a multi-signal
+hierarchy (`providerMetadata` key-membership → `gen_ai.system` → model-name
+prefix → generic).
+
+**Single compute function** (`services/pricing/compute.py:compute_cost`): used
+by ingestion, re-pricing, and the match endpoint. Resolves era → tier → prices,
+then `breakdown[k] = round(price × tokens / 1e6)` per dimension (micro-USD int);
+`total = sum(breakdown)`. Provided SDK cost wins verbatim (provenance
+`provided`); otherwise computed (provenance `computed`).
+
+**Per-call storage**: `LoggedCallDB` carries the frozen `cost` (micro-USD int),
+`cost_breakdown` (JSON), `raw_usage` (JSON, the normalized map kept for
+re-pricing), the matched `model_id`/`tier_id`/`tier_name`, and `cost_provenance`.
+
+**Defaults ship as JSON** (`data/default-model-prices.json`): the sole source
+of truth for `__global__` pricing, re-applied idempotently on every startup
+(per-model `updated_at` exact-equality). Per-project overrides come via the API,
+which rejects `__global__` writes (409).
+
+**Re-pricing** (`services/reprice.py` + `apo reprice` CLI): an operator-only
+history rewrite that recomputes `computed`-provenance calls against current
+tiers from their stored `raw_usage`. Provided-cost and pre-migration calls are
+skipped and reported. Triggered via an admin endpoint using a kick-off + poll
+pattern (dodging the CLI's 15s HTTP timeout).
+
 ### Project Invitations (SPEC-127)
 
 Project admins and owners invite teammates by email without requiring the

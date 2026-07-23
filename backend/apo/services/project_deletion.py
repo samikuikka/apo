@@ -60,7 +60,7 @@ from ..models.db import (
     SessionDB,
     WebhookDB,
 )
-from ..models.pricing import ModelDefinitionDB
+from ..models.pricing import ModelRowDB
 
 
 def delete_project_data(
@@ -156,10 +156,12 @@ def delete_project_data(
     deleted["agent_task_schedules"] = _delete_by_column(
         session, AgentTaskScheduleDB, AgentTaskScheduleDB.project == project_id
     )
-    deleted["model_definitions"] = _delete_by_column(
+    # SPEC-136: per-project model pricing rows (never __global__; globals are
+    # owned by the bundled JSON). Cascading FKs remove the tiers/prices.
+    deleted["models"] = _delete_by_column(
         session,
-        ModelDefinitionDB,
-        ModelDefinitionDB.project == project_id,
+        ModelRowDB,
+        ModelRowDB.project == project_id,
     )
     if not keep_api_keys:
         deleted["api_keys"] = _delete_by_column(

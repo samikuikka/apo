@@ -23,7 +23,7 @@ import { TriggerInline } from "@/components/trigger-badge";
 import { TaskRunDetailBody } from "./task-run-detail-body";
 import { TaskRunAutoRefresh } from "@/components/agent-task-execution/task-run-auto-refresh";
 import { OutcomeSummary } from "@/components/run-outcome";
-import { formatTokenTotal } from "@/lib/format";
+import { formatTokenTotal, formatCostMicro } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -65,11 +65,6 @@ function formatDuration(start: string | null, end: string | null) {
   const mins = Math.floor(ms / 60000);
   const secs = Math.round((ms % 60000) / 1000);
   return `${mins}m ${secs}s`;
-}
-
-function formatCost(value: number | null | undefined) {
-  if (value == null) return "—";
-  return `$${value.toFixed(4)}`;
 }
 
 const STATUS_DOT: Record<string, { dot: string; text: string }> = {
@@ -237,7 +232,7 @@ export default async function TaskRunDetailPage({
               },
               {
                 icon: DollarSign,
-                value: formatCost(taskRun.total_cost),
+                value: formatCostMicro(taskRun.total_cost),
                 label: taskRun.total_tokens != null
                   ? formatTokenTotal(taskRun.total_tokens)
                   : "cost",

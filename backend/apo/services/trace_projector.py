@@ -455,8 +455,11 @@ def _apply_cost(session: Session, call: LoggedCallDB, span: OtlpSpanDB) -> None:
         and reported >= 0
         and not (isinstance(reported, bool))
     ):
-        call.provided_cost = float(reported)
-        call.cost = float(reported)
+        # SPEC-137 reports cost in USD; SPEC-136 stores micro-USD int.
+        micro = round(float(reported) * 1_000_000)
+        call.provided_cost = micro
+        call.cost = micro
+        call.cost_provenance = "provided"
         return
 
     if not call.model or call.observation_type != "GENERATION":

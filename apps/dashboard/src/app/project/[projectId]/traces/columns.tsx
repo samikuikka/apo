@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   type ColumnDef,
@@ -25,13 +24,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatInterval, formatCost, tokenFormat, formatRelativeTime } from "@/lib/format";
+import { formatInterval, formatCostMicro, tokenFormat, formatRelativeTime } from "@/lib/format";
 import { sortedMetric, heatFraction, heatColor } from "@/lib/heatmap";
-import {
-  fetchModelPricing,
-  matchModelPricing,
-  type ModelPricing,
-} from "@/lib/model-pricing";
 import type {
   TraceMetric,
   TraceSummary,
@@ -120,34 +114,12 @@ function LatencyCell({ ms, sorted }: { ms: number | null; sorted: number[] }) {
   );
 }
 
-const pricingCache: { data: ModelPricing[] | null; promise: Promise<ModelPricing[]> | null } = { data: null, promise: null };
-
-function getSharedPricing(): Promise<ModelPricing[]> {
-  if (pricingCache.data) return Promise.resolve(pricingCache.data);
-  if (!pricingCache.promise) {
-    pricingCache.promise = fetchModelPricing().then((list) => {
-      pricingCache.data = list;
-      return list;
-    });
-  }
-  return pricingCache.promise;
-}
-
 function UsageCell({ metrics, primaryModel, sortedCosts }: { metrics: TraceMetric[]; primaryModel?: string | null; sortedCosts: number[] }) {
   const prompt = getMetric(metrics, "prompt_tokens");
   const completion = getMetric(metrics, "completion_tokens");
   const total = getMetric(metrics, "total_tokens") ?? (prompt != null && completion != null ? prompt + completion : null);
+  // SPEC-136: cost is now a stored micro-USD int (no client-side pricing fetch).
   const cost = getMetric(metrics, "total_cost");
-  const [pricing, setPricing] = useState<ModelPricing | null>(null);
-
-  useEffect(() => {
-    if (!primaryModel || primaryModel === "unknown" || !cost || cost <= 0) return;
-    let cancelled = false;
-    getSharedPricing().then((list) => {
-      if (!cancelled) setPricing(matchModelPricing(primaryModel, list));
-    });
-    return () => { cancelled = true; };
-  }, [primaryModel, cost]);
 
   if (total == null && cost == null) return <span className="text-muted-foreground/50">{"\u2014"}</span>;
 
@@ -157,9 +129,6 @@ function UsageCell({ metrics, primaryModel, sortedCosts }: { metrics: TraceMetri
   if (completion != null) tokenParts.push(tokenFormat(completion));
   if (total != null) tokenParts.push(`(\u2211 ${tokenFormat(total)})`);
 
-  const hasBreakdown = pricing && cost != null && cost > 0;
-  const promptCost = hasBreakdown && prompt != null ? (prompt / 1_000_000) * pricing.input_price : null;
-  const completionCost = hasBreakdown && completion != null ? (completion / 1_000_000) * pricing.output_price : null;
   const costColor = cost != null && cost > 0 ? heatColor(heatFraction(cost, sortedCosts)) : undefined;
 
   return (
@@ -169,7 +138,7 @@ function UsageCell({ metrics, primaryModel, sortedCosts }: { metrics: TraceMetri
           {tokenParts.length > 0 ? tokenParts.join(" ") : null}
           {cost != null && cost > 0 && (
             <span style={costColor ? { color: costColor } : undefined}>
-              {tokenParts.length > 0 ? " " : ""}{"\u00b7"} {formatCost(cost)}
+              {tokenParts.length > 0 ? " " : ""}{"\u00b7"} {formatCostMicro(cost)}
             </span>
           )}
         </span>
@@ -180,23 +149,18 @@ function UsageCell({ metrics, primaryModel, sortedCosts }: { metrics: TraceMetri
           {prompt != null && (
             <div>
               Prompt: {tokenFormat(prompt)}
-              {promptCost != null && ` = ${formatCost(promptCost)}`}
             </div>
           )}
           {completion != null && (
             <div>
               Completion: {tokenFormat(completion)}
-              {completionCost != null && ` = ${formatCost(completionCost)}`}
             </div>
           )}
           {total != null && <div>Total: {tokenFormat(total)}</div>}
           {cost != null && cost > 0 && (
             <div className="border-t border-background/20 pt-0.5">
-              Cost: {formatCost(cost)}
+              Cost: {formatCostMicro(cost)}
             </div>
-          )}
-          {!pricing && primaryModel && cost != null && cost > 0 && (
-            <div className="text-background/60">Pricing not configured</div>
           )}
         </div>
       </TooltipContent>

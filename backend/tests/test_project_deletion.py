@@ -42,7 +42,7 @@ from apo.models.db import (
     UserDB,
     WebhookDB,
 )
-from apo.models.pricing import ModelDefinitionDB
+from apo.models.pricing import ModelRowDB
 from apo.services.project_memberships import create_owner_membership
 
 
@@ -217,9 +217,8 @@ def _seed_full_project(session: Session, project_id: str, owner_id: str) -> None
         )
     )
     session.add(
-        ModelDefinitionDB(
+        ModelRowDB(
             project=project_id,
-            model_name="gpt-4",
             match_pattern="gpt-4",
             provider="openai",
         )
@@ -358,10 +357,10 @@ def _dependent_counts(session: Session, project_id: str) -> dict[str, int]:
                 select(CommentDB).where(CommentDB.project_id == project_id)
             ).all()
         ),
-        "model_definitions": len(
+        "models": len(
             session.exec(
-                select(ModelDefinitionDB).where(
-                    ModelDefinitionDB.project == project_id
+                select(ModelRowDB).where(
+                    ModelRowDB.project == project_id
                 )
             ).all()
         ),

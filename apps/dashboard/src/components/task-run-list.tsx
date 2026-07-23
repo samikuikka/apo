@@ -6,6 +6,7 @@ import { type AgentTaskRunSummary } from "@/lib/agent-task-api";
 import { TraceHomeLink } from "@/components/trace-detail";
 import { TriggerBadge } from "@/components/trigger-badge";
 import { cn } from "@/lib/utils";
+import { formatCostMicro } from "@/lib/format";
 import {
   TASK_RUN_STATUS,
   type TaskRunStatus,
@@ -125,7 +126,7 @@ export function TaskRunRow({ run, projectId }: { run: AgentTaskRunSummary; proje
           </div>
           <div className="mt-1 inline-flex items-center justify-end gap-1 font-mono text-[12px] text-muted-foreground">
             <DollarSign className="h-3 w-3 text-muted-foreground" />
-            {run.total_cost != null && run.total_cost > 0 ? run.total_cost.toFixed(4) : "\u2014"}
+            {run.total_cost != null && run.total_cost > 0 ? formatCostMicro(run.total_cost) : "\u2014"}
           </div>
         </div>
 

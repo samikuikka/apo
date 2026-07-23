@@ -25,6 +25,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { formatCostMicro } from "@/lib/format";
 import { toast } from "sonner";
 
 import { useProjectId, useIsDemo } from "@/lib/project-router";
@@ -210,7 +211,7 @@ function TaskCard({
               <Stat icon={BarChart3} label="Runs" value={`${stats.total_runs}`} />
               <Stat icon={Clock} label="Avg time" value={formatDuration(stats.avg_duration_ms)} />
               {stats.avg_cost !== null && stats.avg_cost > 0 && (
-                <Stat icon={DollarSign} label="Avg cost" value={`$${stats.avg_cost.toFixed(4)}`} />
+                <Stat icon={DollarSign} label="Avg cost" value={formatCostMicro(stats.avg_cost)} />
               )}
               <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
                 <span className="text-muted-foreground/60">Last run</span>

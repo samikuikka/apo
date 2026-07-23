@@ -75,13 +75,17 @@ export interface LoggedCall {
   prompt_id?: string | null;
   prompt_version?: number | null;
 
-  // Cost breakdown
+  // Cost (SPEC-136): micro-USD int totals + per-call frozen storage.
   provided_cost?: number | null;
-  calculated_cost?: number | null;
+  cost_breakdown?: Record<string, number> | null;
+  raw_usage?: Record<string, number> | null;
+  matched_tier_id?: number | null;
+  matched_tier_name?: string | null;
+  cost_provenance?: "provided" | "computed" | null;
 
   // Model tracking
   provided_model_name?: string | null;
-  internal_model_id?: string | null;
+  internal_model_id?: number | null;
 
   // Tool details (for TOOL observation type)
   tool_name?: string | null;
