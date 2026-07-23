@@ -185,3 +185,91 @@ async def trigger_retention_cleanup(
     return {"status": "success", "deleted": summary}
 
 
+# ---------------------------------------------------------------------------
+# SPEC-136 ticket 12: re-pricing (CLI-driven history rewrite)
+# ---------------------------------------------------------------------------
+#
+# ``POST /v1/admin/reprice`` kicks off a background reprice job and returns a
+# job id immediately; ``GET /v1/admin/reprice/{job_id}`` polls status. The CLI
+# uses the existing kick-off-then-poll pattern (see task-run.ts) to avoid the
+# 15s HTTP timeout. Job state is in-memory: re-running is idempotent, so a
+# process death mid-job just means re-running the command.
+
+import threading
+import uuid
+
+from pydantic import BaseModel
+
+_reprice_jobs: dict[str, dict[str, object]] = {}
+
+
+class RepriceRequest(BaseModel):
+    project: str | None = None
+    model_id: int | None = None
+    since: str | None = None
+    until: str | None = None
+    dry_run: bool = False
+
+
+@router.post("/reprice")
+async def start_reprice(
+    request: Request,
+    body: RepriceRequest,
+    _: object = Depends(require_api_key_scope("full")),
+) -> dict[str, str]:
+    """Kick off a reprice job. Returns ``{job_id}`` immediately."""
+    if not verify_admin(request):
+        raise HTTPException(status_code=401, detail="Unauthorized: Admin access required")
+
+    job_id = uuid.uuid4().hex[:12]
+    _reprice_jobs[job_id] = {"status": "running", "summary": None, "error": None}
+
+    thread = threading.Thread(
+        target=_run_reprice_job,
+        args=(job_id, body),
+        daemon=True,
+        name=f"reprice-{job_id}",
+    )
+    thread.start()
+    return {"job_id": job_id}
+
+
+def _run_reprice_job(job_id: str, req: RepriceRequest) -> None:
+    from datetime import datetime as _dt
+
+    from sqlmodel import Session
+
+    from ..db import engine
+    from ..services.reprice import reprice_calls
+
+    try:
+        since = _dt.fromisoformat(req.since) if req.since else None
+        until = _dt.fromisoformat(req.until) if req.until else None
+        with Session(engine) as session:
+            summary = reprice_calls(
+                session,
+                project=req.project,
+                model_id=req.model_id,
+                since=since,
+                until=until,
+                dry_run=req.dry_run,
+            )
+        _reprice_jobs[job_id] = {"status": "done", "summary": summary, "error": None}
+    except Exception as exc:  # noqa: BLE001 - report any failure to the poller
+        _reprice_jobs[job_id] = {"status": "error", "summary": None, "error": str(exc)}
+
+
+@router.get("/reprice/{job_id}")
+async def get_reprice_status(
+    job_id: str,
+    request: Request,
+    _: object = Depends(require_api_key_scope("full")),
+) -> dict[str, object]:
+    """Poll a reprice job's status."""
+    if not verify_admin(request):
+        raise HTTPException(status_code=401, detail="Unauthorized: Admin access required")
+    if job_id not in _reprice_jobs:
+        raise HTTPException(status_code=404, detail="unknown reprice job")
+    return {"job_id": job_id, **_reprice_jobs[job_id]}
+
+

@@ -313,6 +313,25 @@ const commands: Record<string, CommandEntry> = {
     ],
     note: "Without --project, task ids resolve from local --dir. Requires backend auth.",
   },
+  reprice: {
+    handler: loadCommand("reprice"),
+    help: "Re-compute stored call costs against current pricing (history rewrite)",
+    options: [
+      ["--project <id>", "Scope to a project"],
+      ["--model-id <int>", "Scope to calls priced against a specific model row id"],
+      ["--since <datetime>", "ISO datetime lower bound on call start (inclusive)"],
+      ["--until <datetime>", "ISO datetime upper bound on call start (exclusive)"],
+      ["--dry-run", "Recompute without overwriting stored costs"],
+      ["--admin-key <key>", "Admin API key (or APO_ADMIN_KEY env)"],
+    ],
+    examples: [
+      "apo reprice",
+      "apo reprice --project my-proj --since 2026-01-01T00:00:00Z",
+      "apo reprice --model-id 3 --dry-run",
+    ],
+    note:
+      "Operator-only history rewrite (SPEC-136). Requires --admin-key (ADMIN_API_KEY on the backend). Provided-cost and pre-migration calls are skipped.",
+  },
 };
 
 function loadCommand(name: string): CommandHandler {
