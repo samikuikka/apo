@@ -95,6 +95,32 @@ function parseJudgeJson(raw: string): { pass?: boolean; reasoning?: string } {
   };
 }
 
+/**
+ * Per-prefix serialization. Checks run concurrently (flow-runner uses
+ * Promise.all), so without coordination N criteria judging the same
+ * deliverable would all dispatch against a cold cache and mostly miss. This
+ * chains calls that share a cached prefix: the first warms the provider's
+ * prompt cache and the rest dispatch only after it resolves (and hit it).
+ * Calls with different prefixes are independent and stay concurrent.
+ */
+const prefixQueues = new Map<string, Promise<unknown>>();
+
+function runWithSharedPrefix<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const prev = prefixQueues.get(key) ?? Promise.resolve();
+  // Run `task` once the previous same-prefix call settles, regardless of
+  // whether it succeeded — a failed warmer must not block its siblings.
+  const next = prev.then(task, task);
+  // Keep the chain alive through errors so one rejection can't poison the queue.
+  prefixQueues.set(
+    key,
+    next.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return next;
+}
+
 export async function callJudge(args: {
   values: unknown[];
   instruction: string;
@@ -104,91 +130,113 @@ export async function callJudge(args: {
 }): Promise<JudgeCallResult> {
   const baseURL = args.baseURL ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
   const apiKey = args.apiKey ?? process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY;
-  const startedAt = Date.now();
 
-  const userContent =
-    `Instruction:\n${args.instruction}\n\n` +
-    `Value${args.values.length > 1 ? "s" : ""} to evaluate:\n` +
-    formatJudgeValues(args.values);
+  // Structure the request so the (often huge) deliverable is a cacheable
+  // prefix and only the small per-criterion instruction varies. Many criteria
+  // judge the same deliverable; without a cache breakpoint the deliverable is
+  // re-billed in full on every call. cache_control is an Anthropic/Gemini
+  // extension that OpenRouter passes through, and is ignored harmlessly by
+  // providers without prompt caching. See issue #21.
+  const deliverableText = `Values to evaluate:\n${formatJudgeValues(args.values)}`;
+  const instructionText = `Instruction:\n${args.instruction}`;
+  const systemPromptText = `${JUDGE_SYSTEM_PROMPT}\n\n${deliverableText}`;
 
-  const response = await fetch(`${baseURL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model: args.model,
-      messages: [
-        { role: "system", content: JUDGE_SYSTEM_PROMPT },
-        { role: "user", content: userContent },
-      ],
-      temperature: 0,
-      response_format: { type: "json_object" },
-    }),
-  });
+  // The cached prefix is model + system blocks; the varying instruction lives
+  // in the user message, so it's excluded from the key.
+  const cacheKey = `${args.model}\u0000${deliverableText}`;
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`Judge API ${response.status}: ${body.slice(0, 200)}`);
-  }
+  return runWithSharedPrefix(cacheKey, async () => {
+    const startedAt = Date.now();
 
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
-  };
+    const response = await fetch(`${baseURL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: args.model,
+        messages: [
+          {
+            role: "system",
+            content: [
+              { type: "text", text: JUDGE_SYSTEM_PROMPT },
+              {
+                type: "text",
+                text: deliverableText,
+                cache_control: { type: "ephemeral" },
+              },
+            ],
+          },
+          { role: "user", content: instructionText },
+        ],
+        temperature: 0,
+        response_format: { type: "json_object" },
+      }),
+    });
 
-  const text = data.choices?.[0]?.message?.content ?? "";
-  const outputTokens = data.usage?.completion_tokens;
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`Judge API ${response.status}: ${body.slice(0, 200)}`);
+    }
 
-  // Guard: a response that is empty, OR that the provider reports as having
-  // generated zero output tokens, is a transient/provider failure — not a
-  // model verdict. This happens when a provider cuts a stream mid-generation
-  // and returns a stub like "[" with completion_tokens: 0. Treat it as a
-  // failure with a clear explanation rather than feeding garbage to the
-  // parser. (Only guard on tokens when the provider actually reported usage;
-  // absent usage means "unknown", not "zero".)
-  const isEmpty = !text.trim();
-  const reportedZeroTokens = data.usage !== undefined && outputTokens === 0;
-  if (isEmpty || reportedZeroTokens) {
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+
+    const text = data.choices?.[0]?.message?.content ?? "";
+    const outputTokens = data.usage?.completion_tokens;
+
+    // Guard: a response that is empty, OR that the provider reports as having
+    // generated zero output tokens, is a transient/provider failure — not a
+    // model verdict. This happens when a provider cuts a stream mid-generation
+    // and returns a stub like "[" with completion_tokens: 0. Treat it as a
+    // failure with a clear explanation rather than feeding garbage to the
+    // parser. (Only guard on tokens when the provider actually reported usage;
+    // absent usage means "unknown", not "zero".)
+    const isEmpty = !text.trim();
+    const reportedZeroTokens = data.usage !== undefined && outputTokens === 0;
+    if (isEmpty || reportedZeroTokens) {
+      return {
+        pass: false,
+        reasoning:
+          "Judge returned an empty or truncated response — likely a transient " +
+          "provider failure. The verdict is unknown, so this check is treated " +
+          "as a failure.",
+        judge: {
+          model: args.model,
+          prompt: { system: systemPromptText, user: instructionText },
+          response: text,
+          tokens: data.usage
+            ? { input: data.usage.prompt_tokens ?? 0, output: outputTokens ?? 0 }
+            : undefined,
+          latency_ms: Date.now() - startedAt,
+        },
+      };
+    }
+
+    // Models routinely wrap their JSON in markdown fences (```json … ```) or
+    // add prose around it despite the json_object response_format. Parse
+    // tolerantly so the verdict + reasoning aren't lost to a parse error:
+    // try the raw text, then strip fences, then extract the first {...}.
+    const parsed = parseJudgeJson(text);
+
     return {
-      pass: false,
-      reasoning:
-        "Judge returned an empty or truncated response — likely a transient " +
-        "provider failure. The verdict is unknown, so this check is treated " +
-        "as a failure.",
+      pass: parsed.pass === true,
+      reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
       judge: {
         model: args.model,
-        prompt: { system: JUDGE_SYSTEM_PROMPT, user: userContent },
+        prompt: { system: systemPromptText, user: instructionText },
         response: text,
         tokens: data.usage
-          ? { input: data.usage.prompt_tokens ?? 0, output: outputTokens ?? 0 }
+          ? {
+              input: data.usage.prompt_tokens ?? 0,
+              output: data.usage.completion_tokens ?? 0,
+            }
           : undefined,
         latency_ms: Date.now() - startedAt,
       },
     };
-  }
-
-  // Models routinely wrap their JSON in markdown fences (```json … ```) or
-  // add prose around it despite the json_object response_format. Parse
-  // tolerantly so the verdict + reasoning aren't lost to a parse error:
-  // try the raw text, then strip fences, then extract the first {...}.
-  const parsed = parseJudgeJson(text);
-
-  return {
-    pass: parsed.pass === true,
-    reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
-    judge: {
-      model: args.model,
-      prompt: { system: JUDGE_SYSTEM_PROMPT, user: userContent },
-      response: text,
-      tokens: data.usage
-        ? {
-            input: data.usage.prompt_tokens ?? 0,
-            output: data.usage.completion_tokens ?? 0,
-          }
-        : undefined,
-      latency_ms: Date.now() - startedAt,
-    },
-  };
+  });
 }

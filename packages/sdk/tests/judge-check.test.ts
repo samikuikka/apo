@@ -4,6 +4,7 @@ import {
   resetFlowChecks,
   runTraceChecks,
 } from "../src/agent-task/checks/flow-runner.ts";
+import { callJudge } from "../src/agent-task/checks/judge.ts";
 import type { TraceProjectionSnapshot } from "../src/agent-task/trace-projection/types.ts";
 
 // An empty TraceProjectionSnapshot — judge checks don't read any trace
@@ -275,6 +276,219 @@ describe("t.judge", () => {
     });
     const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
     expect(body.model).toBe("only/override");
+  });
+});
+
+describe("t.judge prompt caching", () => {
+  // Regression: the deliverable used to ride in the user message with no
+  // cache_control, so every criterion re-billed the whole (often huge)
+  // deliverable. It must now be a cacheable system prefix.
+  it("puts the deliverable in the system message with an ephemeral cache breakpoint", async () => {
+    const fetchMock = stubCapturingJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "ok" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("the big deliverable text", "PASS when correct");
+    });
+
+    await runTraceChecks({ snapshot: emptySnapshot, deliverables: {}, judgeConfig });
+
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+    const system = (body.messages as Array<{ role: string; content: unknown }>).find(
+      (m) => m.role === "system",
+    )!;
+
+    // System content is structured blocks (Anthropic-style), not a bare string,
+    // so a cache breakpoint can be attached to the deliverable.
+    expect(Array.isArray(system.content)).toBe(true);
+    const blocks = system.content as Array<{
+      type: string;
+      text: string;
+      cache_control?: { type: string };
+    }>;
+    const cached = blocks.find((b) => b.cache_control?.type === "ephemeral");
+    expect(cached).toBeDefined();
+    // The deliverable lands in the cached block; the instruction must not.
+    expect(cached!.text).toContain("the big deliverable text");
+    expect(cached!.text).not.toContain("PASS when correct");
+  });
+
+  it("keeps only the per-criterion instruction in the user message", async () => {
+    const fetchMock = stubCapturingJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "ok" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("deliverable payload", "PASS when the thing holds");
+    });
+
+    await runTraceChecks({ snapshot: emptySnapshot, deliverables: {}, judgeConfig });
+
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+    const user = (body.messages as Array<{ role: string; content: unknown }>).find(
+      (m) => m.role === "user",
+    )!;
+    const userText =
+      typeof user.content === "string"
+        ? user.content
+        : JSON.stringify(user.content);
+
+    expect(userText).toContain("PASS when the thing holds");
+    // The large deliverable must NOT be re-sent in the user message.
+    expect(userText).not.toContain("deliverable payload");
+  });
+
+  it("emits a byte-identical system prefix across criteria judging the same deliverable", async () => {
+    const fetchMock = stubCapturingJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "ok" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("shared deliverable", "criterion one");
+      await t.judge("shared deliverable", "criterion two");
+    });
+
+    await runTraceChecks({ snapshot: emptySnapshot, deliverables: {}, judgeConfig });
+
+    expect(fetchMock.mock.calls).toHaveLength(2);
+    const bodies = fetchMock.mock.calls.map((c) =>
+      JSON.parse((c[1] as RequestInit).body as string),
+    );
+    const systemOf = (b: { messages: Array<{ role: string }> }) =>
+      JSON.stringify(b.messages.find((m) => m.role === "system"));
+    const userTextOf = (b: {
+      messages: Array<{ role: string; content: unknown }>;
+    }) => {
+      const u = b.messages.find((m) => m.role === "user")!;
+      return typeof u.content === "string" ? u.content : JSON.stringify(u.content);
+    };
+
+    // Same deliverable => byte-identical system prefix => cache hit on call 2.
+    expect(systemOf(bodies[0]!)).toBe(systemOf(bodies[1]!));
+    // Only the per-criterion instruction differs.
+    expect(userTextOf(bodies[0]!)).not.toBe(userTextOf(bodies[1]!));
+  });
+
+  it("records the assembled system + user text in judge metadata", async () => {
+    stubJudgeResponse({ content: JSON.stringify({ pass: true, reasoning: "ok" }) });
+    defineCheck("quality", async (t) => {
+      await t.judge("payload here", "PASS when correct");
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+    });
+
+    // Metadata stays human-readable: system holds the deliverable, user the
+    // instruction — so the dashboard can still show what was sent.
+    expect(result?.judge?.prompt?.system).toContain("payload here");
+    expect(result?.judge?.prompt?.user).toContain("PASS when correct");
+  });
+});
+
+describe("callJudge prefix serialization", () => {
+  // Checks run concurrently (flow-runner uses Promise.all), so without
+  // serialization N criteria judging the same deliverable would all fire
+  // against a cold cache and mostly miss. Calls sharing a cached prefix must
+  // queue: the first warms the provider cache, the rest dispatch after it
+  // resolves and hit it.
+  const flush = () => new Promise<void>((r) => setTimeout(r, 0));
+
+  it("does not dispatch a sibling call until the shared-prefix warmer resolves", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    let fetchCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fetchCount += 1;
+        if (fetchCount === 1) await gate;
+        return Response.json({
+          choices: [{ message: { content: '{"pass":true,"reasoning":"ok"}' } }],
+        });
+      }),
+    );
+
+    const shared = ["shared-deliverable-body"];
+    const p1 = callJudge({ values: shared, instruction: "first", model: "m" });
+    await flush();
+
+    // The warmer is in-flight. A concurrent sibling sharing the prefix must
+    // NOT have dispatched yet.
+    const p2 = callJudge({ values: shared, instruction: "second", model: "m" });
+    await flush();
+    expect(fetchCount).toBe(1);
+
+    release();
+    await Promise.all([p1, p2]);
+
+    // Now the sibling dispatched and hit the warm cache.
+    expect(fetchCount).toBe(2);
+  });
+
+  it("runs calls with different deliverables concurrently (no false serialization)", async () => {
+    let releaseA!: () => void;
+    const gateA = new Promise<void>((r) => {
+      releaseA = r;
+    });
+    let fetchCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fetchCount += 1;
+        if (fetchCount === 1) await gateA;
+        return Response.json({
+          choices: [{ message: { content: '{"pass":true,"reasoning":"ok"}' } }],
+        });
+      }),
+    );
+
+    const pA = callJudge({ values: ["deliverable-A"], instruction: "x", model: "m" });
+    await flush();
+    const pB = callJudge({ values: ["deliverable-B"], instruction: "x", model: "m" });
+    await flush();
+
+    // Different cached prefix => independent => both dispatched concurrently.
+    expect(fetchCount).toBe(2);
+
+    releaseA();
+    await Promise.all([pA, pB]);
+  });
+
+  it("keeps the chain going even when the warmer call rejects", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse(init!.body as string);
+        // First call (warmer) fails hard; the sibling must still run.
+        if (JSON.stringify(body.messages).includes("warmer")) {
+          return new Response("boom", { status: 500 });
+        }
+        return Response.json({
+          choices: [{ message: { content: '{"pass":true,"reasoning":"ok"}' } }],
+        });
+      }),
+    );
+
+    const shared = ["shared-deliverable"];
+    // Attach the rejection handler synchronously so the warmer's rejected
+    // promise never floats unhandled while the sibling is set up.
+    const warmerErr = callJudge({
+      values: shared,
+      instruction: "warmer",
+      model: "m",
+    }).then(
+      () => new Error("expected warmer to reject"),
+      (e) => e as Error,
+    );
+    await flush();
+    const sibling = callJudge({ values: shared, instruction: "sibling", model: "m" });
+
+    const [err, result] = await Promise.all([warmerErr, sibling]);
+    expect((err as Error).message).toMatch(/Judge API 500/);
+    expect(result).toMatchObject({ pass: true });
   });
 });
 
