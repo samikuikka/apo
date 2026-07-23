@@ -9,22 +9,19 @@ and detail endpoints read from persisted inventory instead of doing a
 live filesystem scan on every request.
 """
 
+from collections.abc import Sequence
 from typing import cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+
 from sqlalchemy import desc
-from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, select
-from sqlmodel.sql.expression import SelectOfScalar
 
 from ..auth import verify_password
 from ..auth.rate_limit import LoginRateLimiter
 from ..db import get_session
-from ..db_helpers import _as_column
 from ..models.db import (
-    AgentTaskBatchRunDB,
-    AgentTaskRunDB,
     ProjectDB,
     ProjectTaskSourceDB,
     RunDB,
@@ -44,6 +41,11 @@ from ..models.schemas import (
     UpdateProjectTaskSourceRequest,
 )
 from ..routes.api_keys import _get_client_ip, mint_legacy_key
+from ..services.agent_task_stats import (
+    RunStatFields,
+    compute_run_stats,
+    load_run_stat_fields,
+)
 from ..services.content_policy import normalize_trace_content_policy
 from ..services.project_deletion import delete_project_data
 from ..services.project_memberships import (
@@ -519,31 +521,12 @@ def sync_project_task_source(
 # through the project's batch runs.
 
 
-_AGENT_TASK_RUN_STARTED_AT_COL: ColumnElement[object] = _as_column(
-    cast(object, AgentTaskRunDB.started_at)
-)
-
-
-def _apply_project_filter(
-    query: SelectOfScalar[AgentTaskRunDB],
-    project_id: str,
-) -> SelectOfScalar[AgentTaskRunDB]:
-    """Restrict a task-run query to runs belonging to ``project_id``."""
-    return query.join(AgentTaskBatchRunDB).where(
-        AgentTaskBatchRunDB.project == project_id
-    )
-
-
-def _compute_run_stats(
-    runs: list[AgentTaskRunDB],
-) -> AgentTaskRunStats:
+def _compute_run_stats(runs: Sequence[RunStatFields]) -> AgentTaskRunStats:
     """Aggregate a task's runs into a stats summary.
 
     Thin delegate to the shared ``agent_task_stats`` service so the
     project-scoped and discovery-scoped endpoints share one implementation.
     """
-    from ..services.agent_task_stats import compute_run_stats
-
     return compute_run_stats(runs)
 
 
@@ -551,28 +534,15 @@ def _load_runs_by_task(
     session: Session,
     project_id: str,
     task_ids: list[str],
-) -> dict[str, list[AgentTaskRunDB]]:
-    """Return task runs for ``task_ids`` scoped to ``project_id``.
+) -> dict[str, list[RunStatFields]]:
+    """Return the minimal run fields stats needs, grouped by task id.
 
-    Runs are returned in descending ``started_at`` order so the first
-    element is the most recent run (used by ``last_run_*`` stats).
+    Delegates to ``load_run_stat_fields`` which projects only the scalar
+    columns + ``checks_json`` aggregation reads — never the multi-MB
+    ``transcript_json`` / ``deliverables_json`` blobs that OOM-killed the
+    backend when the task list loaded full rows.
     """
-    if not task_ids:
-        return {}
-    query: SelectOfScalar[AgentTaskRunDB] = (
-        select(AgentTaskRunDB)
-        .where(
-            _as_column(cast(object, AgentTaskRunDB.task_id)).in_(task_ids),
-        )
-        .order_by(desc(_AGENT_TASK_RUN_STARTED_AT_COL))
-    )
-    query = _apply_project_filter(query, project_id)
-    runs = session.exec(query).all()
-
-    grouped: dict[str, list[AgentTaskRunDB]] = {}
-    for run in runs:
-        grouped.setdefault(run.task_id, []).append(run)
-    return grouped
+    return load_run_stat_fields(session, project_id, task_ids)
 
 
 @router.get(

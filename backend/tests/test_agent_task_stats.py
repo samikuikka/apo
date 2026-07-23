@@ -9,32 +9,31 @@ frontend's ``PassBar`` can rely on ``0`` meaning "show 0%", not "hide".
 
 from datetime import datetime, timedelta, timezone
 
-from apo.models.db import AgentTaskRunDB
-from apo.services.agent_task_stats import compute_run_stats
+from apo.services.agent_task_stats import RunStatFields, compute_run_stats
 
 _NOW = datetime(2026, 7, 18, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def _run(
     *,
-    id: str,
+    id: str,  # pyright: ignore[reportUnusedParameter] — readable call sites; not part of the projection
     status: str,
     pass_result: bool | None = None,
     started_at: datetime | None = _NOW,
     completed_at: datetime | None = _NOW,
     total_cost: float | None = None,
     checks: list[dict[str, object]] | None = None,
-) -> AgentTaskRunDB:
-    return AgentTaskRunDB(
-        id=id,
-        batch_run_id="batch-x",
-        task_id="some-task",
-        task_path="/tmp/some-task",
+) -> RunStatFields:
+    # ``compute_run_stats`` operates on the minimal ``RunStatFields``
+    # projection — it deliberately does not see the full DB row (no
+    # transcript_json / deliverables_json), which is what keeps the task
+    # list from OOM-killing the backend. Tests mirror that contract.
+    return RunStatFields(
         status=status,
-        pass_result=pass_result,
         started_at=started_at,
         completed_at=completed_at,
         total_cost=total_cost,
+        pass_result=pass_result,
         checks_json=checks,
     )
 

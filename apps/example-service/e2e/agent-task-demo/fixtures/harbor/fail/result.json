@@ -1,0 +1,19 @@
+{
+  "task_name": "terminal-bench/count-dataset-tokens",
+  "task_checksum": "0ab655881a4827d9ec8f9930d4c4c8827729b20c978c20ff9cc6317f90660b5c",
+  "agent_info": {
+    "name": "opencode",
+    "version": "1.18.4",
+    "model_info": { "name": "glm-5.2", "provider": "zai-coding-plan" }
+  },
+  "agent_result": {
+    "n_input_tokens": 95821,
+    "n_cache_tokens": 80112,
+    "n_output_tokens": 1840,
+    "cost_usd": null,
+    "rollout_details": null,
+    "metadata": null
+  },
+  "verifier_result": { "rewards": { "reward": 0 } },
+  "exception_info": null
+}

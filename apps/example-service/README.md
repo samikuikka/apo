@@ -112,6 +112,58 @@ demonstrates the target separation.
 
 The backend bundles this tree into its Docker image as `DEMO_TASK_ROOT`.
 
+### The `harbor` adapter — benchmark-backed evaluation (Terminal-Bench)
+
+`harbor-adapter.ts` is apo's first example that wraps an **external benchmark
+verifier** instead of authoring its own rubric. It runs
+`terminal-bench/count-dataset-tokens` (Terminal-Bench 2.0) via the Harbor CLI:
+Harbor owns the sandbox + official verifier, apo owns the Task Run, trace,
+artifacts, and the single gating Test — `official-terminal-bench-verifier`,
+which passes iff the official reward is `1`.
+
+The three-way verdict is the point of this example:
+
+| Harbor reward | Apo outcome |
+|---------------|-------------|
+| `1` | pass |
+| `0` | test failure (the agent ran, the verifier ran, the answer was wrong) |
+| missing / `NaN` / `Infinity` | execution error — never coerced to `0` |
+
+Trajectory facts are reported as **diagnostics only** and never gate the
+verdict, so apo's pass/fail is always identical to the benchmark's.
+
+**Fixture-driven tests (no Docker/network/creds):**
+
+```bash
+pnpm --filter @apo/example-service exec vitest run harbor
+```
+
+These drive the full apo pipeline (`runTaskDir`) against redacted pass/fail/
+malformed fixtures under `fixtures/harbor/`, proving the verdict matches the
+official reward exactly.
+
+**Opt-in real Docker smoke run** (requires Harbor CLI `0.20.0`, Docker, and a
+provider key for the selected agent):
+
+```bash
+# Pin the Harbor CLI to the version the adapter expects.
+harbor --version            # must print 0.20.0
+
+# Required: which Harbor agent + model to run. Optional: env/bin/jobs dir.
+export APO_HARBOR_AGENT=codex
+export APO_HARBOR_MODEL=gpt-5
+export APO_HARBOR_ENV=docker        # default: docker
+export APO_HARBOR_BIN=harbor        # default: harbor
+
+# Run the real benchmark task. apo spawns `harbor run` with an argv array
+# (never a shell), an isolated jobs dir, and an allow-listed environment.
+apo task run harbor/terminal-bench/count-dataset-tokens --dir e2e/agent-task-demo
+```
+
+Provider credentials are inherited through the explicit allow-list in
+`lib/harbor-command.ts` (`ENV_ALLOW_LIST`); they never appear in argv,
+deliverables, logs, or metadata.
+
 ## Development
 
 ```bash

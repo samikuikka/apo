@@ -47,7 +47,10 @@ from ..services.agent_task_projection import (
     to_batch_run_summary,
     to_task_run_summary,
 )
-from ..services.agent_task_stats import compute_run_stats
+from ..services.agent_task_stats import (
+    compute_run_stats,
+    load_run_stat_fields,
+)
 from ..services.demo_workspace import require_project_not_demo
 from ..services.project_task_sources import get_task_source_db
 from ..services.agent_task_runner import (
@@ -197,17 +200,7 @@ async def list_agent_tasks(
     if not task_ids:
         return summaries
 
-    runs_query: SelectOfScalar[AgentTaskRunDB] = (
-        select(AgentTaskRunDB)
-        .where(_as_column(cast(object, AgentTaskRunDB.task_id)).in_(task_ids))
-        .order_by(desc(_as_column(cast(object, AgentTaskRunDB.started_at))))
-    )
-    runs_query = _apply_project_filter_to_task_runs(runs_query, project)
-    all_runs = session.exec(runs_query).all()
-
-    runs_by_task: dict[str, list[AgentTaskRunDB]] = {}
-    for run in all_runs:
-        runs_by_task.setdefault(run.task_id, []).append(run)
+    runs_by_task = load_run_stat_fields(session, project, task_ids)
 
     for summary in summaries:
         task_runs = runs_by_task.get(summary.id, [])
