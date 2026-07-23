@@ -189,7 +189,7 @@ describe("runs show command", () => {
         deliverables_json: { memo: HUGE },
       });
 
-    it("previews huge received/deliverable in --json by default", async () => {
+    it("manifests huge received/deliverable in --json (no content dumped)", async () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse(bloatyRun()));
       const { logs, restore } = captureLog();
 
@@ -197,28 +197,13 @@ describe("runs show command", () => {
       restore();
 
       const out = logs.join("\n");
-      expect(out).toContain("20,000 chars");
-      expect(out).toContain("--full");
-      // The full deliverable body must not be present — values above the
-      // threshold are manifest-only (no content), so no long run of Z's.
-      expect(out).not.toContain("Z".repeat(10));
+      expect(out).toContain("20,000 chars — apo runs deliverable");
+      // The full deliverable body must not be present — manifest only.
+      // (A single "Z" survives in ISO timestamps, so check for a run of Z's.)
+      expect(out).not.toContain("Z".repeat(5));
     });
 
-    it("emits verbatim received/deliverable with --json --full", async () => {
-      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse(bloatyRun()));
-      const { logs, restore } = captureLog();
-
-      await run([FULL_ID, "--backend", "http://backend.test", "--json", "--full"]);
-      restore();
-
-      const out = logs.join("\n");
-      expect(out).not.toContain("--full⟩");
-      // The full value is present (appearances: received + deliverables_json).
-      const matches = out.match(/ZZZZZZZZZZ/g) ?? [];
-      expect(matches.length).toBeGreaterThan(0);
-    });
-
-    it("previews huge received in human output by default", async () => {
+    it("manifests huge received in human output by default", async () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse(bloatyRun()));
       const { logs, restore } = captureLog();
 
@@ -227,9 +212,8 @@ describe("runs show command", () => {
 
       const out = stripAnsi(logs.join("\n"));
       expect(out).toContain("memo omits non-compete analysis");
-      expect(out).toContain("20,000 chars");
-      expect(out).toContain("--full");
-      expect(out).not.toContain("Z".repeat(10));
+      expect(out).toContain("20,000 chars — apo runs deliverable");
+      expect(out).not.toContain("Z".repeat(5));
     });
   });
 

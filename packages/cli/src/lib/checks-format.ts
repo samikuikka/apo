@@ -34,15 +34,15 @@ export const NO_CHECKS_REGISTERED_MESSAGE =
  *
  * Set `verbose` to also render passing assertions and LLM-judge metadata.
  *
- * Set `full` to render assertion `received` values in full. By default large
- * received values (typically the full deliverable re-sent per criterion) are
- * previewed so a failed run stays readable — see issue #22.
+ * Large `received` values (typically the deliverable re-sent per criterion)
+ * are replaced by a one-line manifest pointing at `apo runs deliverable`,
+ * which fetches the content once instead of re-dumping it per check (#22).
  */
-export function formatChecks(checks: CheckResult[], verbose = false, full = false): string {
-  return checks.map((c) => formatCheck(c, verbose, full)).join("\n");
+export function formatChecks(checks: CheckResult[], verbose = false): string {
+  return checks.map((c) => formatCheck(c, verbose)).join("\n");
 }
 
-function formatCheck(check: CheckResult, verbose: boolean, full: boolean): string {
+function formatCheck(check: CheckResult, verbose: boolean): string {
   const lines: string[] = [];
   lines.push(`    ${passFail(check.pass)} ${check.id}`);
 
@@ -54,7 +54,7 @@ function formatCheck(check: CheckResult, verbose: boolean, full: boolean): strin
   const assertions = check.assertions ?? [];
   const shown = verbose ? assertions : assertions.filter((a) => !a.pass);
   for (const a of shown) {
-    lines.push(formatAssertion(a, full));
+    lines.push(formatAssertion(a));
   }
 
   // Check-level failure with no assertion breakdown (e.g. an LLM-judged check):
@@ -72,7 +72,7 @@ function formatCheck(check: CheckResult, verbose: boolean, full: boolean): strin
   return lines.join("\n");
 }
 
-function formatAssertion(a: CheckAssertionResult, full: boolean): string {
+function formatAssertion(a: CheckAssertionResult): string {
   const lines: string[] = [];
   const mark = a.pass ? green("✓") : red("✗");
   lines.push(`      ${mark} ${a.id}`);
@@ -90,9 +90,9 @@ function formatAssertion(a: CheckAssertionResult, full: boolean): string {
     : a.received != null ? JSON.stringify(a.received) : undefined;
   if (receivedStr != null) {
     // Issue #22: a judge `received` is often the entire deliverable (tens of
-    // KB). Preview it unless --full, so the concise reasoning stays visible.
-    const shown = full ? receivedStr : previewString(receivedStr, RECEIVED_PREVIEW_CHARS);
-    lines.push(red(`        + Received: ${shown}`));
+    // KB). Replace it with a manifest pointing at `apo runs deliverable`,
+    // which reads the content once rather than per check.
+    lines.push(red(`        + Received: ${previewString(receivedStr, RECEIVED_PREVIEW_CHARS)}`));
   }
   if (a.expected == null && a.received == null && a.reasoning) {
     lines.push(dim(`        ${a.reasoning}`));

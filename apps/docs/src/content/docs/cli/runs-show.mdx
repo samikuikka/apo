@@ -36,14 +36,14 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 ## Synopsis
 
 ```bash
-apo runs show [run-id] [--verbose] [--full] [--exit-status]
+apo runs show [run-id] [--verbose] [--exit-status]
 ```
 
 ## Description
 
 Shows a run's details. The argument is a **run id** (the output of `apo task run`), a unique prefix of one, or the literal `last` (the default) for the most recent run.
 
-By default, large per-check values — typically the deliverable re-sent inside every judged criterion's `received` — are shown as a one-line manifest (e.g. `+ Received: ⟨20,000 chars — use --full⟩`) instead of dumped in full. This keeps a failed run readable: the `reasoning` explains the failure, not a wall of deliverable text. Use `--full` to render values verbatim, or [`apo runs deliverable`](/cli/runs-deliverable/) to read a single deliverable's full content without re-rendering the whole run.
+Large per-check values — typically the deliverable re-sent inside every judged criterion's `received` — are shown as a one-line manifest (e.g. `+ Received: ⟨20,000 chars — apo runs deliverable⟩`) instead of dumped in full. This keeps a failed run readable: the `reasoning` explains the failure, not a wall of deliverable text, and it stops the same deliverable being re-billed per criterion. Read the full content with [`apo runs deliverable`](/cli/runs-deliverable/) — it fetches a deliverable **once**, not per check.
 
 ## Options
 
@@ -51,7 +51,6 @@ By default, large per-check values — typically the deliverable re-sent inside 
 |---|---|---|
 | `[run-id]` | `last` | Run id, unique prefix, or `last`. With no arg, resolves the latest run. |
 | `--verbose` | off | Show passing checks too (not just failures) and LLM-judge transcripts. |
-| `--full` | off | Render assertion `received` values + deliverables verbatim. Default previews them as a manifest. |
 | `--exit-status` | off | Exit non-zero if the run failed (for scripting). |
 | `--task <id>` | — | When using `last`, scope to the latest run of this task. |
 
@@ -103,9 +102,6 @@ apo runs show --verbose
 
 # Scope "last" to a specific task
 apo runs show last --task extract-parties
-
-# Render full deliverable values inline (default previews them)
-apo runs show de89cab0 --full
 ```
 
 ## See also

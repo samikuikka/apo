@@ -201,7 +201,6 @@ const commands: Record<string, CommandEntry> = {
     ],
     options: [
       ["--verbose", "Show all assertions (incl. passing) + LLM judge responses"],
-      ["--full", "Render full assertion received values + deliverables verbatim (default previews them)"],
       ["--exit-status", "Exit non-zero if the run failed (for CI / scripting)"],
       ["--task <id>", "Filter 'last' to the latest run of a specific task"],
     ],
@@ -210,9 +209,8 @@ const commands: Record<string, CommandEntry> = {
       "apo runs show de89cab      # by prefix",
       "apo runs show last --task meeting-summary",
       "apo runs show de89cab --verbose --exit-status",
-      "apo runs show de89cab --full   # full deliverable values inline",
     ],
-    note: "Accepts run-id prefixes. Requires backend auth. By default large per-check values (typically the deliverable re-sent per criterion) are shown as a one-line manifest to keep output readable; use --full for verbatim, or `apo runs deliverable` to read a single deliverable.",
+    note: "Accepts run-id prefixes. Requires backend auth. Large per-check values (typically the deliverable re-sent per criterion) are shown as a one-line manifest; read full content with `apo runs deliverable <run-id> [name]` (fetches a deliverable once, not per check).",
   },
   "runs deliverable": {
     handler: loadCommand("runs-deliverable"),

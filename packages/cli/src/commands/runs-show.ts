@@ -40,7 +40,6 @@ export async function run(argv: string[]): Promise<number> {
   const config = resolveConfig(flags);
   const verbose = flags.verbose === true || flags.v === true;
   const exitStatus = flags["exit-status"] === true;
-  const full = flags.full === true;
   const taskFilter = getFlagValue(flags, "task");
 
   const input = positional[0];
@@ -114,22 +113,22 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   if (config.json) {
-    // Issue #22: by default, project the per-check deliverable bloat (assertion
-    // `received`, judge prompt/response, deliverable values) to short previews
-    // so `runs show --json` isn't multi-MB. --full emits everything verbatim.
-    const detail = full
-      ? runDetail
-      : {
-          ...runDetail,
-          checks_json: conciseChecks(runDetail.checks_json, false),
-          deliverables_json: conciseDeliverables(runDetail.deliverables_json, false),
-        };
+    // Issue #22: project the per-check deliverable bloat (assertion `received`,
+    // judge prompt/response, deliverable values) to one-line manifests so
+    // `runs show --json` isn't multi-MB. Read full content with
+    // `apo runs deliverable <run-id> [name]` — it fetches a deliverable once,
+    // not per check.
+    const detail = {
+      ...runDetail,
+      checks_json: conciseChecks(runDetail.checks_json),
+      deliverables_json: conciseDeliverables(runDetail.deliverables_json),
+    };
     console.log(formatJson(detail));
   } else {
     if (showedLatest) {
       console.log(dim("(latest run)"));
     }
-    printRunDetail(runDetail, verbose, full);
+    printRunDetail(runDetail, verbose);
   }
 
   if (exitStatus) {
@@ -138,7 +137,7 @@ export async function run(argv: string[]): Promise<number> {
   return 0;
 }
 
-function printRunDetail(run: RunDetail, verbose: boolean, full: boolean): void {
+function printRunDetail(run: RunDetail, verbose: boolean): void {
   console.log(bold(`Run: ${run.id}`));
   console.log(`  Task:     ${run.task_id}`);
   console.log(`  Path:     ${run.task_path}`);
@@ -171,7 +170,7 @@ function printRunDetail(run: RunDetail, verbose: boolean, full: boolean): void {
 
   if (run.checks_json && run.checks_json.length > 0) {
     console.log(bold("\n  Checks:"));
-    console.log(formatChecks(run.checks_json, verbose, full));
+    console.log(formatChecks(run.checks_json, verbose));
   } else if (run.pass_result === false) {
     // Issue #8: a failed run with no checks is a registration bug, not a real
     // failure. The backend also stores this on error_message (see backend
