@@ -153,6 +153,68 @@ describe("formatChecks", () => {
       expect(out).toContain("the value was wrong");
       expect(out).not.toContain(MINUS + " Expected");
     });
+
+    // Issue #22: a judge `received` is often the whole deliverable (tens of
+    // KB). It must be previewed by default so the concise reasoning stays the
+    // focus; --full restores the entire value.
+    it("previews a huge received value by default and keeps the reasoning", () => {
+      const huge = "X".repeat(20_000);
+      const checks: CheckResult[] = [
+        {
+          id: "non-compete",
+          pass: false,
+          reasoning: "memo omits non-compete analysis",
+          assertions: [
+            {
+              id: "judge",
+              pass: false,
+              reasoning: "The memorandum does not analyze non-compete enforceability.",
+              expected: "PASS when analyzed",
+              received: huge,
+            },
+          ],
+        },
+      ];
+      const out = stripAnsi(formatChecks(checks));
+
+      // Check-level reasoning (the concise, useful explanation) stays visible.
+      expect(out).toContain("memo omits non-compete analysis");
+      // Large received is a manifest line, no content body.
+      expect(out).toContain("20,000 chars");
+      expect(out).toContain("--full");
+      expect(out).not.toContain("X".repeat(10));
+    });
+
+    it("renders the full received value when full=true", () => {
+      const huge = "X".repeat(20_000);
+      const checks: CheckResult[] = [
+        {
+          id: "c",
+          pass: false,
+          reasoning: "r",
+          assertions: [{ id: "a", pass: false, reasoning: "r", received: huge }],
+        },
+      ];
+      const out = stripAnsi(formatChecks(checks, false, true));
+
+      expect(out).toContain(huge);
+      expect(out).not.toContain("--full");
+    });
+
+    it("leaves small received values unchanged (no truncation marker)", () => {
+      const checks: CheckResult[] = [
+        {
+          id: "c",
+          pass: false,
+          reasoning: "r",
+          assertions: [{ id: "a", pass: false, reasoning: "r", received: "0" }],
+        },
+      ];
+      const out = stripAnsi(formatChecks(checks));
+
+      expect(out).toContain("+ Received: 0");
+      expect(out).not.toContain("--full");
+    });
   });
 
   describe("checks without assertions", () => {

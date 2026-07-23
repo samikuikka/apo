@@ -2,9 +2,10 @@ import { parseArgs, getFlagValue } from "../lib/args.ts";
 import { resolveConfig } from "../lib/config.ts";
 import { bold, dim, formatCost, formatJson, formatTime, passFail } from "../lib/format.ts";
 import { apiGet } from "../lib/api.ts";
-import { findByPrefix } from "../lib/prefix.ts";
 import type { CheckResult } from "../lib/agent-task-types.ts";
 import { formatChecks, NO_CHECKS_REGISTERED_MESSAGE } from "../lib/checks-format.ts";
+import { conciseChecks, conciseDeliverables } from "../lib/runs-truncate.ts";
+import { resolveRunIdByPrefix, resolveLatestRunId } from "../lib/runs-resolve.ts";
 
 type RunDetail = {
   id: string;
@@ -39,6 +40,7 @@ export async function run(argv: string[]): Promise<number> {
   const config = resolveConfig(flags);
   const verbose = flags.verbose === true || flags.v === true;
   const exitStatus = flags["exit-status"] === true;
+  const full = flags.full === true;
   const taskFilter = getFlagValue(flags, "task");
 
   const input = positional[0];
@@ -112,12 +114,22 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   if (config.json) {
-    console.log(formatJson(runDetail));
+    // Issue #22: by default, project the per-check deliverable bloat (assertion
+    // `received`, judge prompt/response, deliverable values) to short previews
+    // so `runs show --json` isn't multi-MB. --full emits everything verbatim.
+    const detail = full
+      ? runDetail
+      : {
+          ...runDetail,
+          checks_json: conciseChecks(runDetail.checks_json, false),
+          deliverables_json: conciseDeliverables(runDetail.deliverables_json, false),
+        };
+    console.log(formatJson(detail));
   } else {
     if (showedLatest) {
       console.log(dim("(latest run)"));
     }
-    printRunDetail(runDetail, verbose);
+    printRunDetail(runDetail, verbose, full);
   }
 
   if (exitStatus) {
@@ -126,56 +138,7 @@ export async function run(argv: string[]): Promise<number> {
   return 0;
 }
 
-async function resolveRunIdByPrefix(
-  backendUrl: string,
-  prefix: string,
-  config: ReturnType<typeof resolveConfig>,
-): Promise<string> {
-  const params: Record<string, string> = {};
-  if (config.projectId) params.project = config.projectId;
-
-  const runs = await apiGet<Array<{ id: string }>>(
-    backendUrl,
-    "/v1/agent-task-runs",
-    params,
-    config,
-  );
-  const result = findByPrefix(runs, prefix, (r) => r.id);
-  if (result.status === "none") {
-    throw new Error(`Backend error 404: {"detail":"Run not found"}`);
-  }
-  if (result.status === "ambiguous") {
-    throw new Error(
-      `Run ID prefix "${prefix}" matches multiple runs: ${result.items
-        .map((r) => r.id)
-        .join(", ")}`,
-    );
-  }
-  return result.item.id;
-}
-
-async function resolveLatestRunId(
-  backendUrl: string,
-  config: ReturnType<typeof resolveConfig>,
-  taskFilter?: string,
-): Promise<string> {
-  const params: Record<string, string> = { limit: "1" };
-  if (config.projectId) params.project = config.projectId;
-  if (taskFilter) params.task_id = taskFilter;
-
-  const runs = await apiGet<Array<{ id: string }>>(
-    backendUrl,
-    "/v1/agent-task-runs",
-    params,
-    config,
-  );
-  if (runs.length === 0) {
-    throw new Error("NO_RUNS");
-  }
-  return runs[0].id;
-}
-
-function printRunDetail(run: RunDetail, verbose: boolean): void {
+function printRunDetail(run: RunDetail, verbose: boolean, full: boolean): void {
   console.log(bold(`Run: ${run.id}`));
   console.log(`  Task:     ${run.task_id}`);
   console.log(`  Path:     ${run.task_path}`);
@@ -208,7 +171,7 @@ function printRunDetail(run: RunDetail, verbose: boolean): void {
 
   if (run.checks_json && run.checks_json.length > 0) {
     console.log(bold("\n  Checks:"));
-    console.log(formatChecks(run.checks_json, verbose));
+    console.log(formatChecks(run.checks_json, verbose, full));
   } else if (run.pass_result === false) {
     // Issue #8: a failed run with no checks is a registration bug, not a real
     // failure. The backend also stores this on error_message (see backend

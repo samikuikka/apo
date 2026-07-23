@@ -108,6 +108,7 @@ export default defineConfig({
 						items: [
 							{ label: 'runs list', slug: 'cli/runs-list' },
 							{ label: 'runs show', slug: 'cli/runs-show' },
+							{ label: 'runs deliverable', slug: 'cli/runs-deliverable' },
 						],
 					},
 				{

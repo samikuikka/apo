@@ -162,6 +162,77 @@ describe("runs show command", () => {
     expect(out).toContain('"json-task"');
   });
 
+  // Issue #22: by default the per-check deliverable bloat (assertion
+  // `received`, judge prompt/response, deliverable values) is previewed so
+  // `runs show --json` isn't multi-MB; --full restores verbatim output.
+  describe("deliverable bloat projection (#22)", () => {
+    const HUGE = "Z".repeat(20_000);
+    const bloatyRun = () =>
+      makeRun({
+        checks_json: [
+          {
+            id: "non-compete",
+            pass: false,
+            reasoning: "memo omits non-compete analysis",
+            assertions: [
+              {
+                id: "judge",
+                pass: false,
+                reasoning: "no analysis",
+                expected: "PASS when analyzed",
+                received: HUGE,
+                judge: { prompt: { system: "SYS\n" + HUGE }, response: "ok" },
+              },
+            ],
+          },
+        ],
+        deliverables_json: { memo: HUGE },
+      });
+
+    it("previews huge received/deliverable in --json by default", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse(bloatyRun()));
+      const { logs, restore } = captureLog();
+
+      await run([FULL_ID, "--backend", "http://backend.test", "--json"]);
+      restore();
+
+      const out = logs.join("\n");
+      expect(out).toContain("20,000 chars");
+      expect(out).toContain("--full");
+      // The full deliverable body must not be present — values above the
+      // threshold are manifest-only (no content), so no long run of Z's.
+      expect(out).not.toContain("Z".repeat(10));
+    });
+
+    it("emits verbatim received/deliverable with --json --full", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse(bloatyRun()));
+      const { logs, restore } = captureLog();
+
+      await run([FULL_ID, "--backend", "http://backend.test", "--json", "--full"]);
+      restore();
+
+      const out = logs.join("\n");
+      expect(out).not.toContain("--full⟩");
+      // The full value is present (appearances: received + deliverables_json).
+      const matches = out.match(/ZZZZZZZZZZ/g) ?? [];
+      expect(matches.length).toBeGreaterThan(0);
+    });
+
+    it("previews huge received in human output by default", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse(bloatyRun()));
+      const { logs, restore } = captureLog();
+
+      await run([FULL_ID, "--backend", "http://backend.test"]);
+      restore();
+
+      const out = stripAnsi(logs.join("\n"));
+      expect(out).toContain("memo omits non-compete analysis");
+      expect(out).toContain("20,000 chars");
+      expect(out).toContain("--full");
+      expect(out).not.toContain("Z".repeat(10));
+    });
+  });
+
   it("returns exit code 2 when run not found (404)", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse({ detail: "not found" }, 404),

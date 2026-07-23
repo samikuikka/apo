@@ -1,0 +1,86 @@
+---
+title: "apo runs deliverable"
+description: "Read a run's deliverables — a manifest list, or one deliverable's full content."
+---
+
+import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
+
+`apo runs deliverable` reads a run's deliverables without re-rendering the whole run. It's the counterpart to [`apo runs show`](/cli/runs-show/): `runs show` keeps large per-check values as a one-line manifest so a failed run stays readable, and this command is how you fetch the actual content when you need it.
+
+## Synopsis
+
+```bash
+apo runs deliverable <run-id> [name]
+```
+
+## Description
+
+The first argument is a **run id**, a unique prefix, or `last` (the most recent run). The optional second argument is a **deliverable name**.
+
+- **No name** — print a manifest of every deliverable: its name, type, and size. Nothing large is dumped.
+- **With a name** — print that deliverable's full content (strings as-is, structured values as pretty JSON).
+
+## Arguments
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `<run-id>` | yes | Run id, unique prefix, or `last`. |
+| `[name]` | no | Deliverable name. Omit to list all deliverables as a manifest. |
+
+## Options
+
+| Option | Default | Purpose |
+|---|---|---|
+| `--task <id>` | — | When using `last`, scope to the latest run of this task. |
+
+Supports the global `--json` flag.
+
+## Example
+
+List every deliverable as a manifest:
+
+```bash
+apo runs deliverable de89cab0
+```
+
+<TerminalOutput
+  lines={[
+    { text: "Deliverables for run de89cab0:" },
+    { text: "  memorandum  string  20,000 chars" },
+    { text: "  summary     string     342 chars" },
+    { text: "  stats       object       4 keys" },
+    { text: "" },
+    { text: "Read one: apo runs deliverable <run-id> <name>" },
+  ]}
+/>
+
+Read one deliverable's full content:
+
+```bash
+apo runs deliverable de89cab0 memorandum
+```
+
+Machine-readable manifest for scripting:
+
+```bash
+apo runs deliverable de89cab0 --json
+```
+
+```json
+{
+  "memorandum": { "type": "string", "chars": 20000 },
+  "summary": { "type": "string", "chars": 342 }
+}
+```
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Manifest printed, or the named deliverable's content printed. Also `0` when the run simply has no deliverables. |
+| `2` | Run not found, connection failure, or the named deliverable doesn't exist (available names are listed). |
+
+## See also
+
+- [`apo runs show`](/cli/runs-show/) — the run verdict and per-test breakdown (deliverable values shown as manifests by default).
+- [`apo task run`](/cli/task-run/) — produce a run whose deliverables you want to read.
