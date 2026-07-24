@@ -54,7 +54,7 @@ export function TaskRunRow({ run, projectId }: { run: AgentTaskRunSummary; proje
         }
       }}
     >
-      <div className="grid grid-cols-1 items-center gap-3 md:grid-cols-[minmax(0,2fr)_minmax(9rem,1.5fr)_auto_auto_auto] md:gap-6">
+      <div className="grid grid-cols-1 items-center gap-3 md:grid-cols-[1fr_auto_auto_auto_auto] md:gap-6">
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
             <span className={cn("h-2 w-2 shrink-0 rounded-full", statusConfig.dot)} aria-hidden />
@@ -89,11 +89,9 @@ export function TaskRunRow({ run, projectId }: { run: AgentTaskRunSummary; proje
           </div>
         </div>
 
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0">
-            <TriggerBadge trigger={run.trigger} />
-          </div>
-          <span className="shrink-0 font-mono text-[12px] text-muted-foreground">{run.batch_run_id.slice(0, 8)}</span>
+        <div className="flex w-36 items-center gap-2">
+          <TriggerBadge trigger={run.trigger} />
+          <span className="truncate font-mono text-[12px] text-muted-foreground">{run.batch_run_id.slice(0, 8)}</span>
         </div>
 
         <div className="w-32 text-right">
@@ -148,9 +146,9 @@ export function TaskRunRow({ run, projectId }: { run: AgentTaskRunSummary; proje
 export function TaskRunListHeader() {
   return (
     <div className="sticky top-0 z-10 hidden border-b border-border bg-background/95 px-6 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground backdrop-blur md:block">
-      <div className="grid grid-cols-[minmax(0,2fr)_minmax(9rem,1.5fr)_auto_auto_auto] items-center gap-6">
+      <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-6">
         <span>Task run</span>
-        <span>Trigger · Batch</span>
+        <span className="w-36">Trigger · Batch</span>
         <span className="w-32 text-right">Judges</span>
         <span className="w-28 text-right">Duration · Cost</span>
         <span className="w-36 text-right">Started</span>
