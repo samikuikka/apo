@@ -34,6 +34,7 @@ function captureFetch(
   const listCalls: FetchCall[] = [];
   const detailCalls: FetchCall[] = [];
   const pageQueue = [...pages];
+  let lastPage: ListPage | undefined;
   const mock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input: URL | RequestInfo, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     calls.push({ url, init });
@@ -51,10 +52,11 @@ function captureFetch(
 
     listCalls.push({ url, init });
     const next = pageQueue.shift();
-    if (!next) throw new Error(`captureFetch: list page queue underflow; last url: ${url}`);
-    return new Response(JSON.stringify(next.body ?? {}), {
-      status: next.status ?? 200,
-      headers: { "Content-Type": "application/json", ...next.headers },
+    if (next) lastPage = next;
+    const lp = lastPage ?? { status: 404, body: {} };
+    return new Response(JSON.stringify(lp.body ?? {}), {
+      status: lp.status ?? 200,
+      headers: { "Content-Type": "application/json", ...lp.headers },
     });
   });
   return { calls, listCalls, detailCalls, mock };
@@ -485,19 +487,24 @@ describe("pollLangfuseTrace", () => {
     withKeys();
   });
 
-  it("retries on empty with exponential backoff until observations appear", async () => {
-    const { listCalls } = captureFetch(
+  it("waits for existence then stability before fetching (issue #39)", async () => {
+    // The trace appears with 1 observation, then a second arrives. The poll
+    // must wait for the count to stabilize, not return on the first observation.
+    const { listCalls, detailCalls } = captureFetch(
       [
         { body: page([], { cursor: null }) },
         { body: page([], { cursor: null }) },
         { body: page([obsRow({ id: "a" })], { cursor: null }) },
+        { body: page([obsRow({ id: "a" }), obsRow({ id: "b" })], { cursor: null }) },
+        { body: page([obsRow({ id: "a" }), obsRow({ id: "b" })], { cursor: null }) },
+        { body: page([obsRow({ id: "a" }), obsRow({ id: "b" })], { cursor: null }) },
       ],
-      { a: detailBody({ id: "a" }) },
+      { a: detailBody({ id: "a" }), b: detailBody({ id: "b" }) },
     );
     const sleeps: number[] = [];
 
-    const graph = await pollLangfuseTrace(TRACE_ID, basicConfig(), {
-      totalDeadlineMs: 60_000,
+    const result = await pollLangfuseTrace(TRACE_ID, basicConfig(), {
+      totalDeadlineMs: 120_000,
       initialIntervalMs: 2_000,
       maxIntervalMs: 15_000,
       backoffFactor: 1.5,
@@ -505,20 +512,47 @@ describe("pollLangfuseTrace", () => {
       sleep: async (ms) => { sleeps.push(ms); },
     });
 
-    expect(graph.observations.map((o) => o.id)).toEqual(["a"]);
-    expect(listCalls).toHaveLength(3);
-    // Two backoffs before the successful third attempt: 2000 then 3000.
-    expect(sleeps).toEqual([2_000, 3_000]);
+    expect(result.graph.observations.map((o) => o.id)).toEqual(["a", "b"]);
+    expect(result.notices).toEqual([]);
+    // 6 count-only polls + 1 list in the final fetchLangfuseTrace.
+    expect(listCalls).toHaveLength(7);
+    // Details only fetched once, during the final fetchLangfuseTrace.
+    expect(detailCalls).toHaveLength(2);
+    // Existence phase uses backoff (2s, 3s), stability phase uses fixed 2s.
+    // (Additional sleeps after this come from detail hydration throttling.)
+    expect(sleeps.slice(0, 5)).toEqual([2_000, 3_000, 2_000, 2_000, 2_000]);
   });
 
-  it("throws LangfuseEmptyTraceError once the deadline elapses", async () => {
-    captureFetch([{ body: page([], { cursor: null }) }]);
-    let first = true;
-    const now = () => {
-      if (first) { first = false; return 0; }
-      return 10_000_000;
-    };
+  it("imports best-effort with a notice when the count never stabilizes before the deadline", async () => {
+    // The trace keeps growing every poll; the deadline expires before stability.
+    captureFetch(
+      [
+        { body: page([obsRow({ id: "a" })], { cursor: null }) },
+        { body: page([obsRow({ id: "a" }), obsRow({ id: "b" })], { cursor: null }) },
+        { body: page([obsRow({ id: "a" }), obsRow({ id: "b" }), obsRow({ id: "c" })], { cursor: null }) },
+      ],
+      { a: detailBody({ id: "a" }), b: detailBody({ id: "b" }), c: detailBody({ id: "c" }) },
+    );
+    let elapsed = 0;
 
+    const result = await pollLangfuseTrace(TRACE_ID, basicConfig(), {
+      totalDeadlineMs: 3_000,
+      initialIntervalMs: 2_000,
+      maxIntervalMs: 15_000,
+      backoffFactor: 1.5,
+      now: () => elapsed,
+      sleep: async (ms) => { elapsed += ms; },
+    });
+
+    expect(result.graph.observations.map((o) => o.id)).toEqual(["a", "b", "c"]);
+    expect(result.notices).toHaveLength(1);
+    expect(result.notices[0]).toMatch(/still growing/i);
+    expect(result.notices[0]).toMatch(/re-run/i);
+  });
+
+  it("throws LangfuseEmptyTraceError once the deadline elapses with no observations", async () => {
+    captureFetch([{ body: page([], { cursor: null }) }]);
+    let elapsed = 0;
     let caught: unknown;
     try {
       await pollLangfuseTrace(TRACE_ID, basicConfig(), {
@@ -526,8 +560,8 @@ describe("pollLangfuseTrace", () => {
         initialIntervalMs: 1_000,
         maxIntervalMs: 5_000,
         backoffFactor: 2,
-        now,
-        sleep: async () => {},
+        now: () => elapsed,
+        sleep: async (ms) => { elapsed += ms; },
       });
     } catch (error) {
       caught = error;
@@ -554,27 +588,49 @@ describe("pollLangfuseTrace", () => {
     expect(mock).toHaveBeenCalledTimes(1);
   });
 
-  it("clamps each backoff sleep to maxIntervalMs and the remaining time", async () => {
-    captureFetch(
+  it("does not hydrate details during polling — only counts list rows", async () => {
+    // Details are expensive (per-observation GETs). The poll loop must only
+    // paginate the LIST to count, never hydrate, until stability is confirmed.
+    const { detailCalls } = captureFetch(
       [
         { body: page([], { cursor: null }) },
-        { body: page([obsRow({ id: "obs-1" })], { cursor: null }) },
+        { body: page([obsRow({ id: "a" })], { cursor: null }) },
+        { body: page([obsRow({ id: "a" })], { cursor: null }) },
+        { body: page([obsRow({ id: "a" })], { cursor: null }) },
       ],
-      { "obs-1": detailBody({ id: "obs-1" }) },
+      { a: detailBody({ id: "a" }) },
     );
-    const sleeps: number[] = [];
 
-    await pollLangfuseTrace(TRACE_ID, basicConfig(), {
-      totalDeadlineMs: 500,
-      initialIntervalMs: 10_000,
-      maxIntervalMs: 8_000,
-      backoffFactor: 2,
-      now: () => 0,
-      sleep: async (ms) => { sleeps.push(ms); },
+    const result = await pollLangfuseTrace(TRACE_ID, basicConfig(), {
+      totalDeadlineMs: 60_000,
+      initialIntervalMs: 2_000,
+      maxIntervalMs: 15_000,
+      backoffFactor: 1.5,
+      now: () => 1_000_000,
+      sleep: async () => {},
     });
 
-    // remaining (500) is smaller than maxIntervalMs (8000) and the raw
-    // interval (10000), so the single sleep is clamped to 500.
+    expect(detailCalls).toHaveLength(1);
+    expect(result.graph.observations.map((o) => o.id)).toEqual(["a"]);
+  });
+
+  it("clamps existence-phase backoff to maxIntervalMs and remaining time", async () => {
+    captureFetch([{ body: page([], { cursor: null }) }]);
+    const sleeps: number[] = [];
+    let elapsed = 0;
+
+    await expect(
+      pollLangfuseTrace(TRACE_ID, basicConfig(), {
+        totalDeadlineMs: 500,
+        initialIntervalMs: 10_000,
+        maxIntervalMs: 8_000,
+        backoffFactor: 2,
+        now: () => elapsed,
+        sleep: async (ms) => { sleeps.push(ms); elapsed += ms; },
+      }),
+    ).rejects.toBeInstanceOf(LangfuseEmptyTraceError);
+
+    // remaining (500) is smaller than maxIntervalMs (8000) and interval (10000).
     expect(sleeps).toEqual([500]);
   });
 });

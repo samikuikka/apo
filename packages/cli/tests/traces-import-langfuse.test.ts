@@ -230,6 +230,7 @@ describe("apo traces import langfuse — happy path (scene 1)", () => {
     expect(parsed.spansRejected).toBe(0);
     expect(parsed.otlpBatchIds).toEqual(["batch-1"]);
     expect(parsed.projected).toBe(true);
+    expect(parsed.notices).toEqual([]);
   });
 });
 
@@ -459,8 +460,8 @@ describe("apo traces import langfuse — source not yet available (empty)", () =
   });
 });
 
-describe("apo traces import langfuse — --wait source polling", () => {
-  it("polls Langfuse until observations appear, then imports → exit 0", async () => {
+describe("apo traces import langfuse --wait source polling", () => {
+  it("polls Langfuse until count stabilizes, then imports → exit 0", async () => {
     const { run } = await import("../src/commands/traces-import-langfuse.ts");
     const { calls } = captureFetch({
       listPages: [
@@ -494,7 +495,9 @@ describe("apo traces import langfuse — --wait source polling", () => {
 
     expect(code).toBe(0);
     const lfCalls = calls.filter((c) => c.url.includes("/api/public/v2/observations"));
-    expect(lfCalls).toHaveLength(3);
+    // 2 empty polls + 3 stability polls (first sighting + 2 stable) + 1 final
+    // fetchLangfuseTrace list = 6 total list calls (issue #39 stability fix).
+    expect(lfCalls).toHaveLength(6);
     expect(out.lines.join("\n")).toContain(SOURCE_TRACE_ID);
   });
 

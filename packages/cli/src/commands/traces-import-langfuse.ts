@@ -250,12 +250,12 @@ function fetchSourceTrace(
   connector: LangfuseConnectorConfig,
   wait: WaitResolution,
   deps: LangfuseRunDeps,
-): Promise<LangfuseTraceGraph> {
+): Promise<{ graph: LangfuseTraceGraph; notices: string[] }> {
   if (wait.kind !== "ok" || wait.seconds <= 0) {
     return fetchLangfuseTrace(sourceTraceId, connector, {
       ...(deps.now ? { now: deps.now } : {}),
       ...(deps.sleep ? { sleep: deps.sleep } : {}),
-    });
+    }).then((graph) => ({ graph, notices: [] }));
   }
   const timing = deps.pollTiming ?? DEFAULT_LANGFUSE_POLL_TIMING;
   return pollLangfuseTrace(sourceTraceId, connector, {

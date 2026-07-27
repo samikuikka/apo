@@ -274,7 +274,7 @@ const commands: Record<string, CommandEntry> = {
     options: [
       ["--langfuse-host <url>", "Override LANGFUSE_HOST"],
       ["--max-observations <count>", "Safety ceiling (default 10000, range 1..50000)"],
-      ["--wait <seconds>", "Poll the source until observations appear (absorbs Langfuse ingestion lag)"],
+      ["--wait <seconds>", "Poll the source until the trace is fully ingested (waits for observation count to stabilize, not just the first span)"],
       ["--trace-id <apo-trace-id>", "Emit spans under this trace id instead of the namespaced hash (merge into an existing run trace; 32-hex W3C)"],
       ["--json", "Machine-readable LangfuseImportResult JSON"],
     ],
@@ -284,7 +284,7 @@ const commands: Record<string, CommandEntry> = {
       "apo traces import langfuse <id> --wait 120",
       "apo traces import langfuse <run-trace-id> --trace-id <run-trace-id>",
     ],
-    note: "Credentials are environment-only: LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY (required) and LANGFUSE_HOST (optional, defaults to https://cloud.langfuse.com). Keys never leave the CLI process. Exit codes: 0 = imported and visible; 75 = source trace not yet available / empty (retryable — Langfuse Cloud ingestion lags ~30-90s after a run; use --wait <seconds> or re-run); 2 = config / Langfuse hard read error / conversion / OTLP partial rejection / projection visibility failure. Use --trace-id to merge imported spans into an existing run trace when apo's traceparent was propagated into the agent runtime (the spans join the run's trace tree instead of forming an orphan). Native OTEL remains the preferred path when the agent can reach apo directly.",
+    note: "Credentials are environment-only: LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY (required) and LANGFUSE_HOST (optional, defaults to https://cloud.langfuse.com). Keys never leave the CLI process. --wait polls until the observation count stabilizes (consecutive polls agree), not just until the first span appears — this prevents importing partial traces on fast runs where Langfuse hasn't finished async ingestion (issue #39). If the deadline expires mid-stabilization, the trace is imported best-effort with a warning; re-running is safe and idempotent (deterministic span ids, no duplicates). Exit codes: 0 = imported and visible; 75 = source trace not yet available / empty (retryable); 2 = config / Langfuse hard read error / conversion / OTLP partial rejection / projection visibility failure. Use --trace-id to merge imported spans into an existing run trace when apo's traceparent was propagated into the agent runtime. Native OTEL remains the preferred path when the agent can reach apo directly.",
   },
   "batch list": {
     handler: loadCommand("batch-list"),
