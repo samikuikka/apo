@@ -132,24 +132,49 @@ def to_task_run_summary(
     )
 
 
+def derive_selection_query(
+    br: AgentTaskBatchRunDB, task_ids: Sequence[str]
+) -> dict[str, object] | None:
+    """The selection to project for a batch, derived when it stores none.
+
+    A stored ``selection_query`` is the batch's resolved identity and always
+    wins. Caller (CLI) batches created before that snapshot existed have none,
+    which leaves the Runs list nothing to name them by except their selection
+    type ("caller-task"). Their Task Runs still carry the canonical task ids,
+    so the read model reconstructs the selection from the children.
+    """
+    if br.selection_query is not None:
+        return br.selection_query
+    paths = list(dict.fromkeys(task_id for task_id in task_ids if task_id))
+    return {"task_paths": paths} if paths else None
+
+
+def child_task_ids(task_runs: Sequence[AgentTaskRunDB]) -> list[str]:
+    """Canonical task ids of a batch's children, in run order."""
+    return [tr.task_id for tr in sorted(task_runs, key=lambda tr: (tr.sequence_index, tr.id))]
+
+
 def to_batch_run_summary(
     br: AgentTaskBatchRunDB,
     total_cost: float | None = None,
     configuration: AgentTaskBatchRunConfigurationSummary | None = None,
+    derived_task_ids: Sequence[str] = (),
 ) -> AgentTaskBatchRunSummary:
     """Project a batch run DB row to its summary view model.
 
     ``configuration`` is the derived Run Configuration summary for the batch's
     children. The list endpoint builds it from one grouped query across the
     page's batch IDs (no per-batch N+1); when omitted the batch projects as
-    "unknown" configuration.
+    "unknown" configuration. ``derived_task_ids`` comes from that same query
+    and only fills a missing ``selection_query`` (see
+    ``derive_selection_query``).
     """
     trigger = parse_trigger(br.run_metadata)
     return AgentTaskBatchRunSummary(
         id=br.id,
         project=br.project,
         selection_type=br.selection_type,
-        selection_query=br.selection_query,
+        selection_query=derive_selection_query(br, derived_task_ids),
         task_root=br.task_root,
         grep=br.grep,
         environment=br.environment,
@@ -218,7 +243,7 @@ def to_batch_run_detail(
         id=br.id,
         project=br.project,
         selection_type=br.selection_type,
-        selection_query=br.selection_query,
+        selection_query=derive_selection_query(br, child_task_ids(task_runs)),
         task_root=br.task_root,
         grep=br.grep,
         environment=br.environment,

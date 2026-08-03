@@ -260,16 +260,82 @@ def test_batch_run_list_filter_matches_only_when_one_child_satisfies_all_dimensi
     assert ids == {"b-real"}
 
 
+def test_batch_list_backfills_task_selection_from_children(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """A batch with no stored selection projects one derived from its children.
+
+    Caller (CLI) batches created before the selection snapshot landed have
+    ``selection_query = None``, which makes the Runs list fall back to naming
+    them by selection type ("caller-task"). Their children still carry the
+    canonical task ids, so the read model derives the selection.
+    """
+    now = datetime.now(timezone.utc)
+    session.add_all(
+        [
+            _batch("b-caller", "proj-backfill", now, selection_type="caller-task"),
+            _batch("b-multi", "proj-backfill", now, selection_type="caller-task"),
+            _batch(
+                "b-stored",
+                "proj-backfill",
+                now,
+                selection_query={"task_paths": ["stored/selection"]},
+            ),
+            _batch("b-childless", "proj-backfill", now, selection_type="all"),
+        ]
+    )
+    session.add_all(
+        [
+            _run("c1", "b-caller", "chat/cost-inquiry", now),
+            _run("m1", "b-multi", "chat/cost-inquiry", now),
+            _run("m2", "b-multi", "template/styling-ultimate", now),
+            _run("s1", "b-stored", "chat/other-task", now),
+        ]
+    )
+    session.commit()
+
+    resp = client.get("/v1/agent-task-batch-runs", params={"project": "proj-backfill"})
+    assert resp.status_code == 200
+    by_id = {b["id"]: b for b in resp.json()["data"]}
+
+    assert by_id["b-caller"]["selection_query"] == {"task_paths": ["chat/cost-inquiry"]}
+    assert by_id["b-multi"]["selection_query"] == {
+        "task_paths": ["chat/cost-inquiry", "template/styling-ultimate"]
+    }
+    # A stored selection is the run's resolved identity — never overwritten.
+    assert by_id["b-stored"]["selection_query"] == {"task_paths": ["stored/selection"]}
+    # Nothing to derive from: stays null so the list keeps its own fallback.
+    assert by_id["b-childless"]["selection_query"] is None
+
+
+def test_batch_detail_backfills_task_selection_from_children(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """The detail read model derives the same selection as the list."""
+    now = datetime.now(timezone.utc)
+    session.add(_batch("b-detail", "proj-detail", now, selection_type="caller-task"))
+    session.add(_run("d1", "b-detail", "chat/cost-inquiry", now))
+    session.commit()
+
+    resp = client.get("/v1/agent-task-batch-runs/b-detail")
+    assert resp.status_code == 200
+    assert resp.json()["selection_query"] == {"task_paths": ["chat/cost-inquiry"]}
+
+
 def _batch(
     batch_id: str,
     project: str,
     created_at: datetime,
+    selection_type: str = "task",
+    selection_query: dict[str, object] | None = None,
 ) -> AgentTaskBatchRunDB:
     return AgentTaskBatchRunDB(
         id=batch_id,
         project=project,
-        selection_type="task",
-        selection_query=None,
+        selection_type=selection_type,
+        selection_query=selection_query,
         task_root="/tmp/tasks",
         environment="default",
         status="completed",

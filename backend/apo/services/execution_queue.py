@@ -87,6 +87,9 @@ def create_caller_batch_run(
         id=batch_id,
         project=project_id,
         selection_type="caller-task",
+        # Snapshot the resolved selection so the Batch can name itself by the
+        # Task that ran instead of falling back to its selection type.
+        selection_query={"task_paths": [task.task_id]},
         task_root=None,
         grep=None,
         environment=environment,

@@ -120,6 +120,29 @@ def test_caller_create_and_claim_then_run_lifecycle(
     assert batch is not None and batch.passed_tasks == 1 and batch.total_tasks == 1
 
 
+def test_caller_batch_snapshots_its_task_selection(
+    client: object, session: Session, auth_secret: str
+) -> None:
+    """A caller Batch records the Task it targets in ``selection_query``.
+
+    The Runs list names a Batch from ``selection_query.task_paths``; without
+    the snapshot every CLI Run renders as the raw selection type
+    ("caller-task") instead of the Task that ran.
+    """
+    _seed_project(session)
+    r = client.post("/v1/agent-task-batch-runs/caller", json=_caller_body())  # type: ignore[attr-defined]
+    assert r.status_code == 201, r.text
+
+    batch = session.get(AgentTaskBatchRunDB, r.json()["batch_run_id"])
+    assert batch is not None
+    assert batch.selection_query == {"task_paths": ["engineering/code-review"]}
+
+    listed = client.get(  # type: ignore[attr-defined]
+        "/v1/agent-task-batch-runs", params={"project": "proj-caller"}
+    ).json()["data"]
+    assert listed[0]["selection_query"] == {"task_paths": ["engineering/code-review"]}
+
+
 def test_caller_attempt_token_rejected_on_other_attempt(
     client: object, session: Session, auth_secret: str
 ) -> None:

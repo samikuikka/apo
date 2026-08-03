@@ -49,6 +49,7 @@ from ..services.agent_task_discovery import (
 )
 from ..services.agent_task_outcome import classify_run_outcome
 from ..services.agent_task_projection import (
+    child_task_ids,
     group_batch_configuration_summaries,
     parse_trigger,
     to_batch_run_detail,
@@ -649,6 +650,7 @@ async def list_agent_task_batch_runs(
     batch_ids = [br.id for br in batches]
     cost_by_batch: dict[str, float] = {}
     configuration_by_batch: dict[str, AgentTaskBatchRunConfigurationSummary] = {}
+    task_ids_by_batch: dict[str, list[str]] = {}
     if batch_ids:
         all_task_runs = session.exec(
             select(AgentTaskRunDB).where(col(AgentTaskRunDB.batch_run_id).in_(batch_ids))
@@ -658,6 +660,10 @@ async def list_agent_task_batch_runs(
                 tr.total_cost or 0.0
             )
         configuration_by_batch = group_batch_configuration_summaries(all_task_runs)
+        for batch_id in batch_ids:
+            task_ids_by_batch[batch_id] = child_task_ids(
+                [tr for tr in all_task_runs if tr.batch_run_id == batch_id]
+            )
 
     return PaginatedBatchRunSummary(
         data=[
@@ -665,6 +671,7 @@ async def list_agent_task_batch_runs(
                 br,
                 cost_by_batch.get(br.id),
                 configuration=configuration_by_batch.get(br.id),
+                derived_task_ids=task_ids_by_batch.get(br.id, ()),
             )
             for br in batches
         ],
