@@ -41,6 +41,9 @@ def isolated_engine(monkeypatch):
     import apo.db as db_module
 
     monkeypatch.setattr(db_module, "engine", engine)
+    # create_attempt_jwt fails closed when AUTH_SECRET is unset; the seeded
+    # attempt mints a JWT, so set a test secret (mirrors test_executor_auth).
+    monkeypatch.setattr("apo.services.executor_auth.AUTH_SECRET", "test-secret")
     return engine
 
 
