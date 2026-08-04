@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TaskFileBrowser } from "@/components/agent-task-files/task-file-browser";
 import { TaskRunHistory } from "./task-run-history";
+import { TaskPerformancePrototype } from "./task-performance-prototype/prototype-ui";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { FolderOpen } from "lucide-react";
@@ -114,9 +115,9 @@ export default async function TaskDetailPage({
   searchParams,
 }: {
   params: Promise<{ projectId: string; taskId: string[] }>;
-  searchParams: Promise<{ task_root?: string }>;
+  searchParams: Promise<{ task_root?: string; variant?: string }>;
 }) {
-  const [{ projectId, taskId: taskIdSegments }, { task_root }] = await Promise.all([params, searchParams]);
+  const [{ projectId, taskId: taskIdSegments }, { task_root, variant }] = await Promise.all([params, searchParams]);
   const taskId = joinTaskId(taskIdSegments);
   const taskRoot = task_root ?? TASK_ROOT;
   const isDemo = projectId === DEMO_PROJECT;
@@ -199,7 +200,11 @@ export default async function TaskDetailPage({
         </div>
 
         <TabsContent value="runs" className="mt-0">
-          <TaskRunHistory runs={taskRuns} />
+          {variant ? (
+            <TaskPerformancePrototype initialVariant={variant} />
+          ) : (
+            <TaskRunHistory runs={taskRuns} />
+          )}
         </TabsContent>
 
         <TabsContent value="files" className="mt-0 p-6">
