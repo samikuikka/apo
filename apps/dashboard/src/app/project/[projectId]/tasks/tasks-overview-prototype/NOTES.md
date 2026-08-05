@@ -14,5 +14,11 @@ changes discoverable across the whole Project?
 
 ## Verdict
 
-Pending user review. This fixture-backed code is disposable and must not be
-promoted directly into production.
+`modes` is the leading page structure: current Overview, boundary-aware Trends,
+and controlled Breakdown. The prototype has not answered how apo defines the
+“current trustworthy state.” Its hardcoded Project-wide definition, execution,
+and model scope is an assumption that the next exploration must challenge,
+especially for mixed-model Projects. See `HANDOFF.md`.
+
+This fixture-backed code is disposable and must not be promoted directly into
+production.
