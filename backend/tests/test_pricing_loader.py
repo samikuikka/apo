@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -20,7 +22,7 @@ NOW = datetime(2026, 7, 22, tzinfo=timezone.utc)
 
 
 @pytest.fixture
-def session(tmp_path: Path) -> Session:
+def session() -> Generator[Session, None, None]:
     eng = create_engine("sqlite://")
     SQLModel.metadata.create_all(eng)
     sess = Session(eng)
@@ -198,7 +200,7 @@ class TestLoadDefaults:
 
 
 class TestBundledFile:
-    def test_bundled_file_loads_clean(self, session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_bundled_file_loads_clean(self, session: Session) -> None:
         """The shipped bundled JSON must load without error and seed globals."""
         n = load_default_prices(session)
         assert n > 0
@@ -314,6 +316,147 @@ class TestBundledCurrentModels:
         usage = {"input": 1_000_000, "output": 1_000_000}
         assert compute_cost(session, "deepseek-v4-flash-0731", usage, "__global__", NOW) is not None
         assert compute_cost(session, "deepseek-v4-flash-0901", usage, "__global__", NOW) is None
+
+
+class TestCurrentClaudeGeneration:
+    """The Claude models callers actually send had no matching entry, so every
+    call on them resolved ``unpriced`` and contributed $0. The two Claude tiers
+    a fan-out spends most of its tokens on (Haiku 4.5, Sonnet 4.6) were the
+    worst case: a run's cheap workers were free while its expensive main agent
+    was billed, which biases any cost comparison between the two shapes."""
+
+    EXPECTED_RATES: ClassVar[dict[str, tuple[float, float]]] = {
+        # name sent on the wire -> (input, output) USD per MTok
+        "claude-haiku-4-5-20251001": (1.0, 5.0),
+        "claude-haiku-4-5": (1.0, 5.0),
+        "claude-sonnet-4-6": (3.0, 15.0),
+        "claude-sonnet-5": (2.0, 10.0),
+        "claude-opus-4-7": (5.0, 25.0),
+    }
+
+    def test_prices_every_current_claude_model(self, session: Session) -> None:
+        load_default_prices(session)
+        for name, (inp, out) in self.EXPECTED_RATES.items():
+            cost = compute_cost(
+                session, name, {"input": 1_000_000, "output": 1_000_000}, "__global__", NOW
+            )
+            assert cost is not None, f"{name} should be priced, not unpriced"
+            assert cost.breakdown["input"] == int(inp * 1_000_000), name
+            assert cost.breakdown["output"] == int(out * 1_000_000), name
+
+    def test_dated_ids_match_their_alias_entry(self, session: Session) -> None:
+        """The canonical ids for these models carry a date suffix, but their
+        patterns were anchored (``^claude-opus-4-5$``) and matched only the bare
+        alias — so the dated form every caller sends went unpriced."""
+        load_default_prices(session)
+        usage = {"input": 1_000_000, "output": 1_000_000}
+        for name in ("claude-opus-4-5-20251101", "claude-sonnet-4-5-20250929"):
+            assert compute_cost(session, name, usage, "__global__", NOW) is not None, name
+
+    def test_claude_cache_dimensions_are_priced(self, session: Session) -> None:
+        """A long agent run's tokens are mostly cache reads and writes, so an
+        entry that prices only input/output under-reports it by an order of
+        magnitude. Anthropic's cache rates are fixed multiples of input:
+        0.1x read, 1.25x 5-minute write, 2x 1-hour write."""
+        load_default_prices(session)
+        for name, (inp, _out) in self.EXPECTED_RATES.items():
+            cost = compute_cost(
+                session,
+                name,
+                {"cache_read": 1_000_000, "cache_write_5m": 1_000_000, "cache_write_1h": 1_000_000},
+                "__global__",
+                NOW,
+            )
+            assert cost is not None, name
+            assert cost.breakdown["cache_read"] == int(inp * 0.1 * 1_000_000), name
+            assert cost.breakdown["cache_write_5m"] == int(inp * 1.25 * 1_000_000), name
+            assert cost.breakdown["cache_write_1h"] == int(inp * 2 * 1_000_000), name
+
+    def test_sonnet_5_uses_standard_rates_after_introductory_period(self, session: Session) -> None:
+        load_default_prices(session)
+        cost = compute_cost(
+            session,
+            "claude-sonnet-5",
+            {"input": 1_000_000, "output": 1_000_000},
+            "__global__",
+            datetime(2026, 9, 1, tzinfo=timezone.utc),
+        )
+        assert cost is not None
+        assert cost.breakdown["input"] == 3_000_000
+        assert cost.breakdown["output"] == 15_000_000
+
+    def test_haiku_45_does_not_inherit_35_haiku_rates(self, session: Session) -> None:
+        """``claude-3-5-haiku`` is a different, cheaper model ($0.80/$4). The
+        two entries must not shadow each other in either direction."""
+        load_default_prices(session)
+        usage = {"input": 1_000_000, "output": 1_000_000}
+        old = compute_cost(session, "claude-3-5-haiku-20241022", usage, "__global__", NOW)
+        new = compute_cost(session, "claude-haiku-4-5-20251001", usage, "__global__", NOW)
+        assert old is not None and new is not None
+        assert old.breakdown["input"] == 800_000
+        assert new.breakdown["input"] == 1_000_000
+
+
+class TestCacheWriteIsPricedForEveryProvider:
+    """Callers report usage in Anthropic buckets regardless of provider (the
+    Anthropic wire format is what an OpenAI- or Gemini-backed proxy normalizes
+    to), so ``input_cache_creation`` lands on ``cache_write_5m`` for every
+    model. Non-Anthropic entries priced only input/cache_read/output, so those
+    tokens were billed at zero — and because the model itself matched, nothing
+    was marked ``unpriced`` and the run looked confidently priced while being
+    an order of magnitude under."""
+
+    def test_cache_write_priced_wherever_cache_read_is(self, session: Session) -> None:
+        load_default_prices(session)
+        raw = json.loads(DEFAULTS_PATH.read_text())
+        missing: list[str] = []
+        for model in raw["models"]:
+            for tier in model["pricing_tiers"]:
+                prices = tier["prices"]
+                if "cache_read" in prices and "cache_write_5m" not in prices:
+                    missing.append(f"{model['match_pattern']} ({tier['name']})")
+        message = "these entries price cache reads but not cache writes, so "
+        message += "cache-creation tokens silently cost $0: " + ", ".join(missing)
+        assert not missing, message
+
+    def test_cache_write_uses_provider_rate(self, session: Session) -> None:
+        """Most providers bill cache creation as ordinary input, while GPT-5.6
+        applies its documented 1.25x write premium."""
+        load_default_prices(session)
+        for name in ("gemini-3.6-flash", "glm-5.2"):
+            write_only = compute_cost(
+                session, name, {"cache_write_5m": 1_000_000}, "__global__", NOW
+            )
+            input_only = compute_cost(session, name, {"input": 1_000_000}, "__global__", NOW)
+            assert write_only is not None and input_only is not None, name
+            assert write_only.total > 0, f"{name} cache writes must not be free"
+            assert write_only.total == input_only.total, name
+
+        for name in ("gpt-5.6-luna", "gpt-5.6-terra"):
+            write_only = compute_cost(
+                session, name, {"cache_write_5m": 1_000_000}, "__global__", NOW
+            )
+            input_only = compute_cost(session, name, {"input": 1_000_000}, "__global__", NOW)
+            assert write_only is not None and input_only is not None, name
+            assert write_only.total == int(input_only.total * 1.25), name
+
+    def test_cache_heavy_worker_costs_more_than_output_alone(self, session: Session) -> None:
+        """The shape this bug hid: a fan-out worker whose usage is almost
+        entirely cache writes. Before the fix its cost was the output line
+        only."""
+        load_default_prices(session)
+        cost = compute_cost(
+            session,
+            "gpt-5.6-luna",
+            {"input": 3, "output": 149, "cache_write_5m": 12_495},
+            "__global__",
+            NOW,
+        )
+        assert cost is not None
+        assert cost.breakdown.get("cache_write_5m", 0) > 0, (
+            "cache-write tokens dominate this call; pricing them at zero is the bug"
+        )
+        assert cost.total > cost.breakdown["output"]
 
 
 class TestMultipleErasPerPattern:

@@ -8,12 +8,12 @@
   },
   "models": [
     {
-      "match_pattern": "(?i)^claude-sonnet-4-5$",
+      "match_pattern": "(?i)^claude-sonnet-4-5.*$",
       "provider": "anthropic",
       "display_name": "Claude Sonnet 4.5",
       "start_date": null,
-      "updated_at": "2026-07-22T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -31,12 +31,12 @@
       ]
     },
     {
-      "match_pattern": "(?i)^claude-opus-4-5$",
+      "match_pattern": "(?i)^claude-opus-4-5.*$",
       "provider": "anthropic",
       "display_name": "Claude Opus 4.5",
       "start_date": null,
-      "updated_at": "2026-07-22T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -147,12 +147,133 @@
       ]
     },
     {
+      "_doc": "$1/$5 per MTok. Pattern allows a date suffix — the canonical id is dated (claude-haiku-4-5-20251001). Distinct from the Claude 3.5 Haiku entry below, which is a different model at $0.80/$4.",
+      "match_pattern": "(?i)^claude-haiku-4-5.*$",
+      "provider": "anthropic",
+      "display_name": "Claude Haiku 4.5",
+      "start_date": null,
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 1.0,
+            "cache_read": 0.1,
+            "cache_write_5m": 1.25,
+            "cache_write_1h": 2.0,
+            "output": 5.0
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "$3/$15 per MTok. Pattern allows a date suffix.",
+      "match_pattern": "(?i)^claude-sonnet-4-6.*$",
+      "provider": "anthropic",
+      "display_name": "Claude Sonnet 4.6",
+      "start_date": null,
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 3.0,
+            "cache_read": 0.3,
+            "cache_write_5m": 3.75,
+            "cache_write_1h": 6.0,
+            "output": 15.0
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "Introductory rates through 2026-08-31: $2/$10 per MTok. Cache dimensions use Anthropic's standard multipliers of 0.1x read, 1.25x 5-minute write, and 2x 1-hour write.",
+      "match_pattern": "(?i)^claude-sonnet-5.*$",
+      "provider": "anthropic",
+      "display_name": "Claude Sonnet 5",
+      "start_date": "2026-06-30T00:00:00Z",
+      "end_date": "2026-09-01T00:00:00Z",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 2.0,
+            "cache_read": 0.2,
+            "cache_write_5m": 2.5,
+            "cache_write_1h": 4.0,
+            "output": 10.0
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "Standard rates from 2026-09-01: $3/$15 per MTok.",
+      "match_pattern": "(?i)^claude-sonnet-5.*$",
+      "provider": "anthropic",
+      "display_name": "Claude Sonnet 5",
+      "start_date": "2026-09-01T00:00:00Z",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 3.0,
+            "cache_read": 0.3,
+            "cache_write_5m": 3.75,
+            "cache_write_1h": 6.0,
+            "output": 15.0
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "Same reduced rates as Opus 4.6 and Opus 5 ($5/$25 per MTok).",
+      "match_pattern": "(?i)^claude-opus-4-7.*$",
+      "provider": "anthropic",
+      "display_name": "Claude Opus 4.7",
+      "start_date": null,
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 5.0,
+            "cache_read": 0.5,
+            "cache_write_5m": 6.25,
+            "cache_write_1h": 10.0,
+            "output": 25.0
+          }
+        }
+      ]
+    },
+    {
       "match_pattern": "(?i)^gpt-4o$",
       "provider": "openai",
       "display_name": "GPT-4o",
       "start_date": null,
-      "updated_at": "2026-07-22T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -162,18 +283,20 @@
           "prices": {
             "input": 2.5,
             "cache_read": 1.25,
+            "cache_write_5m": 2.5,
             "output": 10.0
           }
         }
-      ]
+      ],
+      "_doc": "cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero."
     },
     {
       "match_pattern": "(?i)^gpt-4o-mini$",
       "provider": "openai",
       "display_name": "GPT-4o mini",
       "start_date": null,
-      "updated_at": "2026-07-22T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -183,18 +306,20 @@
           "prices": {
             "input": 0.15,
             "cache_read": 0.075,
+            "cache_write_5m": 0.15,
             "output": 0.6
           }
         }
-      ]
+      ],
+      "_doc": "cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero."
     },
     {
       "match_pattern": "(?i)^gpt-4\\.1$",
       "provider": "openai",
       "display_name": "GPT-4.1",
       "start_date": null,
-      "updated_at": "2026-07-22T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -204,18 +329,20 @@
           "prices": {
             "input": 2.0,
             "cache_read": 0.5,
+            "cache_write_5m": 2.0,
             "output": 8.0
           }
         }
-      ]
+      ],
+      "_doc": "cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero."
     },
     {
       "match_pattern": "(?i)^gpt-4\\.1-mini$",
       "provider": "openai",
       "display_name": "GPT-4.1 mini",
       "start_date": null,
-      "updated_at": "2026-07-22T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -225,18 +352,20 @@
           "prices": {
             "input": 0.4,
             "cache_read": 0.1,
+            "cache_write_5m": 0.4,
             "output": 1.6
           }
         }
-      ]
+      ],
+      "_doc": "cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero."
     },
     {
       "match_pattern": "(?i)^gpt-4\\.1-nano$",
       "provider": "openai",
       "display_name": "GPT-4.1 nano",
       "start_date": null,
-      "updated_at": "2026-07-22T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -246,19 +375,21 @@
           "prices": {
             "input": 0.1,
             "cache_read": 0.025,
+            "cache_write_5m": 0.1,
             "output": 0.4
           }
         }
-      ]
+      ],
+      "_doc": "cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero."
     },
     {
-      "_doc": "Reasoning model (golden shape #4, ticket 13 §5): exercises the reasoning output dimension and the unpriced-key skip when reasoning has no price row. Note: o3 prices reasoning as part of output here (OpenAI bills o3 output including thinking); a model that prices reasoning separately would add a 'reasoning' key.",
+      "_doc": "Reasoning model (golden shape #4, ticket 13 §5): exercises the reasoning output dimension and the unpriced-key skip when reasoning has no price row. Note: o3 prices reasoning as part of output here (OpenAI bills o3 output including thinking); a model that prices reasoning separately would add a 'reasoning' key. cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero.",
       "match_pattern": "(?i)^o3$",
       "provider": "openai",
       "display_name": "o3",
       "start_date": null,
-      "updated_at": "2026-07-22T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -268,6 +399,7 @@
           "prices": {
             "input": 2.0,
             "cache_read": 0.5,
+            "cache_write_5m": 2.0,
             "output": 8.0
           }
         }
@@ -278,8 +410,8 @@
       "provider": "openai",
       "display_name": "o3-mini",
       "start_date": null,
-      "updated_at": "2026-07-22T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -289,18 +421,20 @@
           "prices": {
             "input": 1.1,
             "cache_read": 0.55,
+            "cache_write_5m": 1.1,
             "output": 4.4
           }
         }
-      ]
+      ],
+      "_doc": "cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero."
     },
     {
-      "_doc": "Issue #101: was arriving unpriced. Rates measured from OpenRouter per-call cost on 2026-08-03 (includes OpenRouter 50%% promotion — re-measure before relying). compute_cost strips the openai/ slug before matching.",
+      "_doc": "Issue #101: was arriving unpriced. Rates measured from OpenRouter per-call cost on 2026-08-03 (includes OpenRouter 50%% promotion — re-measure before relying). compute_cost strips the openai/ slug before matching. GPT-5.6 cache writes are billed at 1.25x uncached input.",
       "match_pattern": "(?i)^gpt-5\\.6-terra$",
       "provider": "openai",
       "display_name": "GPT-5.6 Terra",
       "start_date": null,
-      "updated_at": "2026-08-03T00:00:00Z",
+      "updated_at": "2026-08-05T00:00:00Z",
       "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
@@ -311,18 +445,19 @@
           "prices": {
             "input": 1.25,
             "cache_read": 0.1,
+            "cache_write_5m": 1.5625,
             "output": 6.0
           }
         }
       ]
     },
     {
-      "_doc": "Issue #101: was arriving unpriced. Rates measured from OpenRouter per-call cost on 2026-08-03 (includes OpenRouter 50%% promotion — re-measure before relying). compute_cost strips the openai/ slug before matching.",
+      "_doc": "Issue #101: was arriving unpriced. Rates measured from OpenRouter per-call cost on 2026-08-03 (includes OpenRouter 50%% promotion — re-measure before relying). compute_cost strips the openai/ slug before matching. GPT-5.6 cache writes are billed at 1.25x uncached input.",
       "match_pattern": "(?i)^gpt-5\\.6-luna$",
       "provider": "openai",
       "display_name": "GPT-5.6 Luna",
       "start_date": null,
-      "updated_at": "2026-08-03T00:00:00Z",
+      "updated_at": "2026-08-05T00:00:00Z",
       "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
@@ -333,19 +468,20 @@
           "prices": {
             "input": 0.125,
             "cache_read": 0.01,
+            "cache_write_5m": 0.15625,
             "output": 0.6
           }
         }
       ]
     },
     {
-      "_doc": "Large-context-tiered model (golden shape #2, ticket 13 §5): the threshold sums input+cache_read (cached tokens occupy the context window). When the read-side family exceeds 200k, the large-context tier doubles input price.",
+      "_doc": "Large-context-tiered model (golden shape #2, ticket 13 §5): the threshold sums input+cache_read (cached tokens occupy the context window). When the read-side family exceeds 200k, the large-context tier doubles input price. cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero.",
       "match_pattern": "(?i)^gemini-2\\.5-pro$",
       "provider": "gemini",
       "display_name": "Gemini 2.5 Pro",
       "start_date": null,
-      "updated_at": "2026-07-22T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -355,6 +491,7 @@
           "prices": {
             "input": 1.25,
             "cache_read": 0.3125,
+            "cache_write_5m": 1.25,
             "output": 10.0
           }
         },
@@ -375,6 +512,7 @@
           "prices": {
             "input": 2.5,
             "cache_read": 0.625,
+            "cache_write_5m": 2.5,
             "output": 15.0
           }
         }
@@ -385,8 +523,8 @@
       "provider": "gemini",
       "display_name": "Gemini 2.5 Flash",
       "start_date": null,
-      "updated_at": "2026-07-22T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -396,19 +534,21 @@
           "prices": {
             "input": 0.075,
             "cache_read": 0.01875,
+            "cache_write_5m": 0.075,
             "output": 0.3
           }
         }
-      ]
+      ],
+      "_doc": "cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero."
     },
     {
-      "_doc": "Rates per Google's published Gemini 2.5 Flash-Lite API pricing (input $0.10, output $0.40, cached input read $0.025 per 1M tokens). Verify against current rates before relying on rollups.",
+      "_doc": "Rates per Google's published Gemini 2.5 Flash-Lite API pricing (input $0.10, output $0.40, cached input read $0.025 per 1M tokens). Verify against current rates before relying on rollups. cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero.",
       "match_pattern": "(?i)^gemini-2\\.5-flash-lite$",
       "provider": "gemini",
       "display_name": "Gemini 2.5 Flash-Lite",
       "start_date": null,
-      "updated_at": "2026-07-28T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -418,6 +558,7 @@
           "prices": {
             "input": 0.1,
             "cache_read": 0.025,
+            "cache_write_5m": 0.1,
             "output": 0.4
           }
         }
@@ -428,8 +569,8 @@
       "provider": "gemini",
       "display_name": "Gemini 2.0 Flash",
       "start_date": null,
-      "updated_at": "2026-07-22T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -439,19 +580,21 @@
           "prices": {
             "input": 0.1,
             "cache_read": 0.025,
+            "cache_write_5m": 0.1,
             "output": 0.4
           }
         }
-      ]
+      ],
+      "_doc": "cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero."
     },
     {
-      "_doc": "Issue #76: Gemini 3.x flash-lite was arriving unpriced (also OpenRouter-prefixed as google/...). Flash-lite tier mirrors the 2.5-flash-lite rates; compute_cost strips the google/ slug before matching.",
+      "_doc": "Issue #76: Gemini 3.x flash-lite was arriving unpriced (also OpenRouter-prefixed as google/...). Flash-lite tier mirrors the 2.5-flash-lite rates; compute_cost strips the google/ slug before matching. cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero.",
       "match_pattern": "(?i)^gemini-3\\.1-flash-lite.*$",
       "provider": "gemini",
       "display_name": "Gemini 3.1 Flash-Lite",
       "start_date": null,
-      "updated_at": "2026-07-30T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -461,19 +604,20 @@
           "prices": {
             "input": 0.1,
             "cache_read": 0.025,
+            "cache_write_5m": 0.1,
             "output": 0.4
           }
         }
       ]
     },
     {
-      "_doc": "Issue #76: Gemini 3.6 flash was arriving unpriced (also OpenRouter-prefixed as google/...). Flash tier mirrors the 2.5-flash rates.",
+      "_doc": "Issue #76: Gemini 3.6 flash was arriving unpriced (also OpenRouter-prefixed as google/...). Flash tier mirrors the 2.5-flash rates. cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero.",
       "match_pattern": "(?i)^gemini-3\\.6-flash.*$",
       "provider": "gemini",
       "display_name": "Gemini 3.6 Flash",
       "start_date": null,
-      "updated_at": "2026-07-30T00:00:00Z",
-      "last_reviewed": "2026-07",
+      "updated_at": "2026-08-05T00:00:00Z",
+      "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
           "name": "default",
@@ -483,6 +627,7 @@
           "prices": {
             "input": 0.075,
             "cache_read": 0.01875,
+            "cache_write_5m": 0.075,
             "output": 0.3
           }
         }
@@ -529,12 +674,12 @@
       ]
     },
     {
-      "_doc": "Issue #94: anchored to the exact dated revision so a later -0901 build does not silently inherit these rates.",
+      "_doc": "Issue #94: anchored to the exact dated revision so a later -0901 build does not silently inherit these rates. cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero.",
       "match_pattern": "(?i)^deepseek-v4-flash-0731$",
       "provider": "generic",
       "display_name": "DeepSeek V4 Flash (0731)",
       "start_date": null,
-      "updated_at": "2026-08-02T00:00:00Z",
+      "updated_at": "2026-08-05T00:00:00Z",
       "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
@@ -545,6 +690,7 @@
           "prices": {
             "input": 0.14,
             "cache_read": 0.0028,
+            "cache_write_5m": 0.14,
             "output": 0.28
           }
         }
@@ -555,7 +701,7 @@
       "provider": "generic",
       "display_name": "GLM 5.2",
       "start_date": null,
-      "updated_at": "2026-08-02T00:00:00Z",
+      "updated_at": "2026-08-05T00:00:00Z",
       "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
@@ -566,17 +712,19 @@
           "prices": {
             "input": 1.4,
             "cache_read": 0.26,
+            "cache_write_5m": 1.4,
             "output": 4.4
           }
         }
-      ]
+      ],
+      "_doc": "cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero."
     },
     {
       "match_pattern": "(?i)^kimi-k3$",
       "provider": "generic",
       "display_name": "Kimi K3",
       "start_date": null,
-      "updated_at": "2026-08-02T00:00:00Z",
+      "updated_at": "2026-08-05T00:00:00Z",
       "last_reviewed": "2026-08",
       "pricing_tiers": [
         {
@@ -587,10 +735,12 @@
           "prices": {
             "input": 3.0,
             "cache_read": 0.3,
+            "cache_write_5m": 3.0,
             "output": 15.0
           }
         }
-      ]
+      ],
+      "_doc": "cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero."
     }
   ]
 }

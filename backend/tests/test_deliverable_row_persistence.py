@@ -70,6 +70,9 @@ def isolated(monkeypatch):
     SQLModel.metadata.create_all(engine)
     import apo.db as db_module
     monkeypatch.setattr(db_module, "engine", engine)
+    # The seeded attempt mints a JWT, which intentionally fails closed when
+    # AUTH_SECRET is unset.
+    monkeypatch.setattr("apo.services.executor_auth.AUTH_SECRET", "test-secret")
     with Session(engine) as s:
         u = UserDB(email="t@t.com", name="T", password_hash="x", is_active=True)
         s.add(u); s.commit(); s.refresh(u)
