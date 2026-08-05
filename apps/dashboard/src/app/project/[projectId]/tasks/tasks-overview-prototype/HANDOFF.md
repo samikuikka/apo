@@ -53,6 +53,53 @@ The resulting percentage can be mathematically correct but product-wise
 misleading. Users need a trustworthy view of current health while retaining
 access to history and controlled comparisons.
 
+## Incremental execution versus whole-set comparison
+
+There is a second, related gap. A developer often runs and debugs Tasks one at
+a time, then repeats the complete selection with another model. They still
+need to compare the two complete selections.
+
+Today every recorded `apo task run` creates a new one-Task Batch Run, while the
+Compare page compares two Batch Runs. Individually executed Tasks therefore
+become unrelated singleton Batches and cannot later behave like one complete
+Batch in comparison.
+
+Do not solve this by forcing Tasks to execute together. Keep these concepts
+separate:
+
+- **Batch Run** remains the operational unit created by one launch action.
+- **Run Set** is a provisional name for an analytical collection of Task Runs
+  that may be filled over time from several Batch Runs.
+- A comparison aligns two Run Sets by Task identity and reports missing Tasks,
+  incompatible revisions, and configuration differences honestly.
+
+For example, an `Opus high` Run Set and a `Sonnet high` Run Set could each show
+`7 / 12 Tasks completed`. Running one Task for debugging fills one slot without
+losing the ability to compare the completed sets later.
+
+`Run Set` is working language, not yet a glossary decision. Explore at least
+these association flows:
+
+1. Create a set first and attach each CLI or dashboard run to it explicitly.
+2. Select existing Runs after execution and save them as a set.
+3. Create a comparison plan in the dashboard, then fill its model/configuration
+   columns one Task at a time through a Connected Executor.
+
+The exploration must decide:
+
+- whether a Task slot contains one selected Run or all retries;
+- whether the newest retry replaces the selected result automatically;
+- whether all members must share model, effort, Task Definition revisions, and
+  Execution Revision, or whether mismatches remain visible warnings;
+- whether incomplete sets are directly comparable;
+- how the CLI associates a run without relying on invisible global state;
+- whether a saved comparison is a durable domain object or merely a view over
+  two durable Run Sets.
+
+This concept may also provide the honest input to the Tasks Overview: its
+current state could come from a chosen completed Run Set rather than a blended
+all-history rate or an arbitrary newest Run.
+
 ## What the prototype answered
 
 The leading page structure is `modes`:
