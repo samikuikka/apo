@@ -1317,6 +1317,33 @@ def _migrate_to_v23() -> None:
         )
 
 
+def _migrate_to_v24() -> None:
+    """Version 24 (SPEC-174): ``task_view_comparison`` snapshot table.
+
+    Stores immutable selection-scoped view-vs-view comparisons. New tables are
+    created by ``SQLModel.metadata.create_all`` on fresh DBs, so this only
+    brings existing DBs up. Idempotent (``CREATE TABLE IF NOT EXISTS``).
+    """
+    ts = "DATETIME" if _is_sqlite() else "TIMESTAMPTZ"
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            f"""
+            CREATE TABLE IF NOT EXISTS task_view_comparison (
+                id VARCHAR PRIMARY KEY,
+                project_id VARCHAR NOT NULL REFERENCES projects(id),
+                view_a_config JSON NOT NULL,
+                view_b_config JSON NOT NULL,
+                task_ids JSON NOT NULL,
+                resolved JSON NOT NULL,
+                coverage JSON NOT NULL,
+                created_at {ts} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_by VARCHAR REFERENCES users(id)
+            )
+            """
+        )
+        _create_index_if_not_exists(conn, "ix_task_view_comparison_project_id", "task_view_comparison", "project_id")
+
+
 def _migrate_check_report_schema(conn: Connection) -> None:
     """The v20 check-report migration, runnable against any connection.
 
@@ -1865,7 +1892,7 @@ def _add_metric_project_column(conn: Connection, table_name: str, id_column: str
     )
 
 
-LATEST_SCHEMA_VERSION = 23
+LATEST_SCHEMA_VERSION = 24
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -1891,6 +1918,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     21: _migrate_to_v21,
     22: _migrate_to_v22,
     23: _migrate_to_v23,
+    24: _migrate_to_v24,
 }
 
 

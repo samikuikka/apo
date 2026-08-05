@@ -1210,6 +1210,34 @@ class TaskRevisionDB(SQLModel, table=True):
     )
 
 
+class TaskViewComparisonDB(SQLModel, table=True):
+    """SPEC-174: an immutable, selection-scoped view-vs-view comparison snapshot.
+
+    Created when a user picks a set of tasks on the Tasks page and hits Compare.
+    The resolved run-id-per-task-per-side + the def/exec revisions actually used
+    are frozen at create time, so a shared link keeps its meaning even after
+    tasks are re-run or deleted. The short opaque id is the only thing that
+    appears in the shareable URL.
+
+    No update endpoint exists — snapshots are create + read only.
+    """
+
+    __tablename__: ClassVar[str] = "task_view_comparison"
+
+    id: str = Field(primary_key=True)  # 'tvc_' + 12 base32 chars
+    project_id: str = Field(foreign_key="projects.id", index=True)
+    view_a_config: dict[str, object] = Field(sa_column=Column(JSON))  # {"model": ..., "effort": ...}
+    view_b_config: dict[str, object] = Field(sa_column=Column(JSON))
+    task_ids: list[str] = Field(sa_column=Column(JSON))  # the selection scope
+    resolved: list[dict[str, object]] = Field(sa_column=Column(JSON))  # ResolvedComparisonCell rows
+    coverage: dict[str, object] = Field(sa_column=Column(JSON))  # both_run / comparable / scope
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(UTCDateTime, server_default=func.now()),
+    )
+    created_by: str | None = Field(default=None, foreign_key="users.id")
+
+
 # ============================================================================
 # Execution Control Plane — Pools, Executors, Attempts
 # ============================================================================

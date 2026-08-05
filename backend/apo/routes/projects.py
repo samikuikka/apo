@@ -38,12 +38,14 @@ from ..models.schemas import (
     ProjectDetail,
     ProjectSummary,
     ProjectTaskSource,
+    RunConfigModelFacet,
     UpdateProjectRequest,
     UpdateProjectTaskSourceRequest,
 )
 from ..routes.api_keys import _get_client_ip, mint_legacy_key
 from ..services.agent_task_stats import (
     RunStatFields,
+    compute_run_config_facets,
     compute_run_stats,
     load_run_stat_fields,
 )
@@ -486,6 +488,60 @@ async def list_project_agent_tasks(
         if task_runs:
             summary.run_stats = _compute_run_stats(task_runs)
     return summaries
+
+
+@router.get(
+    "/{project_id}/agent-task-run-stats",
+    response_model=dict[str, AgentTaskRunStats],
+)
+async def list_project_agent_task_run_stats(
+    project_id: str,
+    request: Request,
+    session: Session = Depends(get_session),
+    model: str | None = Query(default=None),
+    effort: str | None = Query(default=None),
+):
+    """Per-task run stats scoped to a model/effort view.
+
+    No filter = Main (all-history, identical to the ``run_stats`` already
+    attached by ``GET .../agent-tasks``). With ``model`` / ``effort`` the cohort
+    is the Tasks page's active evidence view. Returns one entry per task in the
+    project inventory; tasks with no matching runs get all-zero stats.
+    """
+    user_id = _get_user_id(request)
+    _project, _role = _load_project_for_user(session, project_id, user_id)
+
+    rows = list_inventory_for_project(session, project_id)
+    task_ids = [row.task_id for row in rows]
+    if not task_ids:
+        return {}
+
+    runs_by_task = load_run_stat_fields(
+        session, project_id, task_ids, model=model, effort=effort
+    )
+    return {
+        task_id: compute_run_stats(runs) for task_id, runs in runs_by_task.items()
+    }
+
+
+@router.get(
+    "/{project_id}/agent-task-run-config-facets",
+    response_model=list[RunConfigModelFacet],
+)
+async def list_project_agent_task_run_config_facets(
+    project_id: str,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    """Distinct (model, effort) run configurations in the project.
+
+    Populates the Tasks page filter dropdowns: the Model list, and — once a
+    model is picked — that model's actual effort tiers. Legacy runs with no
+    ``configured_model`` are excluded.
+    """
+    user_id = _get_user_id(request)
+    _project, _role = _load_project_for_user(session, project_id, user_id)
+    return compute_run_config_facets(session, project_id)
 
 
 @router.get(

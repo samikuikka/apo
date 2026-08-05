@@ -28,7 +28,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from ..db_helpers import _as_column
 from ..models.db import AgentTaskBatchRunDB, AgentTaskRunDB
-from ..models.schemas import AgentTaskRunStats
+from ..models.schemas import AgentTaskRunStats, RunConfigEffortFacet, RunConfigModelFacet
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +101,8 @@ def load_run_stat_fields(
     session: Session,
     project_id: str,
     task_ids: list[str],
+    model: str | None = None,
+    effort: str | None = None,
 ) -> dict[str, list[RunStatFields]]:
     """Load only the run columns stats needs, grouped by task id.
 
@@ -111,9 +113,22 @@ def load_run_stat_fields(
     run (which ``compute_run_stats`` treats as ``latest``). Scoped to
     ``project_id`` via the parent batch run so two projects' runs never mix even
     if they share a task id.
+
+    ``model`` / ``effort`` optionally scope the cohort to a single view (the
+    Tasks page evidence views). Both default to ``None`` = all-history, which is
+    the original behavior and what the Main tab shows.
     """
     if not task_ids:
         return {}
+
+    conditions: list[ColumnElement[bool]] = [
+        _TASK_ID_COL.in_(task_ids),
+        _BATCH_PROJECT_COL == project_id,
+    ]
+    if model is not None:
+        conditions.append(_CONFIGURED_MODEL_COL == model)
+    if effort is not None:
+        conditions.append(_CONFIGURED_EFFORT_COL == effort)
 
     stmt = (
         sa_select(
@@ -127,10 +142,7 @@ def load_run_stat_fields(
             _PASSED_CHECKS_COL,
         )
         .join(AgentTaskBatchRunDB, _BATCH_RUN_ID_COL == _BATCH_ID_COL)
-        .where(
-            _TASK_ID_COL.in_(task_ids),
-            _BATCH_PROJECT_COL == project_id,
-        )
+        .where(*conditions)
         .order_by(desc(_STARTED_AT_COL))
     )
     rows = session.execute(stmt).all()
@@ -189,3 +201,70 @@ _BATCH_ID_COL: ColumnElement[str] = _as_column(cast(object, AgentTaskBatchRunDB.
 _BATCH_PROJECT_COL: ColumnElement[str] = _as_column(
     cast(object, AgentTaskBatchRunDB.project)
 )
+_CONFIGURED_MODEL_COL: ColumnElement[str | None] = _as_column(
+    cast(object, AgentTaskRunDB.configured_model)
+)
+_CONFIGURED_EFFORT_COL: ColumnElement[str | None] = _as_column(
+    cast(object, AgentTaskRunDB.configured_effort)
+)
+
+
+def compute_run_config_facets(
+    session: Session,
+    project_id: str,
+) -> list[RunConfigModelFacet]:
+    """Distinct (model, effort) run configurations in a project, for the
+    Tasks page filter dropdowns.
+
+    Returns one entry per ``configured_model`` with the per-effort breakdown,
+    sorted by descending run count. ``configured_model IS NULL`` rows (legacy
+    runs reported before the v15 config columns existed) are excluded — they
+    carry no usable filter value and would only clutter the palette.
+
+    Projects only the two scalar config columns (no JSON blobs), then counts in
+    Python — the distinct (model, effort) set is small, so this stays OOM-safe
+    and fully typed (``func.count()`` would otherwise surface as ``Any``).
+    """
+    stmt = (
+        sa_select(_CONFIGURED_MODEL_COL, _CONFIGURED_EFFORT_COL)
+        .join(AgentTaskBatchRunDB, _BATCH_RUN_ID_COL == _BATCH_ID_COL)
+        .where(
+            _BATCH_PROJECT_COL == project_id,
+            _CONFIGURED_MODEL_COL.is_not(None),
+        )
+    )
+    rows = session.execute(stmt).all()
+
+    # assemble (model -> {effort -> count}) then flatten into sorted facets.
+    # null efforts count toward the model total but are excluded from the
+    # effort facet list (they carry no usable filter value).
+    by_model: dict[str, dict[str, int]] = {}
+    model_totals: dict[str, int] = {}
+    for model, effort in rows:
+        if effort is not None:
+            efforts = by_model.setdefault(model, {})
+            efforts[effort] = efforts.get(effort, 0) + 1
+        model_totals[model] = model_totals.get(model, 0) + 1
+
+    facets: list[RunConfigModelFacet] = []
+    # iterate model_totals (every model), not by_model — a model whose runs all
+    # carry a null effort would be absent from by_model but still belongs in the
+    # palette (with an empty effort list).
+    for model in sorted(model_totals, key=lambda m: model_totals[m], reverse=True):
+        efforts = by_model.get(model, {})
+        effort_facets = [
+            RunConfigEffortFacet(effort=effort, count=count)
+            for effort, count in sorted(
+                efforts.items(),
+                key=lambda ec: ec[1],
+                reverse=True,
+            )
+        ]
+        facets.append(
+            RunConfigModelFacet(
+                model=model,
+                count=model_totals[model],
+                efforts=effort_facets,
+            )
+        )
+    return facets

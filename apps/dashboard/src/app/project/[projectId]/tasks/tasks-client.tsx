@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useReducer } from "react";
+import { useEffect, useMemo, useRef, useState, useReducer } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -14,16 +14,33 @@ import {
   BarChart3,
   RefreshCw,
   Pencil,
+  Plus,
+  X,
+  GitCompare,
 } from "lucide-react";
 import {
   createAgentTaskBatchRun,
   type AgentTaskSummary,
   type AgentTaskRunStats,
 } from "@/lib/agent-task-api";
+import {
+  createTaskViewComparison,
+  fetchTaskViewConfigFacets,
+  fetchTaskViewStats,
+  type RunConfigModelFacet,
+  type TaskViewConfig,
+} from "@/lib/agent-task-view-api";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { formatCostMicro } from "@/lib/format";
 import { toast } from "sonner";
@@ -46,6 +63,18 @@ type FolderNode = {
   id: string;
   tasks: AgentTaskSummary[];
 };
+
+// SPEC-174 evidence views: a tab is a model/effort filter. The Main tab
+// (model=null) is permanent and shows all-history; every other tab is a
+// closable copy narrowed by model (+ model-aware effort).
+const MAIN_VIEW_ID = "main";
+
+interface ViewTab {
+  id: string;
+  label: string;
+  model: string | null;  // null = All models (Main)
+  effort: string | null; // null = any effort
+}
 
 function groupByFolder(tasks: AgentTaskSummary[]): FolderNode[] {
   const groups: Record<string, AgentTaskSummary[]> = {};
@@ -235,6 +264,172 @@ function TaskCard({
         </div>
       </div>
     </Link>
+  );
+}
+
+const ALL_MODELS_VALUE = "__all__";
+const ANY_EFFORT_VALUE = "__any__";
+
+/** A short, human-readable config line for a tab chip (e.g. "Opus · high"). */
+function viewConfigLabel(view: ViewTab): string {
+  if (view.model === null && view.effort === null) return "everything";
+  const parts: string[] = [view.model ?? "all models"];
+  if (view.effort) parts.push(view.effort);
+  return parts.join(" · ");
+}
+
+function EvidenceViewsBar({
+  views,
+  activeViewId,
+  facets,
+  loading,
+  isDerived,
+  onSelect,
+  onChange,
+  onDuplicate,
+  onClose,
+}: {
+  views: ViewTab[];
+  activeViewId: string;
+  facets: RunConfigModelFacet[];
+  loading: boolean;
+  isDerived: boolean;
+  onSelect: (id: string) => void;
+  onChange: (patch: Partial<Pick<ViewTab, "model" | "effort" | "label">>) => void;
+  onDuplicate: () => void;
+  onClose: (id: string) => void;
+}) {
+  const active = views.find((v) => v.id === activeViewId) ?? views[0]!;
+  const activeModelFacet = facets.find((f) => f.model === active.model);
+  // Effort is model-aware: only reveal the control for a specific model that
+  // has 2+ distinct effort tiers in the data (SPEC-174 / option B).
+  const effortOptions =
+    active.model !== null && activeModelFacet && activeModelFacet.efforts.length > 1
+      ? activeModelFacet.efforts
+      : [];
+
+  function changeModel(value: string) {
+    const model = value === ALL_MODELS_VALUE ? null : value;
+    // Clear effort if the new model no longer has it, so the view never
+    // carries a filter the UI cannot show.
+    const facet = facets.find((f) => f.model === model);
+    const keepsEffort = facet ? facet.efforts.some((e) => e.effort === active.effort) : false;
+    onChange({ model, effort: keepsEffort ? active.effort : null });
+  }
+
+  return (
+    <div className="border-b border-border">
+      {/* Tabs: Main is permanent; every other tab is a closable derived copy. */}
+      <div className="flex flex-wrap items-stretch gap-px px-6 py-2">
+        {views.map((v) => {
+          const isActive = v.id === activeViewId;
+          const isMain = v.id === MAIN_VIEW_ID;
+          return (
+            <div key={v.id} className="flex items-stretch">
+              <button
+                type="button"
+                onClick={() => onSelect(v.id)}
+                className={cn(
+                  "flex flex-col items-start gap-0.5 border px-2.5 py-1.5 text-left transition-colors",
+                  isActive ? "border-input bg-input/30" : "border-border hover:bg-muted/10",
+                )}
+              >
+                <span className="flex items-center gap-1.5">
+                  <span className={cn("text-[12px] font-medium", isActive ? "text-foreground" : "text-muted-foreground")}>
+                    {v.label}
+                  </span>
+                  {isMain && (
+                    <span className="border border-border px-1 font-mono text-[9px] uppercase tracking-wide text-muted-foreground/60">
+                      main
+                    </span>
+                  )}
+                </span>
+                <span className="font-mono text-[10px] text-muted-foreground/60">{viewConfigLabel(v)}</span>
+              </button>
+              {!isMain && (
+                <button
+                  type="button"
+                  aria-label={`Close ${v.label} tab`}
+                  onClick={() => onClose(v.id)}
+                  className="grid place-items-center px-1 text-muted-foreground/30 hover:text-destructive"
+                  title="Close tab"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          );
+        })}
+        <button
+          type="button"
+          onClick={onDuplicate}
+          className="ml-1 flex items-center gap-1 px-2 py-1.5 text-[12px] text-muted-foreground/60 hover:text-foreground/70"
+          title="Duplicate the active tab, then edit its filters"
+        >
+          <Plus className="h-3 w-3" />
+          Duplicate
+        </button>
+      </div>
+
+      {/* Active tab's filter: Model + model-aware Effort. */}
+      <div className="flex flex-wrap items-center gap-2 px-6 py-1.5">
+        <FilterPicker
+          label="Model"
+          value={active.model ?? ALL_MODELS_VALUE}
+          options={[
+            { value: ALL_MODELS_VALUE, label: "All models" },
+            ...facets.map((f) => ({ value: f.model, label: f.model })),
+          ]}
+          onChange={changeModel}
+        />
+        {effortOptions.length > 0 && (
+          <FilterPicker
+            label="Effort"
+            value={active.effort ?? ANY_EFFORT_VALUE}
+            options={[
+              { value: ANY_EFFORT_VALUE, label: "Any effort" },
+              ...effortOptions.map((e) => ({ value: e.effort, label: e.effort })),
+            ]}
+            onChange={(value) => onChange({ effort: value === ANY_EFFORT_VALUE ? null : value })}
+          />
+        )}
+        {isDerived && (
+          <span className="font-mono text-[10px] text-muted-foreground/50">
+            {loading ? "loading scoped stats…" : "scoped to this view"}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FilterPicker({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex shrink-0 items-center gap-1.5">
+      <span className="text-[11px] uppercase tracking-wide text-muted-foreground/60">{label}</span>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger size="sm" className="h-7 text-[12px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value} className="text-[12px]">
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
   );
 }
 
@@ -449,15 +644,19 @@ function FolderRow({
 function SelectionActionBar({
   selectedCount,
   runRunning,
+  comparing,
   isDemoProject,
   onClear,
   onRun,
+  onCompare,
 }: {
   selectedCount: number;
   runRunning: boolean;
+  comparing: boolean;
   isDemoProject: boolean;
   onClear: () => void;
   onRun: () => void;
+  onCompare: () => void;
 }) {
   return (
     <div className="sticky bottom-4 z-20 mx-auto mb-4 w-fit">
@@ -476,6 +675,17 @@ function SelectionActionBar({
         <Button type="button" size="sm" className="h-7 gap-1.5 px-3 text-[12px] font-medium" onClick={onRun} disabled={runRunning || isDemoProject} title={isDemoProject ? "Demo workspace is read-only" : undefined}>
           <Play className="h-3 w-3 fill-current" />
           {runRunning ? "Starting..." : "Run selection"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          className="h-7 gap-1.5 px-3 text-[12px] font-medium"
+          onClick={onCompare}
+          disabled={comparing || isDemoProject}
+          title={isDemoProject ? "Demo workspace is read-only" : "Compare the selection under two views (latest run per task)"}
+        >
+          <GitCompare className="h-3 w-3" />
+          {comparing ? "Building…" : "Compare"}
         </Button>
       </div>
     </div>
@@ -500,6 +710,54 @@ export function AgentTasksClient({
     return new Set(folders.map((f) => f.id));
   });
   const [query, setQuery] = useState("");
+
+  // ---- Evidence views (SPEC-174): a permanent "Main" tab (all-history) plus
+  // closable derived tabs narrowed by model (+ model-aware effort). The stats
+  // shown in the task table are scoped to the active tab's cohort.
+  const [views, setViews] = useState<ViewTab[]>([{ id: MAIN_VIEW_ID, label: "Main", model: null, effort: null }]);
+  const [activeViewId, setActiveViewId] = useState<string>(MAIN_VIEW_ID);
+  const [facets, setFacets] = useState<RunConfigModelFacet[]>([]);
+  // Per-task stats overlay for the active derived view. null = Main (use the
+  // all-history run_stats already attached to each task by the server).
+  const [viewStats, setViewStats] = useState<Record<string, AgentTaskRunStats> | null>(null);
+  const [viewStatsLoading, setViewStatsLoading] = useState(false);
+  const activeView = views.find((v) => v.id === activeViewId) ?? views[0]!;
+  const viewSeq = useRef(0);
+
+  // Load the model/effort palette once for the project's runs.
+  useEffect(() => {
+    if (isDemoProject) return;
+    let cancelled = false;
+    fetchTaskViewConfigFacets(projectId)
+      .then((f) => { if (!cancelled) setFacets(f); })
+      .catch(() => { /* palette is best-effort; filters just stay empty */ });
+    return () => { cancelled = true; };
+  }, [projectId, isDemoProject]);
+
+  // When the active tab is a derived view, fetch its scoped stats and overlay
+  // them. Main reuses the server-provided all-history stats (viewStats = null).
+  useEffect(() => {
+    if (isDemoProject || (activeView.model === null && activeView.effort === null)) {
+      setViewStats(null);
+      return;
+    }
+    const controller = new AbortController();
+    setViewStatsLoading(true);
+    fetchTaskViewStats(projectId, activeView.model, activeView.effort, controller.signal)
+      .then((stats) => { setViewStats(stats); })
+      .catch(() => { /* keep previous overlay on transient failure */ })
+      .finally(() => { if (!controller.signal.aborted) setViewStatsLoading(false); });
+    return () => controller.abort();
+  }, [projectId, activeView.model, activeView.effort, isDemoProject]);
+
+  // The task table renders against this: original tasks for Main, or the same
+  // tasks with view-scoped stats overlaid for a derived tab (tasks with no run
+  // under the view get null stats → render as "Ready to run").
+  const effectiveTasks = useMemo<AgentTaskSummary[]>(() => {
+    if (!viewStats) return tasks;
+    return tasks.map((t) => ({ ...t, run_stats: viewStats[t.id] ?? null }));
+  }, [tasks, viewStats]);
+
   const [runState, dispatchRun] = useReducer(
     (s: { running: boolean; error: string | null }, a:
       | { type: "START" }
@@ -515,7 +773,7 @@ export function AgentTasksClient({
     { running: false, error: null },
   );
 
-  const folders = useMemo(() => groupByFolder(tasks), [tasks]);
+  const folders = useMemo(() => groupByFolder(effectiveTasks), [effectiveTasks]);
 
   const filtered = useMemo(() => {
     if (!query) return folders;
@@ -563,6 +821,22 @@ export function AgentTasksClient({
     return "some" as const;
   };
 
+  // ---- Evidence view tab operations ----
+  const updateActiveView = (patch: Partial<Pick<ViewTab, "model" | "effort" | "label">>) => {
+    setViews((prev) => prev.map((v) => (v.id === activeViewId ? { ...v, ...patch } : v)));
+  };
+  const duplicateActive = () => {
+    viewSeq.current += 1;
+    const id = `view-${viewSeq.current}`;
+    setViews((prev) => [...prev, { ...activeView, id, label: `View ${viewSeq.current}` }]);
+    setActiveViewId(id);
+  };
+  const closeView = (id: string) => {
+    if (id === MAIN_VIEW_ID) return;
+    setViews((prev) => prev.filter((v) => v.id !== id));
+    if (activeViewId === id) setActiveViewId(MAIN_VIEW_ID);
+  };
+
   const handleSync = async () => {
     if (syncing || isDemoProject || !taskSource) return;
     setSyncing(true);
@@ -598,6 +872,31 @@ export function AgentTasksClient({
       window.location.href = `/project/${projectId}/runs/${result.id}`;
     } catch (e: unknown) {
       dispatchRun({ type: "ERROR", error: e instanceof Error ? e.message : "Failed to start batch run" });
+    }
+  };
+
+  // SPEC-174 Phase 2: build an immutable snapshot of the selection under two
+  // views and navigate to the comparison page. Side A = the active tab's view;
+  // side B defaults to a contrasting model (the first one that differs), or to
+  // Main if the active tab is already a model view with no alternative.
+  const [comparing, setComparing] = useState(false);
+  const handleCompare = async () => {
+    if (selected.size === 0 || isDemoProject) return;
+    setComparing(true);
+    try {
+      const viewA: TaskViewConfig = { model: activeView.model, effort: activeView.effort };
+      const altModel = facets.find((f) => f.model !== activeView.model)?.model ?? null;
+      const viewB: TaskViewConfig = { model: altModel, effort: null };
+      const snapshot = await createTaskViewComparison(projectId, {
+        task_ids: [...selected],
+        view_a: viewA,
+        view_b: viewB,
+      });
+      router.push(`/project/${projectId}/compare-views/${snapshot.id}`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to build comparison");
+    } finally {
+      setComparing(false);
     }
   };
 
@@ -640,6 +939,19 @@ export function AgentTasksClient({
         </div>
       ) : (
         <>
+          {!isDemoProject && tasks.length > 0 && (
+            <EvidenceViewsBar
+              views={views}
+              activeViewId={activeViewId}
+              facets={facets}
+              loading={viewStatsLoading}
+              isDerived={activeView.model !== null || activeView.effort !== null}
+              onSelect={setActiveViewId}
+              onChange={updateActiveView}
+              onDuplicate={duplicateActive}
+              onClose={closeView}
+            />
+          )}
           <TasksToolbar
         taskSource={taskSource}
         isDemoProject={isDemoProject}
@@ -698,9 +1010,11 @@ export function AgentTasksClient({
         <SelectionActionBar
           selectedCount={selected.size}
           runRunning={runState.running}
+          comparing={comparing}
           isDemoProject={isDemoProject}
           onClear={() => setSelected(new Set())}
           onRun={handleRun}
+          onCompare={handleCompare}
         />
       )}
         </>

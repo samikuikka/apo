@@ -332,6 +332,70 @@ class AgentTaskRunStats(SQLModel):
     avg_cost: float | None = None
 
 
+class RunConfigEffortFacet(SQLModel):
+    """One effort tier and how many runs used it, for a single model."""
+
+    effort: str
+    count: int
+
+
+class RunConfigModelFacet(SQLModel):
+    """One model, its total run count, and the per-effort breakdown.
+
+    The Tasks page filter uses this to populate the Model dropdown and, once a
+    model is chosen, the model-aware Effort dropdown (only tiers that actually
+    ran). ``efforts`` excludes null/unknown efforts — those carry no usable
+    filter value.
+    """
+
+    model: str
+    count: int
+    efforts: list[RunConfigEffortFacet] = []
+
+
+# SPEC-174 Phase 2 — selection-scoped view comparison.
+
+class TaskViewConfig(SQLModel):
+    """A model/effort filter — one side of a comparison. ``model=None`` = Main."""
+
+    model: str | None = None
+    effort: str | None = None
+
+
+class TaskViewComparisonRequest(SQLModel):
+    task_ids: list[str]
+    view_a: TaskViewConfig
+    view_b: TaskViewConfig
+
+
+class ResolvedComparisonCell(SQLModel):
+    """One task's resolved run on each side, plus whether the two are comparable.
+
+    ``comparable`` is False when either side has no run, or the two runs disagree
+    on task-definition or execution revision — such tasks stay visible but are
+    excluded from the aggregate coverage.
+    """
+
+    task_id: str
+    a_run_id: str | None
+    b_run_id: str | None
+    a_status: str | None  # passed | failed | error | None (not run)
+    b_status: str | None
+    comparable: bool
+
+
+class TaskViewComparisonSnapshot(SQLModel):
+    id: str
+    project_id: str
+    view_a_config: TaskViewConfig
+    view_b_config: TaskViewConfig
+    task_ids: list[str]
+    resolved: list[ResolvedComparisonCell]
+    coverage: dict[str, int]  # both_run / comparable / scope
+    created_at: datetime
+    created_by: str | None = None
+
+
 class AgentTaskSummary(SQLModel):
     id: str
     task_path: str
