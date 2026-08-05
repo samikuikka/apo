@@ -7,14 +7,23 @@ import { Button } from "@/components/ui/button";
 import { ModeVariant } from "./variant-modes";
 import { RowsVariant } from "./variant-rows";
 import { LensVariant } from "./variant-lens";
+import { CohortVariant } from "./variant-cohort";
+import { ScheduleVariant } from "./variant-schedule";
+import { FiltersVariant } from "./variant-filters";
+import { ColumnsVariant } from "./variant-columns";
 import { TASK_OVERVIEW_FIXTURE } from "./data";
+import { PROJECT_SCOPE_V2, TASKS_V2 } from "./data-v2";
 
-type VariantKey = "modes" | "rows" | "lens";
+type VariantKey = "modes" | "rows" | "lens" | "cohort" | "schedule" | "filters" | "columns";
 
 const VARIANTS: Array<{ key: VariantKey; name: string }> = [
-  { key: "modes", name: "Page Modes" },
-  { key: "rows", name: "Evidence Rows" },
-  { key: "lens", name: "Analysis Lens" },
+  { key: "modes", name: "Page Modes (v1)" },
+  { key: "rows", name: "Evidence Rows (v1)" },
+  { key: "lens", name: "Analysis Lens (v1)" },
+  { key: "cohort", name: "Published Cohort (v2)" },
+  { key: "schedule", name: "Schedule-Anchored (v2)" },
+  { key: "filters", name: "Filter Chips (v2)" },
+  { key: "columns", name: "Column Filters (v2)" },
 ];
 
 export function TasksOverviewPrototype({ initialVariant }: { initialVariant: string }) {
@@ -55,6 +64,10 @@ export function TasksOverviewPrototype({ initialVariant }: { initialVariant: str
       {variant === "modes" && <ModeVariant tasks={TASK_OVERVIEW_FIXTURE} />}
       {variant === "rows" && <RowsVariant tasks={TASK_OVERVIEW_FIXTURE} />}
       {variant === "lens" && <LensVariant tasks={TASK_OVERVIEW_FIXTURE} />}
+      {variant === "cohort" && <CohortVariant tasks={TASKS_V2} scope={PROJECT_SCOPE_V2} />}
+      {variant === "schedule" && <ScheduleVariant tasks={TASKS_V2} />}
+      {variant === "filters" && <FiltersVariant tasks={TASKS_V2} />}
+      {variant === "columns" && <ColumnsVariant tasks={TASKS_V2} />}
 
       {process.env.NODE_ENV !== "production" && (
         <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center border border-foreground/20 bg-foreground px-1.5 py-1 text-background shadow-xl">
