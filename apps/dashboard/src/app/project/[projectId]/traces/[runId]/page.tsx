@@ -38,19 +38,23 @@ export default async function TraceDetailPage({
 }) {
   const { projectId, runId } = await params;
   const { sort_by, sort_order } = await searchParams;
-  let error: string | null = null;
 
-  // Adjacent-trace lookup is independent of the detail fetch (and swallows
-  // its own errors), so run both in parallel instead of as a waterfall.
-  const [trace, adjacent] = await Promise.all([
-    getTraceDetailCached(runId, projectId).catch((e: unknown): TraceDetail | null => {
-      error = e instanceof Error ? e.message : "Failed to fetch trace details";
-      return null;
-    }),
-    getAdjacentTraces(runId, sort_by, sort_order, projectId),
-  ]);
+  // Start the independent adjacent-trace lookup immediately, but await the
+  // detail first so a failed detail request can render its error without
+  // waiting for navigation data that the error page will never use.
+  const tracePromise = getTraceDetailCached(runId, projectId);
+  const adjacentPromise = getAdjacentTraces(
+    runId,
+    sort_by,
+    sort_order,
+    projectId,
+  );
 
-  if (error) {
+  let trace: TraceDetail;
+  try {
+    trace = await tracePromise;
+  } catch (e: unknown) {
+    const error = e instanceof Error ? e.message : "Failed to fetch trace details";
     return (
       <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive">
@@ -61,9 +65,7 @@ export default async function TraceDetailPage({
     );
   }
 
-  if (!trace) {
-    return null;
-  }
+  const adjacent = await adjacentPromise;
 
   return (
     <div className="flex h-[calc(100vh-6rem)] flex-col overflow-hidden">
