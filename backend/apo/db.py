@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 from sqlalchemy import bindparam, event, text
 from sqlalchemy.engine import Connection
+from sqlalchemy.pool import NullPool
 from sqlmodel import JSON, SQLModel, create_engine, Session
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
@@ -25,6 +26,12 @@ def _get_engine_kwargs() -> dict[str, object]:
     kwargs: dict[str, object] = {"echo": False}
     if _is_sqlite():
         kwargs["connect_args"] = {"check_same_thread": False}
+        # Sync sessions are used from async routes. A bounded QueuePool can
+        # deadlock the event loop when a request burst fills the pool: the next
+        # checkout blocks the loop, so completed responses cannot close their
+        # sessions and return connections. SQLite connections are cheap; avoid
+        # that shared capacity ceiling and let each request close its own.
+        kwargs["poolclass"] = NullPool
     if "postgresql" in DATABASE_URL or "postgres" in DATABASE_URL:
         kwargs["pool_size"] = 10
         kwargs["max_overflow"] = 20

@@ -7,7 +7,7 @@
 // that populates the Model / Effort filter dropdowns.
 
 import { apiClient } from "./api-client";
-import type { AgentTaskRunStats } from "./agent-task-api";
+import type { AgentTaskRunDetail, AgentTaskRunStats } from "./agent-task-api";
 
 const NO_CACHE = { cache: "no-store" } as const;
 
@@ -85,6 +85,11 @@ export interface TaskViewComparisonSnapshot {
   created_by: string | null;
 }
 
+export interface TaskViewComparisonEvidence {
+  snapshot: TaskViewComparisonSnapshot;
+  runs: AgentTaskRunDetail[];
+}
+
 /**
  * Create an immutable, selection-scoped comparison snapshot. The server resolves
  * the latest run per task under each view, freezes run ids + revisions +
@@ -107,6 +112,16 @@ export const getTaskViewComparison = (
 ): Promise<TaskViewComparisonSnapshot> =>
   apiClient(
     `/v1/projects/${encodeURIComponent(projectId)}/task-view-comparisons/${encodeURIComponent(comparisonId)}`,
+    NO_CACHE,
+  );
+
+/** Read the frozen snapshot and every resolved run's evidence in one request. */
+export const getTaskViewComparisonEvidence = (
+  projectId: string,
+  comparisonId: string,
+): Promise<TaskViewComparisonEvidence> =>
+  apiClient(
+    `/v1/projects/${encodeURIComponent(projectId)}/task-view-comparisons/${encodeURIComponent(comparisonId)}/evidence`,
     NO_CACHE,
   );
 

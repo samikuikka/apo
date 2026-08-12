@@ -105,7 +105,15 @@ export function CompareTaskRow({
               These runs used different versions of the eval file. Check counts and IDs won't align — re-run both models against the current eval for a fair comparison.
             </div>
           )}
-          <CheckDiff taskId={task.taskId} leftId={left.run?.id} rightId={right.run?.id} projectId={projectId} />
+          <CheckDiff
+            key={`${left.run?.id ?? "none"}:${right.run?.id ?? "none"}`}
+            taskId={task.taskId}
+            leftId={left.run?.id}
+            rightId={right.run?.id}
+            projectId={projectId}
+            initialLeft={asRunDetail(left.run)}
+            initialRight={asRunDetail(right.run)}
+          />
         </>
       )}
     </div>
@@ -181,6 +189,12 @@ function ChecksCell({
       </span>
     </div>
   );
+}
+
+function asRunDetail(
+  run: AgentTaskRunDetail | AgentTaskRunSummary | null,
+): AgentTaskRunDetail | null {
+  return run && "checks_json" in run ? run : null;
 }
 
 function shortModel(model: string): string {
@@ -493,11 +507,15 @@ function CheckDiff({
   leftId,
   rightId,
   projectId,
+  initialLeft,
+  initialRight,
 }: {
   taskId: string;
   leftId: string | undefined;
   rightId: string | undefined;
   projectId: string;
+  initialLeft: AgentTaskRunDetail | null;
+  initialRight: AgentTaskRunDetail | null;
 }) {
   const [state, setState] = useState<
     | { status: "loading" }
@@ -507,10 +525,17 @@ function CheckDiff({
 
   useEffect(() => {
     let cancelled = false;
-    setState({ status: "loading" });
     Promise.all([
-      leftId ? getAgentTaskRun(leftId).catch(() => null) : Promise.resolve(null),
-      rightId ? getAgentTaskRun(rightId).catch(() => null) : Promise.resolve(null),
+      initialLeft
+        ? Promise.resolve(initialLeft)
+        : leftId
+          ? getAgentTaskRun(leftId).catch(() => null)
+          : Promise.resolve(null),
+      initialRight
+        ? Promise.resolve(initialRight)
+        : rightId
+          ? getAgentTaskRun(rightId).catch(() => null)
+          : Promise.resolve(null),
     ]).then(([left, right]) => {
       if (cancelled) return;
       if (!left && !right) {
@@ -522,7 +547,7 @@ function CheckDiff({
     return () => {
       cancelled = true;
     };
-  }, [taskId, leftId, rightId]);
+  }, [taskId, leftId, rightId, initialLeft, initialRight]);
 
   // SPEC-169: the pinned Task Definition is the authoritative source and — unlike
   // the filesystem resolver — resolves wherever the task executed. Both sides are

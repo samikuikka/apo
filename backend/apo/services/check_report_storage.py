@@ -25,9 +25,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
-from sqlmodel import Session
+from sqlmodel import Session, col, select
 
 from ..models.db import AgentTaskCheckReportDB, AgentTaskRunDB
 
@@ -83,6 +84,29 @@ def load_check_report(
         return report.value_json
     run = session.get(AgentTaskRunDB, run_id)
     return run.checks_json if run is not None else None
+
+
+def load_check_reports(
+    session: Session,
+    runs: Sequence[AgentTaskRunDB],
+) -> dict[str, list[dict[str, object]] | None]:
+    """Load check evidence for many already-loaded Task Runs in one query."""
+    run_by_id = {run.id: run for run in runs}
+    if not run_by_id:
+        return {}
+
+    reports = session.exec(
+        select(AgentTaskCheckReportDB).where(
+            col(AgentTaskCheckReportDB.run_id).in_(run_by_id)
+        )
+    ).all()
+    report_by_id = {report.run_id: report.value_json for report in reports}
+    return {
+        run_id: report_by_id[run_id]
+        if run_id in report_by_id
+        else run.checks_json
+        for run_id, run in run_by_id.items()
+    }
 
 
 def _upsert_report_row(

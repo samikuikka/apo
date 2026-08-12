@@ -19,11 +19,13 @@ from ..db import get_session
 from ..models.db import ProjectDB, TaskViewDB
 from ..models.schemas import (
     TaskViewComparisonRequest,
+    TaskViewComparisonEvidence,
     TaskViewComparisonSnapshot,
     TaskViewCreateRequest,
     TaskViewResponse,
     TaskViewUpdateRequest,
 )
+from ..services.agent_task_run_details import load_task_run_details
 from ..services.project_memberships import require_project_member
 from ..services.task_view_comparison import create_comparison, get_comparison, to_snapshot
 
@@ -81,6 +83,37 @@ async def create_task_view_comparison(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/task-view-comparisons/{comparison_id}/evidence",
+    response_model=TaskViewComparisonEvidence,
+)
+async def get_task_view_comparison_evidence(
+    project_id: str,
+    comparison_id: str,
+    request: Request,
+    session: SessionDependency,
+) -> TaskViewComparisonEvidence:
+    """Read a frozen snapshot and all of its resolved run evidence in bulk."""
+    _authorize(session, project_id, request)
+    row = get_comparison(session, project_id, comparison_id)
+    if row is None or row.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Comparison not found")
+
+    snapshot = to_snapshot(row)
+    run_ids = list(
+        dict.fromkeys(
+            run_id
+            for cell in snapshot.resolved
+            for run_id in (cell.a_run_id, cell.b_run_id)
+            if run_id is not None
+        )
+    )
+    return TaskViewComparisonEvidence(
+        snapshot=snapshot,
+        runs=load_task_run_details(session, run_ids, project_id=project_id),
+    )
 
 
 @router.get("/task-view-comparisons/{comparison_id}", response_model=TaskViewComparisonSnapshot)

@@ -38,6 +38,19 @@ graph TD
 ### 4. Example Service (`/apps/example-service`)
 - **Responsibility**: A playground application used to test the SDK and demonstrate how to use the system in a real-world scenario.
 
+### Comparison evidence reads
+
+A saved Task View comparison is an immutable snapshot of the exact resolved
+Task Run IDs on both sides. The dashboard reads that snapshot and all resolved
+run evidence through one project-scoped bulk endpoint. It must not fan those
+IDs out into one HTTP request per run or refetch the same details when a row is
+expanded; comparison size must not determine backend request concurrency.
+
+SQLite deployments use short-lived connections rather than a bounded shared
+queue. The backend currently performs synchronous SQLModel access from async
+routes, so blocking on a full connection pool can otherwise stop the event
+loop before completed requests get a chance to return their connections.
+
 ## Authentication Bootstrap
 
 Account creation is exposed through the dashboard's public `/setup` route.

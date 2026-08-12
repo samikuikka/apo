@@ -671,6 +671,13 @@ class AgentTaskRunDetail(SQLModel):
     task_definition: dict[str, object] | None = None
 
 
+class TaskViewComparisonEvidence(SQLModel):
+    """Immutable comparison snapshot plus its resolved Task Run evidence."""
+
+    snapshot: TaskViewComparisonSnapshot
+    runs: list[AgentTaskRunDetail] = Field(default_factory=list)
+
+
 class AgentTaskBatchRunSummary(SQLModel):
     id: str
     project: str

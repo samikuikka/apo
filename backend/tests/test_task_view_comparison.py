@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 from sqlmodel import Session
 
 from apo.models.db import (
@@ -19,6 +20,7 @@ from apo.models.db import (
     TaskRevisionDB,
     UserDB,
 )
+from apo.services.agent_task_run_details import load_task_run_details
 from tests.conftest import seed_project_for_user
 
 _PROJECT = "proj-cmp"
@@ -64,6 +66,8 @@ def _seed(session: Session) -> None:
             status="passed", pass_result=True, configured_model=model,
             configured_effort=None, task_definition_revision_id=def_rev,
             started_at=now, completed_at=now,
+            total_checks=1, passed_checks=1, failed_checks=0,
+            checks_json=[{"id": f"check-{rid}", "pass": True, "reasoning": model}],
         )
 
     # W: opus + deepseek both in b-opus, def d1 -> comparable
@@ -118,6 +122,56 @@ def test_comparison_snapshot_is_immutable_on_read(cmp_client: TestClient) -> Non
     assert got["resolved"] == snap["resolved"]
     assert got["coverage"] == snap["coverage"]
     assert got["id"].startswith("tvc_")
+
+
+def test_comparison_evidence_loads_every_resolved_run_in_one_response(
+    cmp_client: TestClient,
+) -> None:
+    snap = _create(cmp_client, [_W, _X, _Y, _Z])
+
+    response = cmp_client.get(
+        f"/v1/projects/{_PROJECT}/task-view-comparisons/{snap['id']}/evidence"
+    )
+
+    assert response.status_code == 200, response.text
+    evidence = response.json()
+    assert evidence["snapshot"] == snap
+    assert [run["id"] for run in evidence["runs"]] == [
+        "w-opus",
+        "w-deep",
+        "x-opus",
+        "x-deep",
+        "y-opus",
+        "y-deep",
+        "z-opus",
+    ]
+    assert evidence["runs"][0]["checks_json"] == [
+        {"id": "check-w-opus", "pass": True, "reasoning": "claude-opus"}
+    ]
+    assert evidence["runs"][0]["task_definition"]["id"] == "d1"
+    assert evidence["runs"][0]["transcript_json"] is None
+
+
+def test_bulk_run_evidence_uses_a_fixed_number_of_queries(session: Session) -> None:
+    _seed(session)
+    statements: list[str] = []
+
+    def _record_statement(_conn, _cursor, statement, _params, _context, _many) -> None:
+        statements.append(statement)
+
+    bind = session.get_bind()
+    event.listen(bind, "before_cursor_execute", _record_statement)
+    try:
+        details = load_task_run_details(
+            session,
+            ["w-opus", "w-deep", "x-opus", "x-deep", "y-opus", "y-deep", "z-opus"],
+            project_id=_PROJECT,
+        )
+    finally:
+        event.remove(bind, "before_cursor_execute", _record_statement)
+
+    assert len(details) == 7
+    assert len(statements) == 4  # runs + batches/triggers + definitions + checks
 
 
 def test_comparison_rejects_empty_selection(cmp_client: TestClient) -> None:
