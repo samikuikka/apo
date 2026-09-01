@@ -9,6 +9,7 @@ dependencies = [
   "openai>=1.0",
   "python-dotenv",
   "apo-otel[openai]",
+  "opentelemetry-instrumentation-fastapi>=0.54b0",
 ]
 
 [dependency-groups]

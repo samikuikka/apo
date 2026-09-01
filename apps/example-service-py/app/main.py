@@ -23,6 +23,7 @@ from . import otel as _otel  # noqa: E402
 _otel.setup_otel()
 
 from .agent import handle_chat  # noqa: E402
+from .orders import router as orders_router  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("example_service_py")
@@ -36,6 +37,8 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="apo example service (Python)", lifespan=lifespan)
+app.include_router(orders_router)
+_otel.instrument_http(app)
 
 
 @app.get("/")

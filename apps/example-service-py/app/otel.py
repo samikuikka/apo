@@ -32,3 +32,23 @@ def setup_otel() -> None:
     handle = configure_apo_telemetry(take_ownership=True)
     handle.instrument_openai()
     logger.info("OpenTelemetry configured via apo-otel")
+
+
+def instrument_http(app: object) -> None:
+    """Auto-instrument the FastAPI app — every HTTP request becomes a span.
+
+    This is the plain-service half of the demo: no agent, no task run, just
+    request traces with framework attributes (http.request.method,
+    url.path, http.response.status_code) exported to apo like any company
+    service.
+    """
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    except ImportError:
+        logger.warning(
+            "opentelemetry-instrumentation-fastapi not installed; "
+            "HTTP request tracing disabled"
+        )
+        return
+    FastAPIInstrumentor.instrument_app(app)  # pyright: ignore[reportUnknownMemberType]
+    logger.info("FastAPI HTTP tracing enabled")
