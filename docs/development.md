@@ -457,6 +457,12 @@ The fastest path is the root `pnpm dev`, which starts all five services concurre
 - **Unit Tests**: Always run `pytest` in the backend and `pnpm test` in the packages/apps
 - **Integration**: Use the `example-service` to verify that SDK changes correctly log to the backend
 - **Linting**: Ensure all TypeScript code passes `oxlint` (`pnpm lint`) and Python passes `basedpyright`
+- **React Doctor**: `pnpm doctor` scans every React/Astro workspace project for
+  correctness, performance, security, and maintainability issues. Every PR is
+  also scanned automatically by `.github/workflows/react-doctor.yml`: it
+  reports only the issues a PR introduces (changed-file scope), fails the
+  check on new error-level findings, and posts a summary comment plus inline
+  review comments with the health score.
 - **Alpha release gate**: `pnpm test:alpha` combines focused backend tests with the structural Playwright alpha specs.
 - **Public ingress contract**: `pnpm test:public-ingress` renders the Server
   Profile and asserts Caddy is the only public ingress, runtime URLs agree, and
