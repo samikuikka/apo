@@ -116,6 +116,7 @@ describe("ApiKeyCreateDialog project selector (issue #73)", () => {
       "proj-b",
       "ingest",
       undefined,
+      null,
     );
   });
 

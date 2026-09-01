@@ -100,6 +100,7 @@ describe("createApiKey default scope", () => {
         project: "example-service",
         scope: "ingest",
         expires_at: null,
+        daily_span_quota: null,
       }),
     );
   });

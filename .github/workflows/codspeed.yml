@@ -3,9 +3,10 @@
 # Dual-use with the normal CI suite: the same files run in smoke mode inside
 # ci.yml's `pytest -x -q`; here they run under `--codspeed` in CodSpeed's
 # simulation mode, which counts CPU instructions so ±% deltas on shared
-# runners are signal instead of noise. Comments land on the PR once a
-# maintainer has connected the repo at codspeed.io and added CODSPEED_TOKEN;
-# until then only the upload step fails.
+# runners are signal instead of noise. Comments land on the PR once
+# a maintainer has connected the repo at codspeed.io and added the
+# CODSPEED_TOKEN secret; until then the run skips the upload with a notice
+# instead of failing the check.
 #
 # Path-filtered so docs/frontend PRs don't burn runs.
 
@@ -38,6 +39,10 @@ jobs:
     name: Backend benchmarks
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The secrets context is not allowed in steps.if, so the token is
+    # bridged through job env to make its presence testable.
+    env:
+      codspeed_token: ${{ secrets.CODSPEED_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -49,8 +54,17 @@ jobs:
         working-directory: backend
         run: uv sync --frozen
       - name: Run benchmarks
+        # Without a token the upload 401s and the check goes red, so skip
+        # (with a notice) until the repo is connected at codspeed.io.
+        if: ${{ env.codspeed_token != '' }}
         uses: CodSpeedHQ/action@v5
         with:
           mode: simulation
-          token: ${{ secrets.CODSPEED_TOKEN }}
+          token: ${{ env.codspeed_token }}
           run: cd backend && uv run pytest tests/benchmarks --codspeed
+      - name: Skip benchmarks (no CODSPEED_TOKEN)
+        if: ${{ env.codspeed_token == '' }}
+        run: >
+          echo "::notice::CODSPEED_TOKEN is not configured — skipping the
+          benchmark upload. Connect the repository at codspeed.io and add the
+          CODSPEED_TOKEN secret to enable PR regression reports."
