@@ -221,7 +221,7 @@ async def create_or_refresh_invitation(
             status_code=403,
             detail="Only owners can invite new owners to a project",
         )
-    # SPEC-188 grant-rank rule: invite at most at your own rank.
+    # Grant-rank rule: invite at most at your own rank.
     inviter_rank = _ROLE_RANK.get(invited_by_role, 0)
     if _ROLE_RANK.get(role, 0) > inviter_rank:
         raise HTTPException(

@@ -1,10 +1,10 @@
-"""Demo workspace: read-only guards and startup ensure (SPEC-188).
+"""Demo workspace: read-only guards and startup ensure.
 
 The demo project (``id="demo"``) is world-readable and permanently
 read-only: browsing is open (anonymous visitors read as viewer), every
 mutation is rejected. Its data comes from the shipped fixture
 (``services/demo_fixture.py``), not from execution — the old executor-based
-seeding was retired per SPEC-165/SPEC-188.
+seeding was retired.
 """
 
 from datetime import datetime, timezone

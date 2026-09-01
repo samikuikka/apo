@@ -9,7 +9,7 @@ import { createProject } from "@/lib/projects-api";
 import { isApiError } from "@/lib/api-error";
 
 /**
- * The authenticated-empty home state (SPEC-188 U1): the demo choice is
+ * The authenticated-empty home state: the demo choice is
  * gone — signed-in visitors create their first project; the demo lives on
  * the anonymous landing and /demo.
  */

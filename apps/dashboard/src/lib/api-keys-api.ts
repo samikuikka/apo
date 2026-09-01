@@ -194,7 +194,7 @@ export const rotateApiKey = (id: string): Promise<ApiKeyRotateResponse> =>
   ).then(adaptRotateResponse);
 
 
-/** Ingest guardrail edits (SPEC-191). Pass null/0 to clear the quota. */
+/** Ingest guardrail edits. Pass null/0 to clear the quota. */
 export async function patchApiKey(
   keyId: string,
   patch: { dailySpanQuota?: number | null; ingestPaused?: boolean },

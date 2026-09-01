@@ -105,7 +105,7 @@ _warned_no_secret = False
 AuthContextValue: TypeAlias = str | bool | int | None
 AuthContext: TypeAlias = dict[str, AuthContextValue]
 
-# Anonymous demo visitors (SPEC-188): when no credential is present and the
+# Anonymous demo visitors: when no credential is present and the
 # request is a safe read, the middleware mints a synthetic GET-only
 # "anonymous" credential. Per-route authorization (viewer-on-demo, 401
 # everywhere else) is the real boundary — this is only the outer gate, and
@@ -138,7 +138,7 @@ def _authenticate_anonymous_demo(request: Request) -> AuthContext | JSONResponse
         return None
     # A misconfigured deployment (missing/placeholder/short AUTH_SECRET)
     # fails closed everywhere — the anonymous path must not become the
-    # crack that SPEC-153 sealed. Read the secret from the environment
+    # crack that the required AUTH_SECRET check sealed. Read the secret from the environment
     # live (like the profile check) — never from the import-time binding.
     if auth_secret_problem(os.environ.get("AUTH_SECRET", ""), required=True) is not None:
         return None
@@ -413,7 +413,7 @@ def _authenticate_basic(public_key: str, secret_key: str) -> AuthContext | None:
             "auth_method": "api_key",
             "api_key_scope": api_key.scope,
             "api_key_id": api_key.id,
-            # SPEC-191 ingest guardrails — read from the cached row so the
+            # Ingest guardrails — read from the cached row so the
             # existing key-cache invalidation covers quota/pause edits.
             "api_key_daily_quota": api_key.daily_span_quota,
             "api_key_ingest_paused": api_key.ingest_paused,
@@ -473,7 +473,7 @@ def _authenticate_bearer(token: str) -> AuthContext | None:
             "auth_method": "api_key",
             "api_key_scope": api_key.scope,
             "api_key_id": api_key.id,
-            # SPEC-191 ingest guardrails — read from the cached row so the
+            # Ingest guardrails — read from the cached row so the
             # existing key-cache invalidation covers quota/pause edits.
             "api_key_daily_quota": api_key.daily_span_quota,
             "api_key_ingest_paused": api_key.ingest_paused,

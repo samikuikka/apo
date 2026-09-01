@@ -124,7 +124,7 @@ async def receive_otlp_traces(
     receiver = OtlpReceiver()
 
     # consume one unit per decoded Span, before any persistence.
-    # SPEC-191: the same hook enforces the per-key daily quota / pause —
+    # The same hook enforces the per-key daily quota / pause —
     # post-decode, pre-durable-write, with the decoded span count.
     def _consume_units(count: int) -> None:
         enforce_ingest_guardrails(request, session, pending_spans=count)
@@ -164,7 +164,7 @@ async def receive_otlp_traces(
 
     partial = _build_partial_success(result.rejected, result.errors)
 
-    # SPEC-191 usage accounting — AFTER the inbox commit, non-fatal by
+    # Usage accounting — AFTER the inbox commit, non-fatal by
     # design: a failed counter must never turn an accepted batch into a
     # 500 (the SDK would retry and re-send).
     record_ingest_usage(

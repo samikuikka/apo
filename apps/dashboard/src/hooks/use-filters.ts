@@ -23,7 +23,7 @@ export interface TraceFilters {
   search?: string;
   min_duration_ms?: number;
   max_duration_ms?: number;
-  // SPEC-190 span-derived search
+  // Span-derived search
   service?: string;
   operation?: string;
   span_text?: string;

@@ -45,7 +45,7 @@ export function TopNav() {
         {status === "authenticated" ? (
           <UserMenu />
         ) : (
-          // Anonymous demo visitors get the one honest CTA (SPEC-188 U2).
+          // Anonymous demo visitors get the one honest CTA.
           <Link
             href="/login"
             data-testid="anon-sign-in"

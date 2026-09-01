@@ -32,7 +32,7 @@ export default async function Home() {
     redirect("/login");
   }
 
-  // Anonymous visitors get the demo-forward landing (SPEC-188 U1): stat
+  // Anonymous visitors get the demo-forward landing: stat
   // cards from the fixture, one CTA, no account, no seed call.
   if (!session) {
     return <DemoLanding />;

@@ -222,7 +222,7 @@ The write path has explicit ownership boundaries:
 
 This separation is the intended extension point: add framework convention
 normalizers over canonical spans, not provider-specific ingestion endpoints.
-Trace search (SPEC-190) rides the same store: `GET /v1/runs` accepts
+Trace search rides the same store: `GET /v1/runs` accepts
 service/operation/`span_text`/`span_filter` predicates compiled into
 correlated `EXISTS` subqueries over `otlp_spans` — text ops in the text
 domain, ordering ops in REAL — with `service_name` materialized at ingest

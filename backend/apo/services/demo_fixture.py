@@ -1,4 +1,4 @@
-"""Demo workspace fixture loader (SPEC-188).
+"""Demo workspace fixture loader.
 
 The shipped ``apo/data/demo-workspace-v1.json`` is the sole source of truth
 for the demo project's data: catalog, batches, runs, check reports,

@@ -1,4 +1,4 @@
-"""Dev capture tooling roundtrip (SPEC-188 phase 4).
+"""Dev capture tooling roundtrip.
 
 Proves the capture loop without spending LLM credits: seed capture-project
 rows (including a REAL OTLP ingest through the receiver), export the delta,

@@ -626,7 +626,7 @@ class OtlpReceiver:
 
         new_values: dict[str, Any] = {
             "parent_span_id": span.get("parentSpanId"),
-            # Materialized hottest search filter (SPEC-190). May be None —
+            # Materialized hottest search filter. May be None —
             # _is_informationless(None) keeps a late resource-less retry
             # from clobbering a stored service.
             "service_name": resource_attrs.get("service.name"),

@@ -60,7 +60,7 @@ async def batch_ingestion(
     Returns success count and error details for any failed events.
     One failed event doesn't fail the entire batch.
     """
-    # SPEC-191 guardrails — BEFORE the per-event loop (the loop's
+    # Ingest guardrails — BEFORE the per-event loop (the loop's
     # except-per-event would swallow enforcement into 200-with-errors).
     from ..services.ingest_quota import enforce_ingest_guardrails, record_ingest_usage
 

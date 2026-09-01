@@ -8,7 +8,7 @@ import {
 import { apiClient } from "@/lib/api-client";
 
 /**
- * Demo-forward landing for anonymous visitors (SPEC-188 U1): the demo
+ * Demo-forward landing for anonymous visitors: the demo
  * sells itself with real fixture numbers before asking anything. The cards
  * render from the demo project's aggregates — if the demo is disabled
  * (kill switch) or the backend is unreachable, we fall back to a plain
@@ -101,7 +101,7 @@ type DemoStats = {
 async function loadDemoStats(): Promise<DemoStats | null> {
   try {
     // Anonymous reads of the demo project ride the middleware's anonymous
-    // credential — no session needed (SPEC-188).
+    // credential — no session needed.
     const batches = await listAgentTaskBatchRuns("demo", { page_size: 100 });
     const rows: AgentTaskBatchRunSummary[] = batches.data ?? [];
     if (rows.length === 0) return null;

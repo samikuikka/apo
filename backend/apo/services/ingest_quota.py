@@ -1,4 +1,4 @@
-"""Ingest guardrails — persisted per-key daily quotas and pause (SPEC-191).
+"""Ingest guardrails — persisted per-key daily quotas and pause ).
 
 Enforcement runs on the ingest routes only, before any durable write:
 a paused key gets 403 (collectors must not retry), an over-quota key gets

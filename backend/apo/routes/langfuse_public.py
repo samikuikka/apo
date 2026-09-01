@@ -179,7 +179,7 @@ async def langfuse_ingestion(
     route-authorized Project (credential binding or session membership) —
     a body Project never authorizes the write.
     """
-    # SPEC-191 guardrails — BEFORE the per-event loop (per-event except
+    # Ingest guardrails — BEFORE the per-event loop (per-event except
     # blocks would swallow enforcement into 200-with-errors).
     from ..services.ingest_quota import enforce_ingest_guardrails, record_ingest_usage
 

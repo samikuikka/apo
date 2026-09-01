@@ -1,6 +1,6 @@
 # pyright: reportAny=false, reportAttributeAccessIssue=false, reportDeprecated=false, reportExplicitAny=false, reportImplicitOverride=false, reportImplicitStringConcatenation=false, reportMissingParameterType=false, reportOptionalMemberAccess=false, reportPrivateLocalImportUsage=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedFunction=false, reportUnusedParameter=false
 
-"""SPEC-189 Stage 1 — storage single-homing.
+"""Storage single-homing (canonical span store migration stage 1).
 
 Covers: extractor fidelity (bytes/enum-names/link fields) with a round-trip
 losslessness proof, the idempotent-strict upsert, the raw_span drop (schema +

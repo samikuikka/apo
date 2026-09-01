@@ -48,7 +48,7 @@ Manual; no release is ever blocked on it. A **full** recapture is worth it
 when: the fixture schema bumps, the demo task tree changed materially, a
 demo surface changed enough that captured evidence misrepresents the UI, or
 a captured model became unavailable/mispriced. Incremental sessions cover
-everything else. The first full capture per SPEC-188's dataset narrative
+everything else. The first full capture follows the dataset narrative
 (N1–N5): ~60–70% pass, ~25% informative failures, 1–2 errors, two model
 configs, 8–10 batches across ~3–4 weeks of frozen timestamps
 (~$10–20 at flash-tier models).

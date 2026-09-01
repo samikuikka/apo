@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
 
         retire_legacy_execution_rows(session, now=datetime.now(timezone.utc))
         await purge_legacy_bundle_objects(session)
-    # Demo workspace (SPEC-188): ensure the project row (kill-switch
+    # Demo workspace: ensure the project row (kill-switch
     # gated), then reconcile its data to the shipped fixture. Synchronous
     # OTLP replay — must complete before the ingestion worker starts.
     from .services.demo_workspace import ensure_demo_project_exists
@@ -162,7 +162,7 @@ def create_app() -> FastAPI:
     #   SecurityHeaders → RequestSize → Auth → TelemetryAdmission → CORS → router
     # Starlette's add_middleware is last-added-outermost, so TelemetryAdmission
     # is added AFTER Auth here to run INSIDE it — admission identities are
-    # derived from request.state that Auth populates. (Before SPEC-191 the
+    # derived from request.state that Auth populates. (Previously the
     # order was inverted and every authenticated sender bucketed as
     # "open-dev" in the rate limiter.)
     app.add_middleware(TelemetryAdmissionMiddleware, controller=admission_controller)

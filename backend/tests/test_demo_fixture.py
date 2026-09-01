@@ -1,4 +1,4 @@
-"""Demo fixture loader (SPEC-188 phase 2).
+"""Demo fixture loader.
 
 Exercises the shipped placeholder fixture end-to-end: catalog + definitions,
 batch/run/check-report/deliverable/judgment rows, schedules + occurrences,

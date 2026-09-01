@@ -158,6 +158,9 @@ async def attempt_start(
     lease: CurrentAttemptLease = Depends(require_attempt_lease),
     session: Session = Depends(get_session),
 ) -> dict[str, object]:
+    """Mark an attempt started; records driver kind and runtime.
+
+    Executor-lease authenticated; stale leases get 409."""
     response.headers["X-Apo-Executor-Protocol"] = str(PROTOCOL_VERSION)
     if lease.attempt_id != attempt_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "attempt token not valid for this attempt")
@@ -176,6 +179,9 @@ async def attempt_heartbeat(
     lease: CurrentAttemptLease = Depends(require_attempt_lease),
     session: Session = Depends(get_session),
 ) -> dict[str, object]:
+    """Renew an attempt's execution lease and report progress.
+
+    Returns whether a cancel has been requested; stale leases get 409."""
     response.headers["X-Apo-Executor-Protocol"] = str(PROTOCOL_VERSION)
     if lease.attempt_id != attempt_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "attempt token not valid for this attempt")
@@ -194,6 +200,11 @@ async def attempt_result(
     lease: CurrentAttemptLease = Depends(require_attempt_lease),
     session: Session = Depends(get_session),
 ) -> dict[str, object]:
+    """Finalize an attempt with its result, checks, transcript, and deliverables.
+
+    Idempotent replays of an already-finalized completion return
+    ``status: "replayed"``; completion conflicts get 409, deliverable
+    validation errors 400/409."""
     response.headers["X-Apo-Executor-Protocol"] = str(PROTOCOL_VERSION)
     if lease.attempt_id != attempt_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "attempt token not valid for this attempt")
@@ -246,6 +257,9 @@ async def attempt_failure(
     lease: CurrentAttemptLease = Depends(require_attempt_lease),
     session: Session = Depends(get_session),
 ) -> dict[str, object]:
+    """Finalize an attempt as failed with a typed failure kind and output tails.
+
+    Completion conflicts get 409, finalization errors 400."""
     response.headers["X-Apo-Executor-Protocol"] = str(PROTOCOL_VERSION)
     if lease.attempt_id != attempt_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "attempt token not valid for this attempt")

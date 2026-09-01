@@ -225,7 +225,7 @@ async def list_projects(
     # For role display: the acting user (session user or key creator).
     # Anonymous demo visitors carry no user_id by design — their readable
     # set is exactly ["demo"], so the per-membership lookup below never
-    # runs for them (SPEC-188 audit G1).
+    # runs for them.
     user_id = (
         _get_user_id(request)
         if getattr(request.state, "user_id", None)
@@ -620,7 +620,7 @@ async def get_project_onboarding_status(
             valid_public_url = f"{parsed.scheme}://{parsed.netloc}"
     except ValueError:
         valid_public_url = None
-    # SPEC-191 service-tracing onboarding signals: the OTLP endpoint and
+    # Service-tracing onboarding signals: the OTLP endpoint and
     # whether an ingest-scope key exists (booleans + URL only — never key
     # material). has_traces distinguishes "no traces yet" from "filters
     # matched nothing" for the traces page's connect-a-service CTA.

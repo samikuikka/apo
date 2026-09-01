@@ -48,7 +48,7 @@ export default async function AgentTasksPage({
   if (projectResult.status === "fulfilled") {
     taskSource = projectResult.value.task_source;
     // Viewers (and anonymous demo visitors) never see write affordances —
-    // the permission summary is the single source of truth (SPEC-188 U3).
+    // the permission summary is the single source of truth.
     canRunTasks = projectResult.value.permissions?.can_run_tasks !== false;
   } else {
     error =

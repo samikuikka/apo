@@ -1,6 +1,6 @@
 # pyright: reportAny=false, reportAttributeAccessIssue=false, reportDeprecated=false, reportExplicitAny=false, reportImplicitStringConcatenation=false, reportMissingParameterType=false, reportOptionalMemberAccess=false, reportPrivateLocalImportUsage=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedFunction=false, reportUnusedParameter=false
 
-"""SPEC-191 — ingest guardrails.
+"""Ingest guardrails.
 
 Covers: default no-op behavior, pause (403 on all three ingest routes,
 reads unaffected), quota 429 with Retry-After + quota body, junk-batch

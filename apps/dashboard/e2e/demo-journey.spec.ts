@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * SPEC-188 demo journey — the anonymous golden path.
+ * Anonymous demo journey — the golden path.
  *
  * No sign-in anywhere: the whole point is that a credential-less visitor
  * can see apo in action on the fixture-fed demo project. If this test
@@ -9,7 +9,7 @@ import { expect, test } from "@playwright/test";
  * and the demo UX all work end-to-end on a real stack.
  *
  * Requires a stack with the demo fixture loaded (any default stack after
- * SPEC-188: the loader runs at startup, no flags, no keys).
+ * the loader runs at startup, no flags, no keys).
  */
 test.describe("Demo journey @agent", () => {
   test("landing → demo tasks → failed run evidence → trace, never signed in", async ({

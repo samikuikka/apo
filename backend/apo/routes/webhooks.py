@@ -85,6 +85,9 @@ def create_webhook(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Create a webhook with a freshly generated signing secret (shown once).
+
+    Project admin only; demo excluded. Unknown event types get 400. Returns 201."""
     require_project_not_demo(body.project)
     # webhook management requires project admin role.
     _ = enforce_project_role_from_request(
@@ -123,6 +126,8 @@ def list_webhooks(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """List a Project's webhooks (without secrets). Admin-scoped so members
+    cannot enumerate webhook configurations."""
     # webhook inventory is admin-scoped ("webhooks are managed
     # by project admins/owners"). Members must not enumerate webhook
     # configurations for a project.
@@ -140,6 +145,10 @@ def get_webhook(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Return one webhook's configuration (never its secret).
+
+    Requires admin on the webhook's Project so webhook ids can't be probed
+    across tenants."""
     wh = session.get(WebhookDB, webhook_id)
     if wh is None:
         raise HTTPException(status_code=404, detail="Webhook not found")
@@ -159,6 +168,8 @@ def update_webhook(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Patch webhook url/description/events/enabled. Project admin only;
+    unknown event types get 400."""
     wh = session.get(WebhookDB, webhook_id)
     if wh is None:
         raise HTTPException(status_code=404, detail="Webhook not found")
@@ -201,6 +212,7 @@ def delete_webhook(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Delete a webhook permanently. Project admin only; returns 204."""
     wh = session.get(WebhookDB, webhook_id)
     if wh is None:
         raise HTTPException(status_code=404, detail="Webhook not found")
@@ -219,6 +231,8 @@ def rotate_secret(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Replace the webhook's signing secret; the new secret is shown once.
+    Project admin only."""
     wh = session.get(WebhookDB, webhook_id)
     if wh is None:
         raise HTTPException(status_code=404, detail="Webhook not found")
@@ -244,6 +258,8 @@ async def test_webhook(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    """Deliver a signed test event to the webhook's URL and report whether
+    it succeeded. Project admin only."""
     import httpx
 
     wh = session.get(WebhookDB, webhook_id)

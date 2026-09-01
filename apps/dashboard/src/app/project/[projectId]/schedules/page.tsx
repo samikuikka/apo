@@ -50,7 +50,7 @@ export default async function AgentTaskSchedulesPage({
     error = e instanceof Error ? e.message : "Failed to load schedules";
   }
   // Schedule management is admin-tier; viewers (and the anonymous demo
-  // visitor) never see the controls at all (SPEC-188 U3). Resolved after
+  // visitor) never see the controls at all. Resolved after
   // the data loads so a failed project fetch keeps the affordances off.
   canManage = await getProject(projectId)
     .then((project) => project.permissions?.can_manage_project === true)

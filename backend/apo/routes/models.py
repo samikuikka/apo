@@ -278,6 +278,9 @@ async def get_model(
     model_id: int,
     session: Session = Depends(get_session),
 ) -> ModelDocument:
+    """Return one model document with its full tier/price graph.
+
+    Global models are public; per-project overrides require member read."""
     model = session.get(ModelRowDB, model_id)
     if model is None:
         raise HTTPException(status_code=404, detail="model not found")
@@ -371,6 +374,9 @@ async def delete_model(
     model_id: int,
     session: Session = Depends(get_session),
 ) -> None:
+    """Delete a model and its tier/price graph. Project admin only; 204.
+
+    Global models cannot be deleted (409) — the bundled JSON owns them."""
     model = session.get(ModelRowDB, model_id)
     if model is None:
         raise HTTPException(status_code=404, detail="model not found")

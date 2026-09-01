@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 /**
- * "Start here" guide rail for the demo tasks page (SPEC-188 U4): four
+ * "Start here" guide rail for the demo tasks page: four
  * steps pointing at the dataset's narrative anchors. The run/batch ids are
  * the fixture's stable identity contract — capture (phase 4) must keep
  * them so the rail keeps pointing at real evidence.

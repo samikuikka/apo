@@ -12,6 +12,7 @@ router = APIRouter()
 
 @router.get("/hello")
 async def read_root():
+    """Unauthenticated liveness ping."""
     return {"message": "Hello from apo backend"}
 
 

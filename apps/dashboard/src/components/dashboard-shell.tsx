@@ -116,7 +116,7 @@ function DashboardChrome({
             >
               {anonymous ? (
                 // The switcher is session chrome; anonymous demo visitors
-                // get a plain label instead (SPEC-188 U2).
+                // get a plain label instead.
                 <span className="truncate text-sm font-medium">Demo workspace</span>
               ) : (
                 <ProjectSwitcher currentProjectId={projectId} />

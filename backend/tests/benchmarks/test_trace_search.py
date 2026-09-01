@@ -1,6 +1,6 @@
 # pyright: reportAny=false, reportExplicitAny=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnusedCallResult=false
 
-"""Benchmarks for the SPEC-190 trace-search hot path.
+"""Benchmarks for the trace-search hot path.
 
 The filter corpus is what the dashboard's trace search actually builds:
 an attribute equality, a numeric comparison, a LIKE on attribute text,

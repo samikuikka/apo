@@ -1254,7 +1254,7 @@ class ApiKeyCreate(SQLModel):
     project: str = "example-service"
     scope: Literal["full", "ingest"] = "ingest"
     expires_at: str | None = None
-    # SPEC-191: accepted spans/day this key may ingest (NULL/0 = unlimited).
+    # Accepted spans/day this key may ingest (NULL/0 = unlimited).
     # Quota is PER KEY — N keys = N x cap.
     daily_span_quota: int | None = None
 
@@ -1282,7 +1282,7 @@ class ApiKeyResponse(SQLModel):
     # Two-key model fields
     public_key: str | None = None
     display_secret_key: str | None = None
-    # SPEC-191 guardrails (quota is per key: N keys = N x cap)
+    # Guardrails (quota is per key: N keys = N x cap)
     daily_span_quota: int | None = None
     ingest_paused: bool = False
     today_usage: dict[str, object] | None = None

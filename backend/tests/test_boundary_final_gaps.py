@@ -407,8 +407,8 @@ class TestRunPatchSubjectBinding:
 
 
 # ---------------------------------------------------------------------------
-# 7. Demo workspace stays read-only (the executor seed route was retired
-#    by SPEC-188; the permanent guard is require_project_not_demo)
+# 7. Demo workspace stays read-only (the executor seed route was retired;
+#    the permanent guard is require_project_not_demo)
 # ---------------------------------------------------------------------------
 
 
