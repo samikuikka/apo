@@ -104,9 +104,11 @@
     "package:check": "node scripts/verify-package.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "bench": "vitest bench --run"
   },
   "devDependencies": {
+    "@codspeed/vitest-plugin": "^5.7.1",
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^4.1.9",
     "esbuild": "^0.21.5",

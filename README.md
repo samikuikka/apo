@@ -16,6 +16,10 @@
   <a href="docs/self-hosted-alpha.md">Self-hosting</a>
 </p>
 
+<p align="center">
+  <a href="https://app.codspeed.io/samikuikka/apo?utm_source=badge"><img src="https://img.shields.io/endpoint?url=https://codspeed.io/badge.json" alt="CodSpeed"/></a>
+</p>
+
 ---
 
 Apo is an opinionated end-to-end testing framework for agent systems. Define the behavior you expect as executable tests, run your **real agent implementation**, and get a **binary verdict** — pass or fail — backed by the test breakdown, trace, and deliverables. Execution problems are surfaced separately as errors.
