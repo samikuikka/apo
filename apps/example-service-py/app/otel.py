@@ -29,7 +29,15 @@ def setup_otel() -> None:
         )
         return
 
-    handle = configure_apo_telemetry(take_ownership=True)
+    import os
+
+    handle = configure_apo_telemetry(
+        take_ownership=True,
+        # configure_apo_telemetry does not read APO_SERVICE_NAME itself
+        # (its resolver only takes the kwarg) — pass the documented env
+        # through so the Service column reflects the real service.
+        service_name=os.getenv("APO_SERVICE_NAME", "example-service-py"),
+    )
     handle.instrument_openai()
     logger.info("OpenTelemetry configured via apo-otel")
 
