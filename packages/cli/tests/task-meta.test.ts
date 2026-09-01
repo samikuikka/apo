@@ -143,6 +143,56 @@ describe("discoverTaskMeta", () => {
     expect(tasks[0].files).toEqual(["doc1.txt", "doc2.txt"]);
   });
 
+  it("extracts the first line of the description (even when the string sits on the next line)", () => {
+    writeTaskFile(join(testDir, "described"), `
+      task("described", {
+        adapter: a,
+        description:
+          \`Review source code for bugs, style issues, and improvements.
+            The rest of this template literal must not leak into pickers.\`,
+      });
+    `);
+
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].description).toBe("Review source code for bugs, style issues, and improvements.");
+  });
+
+  it("returns null description when the task declares none", () => {
+    writeTaskFile(join(testDir, "plain"), `task("plain", { adapter: a });`);
+
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].description).toBeNull();
+  });
+
+  it("counts line-start check/test calls as checkCount (approximate by design)", () => {
+    // The count is anchored to line start, so an indented check inside a
+    // callback counts too — an acceptable approximation for a static scan
+    // that never loads the module.
+    writeTaskFile(join(testDir, "counted"), `
+      task("counted", { adapter: a });
+      check("one", (t, d) => t.assert(true));
+      check("two", (t, d) => t.assert(true));
+      test("three", (t, d) => t.assert(true));
+      nested.something(() => {
+        check("indented counts too", () => {});
+      });
+      const rechecked = false; // must NOT count: no call paren
+    `);
+
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].checkCount).toBe(4);
+  });
+
+  it("checkCount is 0 when only a legacy checks.ts exists", () => {
+    const taskDir = join(testDir, "legacy-checks");
+    writeTaskFile(taskDir, `const t = { id: "legacy-checks" };`);
+    writeFileSync(join(taskDir, "checks.ts"), "// checks");
+
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].checkCount).toBe(0);
+    expect(tasks[0].hasChecks).toBe(true);
+  });
+
   it("extracts adapter from defineTask call when adapter field missing", () => {
     writeTaskFile(join(testDir, "deftask"), `
       const task = defineTask(MyAdapter, { id: "deftask" });

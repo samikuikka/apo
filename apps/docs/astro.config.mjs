@@ -96,6 +96,7 @@ export default defineConfig({
 					{ label: 'Overview', slug: 'cli' },
 					{ label: 'login / logout', slug: 'cli/auth' },
 					{ label: 'status', slug: 'cli/status' },
+					{ label: 'run', slug: 'cli/run' },
 					{ label: 'project', slug: 'cli/project' },
 					{
 						label: 'task',

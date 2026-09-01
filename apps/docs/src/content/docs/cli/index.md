@@ -24,6 +24,7 @@ The core loop: run a task, read its verdict, open its trace when something fails
 
 | Command | Purpose |
 |---|---|
+| [`apo run`](/cli/run/) | Run evals interactively — pick tasks, pick a model, confirm, run. The human-facing runner. |
 | [`apo task run`](/cli/task-run/) | Run a task. The load-bearing command. |
 | [`apo task list`](/cli/task-list/) | List runnable tasks from your task root (`--catalog` for the published inventory). |
 | [`apo task show`](/cli/task-show/) | Show a task's details. |

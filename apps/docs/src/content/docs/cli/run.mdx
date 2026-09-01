@@ -1,0 +1,26 @@
+---
+title: "apo run"
+description: "Run evals interactively — pick tasks from a folder tree, pick a model, confirm the manifest, run. The human-facing runner; apo task run stays the agent-facing one."
+---
+
+`apo run` is the human way to start evals. Instead of remembering task ids, model names, and which environment variables matter, you walk three short screens and press Enter — and the runs record exactly like any [`apo task run`](/cli/task-run/), so verdicts, traces, and cost show up in [`apo runs list`](/cli/runs-list/) and the dashboard as usual.
+
+```bash
+apo run
+```
+
+## The three screens
+
+**Run an eval** — your task root as a collapsible folder tree. `↑↓`/`j k` move, `→`/`Enter` opens a folder, `←` closes it, `Space` checks tasks (a folder's checkbox selects its whole subtree; `[~]` means partially checked). `Enter` on a task — or with tasks checked — takes you to the next screen.
+
+**Model** — models grouped by provider, with prices per 1M tokens. Browse with `→`, or just start typing to filter (`kimi` collapses the tree to the match; letters type, arrows navigate). `Esc` goes back.
+
+**Ready to run** — the manifest: which tasks (with check counts), which model, the exact command(s) about to run, and one go/no-go line. `d` shows the environment details (the `.env` chain and every apo-relevant variable — names and sources, never values). `Enter` runs.
+
+## What Enter does
+
+Each selected task runs sequentially through the same machinery as `apo task run` — recorded, traced, judged. A multi-check selection runs each task in turn and prints a results summary at the end. Exit code follows `task run`'s contract: `0` all passed, `1` any failed, `2` any errored.
+
+## Interactive by design
+
+`apo run` requires a terminal. Scripts, agents, and CI should use [`apo task run <task-id>`](/cli/task-run/) — strict flags, stable exit codes, no prompts, `--json` output. There is no `--json` here.

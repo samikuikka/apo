@@ -23,6 +23,19 @@ export type TaskMeta = {
   deliverables: string[];
   files: string[];
   /**
+   * First line of the task's declared `description`, read statically from
+   * the `.eval.ts` (the key and its string may sit on different lines).
+   * `null` when the task declares none — human-facing pickers show nothing
+   * rather than filler.
+   */
+  description: string | null;
+  /**
+   * How many inline `test(`/`check(` calls the eval declares — the honest
+   * "how thoroughly will this run be judged" number. 0 with `hasChecks`
+   * true means checks live in a legacy `checks.ts` the scanner can't count.
+   */
+  checkCount: number;
+  /**
    * The task's declared execution preference, read statically
    * from the `.eval.ts` file. `undefined` when absent or `"auto"` — both
    * mean "no preference, defer to project default / reachability". Read
@@ -145,7 +158,30 @@ function parseTaskMeta(taskDir: string, rootDir: string): TaskMeta | undefined {
     evalFileName: evalFile,
     deliverables,
     files,
+    description: extractDescription(content),
+    checkCount: countInlineChecks(content),
   };
+}
+
+/**
+ * First line of the task's `description` field, truncated for pickers.
+ * The key and the string may sit on different lines (`description:\n  "…"`),
+ * so `\s*` bridges the gap — same trick as the other extract* helpers,
+ * never loading the module.
+ */
+function extractDescription(content: string): string | null {
+  const match = content.match(/description\s*:\s*(?:"([^"]*)"|'([^']*)'|`([^`]*)`)/);
+  if (!match) return null;
+  const raw = match[1] ?? match[2] ?? match[3] ?? "";
+  const firstLine = raw.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
+  if (firstLine.length > 100) return `${firstLine.slice(0, 99)}…`;
+  return firstLine || null;
+}
+
+/** Top-level `test(`/`check(` calls — one judged assertion each. */
+function countInlineChecks(content: string): number {
+  const matches = content.match(/^[ \t]*(?:test|check)\s*\(/gm);
+  return matches ? matches.length : 0;
 }
 
 /** Normalize a relative path to POSIX separators; empty string for the root. */
