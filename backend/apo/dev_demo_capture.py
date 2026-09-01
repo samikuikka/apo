@@ -1,4 +1,4 @@
-"""Dev-only demo capture sessions (SPEC-188 phase 4).
+"""Dev-only demo capture sessions.
 
 Capture is a switch, not a constant:
 

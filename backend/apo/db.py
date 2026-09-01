@@ -904,7 +904,7 @@ def _backfill_service_name(conn: Connection) -> None:
 
 
 def _add_search_indexes(conn: Connection) -> None:
-    """Search/facet indexes (SPEC-190): spans by service/operation, runs by window."""
+    """Search/facet indexes: spans by service/operation, runs by window."""
     _create_index_if_not_exists(
         conn, "ix_otlp_spans_service", "otlp_spans", "project_id, service_name"
     )
@@ -917,7 +917,7 @@ def _add_search_indexes(conn: Connection) -> None:
 
 
 def _migrate_to_v36() -> None:
-    """Version 36: trace-search substrate (SPEC-190).
+    """Version 36: trace-search substrate.
 
     ``otlp_spans.service_name`` (materialized from resource attributes at
     ingest; backfilled here for stored rows — legacy adapter rows without
@@ -966,7 +966,7 @@ def _create_usage_table(conn: Connection) -> None:
 
 
 def _migrate_to_v37() -> None:
-    """Version 37: ingest guardrails (SPEC-191).
+    """Version 37: ingest guardrails.
 
     api_keys.daily_span_quota / ingest_paused, the api_key_daily_usage
     rollup table, and inbox audit columns (api_key_id, payload_bytes).

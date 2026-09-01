@@ -308,7 +308,7 @@ const ATTRIBUTE_OPS: { value: string; label: string }[] = [
   { value: "not_exists", label: "not exists" },
 ];
 
-/** Attribute predicate rows: free-text key / op select / value (SPEC-190). */
+/** Attribute predicate rows: free-text key / op select / value. */
 function AttributePredicates({
   predicates,
   onChange,

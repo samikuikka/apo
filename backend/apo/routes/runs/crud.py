@@ -73,6 +73,7 @@ def toggle_bookmark(run_id: str, http_request: Request, session: Session = Depen
 
 @router.post("", response_model=Run)
 def create_run(request: CreateRunRequest, http_request: Request, session: Session = Depends(get_session)):
+    """Create a trace run header. Project member only; demo excluded."""
     require_project_not_demo(request.project)
     _ = enforce_project_role_from_request(
         http_request, session, request.project, minimum_role="member"
@@ -108,6 +109,8 @@ def update_run(
     http_request: Request,
     session: Session = Depends(get_session),
 ):
+    """Patch run completion state. Marking completion stores duration and
+    recalculates aggregate metrics from the run's calls."""
     run = require_run_not_demo(session, run_id)
 
     _validate_trace_write_access(http_request, session, run_id, run.project)
@@ -218,6 +221,9 @@ def list_runs(
     session: Session = Depends(get_session),
     _: None = Depends(require_api_key_scope("full")),
 ):
+    """List run summaries with rich filters (flow, task, tags, models, span
+    search) and pagination. Scoped to the caller's readable Projects;
+    invalid ``span_filter`` JSON gets 400."""
     # Auth: pin to one project (membership-checked) or restrict to the caller's
     # readable projects. Dev/open mode (no user_id) stays unscoped.
     if project:
@@ -275,6 +281,8 @@ def list_runs(
 def get_distinct_projects(
     http_request: Request, session: Session = Depends(get_session)
 ):
+    """Distinct project names for filter dropdowns, limited to the caller's
+    readable Projects (all projects in dev/open mode)."""
     allowed = _caller_project_scope(http_request, session)
     if allowed is not None:
         return sorted(allowed)
@@ -287,6 +295,8 @@ def get_distinct_projects(
 def get_distinct_tasks(
     http_request: Request, session: Session = Depends(get_session)
 ):
+    """Distinct task ids for filter dropdowns, scoped to the caller's
+    readable Projects."""
     allowed = _caller_project_scope(http_request, session)
     statement = select(RunDB.task_id).distinct().where(RunDB.task_id != None)
     if allowed is not None:
@@ -299,6 +309,8 @@ def get_distinct_tasks(
 def get_distinct_models(
     http_request: Request, session: Session = Depends(get_session)
 ):
+    """Distinct primary model names for filter dropdowns, scoped to the
+    caller's readable Projects."""
     allowed = _caller_project_scope(http_request, session)
     statement = (
         select(RunDB.primary_model).distinct().where(RunDB.primary_model != None)
@@ -313,6 +325,8 @@ def get_distinct_models(
 def get_distinct_metrics(
     http_request: Request, session: Session = Depends(get_session)
 ):
+    """Distinct metric names for filter dropdowns, scoped to the caller's
+    readable Projects."""
     allowed = _caller_project_scope(http_request, session)
     statement = select(RunMetricDB.metric_name).distinct()
     if allowed is not None:
@@ -330,6 +344,10 @@ def get_run_details(
     session: Session = Depends(get_session),
     _: None = Depends(require_api_key_scope("full")),
 ):
+    """Full trace detail for one run: calls (messages deferred unless
+    ``?include=messages``), stored + derived metrics, derived status, and
+    projection capabilities. ``?include=attributes`` attaches canonical
+    OTLP span attributes per call."""
     _enforce_project_read(http_request, session, project)
     run = session.exec(
         select(RunDB).where(RunDB.id == run_id, RunDB.project == project)
@@ -452,6 +470,8 @@ async def post_custom_metrics(
     http_request: Request,
     session: Session = Depends(get_session),
 ):
+    """Append API-sourced quality metrics to a run, returning per-metric
+    success/error results. Project member only; demo excluded."""
     _run = require_run_not_demo(session, run_id)
     _ = enforce_project_role_from_request(
         http_request, session, _run.project, minimum_role="member"
@@ -535,6 +555,9 @@ def bulk_delete_runs(
     project: str = "default",
     session: Session = Depends(get_session),
 ):
+    """Delete runs and their metrics/calls in one Project. Admin only; 404 if
+    any requested id is missing from the Project. Cascade deletes are scoped
+    by Project so shared OTel ids can't cross tenants."""
     # Require admin for bulk destructive operations.
     enforce_project_role_from_request(http_request, session, project, minimum_role="admin")
     if not request.run_ids:
@@ -593,6 +616,8 @@ def bulk_export_runs(
     project: str = "default",
     session: Session = Depends(get_session),
 ):
+    """Export runs in the requested format. Requires member read on the
+    target Project."""
     # Require member on the target Project.
     enforce_project_read_from_request(http_request, session, project)
     return export_runs(session, request.run_ids, project, request.format)

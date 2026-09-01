@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-// SPEC-190: `apo traces list` maps span-search flags onto GET /v1/runs
+// `apo traces list` maps span-search flags onto GET /v1/runs
 // params, compiling --attr expressions into the span_filter JSON array.
 
 const getMock = vi.fn();

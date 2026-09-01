@@ -18,11 +18,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROUTES_DIR = Path(__file__).resolve().parents[1] / "apo" / "routes"
 
-# Ratchets — lower after cleanup, never raise.
-MISSING_ROUTE_DOCSTRINGS_ALLOWED = 42
-# Measured on the tree that includes the in-flight react-doctor cleanup;
-# plain main carries fewer. Cleanup PRs should drive this toward zero.
-SPEC_REFS_IN_TRACKED_FILES_ALLOWED = 78
+# Ratchets, now at zero after the cleanup PR — keep them there.
+MISSING_ROUTE_DOCSTRINGS_ALLOWED = 0
+# The debt these ratchets guarded was cleaned up; they are strict now.
+SPEC_REFS_IN_TRACKED_FILES_ALLOWED = 0
 
 # Assembled from fragments so this file never matches its own scan.
 _SPEC_REF = re.compile("SPE" + "C-[0-9]{2,4}")

@@ -1,6 +1,6 @@
 "use client";
 
-/** Persistent demo badge (SPEC-188 U2): "Demo · read-only", always visible. */
+/** Persistent demo badge: "Demo · read-only", always visible. */
 export function DemoBadge() {
   return (
     <span

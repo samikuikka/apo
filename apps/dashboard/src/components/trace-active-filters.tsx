@@ -155,7 +155,7 @@ export function TraceActiveFilters({
     );
   }
 
-  // Span search (SPEC-190)
+  // Span search
   if (filters.service) {
     chips.push(
       <FilterChip

@@ -63,7 +63,7 @@ class TestSecurityHeaders:
         """Security headers should be present on 401 unauthorized responses.
 
         POST, not GET: anonymous GETs may pass the middleware as the demo
-        credential (SPEC-188) and 404 at routing; a credential-less POST
+        credential and 404 at routing; a credential-less POST
         always gets the middleware's 401.
         """
         resp = client.post("/v1/datasets")

@@ -34,7 +34,7 @@ export async function run(argv: string[]): Promise<number> {
   const taskId = getFlagValue(flags, "task");
   if (taskId) params.task_id = taskId;
 
-  // SPEC-190 span-derived search. --attr compiles into a span_filter JSON
+  // Span-derived search. --attr compiles into a span_filter JSON
   // array; supported forms: key=value, key!=value, key>v, key>=v, key<v,
   // key<=v, key~=v (contains), key?=v (exists takes no value), and
   // key in v1,v2.

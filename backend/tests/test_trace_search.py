@@ -1,6 +1,6 @@
 # pyright: reportAny=false, reportAttributeAccessIssue=false, reportDeprecated=false, reportExplicitAny=false, reportImplicitStringConcatenation=false, reportMissingParameterType=false, reportOptionalMemberAccess=false, reportPrivateLocalImportUsage=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedFunction=false, reportUnusedParameter=false
 
-"""SPEC-190 — trace search over the canonical span store.
+"""Trace search over the canonical span store.
 
 Covers: service/operation params, the two comparison domains (text vs
 REAL), operator semantics (incl. none-of negation and in-lists), key

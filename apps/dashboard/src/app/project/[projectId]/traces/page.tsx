@@ -97,7 +97,7 @@ export default async function TracesPage({
       projectHasTraces(projectId),
     ]);
     // Bookmark/delete/export are member-tier writes: viewers never see
-    // them (SPEC-188 U3). Best-effort — a failed fetch keeps the affordances.
+    // them. Best-effort — a failed fetch keeps the affordances.
     canWrite = await getProject(projectId)
       .then((project) => project.permissions?.can_run_tasks !== false)
       .catch(() => true);

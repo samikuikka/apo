@@ -1,4 +1,4 @@
-"""Anonymous demo access (SPEC-188).
+"""Anonymous demo access.
 
 Two layers, both pinned here:
 

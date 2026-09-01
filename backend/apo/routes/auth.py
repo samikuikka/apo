@@ -195,14 +195,22 @@ def _user_to_response(user: UserDB) -> UserResponse:
 
 @router.get("/has-users")
 def has_users(session: Session = Depends(get_session)) -> dict[str, bool]:
-    # use the shared installation-initialization service so
-    # setup_available reflects the durable singleton, not just user count.
+    """Report whether the installation has users and first-time setup is still open.
+
+    Uses the shared installation-initialization service so ``setup_available``
+    reflects the durable singleton claim, not just user count.
+    """
     status = get_installation_setup_status(session)
     return {"has_users": status.has_users, "setup_available": status.setup_available}
 
 
 @router.post("/setup")
 async def setup(body: SetupRequest, session: Session = Depends(get_session)) -> dict[str, str]:
+    """Create the first installation user (instance admin). 409 once claimed.
+
+    First-installation only — afterwards admission is invite-only. If email
+    verification is required, sends an OTP and returns ``verification_required``.
+    """
     error = validate_password_strength(body.password)
     if error:
         raise HTTPException(status_code=422, detail=error)
@@ -262,6 +270,12 @@ def verify_password_endpoint(
     body: VerifyPasswordRequest,
     session: Session = Depends(get_session),
 ):
+    """Verify email + password without minting a session (used by `apo login`).
+
+    Rate-limited per client IP (429 with Retry-After). Returns the user's
+    non-demo Projects so the CLI can offer a project picker. Anti-enumeration:
+    inactive/unknown users get the same 401 via a dummy hash.
+    """
     ip = get_client_ip(request)
 
     if not login_rate_limiter.is_allowed(ip):
@@ -427,6 +441,8 @@ async def resend_verification(
 async def forgot_password(
     body: ForgotPasswordRequest, session: Session = Depends(get_session)
 ) -> dict[str, str]:
+    """Request a password-reset email. Anti-enumeration: identical response
+    whether or not the account exists. Tokens expire after 1 hour."""
     user = session.exec(
         select(UserDB).where(UserDB.email == body.email)
     ).first()
@@ -476,6 +492,11 @@ async def forgot_password(
 def reset_password(
     body: ResetPasswordRequest, session: Session = Depends(get_session)
 ) -> dict[str, str]:
+    """Set a new password from a reset token (single-use, 1-hour expiry).
+
+    On success the token is consumed and all of the user's other reset
+    tokens are deleted. Invalid/used/expired tokens return 401.
+    """
     token_hash = hashlib.sha256(body.token.encode()).hexdigest()
     reset_token = session.exec(
         select(PasswordResetTokenDB).where(
@@ -533,6 +554,10 @@ def change_password(
     request: Request,
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
+    """Change the authenticated user's password after verifying the current one.
+
+    Invalidates all of the user's existing sessions on success.
+    """
     user_id = cast(str | None, getattr(request.state, "user_id", None))
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")

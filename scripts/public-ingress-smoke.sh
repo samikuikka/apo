@@ -182,7 +182,7 @@ probe_denied GET "/backend-proxy/hello" "dev hello route denied"
 probe_denied GET "/public/traces/legacy-canary" "anonymous trace route removed"
 probe_denied PATCH "/v1/runs/legacy-canary/visibility" "visibility toggle removed"
 
-# --- Anonymous demo surface (SPEC-188): readable, read-only, bounded ---
+# --- Anonymous demo surface: readable, read-only, bounded ---
 fetch GET "/v1/projects/demo"
 if [[ "$STATUS" == "200" ]]; then
   PASS=$((PASS + 1))

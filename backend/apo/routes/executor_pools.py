@@ -273,6 +273,11 @@ async def patch_executor_pool(
     request: Request,
     session: Session = Depends(get_session),
 ) -> dict[str, object]:
+    """Patch Pool name/enabled/queue TTL/driver kind. Project admin only.
+
+    Archived pools are immutable (409); the driver kind cannot change while
+    nonterminal attempts exist (409).
+    """
     _ = enforce_project_role_from_request(request, session, project_id, minimum_role="admin")
     pool = _require_project_pool(session, project_id, pool_id)
     if pool.archived_at is not None:
@@ -370,6 +375,12 @@ async def create_enrollment_token_route(
     request: Request,
     session: Session = Depends(get_session),
 ) -> EnrollmentTokenResponse:
+    """Mint a single-use Executor enrollment token with container config.
+
+    Project admin only; rate-limited per admin. Refuses archived/disabled
+    pools (409) and more than the per-pool live-token cap. Returns 201 —
+    the raw token is only shown once.
+    """
     actor = enforce_project_role_from_request(
         request,
         session,
@@ -507,6 +518,8 @@ async def list_executors(
     request: Request,
     session: Session = Depends(get_session),
 ) -> ExecutorListResponse:
+    """List a Project's Executors with status, versions, capabilities,
+    and active attempt counts. Project members and above."""
     _ = enforce_project_role_from_request(request, session, project_id, minimum_role="member")
     executors = session.exec(
         select(ExecutorDB).where(ExecutorDB.project == project_id)
@@ -591,6 +604,7 @@ async def rename_executor_route(
     request: Request,
     session: Session = Depends(get_session),
 ) -> dict[str, object]:
+    """Rename an Executor. Project admin only; blank names get 422."""
     _ = enforce_project_role_from_request(request, session, project_id, minimum_role="admin")
     ex = session.get(ExecutorDB, executor_id)
     if ex is None or ex.project != project_id:

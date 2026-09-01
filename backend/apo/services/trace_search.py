@@ -1,6 +1,6 @@
-"""Trace search — span-derived predicates over the run list (SPEC-190).
+"""Trace search — span-derived predicates over the run list.
 
-The canonical span store (``otlp_spans``, the single home after SPEC-189)
+The canonical span store (``otlp_spans``, the single span home)
 is queried through correlated ``EXISTS`` subqueries so a run matches when
 ANY of its spans matches (and, for negated ops, when NONE does).
 

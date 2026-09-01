@@ -153,7 +153,7 @@ class RunDB(SQLModel, table=True):
     __tablename__: ClassVar[str] = "runs"
     __table_args__ = (
         UniqueConstraint("project", "id", name="uq_runs_project_trace"),
-        # SPEC-190: the traces list defaults to unfiltered time — push the
+        # The traces list defaults to unfiltered time — push the
         # project scan down a created_at-ordered index.
         Index("ix_runs_project_created", "project", "created_at"),
     )
@@ -191,7 +191,7 @@ class RunDB(SQLModel, table=True):
         default=None, sa_column=Column("output", JSON)
     )
     # The trace's service (resource service.name of its spans) — denormalized
-    # for the traces LIST column (SPEC-190 kept it span-side only; the list
+    # for the traces LIST column (the search filter reads the span side; the list
     # display made a run-level copy cheaper than a per-row span join).
     service_name: str | None = Field(default=None)
     # Storage single-homing Stage 2: write-time previews for the traces
@@ -1005,7 +1005,7 @@ class ApiKeyDB(SQLModel, table=True):
     scope: str = Field(default="full")
     expires_at: datetime | None = Field(default=None)
     last_used_at: datetime | None = Field(default=None)
-    # SPEC-191 ingest guardrails. Quota is PER KEY (N keys = N x cap) and
+    # Ingest guardrails. Quota is PER KEY (N keys = N x cap) and
     # guards against accidents, not adversarial senders. NULL = unlimited.
     daily_span_quota: int | None = Field(default=None)
     ingest_paused: bool = Field(default=False)
@@ -1707,7 +1707,7 @@ class GithubConnectionDB(SQLModel, table=True):
 
 
 class ApiKeyDailyUsageDB(SQLModel, table=True):
-    """Per-key daily ingest usage (SPEC-191). One row per (key, UTC day),
+    """Per-key daily ingest usage. One row per (key, UTC day),
     UPSERT-incremented at accept time by the ingest routes. Tiny rows;
     reaped by the maintenance pass past APO_USAGE_RETENTION_DAYS."""
 
@@ -1752,7 +1752,7 @@ class OtlpIngestBatchDB(SQLModel, table=True):
     )
     status: str = Field(default="accepted", index=True)
     error_message: str | None = Field(default=None)
-    # SPEC-191 audit linkage: which key accepted this batch and how big it
+    # Audit linkage: which key accepted this batch and how big it
     # was on the wire. Usage accounting happens route-side; these make the
     # history reconstructable straight from the inbox.
     api_key_id: str | None = Field(default=None, index=True)
@@ -1774,7 +1774,7 @@ class OtlpSpanDB(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint("project_id", "trace_id", "span_id", name="uq_otlp_span"),
         Index("ix_otlp_spans_trace", "project_id", "trace_id"),
-        # SPEC-190: the hottest trace-search filters — service and
+        # The hottest trace-search filters — service and
         # operation facets/filters over the single span home.
         Index("ix_otlp_spans_service", "project_id", "service_name"),
         Index("ix_otlp_spans_operation", "project_id", "span_name"),
@@ -1789,7 +1789,7 @@ class OtlpSpanDB(SQLModel, table=True):
     end_time: datetime | None = Field(default=None, sa_column=Column(UTCDateTime))
     span_name: str = Field(default="")
     # Materialized from resource.attributes["service.name"] at ingest —
-    # the hottest company-wide filter (SPEC-190). NULL on legacy rows
+    # the hottest company-wide filter. NULL on legacy rows
     # without a derivable service.
     service_name: str | None = Field(default=None)
     span_kind: int = Field(default=0)

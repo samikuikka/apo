@@ -80,7 +80,7 @@ class RunListFilters:
     models: list[str] = field(default_factory=list)
     tags: str | None = None
     search: str | None = None
-    # SPEC-190 span-derived search
+    # Span-derived search
     service: str | None = None
     operation: str | None = None
     span_text: str | None = None
@@ -118,7 +118,7 @@ def list_run_summaries(
     statement = _apply_status_filter(statement, filters.status_values)
     if filters.bookmarked is not None:
         statement = statement.where(RunDB.bookmarked == filters.bookmarked)
-    # SPEC-190: span-derived predicates MUST land before the total_count
+    # Span-derived predicates MUST land before the total_count
     # subquery below, or pages filter but counts do not.
     statement = apply_trace_search(
         statement,
@@ -198,7 +198,7 @@ def _apply_attribute_filters(statement: Any, filters: RunListFilters) -> Any:
         statement = apply_tag_filters(statement, filters.tags)
     if filters.search:
         # Wildcards in the user's text match literally — SQLite LIKE has
-        # no default escape character, so ESCAPE is explicit (SPEC-190).
+        # no default escape character, so ESCAPE is explicit.
         like = f"%{_escape_like_text(filters.search)}%"
         statement = statement.where(
             or_(

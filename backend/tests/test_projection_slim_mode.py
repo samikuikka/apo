@@ -1,6 +1,6 @@
 # pyright: reportAny=false, reportAttributeAccessIssue=false, reportDeprecated=false, reportExplicitAny=false, reportImplicitOverride=false, reportImplicitStringConcatenation=false, reportMissingParameterType=false, reportOptionalMemberAccess=false, reportPrivateLocalImportUsage=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedFunction=false, reportUnusedParameter=false
 
-"""SPEC-189 Stage 2 — slim projection, previews, and span-sourced reads.
+"""Slim projection, previews, and span-sourced reads (storage migration stage 2).
 
 Covers: write-time preview parity with the legacy read-time truncation,
 preview refresh rules (class priority, same-source refresh, dangling

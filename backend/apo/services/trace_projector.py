@@ -249,7 +249,7 @@ class TraceProjector:
             elif run.environment in (None, "", "default"):
                 # Vanilla OTel SDKs carry the environment on the resource,
                 # not as a span attribute — without this fallback every
-                # service trace shows environment=default (SPEC-190).
+                # service trace shows environment=default.
                 fallback = _resource_environment(span)
                 if fallback:
                     run.environment = fallback

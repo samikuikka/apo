@@ -177,7 +177,7 @@ def create_api_key(
 
     public_key, secret_key, hashed_secret_key, display_secret_key = generate_key_pair()
 
-    # SPEC-191: explicit body quota wins; otherwise the env default applies
+    # Explicit body quota wins; otherwise the env default applies
     # to NEW keys only (existing keys are untouched — bulk-apply in the UI).
     quota = body.daily_span_quota
     if quota is None:

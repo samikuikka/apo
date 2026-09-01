@@ -227,6 +227,11 @@ async def list_agent_task_schedules(
     project: str | None = Query(default=None),
     session: Session = Depends(get_session),
 ) -> list[AgentTaskScheduleSummary]:
+    """List Schedules readable by the caller, newest first.
+
+    Optional ``project`` filter requires viewer role; without it the list is
+    scoped to all the caller's readable Projects.
+    """
     # Scope by readable Projects.
     if project:
         enforce_project_role_from_request(
@@ -253,6 +258,7 @@ async def get_agent_task_schedule(
     schedule_id: str,
     session: Session = Depends(get_session),
 ) -> AgentTaskScheduleDetail:
+    """Return one Schedule with full metadata. Cross-Project access is masked as 404."""
     schedule = session.get(AgentTaskScheduleDB, schedule_id)
     if schedule is None:
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -318,6 +324,11 @@ async def create_agent_task_schedule(
     http_request: Request,
     session: Session = Depends(get_session),
 ):
+    """Create a Schedule. Project admin only; not allowed on the demo Project.
+
+    A typed catalog ``selection`` creates a source-owned Schedule; otherwise
+    the legacy pooled path applies. Returns 201.
+    """
     require_project_not_demo(request.project)
     # schedule creation requires project admin role.
     membership = enforce_project_role_from_request(
@@ -567,6 +578,12 @@ async def update_agent_task_schedule(
     http_request: Request,
     session: Session = Depends(get_session),
 ):
+    """Patch Schedule fields; recomputes ``next_run_at`` from the merged cadence.
+
+    Project admin only. Pausing a source-owned Schedule cancels its
+    never-started active Batch; resolved pool changes clear pool-related
+    disabled reasons.
+    """
     schedule = session.get(AgentTaskScheduleDB, schedule_id)
     if schedule is None:
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -691,6 +708,12 @@ async def trigger_schedule(
     http_request: Request,
     session: Session = Depends(get_session),
 ):
+    """Run Now: trigger a Batch immediately. Project admin only; demo excluded.
+
+    Source-owned Schedules deliver a manual Occurrence (or return the active
+    Batch) without shifting the cadence; legacy bundled Schedules create a
+    pooled Batch Run. Returns 409 on pool/selection conflicts.
+    """
     schedule = session.get(AgentTaskScheduleDB, schedule_id)
     if schedule is None:
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -911,6 +934,10 @@ async def delete_agent_task_schedule(
     http_request: Request,
     session: Session = Depends(get_session),
 ):
+    """Delete a Schedule and its dependents (occurrences, adaptive states).
+
+    Project admin only; not allowed on the demo Project.
+    """
     schedule = session.get(AgentTaskScheduleDB, schedule_id)
     if schedule is None:
         raise HTTPException(status_code=404, detail="Schedule not found")

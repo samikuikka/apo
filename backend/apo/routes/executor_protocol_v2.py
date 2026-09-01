@@ -441,6 +441,8 @@ async def attempt_heartbeat_v2(
     lease: CurrentAttemptLease = Depends(_require_attempt_lease),
     session: Session = Depends(get_session),
 ) -> dict[str, object]:
+    """Renew an attempt lease and report progress; returns whether a cancel
+    was requested. Stale leases get 409."""
     response.headers["X-Apo-Executor-Protocol"] = str(PROTOCOL_VERSION)
     if lease.attempt_id != attempt_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "attempt token not valid for this attempt")

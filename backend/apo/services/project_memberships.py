@@ -368,8 +368,8 @@ def authorize_project_request(
 def _authorize_demo_project(request: object) -> ProjectMembershipDB:
     """The demo project is world-readable: synthetic ``viewer`` row.
 
-    Anonymous demo visitors (the middleware-minted GET-only credential,
-    SPEC-188) read as viewer in every profile. Authenticated users also
+    Anonymous demo visitors (the middleware-minted GET-only credential)
+    read as viewer in every profile. Authenticated users also
     get viewer — the demo never grants management or mutation rights.
     """
     if _request_auth_method(request) == "anonymous":
@@ -449,7 +449,7 @@ def readable_project_ids_for_request(
     """
     auth_method = _request_auth_method(request)
 
-    # Anonymous demo visitors read exactly the demo project (SPEC-188).
+    # Anonymous demo visitors read exactly the demo project.
     # This branch must precede the no-identity handling below: the anonymous
     # credential carries no user_id by design.
     if auth_method == "anonymous":
@@ -487,7 +487,7 @@ def readable_project_ids_for_request(
 def compute_permissions(role: str | None) -> ProjectPermissionSummary:
     """Derive a permission summary from a project role.
 
-    ``viewer`` is the read-only role (SPEC-188): no mutations, no
+    ``viewer`` is the read-only role: no mutations, no
     management, no per-user writes. The demo project hands every visitor
     (including anonymous) a viewer membership, so the old ``role=None``
     ``can_run_tasks=True`` fiction is gone — the None branch remains only
@@ -557,7 +557,7 @@ def _validate_role(role: str) -> None:
 
 
 def _reject_grant_above_actor_rank(role: str, actor_role: str) -> None:
-    """SPEC-188 grant-rank rule: an actor may grant at most their own rank.
+    """Grant-rank rule: an actor may grant at most their own rank.
 
     Admins can grant admin/member/viewer; only owners grant owner. The
     owner-specific checks at call sites keep their clearer messages and

@@ -404,7 +404,7 @@ export interface SpanFieldFacets {
   operations: { value: string; count: number }[];
 }
 
-/** Span-derived facet buckets (SPEC-190) for the traces filter bar. */
+/** Span-derived facet buckets for the traces filter bar. */
 export async function fetchSpanFieldFacets(
   projectId: string,
 ): Promise<SpanFieldFacets | null> {
