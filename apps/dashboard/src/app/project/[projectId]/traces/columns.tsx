@@ -30,14 +30,11 @@ import type {
   TraceMetric,
   TraceSummary,
 } from "@/lib/traces-api";
-// Column metadata is co-located in a .ts module so this file exports only
-// React components (keeps Fast Refresh able to preserve component state).
+// Column metadata and the metric lookup are co-located in a .ts module so
+// this file exports only React components (keeps Fast Refresh able to
+// preserve component state).
+import { getMetric } from "./column-constants";
 export { COLUMN_LABELS, COLUMN_SORT_MAP } from "./column-constants";
-
-export function getMetric(metrics: TraceMetric[], name: string): number | null {
-  const m = metrics.find((m) => m.metric_name === name);
-  return m ? m.score : null;
-}
 
 function StatusDot({ status: _status, errorCount, warningCount }: { status: string; errorCount: number; warningCount: number }) {
   if (errorCount > 0) {

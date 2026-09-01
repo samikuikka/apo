@@ -5,6 +5,7 @@ import {
 } from "@/lib/agent-task-api";
 import { fetchTaskViewConfigFacets } from "@/lib/agent-task-view-api";
 import { getProject } from "@/lib/projects-api";
+import { Suspense } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TaskFileBrowser } from "@/components/agent-task-files/task-file-browser";
@@ -162,9 +163,13 @@ export default async function TaskDetailPage({
       </div>
 
       {/* Run-history scope: the shared filter bar in its own strip, hosted the
-          same way the Tasks and Runs pages host it. */}
+          same way the Tasks and Runs pages host it. The bar reads the search
+          params client-side, so it needs a Suspense boundary — without one,
+          Next.js would force the whole page into client-side rendering. */}
       <div className="border-b border-border bg-muted/10 px-6 py-2.5">
-        <RunHistoryScopeBar projectId={projectId} facets={facets} />
+        <Suspense fallback={null}>
+          <RunHistoryScopeBar projectId={projectId} facets={facets} />
+        </Suspense>
       </div>
 
       <Tabs defaultValue="runs" className="flex flex-col">

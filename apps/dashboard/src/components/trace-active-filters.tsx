@@ -186,7 +186,7 @@ export function TraceActiveFilters({
       />
     );
   }
-  filters.span_predicates.forEach((predicate, index) => {
+  filters.span_predicates.forEach((predicate) => {
     const key = predicate.field.replace(/^attribute:/, "");
     const opLabel =
       {
@@ -209,13 +209,13 @@ export function TraceActiveFilters({
         : String(predicate.value ?? "");
     chips.push(
       <FilterChip
-        key={`span-pred-${index}`}
+        key={`span-pred-${predicate.id}`}
         icon={<Tag className="h-3 w-3" />}
         label={`${key} ${opLabel}${value ? ` ${value}` : ""}`}
         onRemove={() =>
           onRemoveFilter(
             "span_predicates",
-            filters.span_predicates.filter((_, i) => i !== index)
+            filters.span_predicates.filter((p) => p.id !== predicate.id)
           )
         }
       />

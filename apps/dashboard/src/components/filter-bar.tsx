@@ -26,7 +26,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ModelFilterMenu, type ModelPickerOption } from "@/components/model-filter-menu";
+import { ModelFilterMenu } from "@/components/model-filter-menu";
+import type { ModelPickerOption } from "@/lib/model-filter-options";
 import { FilterPicker } from "@/components/filter-picker";
 import { shortModel } from "@/lib/run-configuration";
 import { ALL_SINCE_VALUE, sinceOptionsFor } from "@/lib/since-window";
@@ -244,7 +245,7 @@ function StatusFilterMenu({
  * props (ref + Radix trigger handlers) onto the button — without the spread,
  * `DropdownMenuTrigger asChild` renders a button that can never open.
  */
-export function ModelFilterTrigger({
+function ModelFilterTrigger({
   selected,
   ref,
   ...slotProps

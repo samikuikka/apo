@@ -17,7 +17,3 @@ export function validatePassword(password: string): PasswordChecks {
     hasNumber: /\d/.test(password),
   }
 }
-
-export function isPasswordValid(checks: PasswordChecks): boolean {
-  return checks.minLength && checks.hasLetter && checks.hasNumber
-}

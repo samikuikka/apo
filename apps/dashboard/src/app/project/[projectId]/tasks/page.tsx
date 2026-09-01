@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { listAgentTaskBatchRuns, listProjectAgentTasks } from "@/lib/agent-task-api";
 import { getProject } from "@/lib/projects-api";
 import { getProjectOnboardingStatus } from "@/lib/projects-api";
@@ -101,8 +102,10 @@ export default async function AgentTasksPage({
       const batches = await listAgentTaskBatchRuns(projectId, { page_size: 100 });
       capturedOn =
         (batches.data ?? [])
-          .map((b) => b.completed_at ?? b.created_at ?? "")
-          .filter(Boolean)
+          .flatMap((b) => {
+            const stamp = b.completed_at ?? b.created_at;
+            return stamp ? [stamp] : [];
+          })
           .sort()
           .at(-1)
           ?.slice(0, 10) ?? "";
@@ -114,15 +117,21 @@ export default async function AgentTasksPage({
   return (
     <div className="flex">
       <div className="min-w-0 flex-1">
-        <AgentTasksClient
-          tasks={tasks}
-          error={error}
-          taskSource={taskSource}
-          isDemo={isDemo}
-          canRunTasks={canRunTasks}
-          firstRunSetup={firstRunSetup}
-          initialViewId={initialViewId}
-        />
+        {/* The client reads ?view= via useSearchParams, which needs a Suspense
+            boundary — without one, Next.js forces the page into client-side
+            rendering. The boundary content renders on the server for dynamic
+            pages, so the fallback only shows during client-side navigation. */}
+        <Suspense fallback={null}>
+          <AgentTasksClient
+            tasks={tasks}
+            error={error}
+            taskSource={taskSource}
+            isDemo={isDemo}
+            canRunTasks={canRunTasks}
+            firstRunSetup={firstRunSetup}
+            initialViewId={initialViewId}
+          />
+        </Suspense>
       </div>
       {isDemo && capturedOn ? <StartHereRail capturedOn={capturedOn} /> : null}
     </div>

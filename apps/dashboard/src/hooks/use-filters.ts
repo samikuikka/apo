@@ -31,9 +31,24 @@ export interface TraceFilters {
 }
 
 export interface SpanPredicate {
+  /**
+   * Stable identity for React list keys. Filters are URL-backed and
+   * re-parsed on every param write, so the id rides the span_filter JSON —
+   * a fresh id per parse would remount (and defocus) the editor rows on
+   * every keystroke. The backend ignores unknown keys in the payload.
+   */
+  id: string;
   field: string;
   op: string;
   value?: string | number | string[];
+}
+
+let predicateIdSeq = 0;
+
+/** Mint a predicate id; uniqueness only needs to hold per browser session. */
+export function nextPredicateId(): string {
+  predicateIdSeq += 1;
+  return `sp${predicateIdSeq}`;
 }
 
 export interface FilterActions {
@@ -183,13 +198,23 @@ function parseSpanPredicates(raw: string | null): SpanPredicate[] {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (p): p is SpanPredicate =>
-        typeof p === "object" &&
-        p !== null &&
-        typeof (p as SpanPredicate).field === "string" &&
-        typeof (p as SpanPredicate).op === "string",
-    );
+    return parsed
+      .filter(
+        (p): p is { field: string; op: string } =>
+          typeof p === "object" &&
+          p !== null &&
+          typeof (p as { field?: unknown }).field === "string" &&
+          typeof (p as { op?: unknown }).op === "string",
+      )
+      .map((p) => {
+        const { id, ...rest } = p as { id?: unknown } & Record<string, unknown>;
+        return {
+          ...rest,
+          // Links saved before predicate ids existed get one minted at parse
+          // time; the next filter write persists it into the URL.
+          id: typeof id === "string" && id ? id : nextPredicateId(),
+        } as SpanPredicate;
+      });
   } catch {
     return [];
   }

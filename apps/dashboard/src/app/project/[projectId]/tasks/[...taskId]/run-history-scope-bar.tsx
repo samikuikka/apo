@@ -143,25 +143,31 @@ export function RunHistoryScopeBar({
       ? view.label
       : null;
 
-  const writeParams = (next: TaskRunHistoryScope, keepView: boolean) => {
-    const params = new URLSearchParams();
-    if (next.model) params.set("model", next.model);
-    if (next.effort) params.set("effort", next.effort);
-    if (next.since) params.set("since", next.since);
-    if (next.status.size > 0) {
-      params.set("status", Array.from(next.status).join(","));
-    }
-    if (keepView && viewId) params.set("view", viewId);
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname);
-  };
+  const writeParams = useCallback(
+    (next: TaskRunHistoryScope, keepView: boolean) => {
+      const params = new URLSearchParams();
+      if (next.model) params.set("model", next.model);
+      if (next.effort) params.set("effort", next.effort);
+      if (next.since) params.set("since", next.since);
+      if (next.status.size > 0) {
+        params.set("status", Array.from(next.status).join(","));
+      }
+      if (keepView && viewId) params.set("view", viewId);
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname);
+    },
+    [router, pathname, viewId],
+  );
 
-  const merged = (patch: Partial<TaskRunHistoryScope>): TaskRunHistoryScope => ({
-    model: patch.model !== undefined ? patch.model : scope.model,
-    effort: patch.effort !== undefined ? patch.effort : scope.effort,
-    since: patch.since !== undefined ? patch.since : scope.since,
-    status: patch.status !== undefined ? patch.status : scope.status,
-  });
+  const merged = useCallback(
+    (patch: Partial<TaskRunHistoryScope>): TaskRunHistoryScope => ({
+      model: patch.model !== undefined ? patch.model : scope.model,
+      effort: patch.effort !== undefined ? patch.effort : scope.effort,
+      since: patch.since !== undefined ? patch.since : scope.since,
+      status: patch.status !== undefined ? patch.status : scope.status,
+    }),
+    [scope],
+  );
 
   // Status picks are mirrored locally and committed to the URL debounced:
   // every URL write is a server round-trip that remounts the page (closing
@@ -171,8 +177,6 @@ export function RunHistoryScopeBar({
   // to the same value, so there is no loop.
   const statusKey = Array.from(scope.status).sort().join(",");
   const [statusMirror, setStatusMirror] = useState(scope.status);
-  const statusRef = useRef(statusMirror);
-  statusRef.current = statusMirror;
   const [prevStatusKey, setPrevStatusKey] = useState(statusKey);
   if (statusKey !== prevStatusKey) {
     setPrevStatusKey(statusKey);
@@ -199,11 +203,9 @@ export function RunHistoryScopeBar({
       // Any other dimension commits immediately, flushing a pending status
       // selection along (dropping it would silently undo the user's picks).
       clearTimeout(statusTimer.current);
-      writeParams(merged({ ...patch, status: patch.status ?? statusRef.current }), true);
+      writeParams(merged({ ...patch, status: patch.status ?? statusMirror }), true);
     },
-    // scope/merged/writeParams are re-created every render; the callback must
-    // see the latest closures, so it is recreated with them.
-    [scope, merged, writeParams],
+    [scope, merged, writeParams, statusMirror],
   );
 
   return (

@@ -38,6 +38,7 @@ import {
   TimePreset,
   SpanPredicate,
   hasActiveFilters,
+  nextPredicateId,
 } from "@/hooks/use-filters";
 import {
   TraceProjectSelect,
@@ -324,7 +325,7 @@ function AttributePredicates({
         const op = predicate.op || "eq";
         const needsValue = op !== "exists" && op !== "not_exists";
         return (
-          <div key={index} className="flex items-center gap-1">
+          <div key={predicate.id} className="flex items-center gap-1">
             <Input
               aria-label={`Attribute key ${index + 1}`}
               placeholder="attribute key"
@@ -368,7 +369,7 @@ function AttributePredicates({
             )}
             <button type="button"
               aria-label={`Remove attribute filter ${index + 1}`}
-              onClick={() => onChange(predicates.filter((_, i) => i !== index))}
+              onClick={() => onChange(predicates.filter((p) => p.id !== predicate.id))}
               className="text-muted-foreground hover:text-destructive"
             >
               <X className="h-3.5 w-3.5" />
@@ -385,7 +386,7 @@ function AttributePredicates({
         onClick={() =>
           onChange([
             ...predicates,
-            { field: "attribute:", op: "eq", value: "" },
+            { id: nextPredicateId(), field: "attribute:", op: "eq", value: "" },
           ])
         }
       >

@@ -62,7 +62,9 @@ import type { TableAction } from "@/components/table";
 import { usePersistentTablePreferences } from "@/hooks/use-persistent-table-preferences";
 import { cn } from "@/lib/utils";
 import { useIsDemo } from "@/lib/project-router";
-import { COLUMN_LABELS, COLUMN_SORT_MAP, SortableHeader, createTraceColumns, getMetric } from "./columns";
+import Link from "next/link";
+import { SortableHeader, createTraceColumns } from "./columns";
+import { COLUMN_LABELS, COLUMN_SORT_MAP, getMetric } from "./column-constants";
 import { bulkActions } from "./bulk-actions";
 
 interface PaginationData {
@@ -693,35 +695,9 @@ export function TracesTablePanel({
       />
 
       {error ? (
-        <div className="p-6">
-          <Alert variant="destructive">
-            <AlertTitle>Error loading traces</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        </div>
+        <TracesPanelFeedback error={error} />
       ) : traces.length === 0 ? (
-        <div className="p-6">
-          <Card className="border-dashed border-border/60 bg-card/60">
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              {hasTraces ? (
-                <>No traces match the current filters — clear them above.</>
-              ) : (
-                <div className="space-y-3">
-                  <p>
-                    No traces yet. Recorded task runs produce a trace automatically,
-                    or point any OpenTelemetry SDK at apo with an ingest key.
-                  </p>
-                  <a
-                    href="/settings/api-keys"
-                    className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-                  >
-                    Connect a service →
-                  </a>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        <TracesPanelFeedback hasTraces={hasTraces} />
       ) : (
         <TracesTableContent
           table={table}
@@ -746,6 +722,54 @@ export function TracesTablePanel({
           onConfirm={handleActionConfirm}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * The panel's non-table states: a load error, or the empty list (filters
+ * matched nothing vs. a genuinely trace-less project — the latter points
+ * the user at ingest keys to connect a service).
+ */
+function TracesPanelFeedback({
+  error,
+  hasTraces = true,
+}: {
+  error?: string | null;
+  hasTraces?: boolean;
+}) {
+  if (error) {
+    return (
+      <div className="p-6">
+        <Alert variant="destructive">
+          <AlertTitle>Error loading traces</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+  return (
+    <div className="p-6">
+      <Card className="border-dashed border-border/60 bg-card/60">
+        <CardContent className="py-10 text-center text-sm text-muted-foreground">
+          {hasTraces ? (
+            <>No traces match the current filters — clear them above.</>
+          ) : (
+            <div className="space-y-3">
+              <p>
+                No traces yet. Recorded task runs produce a trace automatically,
+                or point any OpenTelemetry SDK at apo with an ingest key.
+              </p>
+              <Link
+                href="/settings/api-keys"
+                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                Connect a service →
+              </Link>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -26,7 +26,8 @@ import { ConfirmationDialogs } from "./confirmation-dialogs"
 import { CopyLinkCallout } from "./copy-link-callout"
 import { InviteDialog } from "./invite-dialog"
 import { MembersContent } from "./members-content"
-import { ROLE_RANK, type Row } from "./members-table"
+import { type Row } from "./members-table"
+import { ROLE_RANK } from "./role-order"
 import {
   fetchReducer,
   initialFetchState,

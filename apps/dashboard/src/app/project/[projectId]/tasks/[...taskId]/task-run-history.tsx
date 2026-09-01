@@ -23,12 +23,16 @@ export function TaskRunHistory({ runs, canDelete = false }: TaskRunHistoryProps)
   const projectId = useProjectId();
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [page, setPage] = useState(0);
-  const [liveRuns, setLiveRuns] = useState(runs);
+  // Deleted runs are hidden locally until the next server render; deriving
+  // the list from the prop (instead of copying it into state once) keeps a
+  // parent re-render with fresh `runs` from showing stale rows.
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set());
+  const liveRuns = runs.filter((run) => !deletedIds.has(run.id));
 
   // Deleted runs splice out locally; the surrounding counts refresh with
   // the next server render.
   const handleDeleted = (runId: string) => {
-    setLiveRuns((prev) => prev.filter((run) => run.id !== runId));
+    setDeletedIds((prev) => new Set(prev).add(runId));
     setCompareIds((prev) => prev.filter((id) => id !== runId));
   };
 
@@ -41,9 +45,9 @@ export function TaskRunHistory({ runs, canDelete = false }: TaskRunHistoryProps)
   // across two DIFFERENT batches (comparing a batch to itself is nonsensical).
   const compareBatches = useMemo(() => {
     return compareIds
-      .map((rid) => liveRuns.find((r) => r.id === rid)?.batch_run_id)
+      .map((rid) => runs.find((r) => r.id === rid && !deletedIds.has(r.id))?.batch_run_id)
       .filter((b): b is string => typeof b === "string");
-  }, [compareIds, liveRuns]);
+  }, [compareIds, runs, deletedIds]);
   const canCompare =
     compareIds.length === 2 && compareBatches.length === 2 && compareBatches[0] !== compareBatches[1];
 

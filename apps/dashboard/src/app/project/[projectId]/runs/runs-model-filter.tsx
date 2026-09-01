@@ -1,7 +1,8 @@
 "use client";
 
 import { ListFilter } from "lucide-react";
-import { ModelFilterMenu, type ModelPickerOption } from "@/components/model-filter-menu";
+import { ModelFilterMenu } from "@/components/model-filter-menu";
+import type { ModelPickerOption } from "@/lib/model-filter-options";
 import { cn } from "@/lib/utils";
 
 export type ModelOption = ModelPickerOption;

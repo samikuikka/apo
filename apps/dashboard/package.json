@@ -33,7 +33,7 @@
     "lucide-react": "^0.562.0",
     "motion": "^12.40.0",
     "next": "16.2.9",
-    "next-auth": "5.0.0-beta.31",
+    "next-auth": "5.0.0-beta.32",
     "radix-ui": "latest",
     "react": "19.2.1",
     "react-dom": "19.2.1",

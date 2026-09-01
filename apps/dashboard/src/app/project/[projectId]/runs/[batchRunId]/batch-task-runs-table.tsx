@@ -21,12 +21,16 @@ export function BatchTaskRunsTable({
   canDelete: boolean;
 }) {
   const [page, setPage] = useState(0);
-  const [liveRuns, setLiveRuns] = useState(runs);
+  // Deleted runs are hidden locally until the next server render; deriving
+  // the list from the prop (instead of copying it into state once) keeps a
+  // parent re-render with fresh `runs` from showing stale rows.
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(() => new Set());
+  const liveRuns = runs.filter((run) => !deletedIds.has(run.id));
 
   // Deleted runs splice out locally; deleting the last one removes the
   // whole batch, so head back to the runs list.
   const handleDeleted = (runId: string) => {
-    setLiveRuns((prev) => prev.filter((run) => run.id !== runId));
+    setDeletedIds((prev) => new Set(prev).add(runId));
     if (liveRuns.length <= 1) {
       window.location.href = `/project/${projectId}/runs`;
     }

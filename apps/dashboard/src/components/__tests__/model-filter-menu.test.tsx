@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { visibleModels, type ModelPickerOption } from "../model-filter-menu";
+import { visibleModels, type ModelPickerOption } from "../../lib/model-filter-options";
 
 const option = (
   model: string,

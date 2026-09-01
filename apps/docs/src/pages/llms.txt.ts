@@ -149,9 +149,12 @@ async function buildLlmsTxt(): Promise<string> {
 	const listed = new Set(SECTIONS.flatMap((s) => s.slugs));
 
 	const sections = SECTIONS.map((section) => {
-		const links = section.slugs
-			.filter((slug) => pages.has(slug))
-			.map((slug) => formatLink(slug, pages.get(slug)));
+		// One pass: collect and format each listed slug the docs actually have.
+		const links: string[] = [];
+		for (const slug of section.slugs) {
+			const page = pages.get(slug);
+			if (page) links.push(formatLink(slug, page));
+		}
 		return links.length > 0 ? `## ${section.heading}\n\n${links.join('\n')}` : '';
 	});
 

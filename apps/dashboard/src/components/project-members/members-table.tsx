@@ -27,9 +27,6 @@ export type Row =
   | { kind: "member"; member: ProjectMemberSummary }
   | { kind: "invitation"; invitation: ProjectInvitationSummary }
 
-/** Owners first, then admins, then members, then viewers — default order. */
-export const ROLE_RANK: Record<ProjectRole, number> = { owner: 0, admin: 1, member: 2, viewer: 3 }
-
 function initialOf(text: string): string {
   const c = text.trim().charAt(0)
   return c ? c.toUpperCase() : "?"

@@ -107,8 +107,10 @@ async function loadDemoStats(): Promise<DemoStats | null> {
     if (rows.length === 0) return null;
     const runCount = rows.reduce((sum, b) => sum + (b.total_tasks ?? 0), 0);
     const capturedOn = rows
-      .map((b) => b.completed_at ?? b.created_at ?? "")
-      .filter(Boolean)
+      .flatMap((b) => {
+        const stamp = b.completed_at ?? b.created_at;
+        return stamp ? [stamp] : [];
+      })
       .sort()
       .at(-1)!
       .slice(0, 10);
