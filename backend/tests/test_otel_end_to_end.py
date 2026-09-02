@@ -16,6 +16,8 @@ canonical path.
 
 from __future__ import annotations
 
+import os
+import shutil
 import socket
 import threading
 import time
@@ -55,20 +57,29 @@ def otel_server():
     import apo.db as db_module
     import apo.services.trace_ingestion_queue as queue_module
     from apo.api import app
-    from apo.db import get_session
+    from apo.db import attach_sqlite_pragmas, get_session
     from apo.models.db import ApiKeyDB, OtlpIngestBatchDB, OtlpSpanDB  # noqa: F401
     from sqlmodel import SQLModel, Session, create_engine
-    from sqlalchemy.pool import StaticPool
+    from sqlalchemy.pool import NullPool
     from apo.auth import middleware as auth_middleware
     from apo.auth.api_key_auth import _hash_secret_key
 
-    # Isolated in-memory SQLite shared across the module via StaticPool, so the
-    # server thread and the test thread see the same database.
+    # Isolated temp-file SQLite, one connection per Session (NullPool) — the
+    # production topology. The previous in-memory StaticPool shared ONE
+    # connection between the server thread and the queue worker's projection
+    # thread, and their savepoints corrupted each other ("no such savepoint")
+    # whenever the interleaving hit. Separate connections + WAL serialize
+    # correctly across threads.
+    import tempfile
+
+    tmp_dir = tempfile.mkdtemp(prefix="apo-otel-e2e-")
+    db_path = os.path.join(tmp_dir, "e2e.db")
     test_engine = create_engine(
-        "sqlite://",
+        f"sqlite:///{db_path}",
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
+        poolclass=NullPool,
     )
+    attach_sqlite_pragmas(test_engine)
     SQLModel.metadata.create_all(test_engine)
 
     # Seed a full-scope API key the exporters authenticate with. The OTLP
@@ -170,6 +181,8 @@ def otel_server():
     _live_ns["AUTH_SECRET"] = _otel_original_secret
     if _otel_original_live_engine is not None:
         _live_ns["engine"] = _otel_original_live_engine
+    test_engine.dispose()
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def _url(otel_server) -> str:
@@ -449,6 +462,10 @@ class TestSkillObservationEndToEnd:
                 )
             if session.get(UserDB, "e2e-test") is None:
                 session.add(UserDB(id="e2e-test", email="e2e@test", password_hash="x"))
+                # Flush the parent rows first: the membership's FKs are
+                # enforced (production PRAGMAs run on this engine), and the
+                # unit of work has no mapped relationship to order them.
+                session.flush()
                 session.add(
                     ProjectMembershipDB(
                         project_id=otel_server["project"],

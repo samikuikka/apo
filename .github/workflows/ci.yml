@@ -51,6 +51,8 @@ jobs:
         # resolves, Copy Prompt uses the live origin, schema $ids map).
         run: pnpm --filter docs build
       - run: pnpm test:public-ingress
+      - name: Public ingress smoke probe contract
+        run: pnpm test:public-ingress-smoke
       - name: Public docs deployment contract
         run: pnpm test:public-docs
       - name: Self-adoption docs contract

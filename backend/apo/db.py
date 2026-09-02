@@ -51,23 +51,25 @@ engine = create_engine(DATABASE_URL, **_get_engine_kwargs())
 # writes retry instead of raising SQLITE_BUSY immediately. foreign_keys
 # enforces declared FK constraints. synchronous=NORMAL is safe under WAL
 # and dramatically faster than the default FULL fsync-per-commit.
-if is_sqlite():
-    # VACUUM rebuilds the database through temp storage; by default that is
-    # /tmp (the container's writable layer), not the data volume. Point
-    # SQLite's temp dir at DATA_DIR so a reclaim needs free space where the
-    # operator actually sized it. setdefault — an explicit operator choice
-    # wins.
-    os.environ.setdefault("SQLITE_TMPDIR", DATA_DIR)
+def attach_sqlite_pragmas(target_engine: object) -> None:
+    """Register the per-connection PRAGMA hook on a SQLite engine.
 
-    @event.listens_for(engine, "connect")
+    Shared with test fixtures so a temp-file test engine behaves exactly
+    like the production one (WAL + busy timeout + FK enforcement) — an
+    e2e server thread and a queue-worker thread sharing one StaticPool
+    connection corrupt each other's savepoint stack, so multi-threaded
+    tests must use one connection per Session, which then needs these
+    PRAGMAs to serialize instead of erroring.
+    """
+    @event.listens_for(target_engine, "connect")
     def _set_sqlite_pragmas(dbapi_conn, _connection_record):
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA busy_timeout=5000")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA synchronous=NORMAL")
-        # max_page_count is a PER-CONNECTION limit (the database file does
-        # not remember it) and this engine uses NullPool — so it must be set
+        # max_page_count is a PER-CONNECTION limit (the database file does not
+        # remember it) and this engine uses NullPool — so it must be set
         # on every new connection or the hard cap is decorative. Read the
         # env fresh so operators (and tests) can change it without restart.
         try:
@@ -77,6 +79,16 @@ if is_sqlite():
         if page_cap > 0:
             cursor.execute(f"PRAGMA max_page_count={page_cap}")
         cursor.close()
+
+
+if is_sqlite():
+    # VACUUM rebuilds the database through temp storage; by default that is
+    # /tmp (the container's writable layer), not the data volume. Point
+    # SQLite's temp dir at DATA_DIR so a reclaim needs free space where
+    # the operator actually sized it. setdefault — an explicit operator choice
+    # wins.
+    os.environ.setdefault("SQLITE_TMPDIR", DATA_DIR)
+    attach_sqlite_pragmas(engine)
 
 
 def _get_column_names(conn, table_name: str) -> set[str]:

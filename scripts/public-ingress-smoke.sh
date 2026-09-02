@@ -122,9 +122,30 @@ if expect_status_in "CLI bootstrap route reachable" 401 422 429; then
   assert_no_basic_challenge "CLI bootstrap route"
 fi
 
-# --- Protected Project data: Apo 401/403 JSON, no Basic challenge ---
+# --- Protected Project data boundary: the anonymous project list may
+#     expose the public demo workspace and nothing else — any other id is
+#     a data leak. A 401/403 JSON answer (no demo installed / stricter
+#     profile) is equally acceptable; a Basic challenge is not. ---
 fetch GET /v1/projects
-if expect_status_in "protected data requires Apo auth" 401 403; then
+if [[ "$STATUS" == "200" ]] && assert_no_basic_challenge "anonymous project list"; then
+  projects_body="$(curl -sS --max-time "$TIMEOUT" "$PUBLIC_URL/v1/projects" 2>/dev/null || echo "")"
+  if echo "$projects_body" | python3 -c "
+import sys, json
+try:
+    projects = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+if not isinstance(projects, list):
+    sys.exit(1)
+ids = {p.get('id') for p in projects if isinstance(p, dict)}
+sys.exit(0 if ids <= {'demo'} else 1)
+" 2>/dev/null; then
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL: anonymous /v1/projects exposes more than the demo workspace — data leak" >&2
+    FAIL=$((FAIL + 1))
+  fi
+elif expect_status_in "protected data requires Apo auth" 401 403; then
   assert_no_basic_challenge "protected data"
 fi
 

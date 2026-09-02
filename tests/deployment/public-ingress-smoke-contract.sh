@@ -4,8 +4,11 @@
 # 5. The smoke script must FAIL (and name the Basic Auth gate) against a
 #    fixture that answers admission routes with 401 + WWW-Authenticate: Basic.
 # 6. The smoke script must PASS against a fixture that answers admission
-#    routes as Apo would — including a credential-free 401 JSON on protected
-#    data — without confusing application auth with ingress auth.
+#    routes as Apo would — including an anonymous project list that carries
+#    only the public demo workspace — without confusing application auth
+#    with ingress auth.
+# 7. The smoke script must FAIL (and name the leak) against a fixture whose
+#    anonymous project list also contains a member project.
 #
 # Run: bash tests/deployment/public-ingress-smoke-contract.sh
 
@@ -50,6 +53,25 @@ fi
 stop_fixture
 trap - EXIT
 
+# --- Test 7: an anonymous list that leaks a member project must fail ---
+start_fixture app-leak
+trap stop_fixture EXIT
+if "$REPO_ROOT/scripts/public-ingress-smoke.sh" "$FIXTURE_URL" > /tmp/smoke-leak.out 2>&1; then
+  echo "FAIL: smoke accepted a non-demo project in the anonymous list (expected failure):" >&2
+  cat /tmp/smoke-leak.out >&2
+  failures=$((failures + 1))
+else
+  if grep -qi "demo workspace" /tmp/smoke-leak.out; then
+    echo "smoke rejects anonymous data leakage: ok"
+  else
+    echo "FAIL: smoke failed but did not identify the anonymous data leak:" >&2
+    cat /tmp/smoke-leak.out >&2
+    failures=$((failures + 1))
+  fi
+fi
+stop_fixture
+trap - EXIT
+
 # --- Test 5: the former all-routes Basic Auth gate must fail ---
 start_fixture basic-gate
 trap stop_fixture EXIT
@@ -69,7 +91,7 @@ fi
 stop_fixture
 trap - EXIT
 
-rm -f /tmp/smoke-app.out /tmp/smoke-basic.out
+rm -f /tmp/smoke-app.out /tmp/smoke-leak.out /tmp/smoke-basic.out
 
 if [[ "$failures" -gt 0 ]]; then
   echo "public ingress smoke contract: FAIL ($failures)"
