@@ -108,7 +108,9 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
         "overflow-hidden align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
         DENSITY_CELL_CLASS[density],
         "data-[pinned=left]:bg-background data-[pinned=right]:bg-background",
-        "group-hover:data-[pinned=left]:bg-muted/50 group-hover:data-[pinned=right]:bg-muted/50",
+        // Opaque hover shade — a translucent one (e.g. bg-muted/50) lets
+        // horizontally scrolled cells show through the sticky pinned cells.
+        "group-hover:data-[pinned=left]:bg-muted-hover group-hover:data-[pinned=right]:bg-muted-hover",
         "group-data-[state=selected]:data-[pinned=left]:bg-muted group-data-[state=selected]:data-[pinned=right]:bg-muted",
         "data-[pinned-edge=last-left]:shadow-[3px_0_5px_-2px_rgba(0,0,0,0.15)]",
         "data-[pinned-edge=first-right]:shadow-[-3px_0_5px_-2px_rgba(0,0,0,0.15)]",
