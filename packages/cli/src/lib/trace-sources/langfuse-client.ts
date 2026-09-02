@@ -11,6 +11,10 @@ export interface LangfuseTraceGraph {
   sourceHost: string;
   sourceTraceId: string;
   observations: readonly LangfuseObservation[];
+  trace?: {
+    sessionId?: string | null;
+    userId?: string | null;
+  };
 }
 
 export class LangfuseEmptyTraceError extends Error {
@@ -229,7 +233,62 @@ export async function fetchLangfuseTrace(
     sourceHost: config.host,
     sourceTraceId,
     observations,
+    trace: await fetchTraceAttribution(sourceTraceId, config),
   };
+}
+
+// Session/user identity lives only on the trace resource, never on an
+// observation — without this GET an imported trace loses its session grouping
+// (issue #189). Best-effort: attribution is enrichment, so a failure here
+// degrades to an ungrouped import rather than a failed one.
+async function fetchTraceAttribution(
+  sourceTraceId: string,
+  config: LangfuseConnectorConfig,
+): Promise<{ sessionId?: string | null; userId?: string | null } | undefined> {
+  const url = new URL(
+    `/api/public/traces/${encodeURIComponent(sourceTraceId)}`,
+    config.host,
+  );
+  const auth = Buffer.from(`${config.publicKey}:${config.secretKey}`, "utf8").toString("base64");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!response.ok) return undefined;
+
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch {
+    return undefined;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return undefined;
+  }
+  const obj = (
+    "data" in parsed &&
+    typeof (parsed as { data?: unknown }).data === "object" &&
+    (parsed as { data?: unknown }).data !== null
+      ? (parsed as { data: Record<string, unknown> }).data
+      : (parsed as Record<string, unknown>)
+  ) as Record<string, unknown>;
+  const sessionId = typeof obj.sessionId === "string" ? obj.sessionId : null;
+  const userId = typeof obj.userId === "string" ? obj.userId : null;
+  if (sessionId === null && userId === null) return undefined;
+  return { sessionId, userId };
 }
 
 /**

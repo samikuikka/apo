@@ -138,6 +138,35 @@ describe("langfuse-otlp identity mapping", () => {
   });
 });
 
+describe("langfuse-otlp trace-level attribution (issue #189)", () => {
+  it("carries the source trace's sessionId/userId on the root span", () => {
+    const g = graph(
+      [obs({ id: "root", type: "SPAN" }), obs({ id: "child", parentObservationId: "root" })],
+    );
+    g.trace = { sessionId: "session-7", userId: "user-42" };
+    const spans = allSpans(convertLangfuseTraceToOtlp(g));
+    const root = (spans as Array<{ spanId?: string }>).find(
+      (s) => s.spanId === mapApoSpanId("root"),
+    );
+    const attrs = spanAttrs(root);
+    expect(attrValue(attrs.get("langfuse.trace.session_id"))).toBe("session-7");
+    expect(attrValue(attrs.get("langfuse.trace.user_id"))).toBe("user-42");
+    // Only the root carries trace-level attribution.
+    const child = (spans as Array<{ spanId?: string }>).find(
+      (s) => s.spanId === mapApoSpanId("child"),
+    );
+    expect(spanAttrs(child).has("langfuse.trace.session_id")).toBe(false);
+  });
+
+  it("omits the attributes when the source trace has no session/user", () => {
+    const g = graph([obs({ id: "root", type: "SPAN" })]);
+    const spans = allSpans(convertLangfuseTraceToOtlp(g));
+    const attrs = spanAttrs(spans[0]);
+    expect(attrs.has("langfuse.trace.session_id")).toBe(false);
+    expect(attrs.has("langfuse.trace.user_id")).toBe(false);
+  });
+});
+
 describe("langfuse-otlp graph preservation", () => {
   it("maps known parent relationships and detaches missing parents as roots", () => {
     const observations = [

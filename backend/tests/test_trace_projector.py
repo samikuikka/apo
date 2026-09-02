@@ -250,6 +250,120 @@ class TestTraceProjectorFlowName:
             assert run.flow_name == "sandbox-agent-query"
 
 
+class TestTraceProjectorTraceAttribution:
+    """Trace-level session/user/environment/tags follow convention priority.
+
+    The private ``apo.run.*`` namespace is apo's own; standard senders emit
+    GenAI conventions (``gen_ai.conversation.id``), Langfuse-SDK conventions
+    (``langfuse.trace.*``), or OTel general conventions (``session.id`` /
+    ``user.id`` / resource ``deployment.environment.name``). All must reach
+    the run's indexed columns or the sessions view stays empty for every
+    non-legacy sender (issue #189).
+    """
+
+    def _project_root(
+        self,
+        trace_id: str,
+        attributes: dict[str, object],
+        resource: dict[str, object] | None = None,
+    ):
+        span = _make_canonical_span(
+            trace_id=trace_id, span_id=f"root-{trace_id}", attributes=attributes
+        )
+        if resource is not None:
+            span.resource = resource
+        projector = TraceProjector()
+        with Session(engine) as session:
+            projector.project(span, session)
+            session.commit()
+        with Session(engine) as session:
+            run = session.exec(select(RunDB).where(RunDB.id == trace_id)).first()
+            assert run is not None
+            return run
+
+    def test_session_id_from_langfuse_trace_convention(self):
+        run = self._project_root(
+            "attr-sess-01", {"langfuse.trace.session_id": "lf-session-7"}
+        )
+        assert run.session_id == "lf-session-7"
+
+    def test_session_id_from_genai_conversation_id(self):
+        run = self._project_root(
+            "attr-sess-02", {"gen_ai.conversation.id": "conv-42"}
+        )
+        assert run.session_id == "conv-42"
+
+    def test_session_id_from_otel_general_convention(self):
+        run = self._project_root("attr-sess-03", {"session.id": "otel-sess"})
+        assert run.session_id == "otel-sess"
+
+    def test_apo_session_id_wins_over_lower_conventions(self):
+        run = self._project_root(
+            "attr-sess-04",
+            {
+                "apo.run.session_id": "apo-first",
+                "langfuse.trace.session_id": "lf-second",
+                "gen_ai.conversation.id": "genai-third",
+            },
+        )
+        assert run.session_id == "apo-first"
+
+    def test_user_id_from_langfuse_trace_convention(self):
+        run = self._project_root(
+            "attr-user-01", {"langfuse.trace.user_id": "user-lf-9"}
+        )
+        assert run.user_id == "user-lf-9"
+
+    def test_user_id_from_otel_general_convention(self):
+        run = self._project_root("attr-user-02", {"user.id": "otel-user"})
+        assert run.user_id == "otel-user"
+
+    def test_apo_user_id_wins(self):
+        run = self._project_root(
+            "attr-user-03",
+            {"apo.run.user_id": "apo-user", "user.id": "otel-user"},
+        )
+        assert run.user_id == "apo-user"
+
+    def test_environment_from_langfuse_attribute(self):
+        run = self._project_root(
+            "attr-env-01",
+            {"langfuse.environment": "staging"},
+            resource={"attributes": {"deployment.environment.name": "should-lose"}},
+        )
+        assert run.environment == "staging"
+
+    def test_environment_from_resource_deployment_environment_name(self):
+        run = self._project_root(
+            "attr-env-02",
+            {},
+            resource={"attributes": {"deployment.environment.name": "production"}},
+        )
+        assert run.environment == "production"
+
+    def test_environment_from_legacy_resource_key(self):
+        run = self._project_root(
+            "attr-env-03",
+            {},
+            resource={"attributes": {"deployment.environment": "dev"}},
+        )
+        assert run.environment == "dev"
+
+    def test_apo_environment_wins(self):
+        run = self._project_root(
+            "attr-env-04",
+            {"apo.run.environment": "apo-env"},
+            resource={"attributes": {"deployment.environment.name": "res-env"}},
+        )
+        assert run.environment == "apo-env"
+
+    def test_tags_from_langfuse_trace_tags(self):
+        run = self._project_root(
+            "attr-tags-01", {"langfuse.trace.tags": ["prod", "eval"]}
+        )
+        assert run.tags == ["prod", "eval"]
+
+
 class TestTraceProjectorIdempotency:
     """Projecting the same span twice must not duplicate rows."""
 

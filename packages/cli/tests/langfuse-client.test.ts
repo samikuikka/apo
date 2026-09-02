@@ -24,12 +24,14 @@ type ListPage = { status?: number; body?: unknown; headers?: Record<string, stri
 // captureFetch routes requests by URL:
 //   - `/api/public/v2/observations` (LIST)  -> drained from the `pages` queue
 //   - `/api/public/observations/{id}` (DETAIL) -> looked up by id in `details`
+//   - `/api/public/traces/{id}` (TRACE) -> looked up in `trace` (default `{}`)
 // The detail endpoint is the source of truth for content fields, so every
 // successful import now fires N detail requests after the list pages. Routing
 // by URL (instead of call order) keeps the detail responses order-independent.
 function captureFetch(
   pages: ListPage[],
   details: Record<string, unknown> = {},
+  trace: Record<string, unknown> = {},
 ): { calls: FetchCall[]; listCalls: FetchCall[]; detailCalls: FetchCall[]; mock: ReturnType<typeof vi.spyOn> } {
   const calls: FetchCall[] = [];
   const listCalls: FetchCall[] = [];
@@ -39,6 +41,14 @@ function captureFetch(
   const mock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input: URL | RequestInfo, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     calls.push({ url, init });
+
+    const traceMatch = url.match(/\/api\/public\/traces\/([^/?]+)/);
+    if (traceMatch) {
+      return new Response(JSON.stringify(trace), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     const detailMatch = url.match(/\/api\/public\/observations\/([^/?]+)/);
     if (detailMatch) {
@@ -206,6 +216,56 @@ describe("resolveConnectorConfig", () => {
     expect(() => resolveConnectorConfig({ maxObservationsFlag: "0" })).toThrow(/max-observations/i);
     expect(() => resolveConnectorConfig({ maxObservationsFlag: "50001" })).toThrow(/max-observations/i);
     expect(() => resolveConnectorConfig({ maxObservationsFlag: "not-a-number" })).toThrow(/max-observations/i);
+  });
+});
+
+describe("fetchLangfuseTrace trace attribution (issue #189)", () => {
+  beforeEach(() => {
+    withKeys();
+  });
+
+  it("carries the source trace's sessionId/userId onto the graph", async () => {
+    const { calls } = captureFetch(
+      [{ body: page([obsRow({ id: "obs-1" })]) }],
+      { "obs-1": detailBody({ id: "obs-1" }) },
+      { sessionId: "session-7", userId: "user-42" },
+    );
+    const graph = await fetchLangfuseTrace(TRACE_ID, basicConfig());
+    expect(graph.trace).toEqual({ sessionId: "session-7", userId: "user-42" });
+    expect(calls.some((c) => c.url.includes(`/api/public/traces/${TRACE_ID}`))).toBe(true);
+  });
+
+  it("is best-effort: a failing trace GET still returns the graph, without attribution", async () => {
+    const { mock } = captureFetch([{ body: page([obsRow({ id: "obs-1" })]) }], { "obs-1": detailBody({ id: "obs-1" }) });
+    mock.mockImplementation(async (input: URL | RequestInfo) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes(`/api/public/traces/${TRACE_ID}`)) {
+        return new Response("nope", { status: 500 });
+      }
+      if (url.includes("/api/public/observations/")) {
+        return new Response(
+          JSON.stringify(detailBody({ id: "obs-1" })),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify(page([obsRow({ id: "obs-1" })], {})),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    });
+    const graph = await fetchLangfuseTrace(TRACE_ID, basicConfig());
+    expect(graph.observations).toHaveLength(1);
+    expect(graph.trace).toBeUndefined();
+  });
+
+  it("omits attribution when the trace resource has neither field", async () => {
+    captureFetch(
+      [{ body: page([obsRow({ id: "obs-1" })]) }],
+      { "obs-1": detailBody({ id: "obs-1" }) },
+      { name: "some-trace" },
+    );
+    const graph = await fetchLangfuseTrace(TRACE_ID, basicConfig());
+    expect(graph.trace).toBeUndefined();
   });
 });
 

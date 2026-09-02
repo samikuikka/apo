@@ -34,6 +34,15 @@ export interface LangfuseTraceGraph {
   sourceHost: string;
   sourceTraceId: string;
   observations: readonly LangfuseObservation[];
+  /**
+   * Trace-level fields from GET /api/public/traces/{id}. They exist only on
+   * the trace resource, not on any observation, so without this fetch an
+   * imported trace loses its session/user grouping (issue #189).
+   */
+  trace?: {
+    sessionId?: string | null;
+    userId?: string | null;
+  };
 }
 
 type OtlpAnyValue = {
@@ -186,6 +195,7 @@ function buildSpan(
   const isRoot = parentId === null || !presentIds.has(parentId);
   if (isRoot) {
     appendRootProvenance(attributes, observation, graph);
+    appendTraceAttribution(attributes, graph);
   } else {
     // parentSpanId will be set when serializing the chunk.
   }
@@ -218,6 +228,23 @@ function buildSpan(
     span.parentSpanId = parentId;
   }
   return span;
+}
+
+// Trace-level session/user attribution in the Langfuse-SDK namespace — the
+// same keys a native Langfuse OTLP sender would emit, so the projector's
+// convention-priority chain picks them up for imports and direct sends alike.
+function appendTraceAttribution(
+  attributes: OtlpAttribute[],
+  graph: LangfuseTraceGraph,
+): void {
+  const sessionId = graph.trace?.sessionId;
+  if (typeof sessionId === "string" && sessionId) {
+    attributes.push(stringAttr("langfuse.trace.session_id", sessionId));
+  }
+  const userId = graph.trace?.userId;
+  if (typeof userId === "string" && userId) {
+    attributes.push(stringAttr("langfuse.trace.user_id", userId));
+  }
 }
 
 function appendRootProvenance(

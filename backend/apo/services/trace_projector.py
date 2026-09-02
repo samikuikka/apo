@@ -211,6 +211,9 @@ class TraceProjector:
             tags_value = attrs.get("apo.trace.tags")
             if tags_value is None:
                 tags_value = attrs.get("apo.run.tags")
+            if tags_value is None:
+                # Langfuse SDK senders carry trace tags in their own namespace.
+                tags_value = attrs.get("langfuse.trace.tags")
             if tags_value:
                 try:
                     if isinstance(tags_value, list):
@@ -239,13 +242,35 @@ class TraceProjector:
                 merged = dict(existing)
                 merged.setdefault("source", provenance.get("source"))
                 run.run_metadata = merged
-            # Run-level scalar fields propagated through canonical attributes
-            if attrs.get("apo.run.user_id"):
-                run.user_id = str(attrs["apo.run.user_id"])
-            if attrs.get("apo.run.session_id"):
-                run.session_id = str(attrs["apo.run.session_id"])
-            if attrs.get("apo.run.environment"):
-                run.environment = str(attrs["apo.run.environment"])
+            # Run-level scalar fields. Each follows a convention-priority
+            # chain so standard senders populate them too, not just apo's
+            # private apo.run.* namespace: a Langfuse SDK emits
+            # langfuse.trace.*, an OTel GenAI sender gen_ai.conversation.id,
+            # a vanilla OTel SDK session.id / user.id (issue #189).
+            session_id = _first_str(
+                attrs,
+                "apo.run.session_id",
+                "langfuse.trace.session_id",
+                "gen_ai.conversation.id",
+                "session.id",
+            )
+            if session_id:
+                run.session_id = session_id
+            user_id = _first_str(
+                attrs,
+                "apo.run.user_id",
+                "langfuse.trace.user_id",
+                "user.id",
+            )
+            if user_id:
+                run.user_id = user_id
+            environment = _first_str(
+                attrs,
+                "apo.run.environment",
+                "langfuse.environment",
+            )
+            if environment:
+                run.environment = environment
             elif run.environment in (None, "", "default"):
                 # Vanilla OTel SDKs carry the environment on the resource,
                 # not as a span attribute — without this fallback every
@@ -439,17 +464,28 @@ def _claim_task_run(
 def _resource_environment(span: OtlpSpanDB) -> str | None:
     """environment from the span's resource attributes, guarded.
 
-    ``resource`` is ``dict | None`` and its ``attributes`` member is an
-    untyped JSON value — both must be checked before reading keys.
+    The resource's ``attributes`` member is an untyped JSON value — it must
+    be checked before reading keys.
     """
     resource = span.resource or {}
-    if not isinstance(resource, dict):
-        return None
     resource_attrs = resource.get("attributes")
     if not isinstance(resource_attrs, dict):
         return None
-    for key in ("deployment.environment", "service.environment"):
+    for key in (
+        "deployment.environment.name",
+        "deployment.environment",
+        "service.environment",
+    ):
         value = resource_attrs.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _first_str(attrs: dict[str, object], *keys: str) -> str | None:
+    """First non-empty string attribute among ``keys`` (convention priority)."""
+    for key in keys:
+        value = attrs.get(key)
         if isinstance(value, str) and value:
             return value
     return None
