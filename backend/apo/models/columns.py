@@ -49,6 +49,7 @@ RUN_USER_ID_COL: ColumnElement[str | None] = as_column(cast(object, RunDB.user_i
 LOGGED_CALL_ID_COL: ColumnElement[str] = as_column(cast(object, LoggedCallDB.id))
 LOGGED_CALL_CREATED_AT_COL: ColumnElement[datetime] = as_column(cast(object, LoggedCallDB.created_at))
 LOGGED_CALL_RUN_ID_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.run_id))
+LOGGED_CALL_PARENT_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.parent_call_id))
 LOGGED_CALL_PROJECT_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.project))
 LOGGED_CALL_STEP_INDEX_COL: ColumnElement[int | None] = as_column(cast(object, LoggedCallDB.step_index))
 LOGGED_CALL_VERSION_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.version))

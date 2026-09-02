@@ -337,6 +337,110 @@ class TestPreviewWrites:
         assert run.preview_call_row_id == _call(session, GEN2).row_id
 
 
+def _root_summary_payload(
+    prompt: str = "Hello world", reply: str = "Hello. What can I help you with today?"
+) -> bytes:
+    """A root span carrying the trace's own summary — one turn in, one
+    answer out (the sender pattern from issue #192)."""
+    return _payload(
+        ROOT,
+        parent=None,
+        name="pi.turn",
+        gen_attrs=[
+            {"key": "apo.observation.type", "value": {"stringValue": "AGENT"}},
+            {"key": "input", "value": {"stringValue": json.dumps({"text": prompt})}},
+            {"key": "output", "value": {"stringValue": json.dumps({"text": reply})}},
+        ],
+    )
+
+
+class TestPreviewRootPreference:
+    """Issue #192: a root span carrying a payload is the trace's own summary
+    of itself and must win the preview — a generation's input is the whole
+    prompt (system scaffolding + history), which truncates before the user's
+    actual message in a list row."""
+
+    def test_root_with_payload_beats_generation(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
+        _ingest(session, _root_summary_payload())
+        _ingest(
+            session,
+            _gen_payload(GEN1, "You are an AI assistant for Bind…", "Hello."),
+        )
+        session.commit()
+        run = _run(session)
+        assert run.preview_call_row_id == _call(session, ROOT).row_id
+        assert "Hello world" in (run.input_preview or "")
+        assert "You are an AI assistant" not in (run.input_preview or "")
+
+    def test_generation_holds_preview_until_root_arrives(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Child-before-root ordering: the generation is the preview until the
+        root lands, then the root's summary takes over."""
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
+        _ingest(session, _gen_payload(GEN1, "system scaffolding", "answer"))
+        session.commit()
+        run = _run(session)
+        assert run.preview_call_row_id == _call(session, GEN1).row_id
+
+        _ingest(session, _root_summary_payload())
+        session.commit()
+        run = _run(session)
+        assert run.preview_call_row_id == _call(session, ROOT).row_id
+        assert "Hello world" in (run.input_preview or "")
+
+    def test_later_generation_never_displaces_root_source(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
+        _ingest(session, _root_summary_payload())
+        session.commit()
+        _ingest(
+            session,
+            _gen_payload(GEN1, "system scaffolding", "answer", start="1700000002000000000"),
+        )
+        session.commit()
+        run = _run(session)
+        assert run.preview_call_row_id == _call(session, ROOT).row_id
+
+    def test_root_without_payload_keeps_generation(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Senders that put nothing on the root keep today's behaviour."""
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
+        _ingest(session, _payload(ROOT, parent=None))
+        _ingest(session, _gen_payload(GEN1, "real prompt", "real answer"))
+        session.commit()
+        run = _run(session)
+        assert run.preview_call_row_id == _call(session, GEN1).row_id
+        assert "real prompt" in (run.input_preview or "")
+
+    def test_legacy_read_prefers_root_summary(self, session: Session) -> None:
+        """The read-time rule (fat write + legacy list read) must match the
+        write-time tiers — root-with-payload beats first GENERATION."""
+        _ingest(session, _root_summary_payload())
+        _ingest(
+            session,
+            _gen_payload(GEN1, "You are an AI assistant for Bind…", "Hello."),
+        )
+        session.commit()
+        previews = _fetch_io_previews(session, [TRACE], "p1")
+        assert "Hello world" in (previews[TRACE]["input"] or "")
+        assert "You are an AI assistant" not in (previews[TRACE]["input"] or "")
+
+    def test_legacy_read_falls_back_when_root_has_no_payload(
+        self, session: Session
+    ) -> None:
+        _ingest(session, _payload(ROOT, parent=None))
+        _ingest(session, _gen_payload(GEN1, "fallback prompt", "fallback answer"))
+        session.commit()
+        previews = _fetch_io_previews(session, [TRACE], "p1")
+        assert "fallback prompt" in (previews[TRACE]["input"] or "")
+
+
 # ---------------------------------------------------------------------------
 # Slim writes + golden read parity
 # ---------------------------------------------------------------------------

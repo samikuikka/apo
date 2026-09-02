@@ -27,6 +27,7 @@ from ...models.columns import (
     LOGGED_CALL_CREATED_AT_COL,
     LOGGED_CALL_LEVEL_COL,
     LOGGED_CALL_MODEL_COL,
+    LOGGED_CALL_PARENT_COL,
     LOGGED_CALL_PROJECT_COL,
     LOGGED_CALL_RUN_ID_COL,
     RUN_CALL_COUNT_COL,
@@ -45,7 +46,11 @@ from ...models.columns import (
     RUN_METRIC_RUN_ID_COL,
     RUN_METRIC_SCORE_COL,
 )
-from ...services.projection_io import list_read_mode, truncate_preview
+from ...services.projection_io import (
+    has_preview_payload,
+    list_read_mode,
+    truncate_preview,
+)
 from ...services.trace_search import apply_trace_search
 from .metrics import calculate_run_metrics_from_calls
 
@@ -486,8 +491,34 @@ def _legacy_io_previews(
     if not run_ids:
         return {}
 
-    first_query = select(LoggedCallDB).options(*CALL_LIGHT).where(
+    result: dict[str, dict[str, str | None]] = {}
+
+    # Top tier (issue #192): a root call carrying a payload is the trace's
+    # own summary — one turn in, one answer out — and beats a generation's
+    # whole-prompt input, whose head is the system prompt. Mirrors the
+    # write-time tiers in projection_io.maybe_update_run_preview.
+    root_query = select(LoggedCallDB).options(*CALL_LIGHT).where(
         LOGGED_CALL_RUN_ID_COL.in_(run_ids),
+        LOGGED_CALL_PARENT_COL.is_(None),
+    )
+    if project is not None:
+        root_query = root_query.where(LOGGED_CALL_PROJECT_COL == project)
+    root_calls = session.exec(root_query.order_by(LOGGED_CALL_CREATED_AT_COL)).all()
+    seen_roots: set[str] = set()
+    for call in root_calls:
+        if call.run_id is None or call.run_id in seen_roots:
+            continue
+        if not has_preview_payload(call.input, call.output):
+            continue
+        seen_roots.add(call.run_id)
+        result[call.run_id] = {
+            "input": _truncate_preview(call.input),
+            "output": _truncate_preview(call.output),
+        }
+
+    remaining = [rid for rid in run_ids if rid not in result]
+    first_query = select(LoggedCallDB).options(*CALL_LIGHT).where(
+        LOGGED_CALL_RUN_ID_COL.in_(remaining),
         LoggedCallDB.observation_type == "GENERATION",
     )
     if project is not None:
@@ -495,7 +526,6 @@ def _legacy_io_previews(
     first_calls = session.exec(first_query.order_by(LOGGED_CALL_CREATED_AT_COL)).all()
 
     seen_runs: set[str] = set()
-    result: dict[str, dict[str, str | None]] = {}
     for call in first_calls:
         if call.run_id is None or call.run_id in seen_runs:
             continue
@@ -505,7 +535,7 @@ def _legacy_io_previews(
             "output": _truncate_preview(call.output),
         }
 
-    runs_without_gen = [rid for rid in run_ids if rid not in seen_runs]
+    runs_without_gen = [rid for rid in remaining if rid not in seen_runs]
     if runs_without_gen:
         span_query = select(LoggedCallDB).options(*CALL_LIGHT).where(
             LOGGED_CALL_RUN_ID_COL.in_(runs_without_gen)

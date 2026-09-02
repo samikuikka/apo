@@ -185,22 +185,67 @@ def _created_at_key(value: datetime | None) -> datetime:
     return value
 
 
+def has_preview_payload(*values: object) -> bool:
+    """True when any value carries real content.
+
+    ``None``, empty dicts/lists, and blank or container-only strings
+    (``"{}"``, ``"[]"``) are not payloads — a root span whose I/O rendered to
+    ``"{}"`` must not win the preview on the strength of that alone. Works
+    for resolved I/O values (dict/list/str) and for stored preview strings.
+    """
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped and stripped not in ("{}", "[]", '""'):
+                return True
+        elif isinstance(value, (dict, list)) and value:
+            return True
+    return False
+
+
+# Preview-source precedence tiers (issue #192):
+#   2 — root call carrying a payload: the trace's own summary of itself,
+#       one turn in / one answer out, free of the system scaffolding and
+#       accumulated history that make a generation's whole-prompt input
+#       unsuitable for a one-line row;
+#   1 — a GENERATION call (the previous top tier);
+#   0 — anything else.
+ROOT_PAYLOAD_TIER = 2
+GENERATION_TIER = 1
+OTHER_TIER = 0
+
+
+def preview_tier(call: LoggedCallDB, has_payload: bool) -> int:
+    """Classify a call's preview precedence tier."""
+    if has_payload and call.parent_call_id is None:
+        return ROOT_PAYLOAD_TIER
+    if call.observation_type == "GENERATION":
+        return GENERATION_TIER
+    return OTHER_TIER
+
+
 def maybe_update_run_preview(
     session: Session, run: RunDB, call: LoggedCallDB, io: ResolvedCallIO
 ) -> None:
     """Maintain ``runs.input_preview/output_preview`` — dual/slim modes only.
 
-    Replicates the list API's read-time rule (first GENERATION call, else
-    the first call of any kind, by creation order) with a deterministic
-    ``(created_at, row_id)`` tie-break:
+    Replicates the list API's read-time rule (root call with a payload, else
+    first GENERATION call, else the first call of any kind, by creation
+    order) with a deterministic ``(created_at, row_id)`` tie-break:
 
-    - a GENERATION source beats a non-GENERATION source regardless of
-      arrival order;
-    - within the same class, the earlier ``(created_at, row_id)`` wins;
+    - a higher tier beats a lower tier regardless of arrival order
+      (root-with-payload > GENERATION > other);
+    - within the same tier, the earlier ``(created_at, row_id)`` wins;
     - re-projecting the SAME source call refreshes its values (otherwise
       previews go stale on re-ingest/reproject);
     - a dangling ``preview_call_row_id`` (purged/deleted source) is treated
       as unknown — the next projecting call overwrites freely.
+
+    The stored previews double as the source's payload evidence: fat columns
+    are not written in slim mode, but a root only reached the source slot by
+    carrying a payload, and that payload is what the preview strings hold.
 
     Previews are never cleared when a source dies; they live and die with
     the projection row (lifecycle unchanged).
@@ -212,24 +257,30 @@ def maybe_update_run_preview(
     if run.preview_call_row_id is not None:
         source = session.get(LoggedCallDB, run.preview_call_row_id)
 
-    is_generation = call.observation_type == "GENERATION"
+    call_tier = preview_tier(
+        call, has_preview_payload(io.input, io.output)
+    )
     if source is None:
         replace = True
     elif call.row_id == run.preview_call_row_id:
         replace = True
-    elif is_generation and source.observation_type != "GENERATION":
-        replace = True
-    elif is_generation == (source.observation_type == "GENERATION"):
-        # Same class: earlier wins. SQLite hands back naive datetimes while
-        # a just-created in-session row is tz-aware — normalize before
-        # comparing or the tuple compare raises.
-        replace = (_created_at_key(call.created_at), call.row_id) < (
-            _created_at_key(source.created_at),
-            source.row_id,
-        )
     else:
-        # A non-GENERATION call never displaces a GENERATION source.
-        replace = False
+        source_tier = preview_tier(
+            source,
+            has_preview_payload(run.input_preview, run.output_preview),
+        )
+        if call_tier != source_tier:
+            # Higher tier wins regardless of arrival order; a lower tier
+            # never displaces it.
+            replace = call_tier > source_tier
+        else:
+            # Same tier: earlier wins. SQLite hands back naive datetimes
+            # while a just-created in-session row is tz-aware — normalize
+            # before comparing or the tuple compare raises.
+            replace = (_created_at_key(call.created_at), call.row_id) < (
+                _created_at_key(source.created_at),
+                source.row_id,
+            )
 
     if replace:
         run.input_preview = truncate_preview(io.input)
