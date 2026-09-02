@@ -113,8 +113,13 @@ class RunListPagination:
 def list_run_summaries(
     session: Session, filters: RunListFilters, pagination: RunListPagination
 ) -> PaginatedRunSummary:
+    # The trailing COUNT(*) OVER() rides the page query itself: the filtered
+    # statement — including every span-level EXISTS — executes once instead
+    # of a second full execution for the count. Window functions are
+    # evaluated before OFFSET/LIMIT is applied, so the total covers the
+    # whole filtered set; an empty page is zero rows and a zero total.
     statement = _apply_project_scope(
-        select(RunDB), filters.project, filters.allowed_projects
+        select(RunDB, func.count().over()), filters.project, filters.allowed_projects
     )
     statement = _apply_attribute_filters(statement, filters)
     statement = _apply_metric_filter(statement, session, filters)
@@ -123,8 +128,8 @@ def list_run_summaries(
     statement = _apply_status_filter(statement, filters.status_values)
     if filters.bookmarked is not None:
         statement = statement.where(RunDB.bookmarked == filters.bookmarked)
-    # Span-derived predicates MUST land before the total_count
-    # subquery below, or pages filter but counts do not.
+    # Span-derived predicates MUST land before the page query executes,
+    # or pages filter but counts do not.
     statement = apply_trace_search(
         statement,
         service=filters.service,
@@ -133,20 +138,19 @@ def list_run_summaries(
         predicates=filters.span_predicates,
     )
 
-    total_count = session.exec(
-        select(func.count()).select_from(statement.subquery())
-    ).one()
+    statement = _apply_sort(
+        statement, pagination.sort_by, pagination.sort_order
+    ).offset(pagination.page * pagination.page_size).limit(pagination.page_size)
+
+    rows = session.exec(statement).all()
+    total_count = int(rows[0][1]) if rows else 0
+    runs = [row[0] for row in rows]
     total_pages = (
         (total_count + pagination.page_size - 1) // pagination.page_size
         if total_count > 0
         else 0
     )
 
-    statement = _apply_sort(
-        statement, pagination.sort_by, pagination.sort_order
-    ).offset(pagination.page * pagination.page_size).limit(pagination.page_size)
-
-    runs = session.exec(statement).all()
     summaries = _hydrate_summaries(session, runs, filters.project)
     return PaginatedRunSummary(
         data=summaries,

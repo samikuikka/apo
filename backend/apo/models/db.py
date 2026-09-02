@@ -1775,10 +1775,14 @@ class OtlpSpanDB(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint("project_id", "trace_id", "span_id", name="uq_otlp_span"),
         Index("ix_otlp_spans_trace", "project_id", "trace_id"),
-        # The hottest trace-search filters — service and
-        # operation facets/filters over the single span home.
-        Index("ix_otlp_spans_service", "project_id", "service_name"),
-        Index("ix_otlp_spans_operation", "project_id", "span_name"),
+        # The hottest trace-search filters — service and operation
+        # facets/filters over the single span home. trace_id trails both so
+        # span_field_facets' per-trace DISTINCT count is an index-only scan.
+        Index("ix_otlp_spans_service", "project_id", "service_name", "trace_id"),
+        Index("ix_otlp_spans_operation", "project_id", "span_name", "trace_id"),
+        # The facets' time window filters on start_time; without this index
+        # the window reads the whole project's spans anyway.
+        Index("ix_otlp_spans_start", "project_id", "start_time"),
     )
 
     id: int | None = Field(default=None, primary_key=True)

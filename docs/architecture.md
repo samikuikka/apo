@@ -226,7 +226,13 @@ Trace search rides the same store: `GET /v1/runs` accepts
 service/operation/`span_text`/`span_filter` predicates compiled into
 correlated `EXISTS` subqueries over `otlp_spans` — text ops in the text
 domain, ordering ops in REAL — with `service_name` materialized at ingest
-for the hottest filter.
+for the hottest filter. The list executes that (potentially heavy) filtered
+statement once: `total_count` rides the page query as `COUNT(*) OVER()`
+rather than a second full execution. Facets scan the same store through
+covering indexes (`project_id, service_name, trace_id` and
+`project_id, span_name, trace_id`) so per-trace distinct counts stay
+index-only, with `(project_id, start_time)` letting the default 7-day
+window prune.
 
 ### Cost System
 

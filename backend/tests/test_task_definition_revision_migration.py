@@ -14,7 +14,7 @@ from sqlmodel import create_engine
 
 
 def test_latest_schema_version_is_v21() -> None:
-    assert LATEST_SCHEMA_VERSION == 38
+    assert LATEST_SCHEMA_VERSION == 39
     assert _SCHEMA_MIGRATIONS[21].__name__ == "_migrate_to_v21"
 
 

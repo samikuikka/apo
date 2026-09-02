@@ -1035,6 +1035,44 @@ def _migrate_to_v38() -> None:
         _backfill_run_service(conn)
 
 
+def _migrate_to_v39() -> None:
+    """Version 39: covering facet indexes + a prunable span-time window."""
+    with engine.begin() as conn:
+        _migrate_span_facet_indexes(conn)
+
+
+def _migrate_span_facet_indexes(conn: Connection) -> None:
+    """Covering facet indexes + a prunable span-time window.
+
+    ``span_field_facets`` counts per distinct trace, so its service and
+    operation groupings gain a trailing ``trace_id`` column — the
+    ``COUNT(DISTINCT trace_id)`` scan then stays inside the index instead
+    of fetching every span row. ``(project_id, start_time)`` lets the
+    facets' default 7-day window prune instead of reading the whole
+    project. Existing installs recreate the two facet indexes under the
+    same names (``create_all`` skips index names it already has, so only
+    this migration reshapes them); fresh installs already have the new
+    shape, making every step a no-op.
+    """
+    conn.exec_driver_sql("DROP INDEX IF EXISTS ix_otlp_spans_service")
+    conn.exec_driver_sql("DROP INDEX IF EXISTS ix_otlp_spans_operation")
+    _create_index_if_not_exists(
+        conn,
+        "ix_otlp_spans_service",
+        "otlp_spans",
+        "project_id, service_name, trace_id",
+    )
+    _create_index_if_not_exists(
+        conn,
+        "ix_otlp_spans_operation",
+        "otlp_spans",
+        "project_id, span_name, trace_id",
+    )
+    _create_index_if_not_exists(
+        conn, "ix_otlp_spans_start", "otlp_spans", "project_id, start_time"
+    )
+
+
 def _migrate_test_result_correction_schema(conn: Connection) -> None:
     if "agent_task_test_result_corrections" not in _get_table_names(conn):
         id_type = "TEXT" if is_sqlite() else "VARCHAR"
@@ -2479,7 +2517,7 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 38
+LATEST_SCHEMA_VERSION = 39
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -2520,6 +2558,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     36: _migrate_to_v36,
     37: _migrate_to_v37,
     38: _migrate_to_v38,
+    39: _migrate_to_v39,
 }
 
 
