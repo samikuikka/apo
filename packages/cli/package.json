@@ -1,6 +1,6 @@
 {
   "name": "@apo-ai/cli",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "CLI for Apo — the end-to-end testing framework for AI agents. Run tasks, read pass/fail verdicts, and inspect traces.",
   "keywords": [
     "ai-agents",
