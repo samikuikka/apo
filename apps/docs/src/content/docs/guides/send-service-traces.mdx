@@ -120,18 +120,20 @@ Every span attribute arrives intact and becomes queryable. On the Traces page fi
 |---|---|
 | One service's traffic | Service dropdown (fed by facet counts from your data) |
 | Slow or failing requests | `status=error`, duration filters |
-| Attribute predicates | Attributes section: `http.response.status_code ≥ 500`, `customer.tier in [enterprise, pro]` |
+| Attribute predicates | Attributes section: `http.status_code ≥ 500`, `customer.tier in [enterprise, pro]` |
 | Free text | "Search span names and attributes" box |
+
+Filter by whatever attribute name your SDK actually emits. OTel libraries today commonly send the legacy HTTP names (`http.status_code`, `http.route`); newer SDKs that opt into the stable HTTP semconv send `http.response.status_code` instead. The Attributes section's key field autocompletes from your data, so the real names are always one click away.
 
 From the CLI:
 
 ```bash
 apo traces list --service billing-api \
-  --attr http.response.status_code>=500 \
+  --attr http.status_code>=500 \
   --span-text timeout
 ```
 
-Negations are none-of-trace semantics: `status_code neq 500` matches traces where **no** span carried a 500 — the clean requests.
+Negations are none-of-trace semantics: `http.status_code neq 500` matches traces where **no** span carried a 500 — the clean requests.
 
 Click a trace for the full waterfall with every OTel attribute preserved, and LLM spans rendered as chat if you send them.
 

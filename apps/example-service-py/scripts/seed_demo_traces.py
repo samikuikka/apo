@@ -12,7 +12,7 @@ Then::
 Sends a realistic mix — successful lists/creates, a few 404s, a 422, and a
 couple of provider-failure 500s — across customer tiers, so the resulting
 traces demonstrate apo's service-trace search (filter by service, by
-``customer.tier``, by ``http.response.status_code >= 500``).
+``customer.tier``, by ``http.status_code >= 500``).
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ async def main() -> int:
             await asyncio.sleep(random.uniform(0.03, 0.1))
 
     print(f"sent requests: ok={ok} non-2xx={fail}")
-    print("traces now in apo: filter service=orders-api, or attribute:http.response.status_code>=500")
+    print("traces now in apo: filter service=orders-api, or attribute:http.status_code>=500")
     return 0
 
 
