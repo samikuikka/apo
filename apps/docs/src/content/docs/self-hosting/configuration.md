@@ -12,7 +12,8 @@ tooling is required to get a trial or small team running.
 Choose Postgres when the installation is long-lived, several users will write
 concurrently, or your operations already standardize on Postgres. This changes
 the database, not apo's topology: both database choices still run exactly one backend
-and one scheduler owner.
+and one scheduler owner. Postgres support is best-effort: the automated test
+suite runs against SQLite, so the Postgres path is exercised by users, not by CI.
 
 | Database | Use it for | Start command |
 |---|---|---|
