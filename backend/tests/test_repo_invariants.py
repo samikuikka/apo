@@ -1,4 +1,4 @@
-# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportImplicitStringConcatenation=false
+# pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportImplicitStringConcatenation=false, reportAny=false
 """Repo-wide invariants that encode apo's documented rules as executable checks.
 
 These run as part of the normal backend suite, so every PR is gated on them
@@ -14,6 +14,8 @@ import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROUTES_DIR = Path(__file__).resolve().parents[1] / "apo" / "routes"
@@ -263,3 +265,158 @@ def test_catchall_path_routes_do_not_shadow_later_routes() -> None:
                         "move the catch-all last or narrow its prefix"
                     )
     assert not violations, "\n".join(violations)
+
+
+# --- CI covers its tests -----------------------------------------------------
+#
+# A test file that no CI job executes is worse than no test: everyone believes
+# the area is covered while nothing ever runs. The census below maps each
+# suite-running CI command (the anchor, asserted verbatim against workflow
+# run-steps so a deleted step fails this check) to the directory whose test
+# files that command executes. Files under those roots are covered unless they
+# carry a deliberate exemption; test files anywhere else in the repo are
+# unknown to CI and fail the census.
+
+_CI_TEST_INVOCATIONS: dict[str, str] = {
+    "uv run pytest -x -q": "backend/tests",
+    "uv run pytest -q": "apps/example-service-py/tests",
+    "uv run --with pytest pytest -q": "packages/apo-otel-python/tests",
+    "uv run --with pytest --with langchain-core pytest -q": "packages/langchain-apo/tests",
+    "pnpm --filter @apo-ai/cli test:unit": "packages/cli/tests",
+    "pnpm --filter @apo-ai/sdk test": "packages/sdk/tests",
+    "pnpm --filter dashboard test": "apps/dashboard/src",
+    "pnpm --filter @apo/example-service test:run": "apps/example-service",
+}
+
+# Deliberate exclusions, file by file. Growth of this list is a visible diff:
+# adding a line is choosing to leave a test outside CI, with the reason written
+# down — never an accident.
+_TEST_FILE_EXEMPTIONS: dict[str, str] = {
+    "backend/apo/services/test_result_corrections.py": (
+        "not a test: feature module implementing manual test-result corrections; "
+        "exempt so the test_ prefix does not confuse the census"
+    ),
+    "packages/cli/tests/connect-scene.test.ts": (
+        "long scene test, excluded from test:unit by script flag; "
+        "run manually: pnpm --filter @apo-ai/cli test"
+    ),
+    "apps/dashboard/e2e/agent-journey.spec.ts": (
+        "Playwright e2e, needs a live stack; not wired into CI yet"
+    ),
+    "apps/dashboard/e2e/demo-journey.spec.ts": (
+        "Playwright e2e, needs a live stack; not wired into CI yet"
+    ),
+    "apps/dashboard/e2e/hosted-alpha-adopter-journey.spec.ts": (
+        "manual hosted-alpha gate: pnpm test:hosted-alpha-journey"
+    ),
+    "apps/dashboard/e2e/alpha-project-setup-and-run.spec.ts": (
+        "manual alpha gate: pnpm test:alpha:ui (root package.json)"
+    ),
+    "apps/dashboard/e2e/alpha-schedule-lifecycle.spec.ts": (
+        "manual alpha gate: pnpm test:alpha:ui (root package.json)"
+    ),
+    "apps/dashboard/e2e/alpha-trace-drilldown.spec.ts": (
+        "manual alpha gate: pnpm test:alpha:ui (root package.json)"
+    ),
+}
+
+_TEST_FILE_SUFFIXES = (".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")
+_TEST_FILE_PREFIX = "test_"
+
+
+def _workflow_run_step_texts() -> list[str]:
+    """All `run:` step texts across every workflow, for anchor matching."""
+    texts: list[str] = []
+    workflows_dir = REPO_ROOT / ".github" / "workflows"
+    for workflow in sorted(workflows_dir.glob("*.y*ml")):
+        document = yaml.safe_load(workflow.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            continue
+        jobs = document.get("jobs")
+        if not isinstance(jobs, dict):
+            continue
+        for job in jobs.values():
+            if not isinstance(job, dict):
+                continue
+            for step in job.get("steps") or []:
+                if isinstance(step, dict) and isinstance(step.get("run"), str):
+                    texts.append(step["run"])
+    return texts
+
+
+def _is_test_file(path: Path) -> bool:
+    name = path.name
+    return name.startswith(_TEST_FILE_PREFIX) and name.endswith(".py") or name.endswith(
+        _TEST_FILE_SUFFIXES
+    )
+
+
+def _test_files_under(root: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in root.rglob("*")
+        if path.is_file() and _is_test_file(path)
+    )
+
+
+def test_ci_invokes_every_registered_test_suite() -> None:
+    """Each anchor command must still appear in some workflow run-step."""
+    texts = _workflow_run_step_texts()
+    missing = [
+        anchor
+        for anchor in _CI_TEST_INVOCATIONS
+        if not any(anchor in text for text in texts)
+    ]
+    assert not missing, (
+        "CI no longer runs: "
+        + "; ".join(missing)
+        + ". Restore the workflow step, or retire it and update _CI_TEST_INVOCATIONS "
+        "plus _TEST_FILE_EXEMPTIONS in the same commit."
+    )
+
+
+def test_every_test_file_runs_in_ci_or_is_exempt() -> None:
+    """No test file may exist that CI neither runs nor explicitly exempts."""
+    texts = _workflow_run_step_texts()
+    active_root_dirs = [
+        root_dir
+        for anchor, root_dir in _CI_TEST_INVOCATIONS.items()
+        if any(anchor in text for text in texts)
+    ]
+    # Relative "dir/" prefixes whose test files an active CI step executes.
+    known_root_prefixes = {f"{root_dir}/" for root_dir in active_root_dirs}
+
+    problems: list[str] = []
+
+    for root_dir in active_root_dirs:
+        root = REPO_ROOT / root_dir
+        if not root.exists():
+            problems.append(f"registered CI test root missing: {root_dir}")
+            continue
+        for test_file in _test_files_under(root):
+            relative = test_file.relative_to(REPO_ROOT).as_posix()
+            if relative not in _TEST_FILE_EXEMPTIONS:
+                continue  # an active CI step runs this root's files: covered
+
+    # Test files living outside every registered root are unknown to CI.
+    for directory, subdirectories, names in os.walk(REPO_ROOT):
+        subdirectories[:] = [
+            entry
+            for entry in subdirectories
+            if entry not in _SKIPPED_DIRS and not entry.startswith(".uv")
+        ]
+        for name in names:
+            candidate = Path(directory) / name
+            if not _is_test_file(candidate):
+                continue
+            relative = candidate.relative_to(REPO_ROOT).as_posix()
+            if relative in _TEST_FILE_EXEMPTIONS:
+                continue
+            if any(relative.startswith(prefix) for prefix in known_root_prefixes):
+                continue
+            problems.append(
+                f"test file no CI rule knows about: {relative} — add a CI step "
+                "or an exemption with a reason"
+            )
+
+    assert not problems, "\n".join(problems)

@@ -39,12 +39,21 @@ jobs:
         # behaviour could only fail on a user's machine. Same selection the
         # publish workflow uses (excludes the long connect scene test).
         run: pnpm --filter @apo-ai/cli test:unit
+      - name: Test @apo-ai/sdk
+        # 45 test files no workflow executed before the CI-covers-tests
+        # invariant; fast (~5s) and self-contained. The command string is
+        # load-bearing: tests/test_repo_invariants.py asserts it.
+        run: pnpm --filter @apo-ai/sdk test
       - name: Clean consumer package gate (CLI)
         run: pnpm --filter @apo-ai/cli package:check
       - run: pnpm lint
       - run: pnpm typecheck
       - name: Test dashboard
         run: pnpm --filter dashboard test
+      - name: Test example-service
+        # Vitest suite (16 tests, <1s) no workflow executed before the
+        # CI-covers-tests invariant; load-bearing command string.
+        run: pnpm --filter @apo/example-service test:run
       - name: Build docs + publication gate
         # Builds the Astro site, publishes versioned schemas, and verifies the
         # publication invariants (no retired origin, every start.md link
@@ -89,3 +98,17 @@ jobs:
       - name: Test
         working-directory: backend
         run: uv run pytest -x -q
+      - name: Test apo-otel-python package
+        # Orphaned suite found by the CI-covers-tests census; pytest is not in
+        # the package env, so overlay it. Load-bearing command string.
+        working-directory: packages/apo-otel-python
+        run: uv run --with pytest pytest -q
+      - name: Test langchain-apo package
+        # Orphaned suite found by the CI-covers-tests census; langchain-core
+        # lives in the package extras, so overlay both. Load-bearing command.
+        working-directory: packages/langchain-apo
+        run: uv run --with pytest --with langchain-core pytest -q
+      - name: Test example-service-py
+        # Orphaned suite found by the CI-covers-tests census (12 tests, <1s).
+        working-directory: apps/example-service-py
+        run: uv run pytest -q
