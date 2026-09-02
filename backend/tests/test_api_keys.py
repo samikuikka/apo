@@ -30,7 +30,7 @@ from sqlmodel import Session, select
 from apo.auth.api_key_auth import (
     validate_basic_auth,
 )
-from apo.models.db import ApiKeyDB, ProjectDB, UserDB
+from apo.models.db import ApiKeyDB, ApiKeyDailyUsageDB, ProjectDB, UserDB
 from apo.routes.api_keys import validate_api_key
 
 from .conftest import TEST_PROJECT_ID, seed_project_for_user
@@ -187,6 +187,38 @@ class TestRevokeApiKey:
         list_resp = authed.get("/v1/api-keys")
         ids = [k["id"] for k in list_resp.json()]
         assert key_id not in ids
+
+    def test_revoke_with_recorded_usage_deletes_usage_rows(
+        self, client: TestClient, session: Session, make_authed_client: Any
+    ) -> None:
+        """A key that has recorded ingest usage must still be revocable.
+
+        api_key_daily_usage rows FK api_keys.id; without clearing them the
+        key delete fails on the FK once the key has served any traffic.
+        """
+        authed = _setup_and_get_authed_client(client, session, make_authed_client)
+        create_resp = authed.post(
+            "/v1/api-keys",
+            json={"name": "Used Key", "project": "example-service"},
+        )
+        key_id = create_resp.json()["id"]
+        session.add(
+            ApiKeyDailyUsageDB(
+                api_key_id=key_id, day="2026-09-02", span_count=7, request_count=2
+            )
+        )
+        session.commit()
+
+        resp = authed.delete(f"/v1/api-keys/{key_id}")
+        assert resp.status_code == 200, resp.text
+
+        assert session.get(ApiKeyDB, key_id) is None
+        usage = session.exec(
+            select(ApiKeyDailyUsageDB).where(
+                ApiKeyDailyUsageDB.api_key_id == key_id
+            )
+        ).all()
+        assert usage == []
 
     def test_revoke_nonexistent_returns_404(
         self, client: TestClient, session: Session, make_authed_client: Any

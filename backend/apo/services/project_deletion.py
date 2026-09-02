@@ -49,6 +49,7 @@ from ..models.db import (
     AgentTaskScheduleOccurrenceDB,
     AnnotationQueueDB,
     ApiKeyDB,
+    ApiKeyDailyUsageDB,
     ArchivedModelDB,
     CallMetricDB,
     CommentDB,
@@ -267,6 +268,14 @@ def delete_project_data(
         ModelRowDB.project == project_id,
     )
     if not keep_api_keys:
+        # Daily ingest-usage rows FK api_keys.id and carry no project column;
+        # they must go before the keys themselves or the flush fails on the FK.
+        deleted["api_key_daily_usage"] = _delete_transitive(
+            session,
+            ApiKeyDailyUsageDB,
+            ApiKeyDailyUsageDB.api_key_id,
+            select(ApiKeyDB.id).where(ApiKeyDB.project == project_id),
+        )
         deleted["api_keys"] = _delete_by_column(
             session, ApiKeyDB, ApiKeyDB.project == project_id
         )

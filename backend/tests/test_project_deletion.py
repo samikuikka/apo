@@ -23,6 +23,7 @@ from apo.models.db import (
     AgentTaskScheduleDB,
     AnnotationQueueDB,
     ApiKeyDB,
+    ApiKeyDailyUsageDB,
     CallMetricDB,
     CommentDB,
     CommentReactionDB,
@@ -250,6 +251,16 @@ def _seed_full_project(session: Session, project_id: str, owner_id: str) -> None
             created_by=owner_id,
         )
     )
+    # Ingest usage for that key — deleting the key with usage rows still
+    # present used to fail on the api_key_daily_usage FK.
+    session.add(
+        ApiKeyDailyUsageDB(
+            api_key_id=f"key-{project_id}",
+            day="2026-09-02",
+            span_count=3,
+            request_count=1,
+        )
+    )
     session.commit()
 
 
@@ -294,6 +305,13 @@ def _dependent_counts(session: Session, project_id: str) -> dict[str, int]:
         "api_keys": len(
             session.exec(
                 select(ApiKeyDB).where(ApiKeyDB.project == project_id)
+            ).all()
+        ),
+        "api_key_daily_usage": len(
+            session.exec(
+                select(ApiKeyDailyUsageDB).where(
+                    ApiKeyDailyUsageDB.api_key_id == f"key-{project_id}"
+                )
             ).all()
         ),
         "runs": len(

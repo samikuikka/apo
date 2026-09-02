@@ -12,7 +12,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, delete, select
 
 from ..auth import verify_password
 from ..services.ingest_quota import today_usage
@@ -334,6 +334,13 @@ def revoke_api_key(
         raise HTTPException(status_code=403, detail="Not authorized to revoke this key")
 
     _invalidate_cache_for_key(api_key)
+    # Daily ingest-usage rows FK this key; without clearing them the key
+    # delete below fails on the FK once the key has recorded any usage.
+    _ = session.exec(
+        delete(ApiKeyDailyUsageDB).where(
+            col(ApiKeyDailyUsageDB.api_key_id) == api_key.id
+        )
+    )
     session.delete(api_key)
     session.commit()
     return {"ok": True}
