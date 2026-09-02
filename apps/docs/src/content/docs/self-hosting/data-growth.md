@@ -66,6 +66,13 @@ to ~2x the database size of free space on the data volume.
 | Verdict rows | every run/batch | ~hundreds of bytes — never expires |
 | Task definition revisions | every task-source edit | full `*.eval.ts` text per revision (kept: shared, content-addressed) |
 
+Docker itself grows too: every `./scripts/self-host up --build` leaves the
+previous build's untagged images and a layer of build cache, and Docker
+never caps either on its own — a month of deploys on a small server piled
+up 68 GB of cache. `up --build` prunes dangling images and caps the build
+cache at 10 GB after every deploy; raise, lower, or disable the cap with
+the `APO_BUILD_CACHE_KEEP_GB` host environment variable (`0` disables).
+
 ## Per-project overrides
 
 The deployment default is a blunt instrument — a scratch project and a

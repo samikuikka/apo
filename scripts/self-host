@@ -27,8 +27,13 @@ Options:
   --public-url URL            Public origin (required for server)
   --database sqlite|postgres  Database backend (default: sqlite)
   --ingress caddy|cloudflare-tunnel  Server ingress mode (default: caddy; server only)
-  --build                     Rebuild images before starting (up only)
+  --build                     Rebuild images before starting (up only; prunes
+                              dangling images and caps build cache afterward)
   --yes                       Skip confirmation (rotate-auth-secret only)
+
+Environment:
+  APO_BUILD_CACHE_KEEP_GB     Build-cache cap kept after `up --build`
+                              (default 10; 0 disables pruning)
 EOF
 }
 
@@ -48,6 +53,25 @@ _reject_non_regular() {
 }
 
 _gen_secret() { openssl rand -hex 32; }
+
+# Rebuilds leave two kinds of leftover behind: the previous build's now
+# untagged (dangling) images, and build-cache layers that Docker keeps
+# forever without a cap — a month of deploys piled up 68 GB on a small
+# server. Run after every `up --build` so disk usage stays bounded.
+# APO_BUILD_CACHE_KEEP_GB (host env, default 10) caps how much recent
+# cache to keep for fast incremental rebuilds; set 0 to skip pruning.
+_prune_build_artifacts() {
+  local keep="${APO_BUILD_CACHE_KEEP_GB:-10}"
+  [[ "$keep" == "0" ]] && return 0
+  if ! docker image prune -f >/dev/null 2>&1; then
+    _err "up: warning: dangling-image prune failed — continuing"
+  fi
+  if ! docker builder prune -f --keep-storage "${keep}GB" >/dev/null 2>&1; then
+    _err "up: warning: build-cache prune failed (Docker < 23 ignores --keep-storage) — cache left uncapped"
+    return 0
+  fi
+  _ok "up: pruned dangling images; build cache capped at ${keep}GB"
+}
 
 _PARSE_KEY=""; _PARSE_VAL=""
 _parse_line() {
@@ -196,6 +220,7 @@ cmd_up() {
   mapfile -t cf < <(_select_compose_files "$env_file"); local ca=(); for f in "${cf[@]}"; do ca+=(-f "$f"); done
   local ua=("up" "-d"); $build && ua+=("--build")
   docker compose --env-file "$env_file" "${ca[@]}" "${ua[@]}"
+  $build && _prune_build_artifacts
   local profile; profile="$(grep -E '^APO_DEPLOYMENT_PROFILE=' "$env_file" | head -1 | cut -d= -f2-)"
   if [[ "$profile" == "server" ]]; then _ok "up: started. Verify: scripts/public-ingress-smoke.sh"; else _ok "up: started. Open http://localhost:3000"; fi
 }
