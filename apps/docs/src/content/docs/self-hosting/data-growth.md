@@ -53,6 +53,18 @@ first**: schema upgrades are forward-only, so a rollback means restoring the
 backup. File space is reclaimed by the next maintenance VACUUM, which needs up
 to ~2x the database size of free space on the data volume.
 
+### Upgrading across schema v40
+
+Schema v40 replaces the paired `runs.preview_call_row_id` with per-slot
+`input_preview_call_row_id` / `output_preview_call_row_id`, so a root span
+carrying a payload on only one side no longer publishes the empty side as
+`{}`. The migration rewrites the (small) runs table and is forward-only like
+v34 — **back up the data volume first**. Stored preview strings survive
+untouched; installations running `APO_LIST_READ=previews` should re-run the
+admin projection backfill once after upgrading so pre-v40 rows are re-derived
+per slot (until then their slots are protected from downgrades and any `{}`
+side falls back to the read-time computation).
+
 ## What grows, roughly
 
 | Data | Grows with | Typical weight |

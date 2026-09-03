@@ -205,11 +205,13 @@ def has_preview_payload(*values: object) -> bool:
     return False
 
 
-# Preview-source precedence tiers (issue #192):
-#   2 — root call carrying a payload: the trace's own summary of itself,
-#       one turn in / one answer out, free of the system scaffolding and
-#       accumulated history that make a generation's whole-prompt input
-#       unsuitable for a one-line row;
+# Preview-source precedence tiers (issue #192), decided PER SLOT (issue
+# #203): a call contests the input slot only when its own input carries a
+# payload, and the output slot only when its own output does.
+#   2 — root call: the trace's own summary of itself, one turn in / one
+#       answer out, free of the system scaffolding and accumulated history
+#       that make a generation's whole-prompt input unsuitable for a
+#       one-line row;
 #   1 — a GENERATION call (the previous top tier);
 #   0 — anything else.
 ROOT_PAYLOAD_TIER = 2
@@ -218,7 +220,13 @@ OTHER_TIER = 0
 
 
 def preview_tier(call: LoggedCallDB, has_payload: bool) -> int:
-    """Classify a call's preview precedence tier."""
+    """Classify a call's preview precedence tier for ONE slot.
+
+    ``has_payload`` is that slot's own payload evidence — scoring the input
+    slot passes ``has_preview_payload(io.input)`` and the output slot
+    ``has_preview_payload(io.output)``, so a one-sided root tops the tier
+    for the side it fills and falls through on the other.
+    """
     if has_payload and call.parent_call_id is None:
         return ROOT_PAYLOAD_TIER
     if call.observation_type == "GENERATION":
@@ -231,59 +239,88 @@ def maybe_update_run_preview(
 ) -> None:
     """Maintain ``runs.input_preview/output_preview`` — dual/slim modes only.
 
-    Replicates the list API's read-time rule (root call with a payload, else
-    first GENERATION call, else the first call of any kind, by creation
-    order) with a deterministic ``(created_at, row_id)`` tie-break:
+    Replicates the list API's read-time rule per slot (root call with a
+    payload on that side, else first GENERATION call with one, else the
+    first call of any kind, by creation order) with a deterministic
+    ``(created_at, row_id)`` tie-break:
 
+    - each slot is decided independently: a call contests the input slot
+      only when its own input carries a payload (same for output), so a
+      one-sided root takes only the slot it can fill and the other falls
+      through to the next tier (issue #203);
     - a higher tier beats a lower tier regardless of arrival order
       (root-with-payload > GENERATION > other);
     - within the same tier, the earlier ``(created_at, row_id)`` wins;
-    - re-projecting the SAME source call refreshes its values (otherwise
-      previews go stale on re-ingest/reproject);
-    - a dangling ``preview_call_row_id`` (purged/deleted source) is treated
-      as unknown — the next projecting call overwrites freely.
+    - re-projecting a slot's own source call refreshes that slot (otherwise
+      previews go stale on re-ingest/reproject) without touching the other
+      slot, whose source is tracked separately;
+    - a dangling per-slot source (purged/deleted source) is treated as
+      unknown — the next projecting call overwrites freely. A slot that
+      carries a payload but lost its pointer to the v40 drop is a real
+      unknown incumbent: only a root payload may take it, so late
+      low-tier spans never downgrade pre-migration previews.
 
     The stored previews double as the source's payload evidence: fat columns
-    are not written in slim mode, but a root only reached the source slot by
-    carrying a payload, and that payload is what the preview strings hold.
+    are not written in slim mode, but a call only reached a slot by carrying
+    a payload on that side, and that payload is what the preview string
+    holds.
 
-    Previews are never cleared when a source dies; they live and die with
-    the projection row (lifecycle unchanged).
+    Previews are never cleared when a source dies or stops carrying a
+    payload; they live and die with the projection row (lifecycle
+    unchanged).
     """
     if call.row_id is None:
         session.flush()
 
-    source: LoggedCallDB | None = None
-    if run.preview_call_row_id is not None:
-        source = session.get(LoggedCallDB, run.preview_call_row_id)
-
-    call_tier = preview_tier(
-        call, has_preview_payload(io.input, io.output)
-    )
-    if source is None:
-        replace = True
-    elif call.row_id == run.preview_call_row_id:
-        replace = True
-    else:
-        source_tier = preview_tier(
-            source,
-            has_preview_payload(run.input_preview, run.output_preview),
-        )
-        if call_tier != source_tier:
-            # Higher tier wins regardless of arrival order; a lower tier
-            # never displaces it.
-            replace = call_tier > source_tier
-        else:
-            # Same tier: earlier wins. SQLite hands back naive datetimes
-            # while a just-created in-session row is tz-aware — normalize
-            # before comparing or the tuple compare raises.
-            replace = (_created_at_key(call.created_at), call.row_id) < (
-                _created_at_key(source.created_at),
-                source.row_id,
-            )
-
-    if replace:
+    if has_preview_payload(io.input) and _slot_should_replace(
+        session, call, source_row_id=run.input_preview_call_row_id,
+        slot_preview=run.input_preview,
+    ):
         run.input_preview = truncate_preview(io.input)
+        run.input_preview_call_row_id = call.row_id
+    if has_preview_payload(io.output) and _slot_should_replace(
+        session, call, source_row_id=run.output_preview_call_row_id,
+        slot_preview=run.output_preview,
+    ):
         run.output_preview = truncate_preview(io.output)
-        run.preview_call_row_id = call.row_id
-        session.add(run)
+        run.output_preview_call_row_id = call.row_id
+    session.add(run)
+
+
+def _slot_should_replace(
+    session: Session,
+    call: LoggedCallDB,
+    *,
+    source_row_id: int | None,
+    slot_preview: str | None,
+) -> bool:
+    """Whether ``call`` — already known to carry a payload for this slot —
+    takes the slot from its incumbent."""
+    if source_row_id is None:
+        if not has_preview_payload(slot_preview):
+            return True
+        # Pre-v40 paired-era row: the slot holds a payload but v40 dropped
+        # its source pointer, so the incumbent is real yet unknown. Only a
+        # root payload may take it — the paired writer rooted previews the
+        # same way, so tier 2 restores its pick while any lower tier could
+        # only downgrade what the old pointer used to protect.
+        return preview_tier(call, has_payload=True) == ROOT_PAYLOAD_TIER
+    if call.row_id == source_row_id:
+        return True
+    source = session.get(LoggedCallDB, source_row_id)
+    if source is None:
+        # Dangling source (purged/deleted): unknown incumbent.
+        return True
+    call_tier = preview_tier(call, has_payload=True)
+    source_tier = preview_tier(source, has_preview_payload(slot_preview))
+    if call_tier != source_tier:
+        # Higher tier wins regardless of arrival order; a lower tier
+        # never displaces it.
+        return call_tier > source_tier
+    # Same tier: earlier wins. SQLite hands back naive datetimes while a
+    # just-created in-session row is tz-aware — normalize before comparing
+    # or the tuple compare raises.
+    return (_created_at_key(call.created_at), call.row_id) < (
+        _created_at_key(source.created_at),
+        source.row_id,
+    )

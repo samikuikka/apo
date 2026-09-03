@@ -195,13 +195,16 @@ class RunDB(SQLModel, table=True):
     # display made a run-level copy cheaper than a per-row span join).
     service_name: str | None = Field(default=None)
     # Storage single-homing Stage 2: write-time previews for the traces
-    # LIST. Derived from the preview-source call's I/O (root call with a
-    # payload, else first GENERATION, else first call — see
-    # projection_io.maybe_update_run_preview); they live and die with the
-    # projection row, never with the source call.
+    # LIST. Each slot is derived independently from its own best source
+    # call (root call with a payload on that side, else first GENERATION,
+    # else first call — see projection_io.maybe_update_run_preview); they
+    # live and die with the projection row, never with the source call.
     input_preview: str | None = Field(default=None)
     output_preview: str | None = Field(default=None)
-    preview_call_row_id: int | None = Field(default=None)  # soft reference
+    # Soft references, one per slot — a one-sided root owns only the side
+    # it can actually fill, so the other slot's source stays trackable.
+    input_preview_call_row_id: int | None = Field(default=None)
+    output_preview_call_row_id: int | None = Field(default=None)
     primary_model: str | None = Field(
         default=None, index=True
     )  # TASK-015: Primary model used in this run

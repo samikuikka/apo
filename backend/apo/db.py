@@ -1041,6 +1041,28 @@ def _migrate_to_v39() -> None:
         _migrate_span_facet_indexes(conn)
 
 
+def _migrate_to_v40() -> None:
+    """Version 40: per-slot preview sources (one-sided roots, issue #203).
+
+    ``runs.preview_call_row_id`` tracked ONE source for both preview slots,
+    so a root with a payload on only one side published the empty side too.
+    It is replaced by ``input_preview_call_row_id`` /
+    ``output_preview_call_row_id``. No pointer backfill: the paired column's
+    pointers are dropped, and a preview string without a per-slot pointer
+    marks its run for the admin projection backfill, which re-projects and
+    heals the slots (a payload-carrying pointer-less slot is protected
+    against downgrades until then — see ``_slot_should_replace``). Dropping
+    the paired column rewrites the runs table on SQLite (3.35+, shipped in
+    the image); the stored preview strings are untouched. Forward-only like
+    v34: an older image against a v40 database fails on run writes — back
+    up the data volume before upgrading.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(conn, "runs", "input_preview_call_row_id", "INTEGER")
+        _add_column_if_missing(conn, "runs", "output_preview_call_row_id", "INTEGER")
+        _drop_column_if_exists(conn, "runs", "preview_call_row_id")
+
+
 def _migrate_span_facet_indexes(conn: Connection) -> None:
     """Covering facet indexes + a prunable span-time window.
 
@@ -2517,7 +2539,7 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 39
+LATEST_SCHEMA_VERSION = 40
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -2559,6 +2581,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     37: _migrate_to_v37,
     38: _migrate_to_v38,
     39: _migrate_to_v39,
+    40: _migrate_to_v40,
 }
 
 

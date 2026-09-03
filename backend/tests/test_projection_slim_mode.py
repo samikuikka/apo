@@ -247,7 +247,8 @@ class TestPreviewWrites:
         )
         assert run.input_preview == truncate_preview(io.input)
         assert run.output_preview == truncate_preview(io.output)
-        assert run.preview_call_row_id == gen.row_id
+        assert run.input_preview_call_row_id == gen.row_id
+        assert run.output_preview_call_row_id == gen.row_id
 
         # The list API's preview read must agree with the legacy truncation
         # of the same call's I/O.
@@ -272,8 +273,10 @@ class TestPreviewWrites:
         )
         session.commit()
         run = _run(session)
-        # The root call is the earliest non-GENERATION source.
-        assert run.preview_call_row_id == _call(session, ROOT).row_id
+        # The payload-less root contests nothing; the tool call is the
+        # earliest source that actually carries a payload (input only).
+        assert run.input_preview_call_row_id == _call(session, GEN2).row_id
+        assert run.output_preview is None
 
         # A GENERATION call arriving LATER must take over regardless.
         _ingest(
@@ -282,7 +285,7 @@ class TestPreviewWrites:
         )
         session.commit()
         run = _run(session)
-        assert run.preview_call_row_id == _call(session, GEN1).row_id
+        assert run.input_preview_call_row_id == _call(session, GEN1).row_id
         assert "later prompt" in (run.input_preview or "")
 
     def test_same_source_refresh_and_dangling(
@@ -316,10 +319,10 @@ class TestPreviewWrites:
         run = _run(session)
         assert "v2 prompt" in (run.input_preview or "")
 
-        # Dangling source: delete the source call row → next projection
-        # overwrites freely instead of comparing against a ghost.
+        # Dangling source: delete the slot's source call row → next
+        # projection overwrites freely instead of comparing against a ghost.
         gen_call = _call(session, GEN1)
-        run.preview_call_row_id = gen_call.row_id
+        run.input_preview_call_row_id = gen_call.row_id
         session.delete(gen_call)
         session.commit()
         _ingest(
@@ -334,7 +337,21 @@ class TestPreviewWrites:
         )
         session.commit()
         run = _run(session)
-        assert run.preview_call_row_id == _call(session, GEN2).row_id
+        assert run.input_preview_call_row_id == _call(session, GEN2).row_id
+
+
+def _agent_task_root_payload(reply: str) -> bytes:
+    """An agent-task root span: output present, input absent (the shape from
+    issue #203 — ``apo.task.run`` summarizes the run, it is not a turn)."""
+    return _payload(
+        ROOT,
+        parent=None,
+        name="apo.task.run",
+        gen_attrs=[
+            {"key": "apo.observation.type", "value": {"stringValue": "AGENT"}},
+            {"key": "output", "value": {"stringValue": json.dumps({"response": reply})}},
+        ],
+    )
 
 
 def _root_summary_payload(
@@ -371,7 +388,8 @@ class TestPreviewRootPreference:
         )
         session.commit()
         run = _run(session)
-        assert run.preview_call_row_id == _call(session, ROOT).row_id
+        assert run.input_preview_call_row_id == _call(session, ROOT).row_id
+        assert run.output_preview_call_row_id == _call(session, ROOT).row_id
         assert "Hello world" in (run.input_preview or "")
         assert "You are an AI assistant" not in (run.input_preview or "")
 
@@ -384,12 +402,13 @@ class TestPreviewRootPreference:
         _ingest(session, _gen_payload(GEN1, "system scaffolding", "answer"))
         session.commit()
         run = _run(session)
-        assert run.preview_call_row_id == _call(session, GEN1).row_id
+        assert run.input_preview_call_row_id == _call(session, GEN1).row_id
 
         _ingest(session, _root_summary_payload())
         session.commit()
         run = _run(session)
-        assert run.preview_call_row_id == _call(session, ROOT).row_id
+        assert run.input_preview_call_row_id == _call(session, ROOT).row_id
+        assert run.output_preview_call_row_id == _call(session, ROOT).row_id
         assert "Hello world" in (run.input_preview or "")
 
     def test_later_generation_never_displaces_root_source(
@@ -404,7 +423,8 @@ class TestPreviewRootPreference:
         )
         session.commit()
         run = _run(session)
-        assert run.preview_call_row_id == _call(session, ROOT).row_id
+        assert run.input_preview_call_row_id == _call(session, ROOT).row_id
+        assert run.output_preview_call_row_id == _call(session, ROOT).row_id
 
     def test_root_without_payload_keeps_generation(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
@@ -415,7 +435,8 @@ class TestPreviewRootPreference:
         _ingest(session, _gen_payload(GEN1, "real prompt", "real answer"))
         session.commit()
         run = _run(session)
-        assert run.preview_call_row_id == _call(session, GEN1).row_id
+        assert run.input_preview_call_row_id == _call(session, GEN1).row_id
+        assert run.output_preview_call_row_id == _call(session, GEN1).row_id
         assert "real prompt" in (run.input_preview or "")
 
     def test_legacy_read_prefers_root_summary(self, session: Session) -> None:
@@ -439,6 +460,230 @@ class TestPreviewRootPreference:
         session.commit()
         previews = _fetch_io_previews(session, [TRACE], "p1")
         assert "fallback prompt" in (previews[TRACE]["input"] or "")
+
+
+class TestPreviewPerFieldPrecedence:
+    """Issue #203: a root span with a payload on only ONE side takes only
+    that slot. The pair-gated precedence let a one-sided root publish the
+    empty side too — an agent-task root (``apo.task.run``, output-only)
+    blanked the input preview the GENERATION tier used to serve."""
+
+    def test_legacy_read_one_sided_root_fills_only_output_slot(
+        self, session: Session
+    ) -> None:
+        _ingest(session, _agent_task_root_payload("Task complete."))
+        _ingest(
+            session,
+            _gen_payload(GEN1, "You are simulating a user interacting with Bind…", "Hello."),
+        )
+        session.commit()
+        previews = _fetch_io_previews(session, [TRACE], "p1")
+        # The input slot falls through to the GENERATION tier…
+        assert "You are simulating a user" in (previews[TRACE]["input"] or "")
+        assert previews[TRACE]["input"] != "{}"
+        # …while the root's output still wins its own slot.
+        assert "Task complete." in (previews[TRACE]["output"] or "")
+
+    def test_legacy_read_payload_less_root_publishes_nothing(
+        self, session: Session
+    ) -> None:
+        """A root carrying no payload at all must not publish ``{}``
+        placeholders — slots stay open for calls that can fill them."""
+        _ingest(session, _payload(ROOT, parent=None))
+        _ingest(
+            session,
+            _payload(
+                GEN2,
+                name="tool.run",
+                gen_attrs=[{"key": "input", "value": {"stringValue": "tool-in"}}],
+            ),
+        )
+        session.commit()
+        previews = _fetch_io_previews(session, [TRACE], "p1")
+        assert "tool-in" in (previews[TRACE]["input"] or "")
+        assert previews[TRACE]["output"] is None
+
+    def test_dual_write_one_sided_root_takes_only_output_slot(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
+        _ingest(session, _gen_payload(GEN1, "sim-user prompt", "assistant answer"))
+        session.commit()
+        _ingest(session, _agent_task_root_payload("Task complete."))
+        session.commit()
+        run = _run(session)
+        assert run.input_preview_call_row_id == _call(session, GEN1).row_id
+        assert run.output_preview_call_row_id == _call(session, ROOT).row_id
+        assert "sim-user prompt" in (run.input_preview or "")
+        assert "Task complete." in (run.output_preview or "")
+
+    def test_dual_write_generation_later_fills_fallthrough_input(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Root lands first (output slot), the generation arrives later and
+        must fill the open input slot without disturbing the root's output."""
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
+        _ingest(session, _agent_task_root_payload("Task complete."))
+        session.commit()
+        run = _run(session)
+        assert run.input_preview is None
+        assert "Task complete." in (run.output_preview or "")
+
+        _ingest(
+            session,
+            _gen_payload(GEN1, "later prompt", "later answer", start="1700000002000000000"),
+        )
+        session.commit()
+        run = _run(session)
+        assert "later prompt" in (run.input_preview or "")
+        assert "Task complete." in (run.output_preview or "")
+        assert run.output_preview_call_row_id == _call(session, ROOT).row_id
+
+    def test_same_source_refresh_updates_only_its_slot(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With split sources, re-projecting one source refreshes only the
+        slot it owns — a single paired source row id cannot express this."""
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
+        _ingest(session, _gen_payload(GEN1, "v1 prompt", "v1 answer"))
+        _ingest(session, _agent_task_root_payload("root reply"))
+        session.commit()
+
+        import copy
+
+        span = session.exec(
+            select(OtlpSpanDB).where(OtlpSpanDB.span_id == GEN1)
+        ).one()
+        attrs = copy.deepcopy(span.attributes or {})
+        messages = cast("list[dict[str, Any]]", attrs["gen_ai.input.messages"])
+        messages[0]["content"] = "v2 prompt"
+        span.attributes = attrs
+        session.add(span)
+        session.commit()
+        assert _reproject_local(session) >= 1
+        session.expire_all()
+        run = _run(session)
+        assert "v2 prompt" in (run.input_preview or "")
+        assert "root reply" in (run.output_preview or "")
+        assert run.output_preview_call_row_id == _call(session, ROOT).row_id
+
+
+class TestPairedEraUpgrade:
+    """Rows written by the pre-v40 paired logic keep their preview strings
+    but lose the source pointers to the v40 drop. The per-slot rules must
+    treat a payload-carrying pointer-less slot as a real incumbent (no
+    downgrades from late low-tier spans), keep a poisoned ``"{}"`` slot
+    freely winnable, and previews-mode reads must not serve the poison."""
+
+    @staticmethod
+    def _strip_pointers(session: Session) -> None:
+        run = _run(session)
+        run.input_preview_call_row_id = None
+        run.output_preview_call_row_id = None
+        session.add(run)
+        session.commit()
+
+    def _seed_two_sided_root(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
+        _ingest(session, _root_summary_payload())
+        _ingest(session, _gen_payload(GEN1, "gen prompt", "gen answer"))
+        session.commit()
+
+    def test_late_low_tier_span_cannot_clobber_pointer_less_previews(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._seed_two_sided_root(session, monkeypatch)
+        self._strip_pointers(session)
+        _ingest(
+            session,
+            _payload(
+                GEN2,
+                name="db.query",
+                gen_attrs=[
+                    {"key": "input", "value": {"stringValue": "SELECT 1"}},
+                    {"key": "output", "value": {"stringValue": "1"}},
+                ],
+                start="1700000003000000000",
+            ),
+        )
+        session.commit()
+        run = _run(session)
+        # The tier-0 span must not downgrade the pointer-less incumbent.
+        assert "Hello world" in (run.input_preview or "")
+        assert "Hello. What can I help" in (run.output_preview or "")
+
+    def test_root_payload_refreshes_pointer_less_slot(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._seed_two_sided_root(session, monkeypatch)
+        self._strip_pointers(session)
+
+        import copy
+
+        span = session.exec(
+            select(OtlpSpanDB).where(OtlpSpanDB.span_id == ROOT)
+        ).one()
+        attrs = copy.deepcopy(span.attributes or {})
+        attrs["input"] = json.dumps({"text": "refreshed root prompt"})
+        span.attributes = attrs
+        session.add(span)
+        session.commit()
+        assert _reproject_local(session) >= 1
+        session.expire_all()
+        run = _run(session)
+        # A root payload may still take a pointer-less real slot — the
+        # paired writer rooted previews the same way.
+        assert "refreshed root prompt" in (run.input_preview or "")
+        assert run.input_preview_call_row_id == _call(session, ROOT).row_id
+
+    def test_poisoned_slot_is_winnable_by_generation(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The paired writer stored ``"{}"`` for a one-sided root's empty
+        side. That slot carries no payload evidence, so it must stay
+        freely winnable — re-projection heals it."""
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
+        _ingest(session, _agent_task_root_payload("root reply"))
+        _ingest(session, _gen_payload(GEN1, "gen prompt", "gen answer"))
+        session.commit()
+        # Recreate the paired-era row: input published as the empty side.
+        run = _run(session)
+        run.input_preview = "{}"
+        run.input_preview_call_row_id = None
+        run.output_preview_call_row_id = None
+        session.add(run)
+        session.commit()
+
+        assert _reproject_local(session) >= 1
+        session.expire_all()
+        run = _run(session)
+        assert "gen prompt" in (run.input_preview or "")
+        assert "root reply" in (run.output_preview or "")
+        assert run.input_preview_call_row_id == _call(session, GEN1).row_id
+
+    def test_previews_mode_does_not_serve_poisoned_stored_slot(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Paired-era one-sided row in previews mode: the poisoned ``"{}"``
+        input falls back to the legacy computation while the healthy
+        stored output keeps serving from storage."""
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
+        _ingest(session, _agent_task_root_payload("root reply"))
+        _ingest(session, _gen_payload(GEN1, "gen prompt", "gen answer"))
+        session.commit()
+        run = _run(session)
+        run.input_preview = "{}"
+        run.input_preview_call_row_id = None
+        session.add(run)
+        session.commit()
+
+        monkeypatch.setenv("APO_LIST_READ", "previews")
+        previews = _fetch_io_previews(session, [TRACE], "p1")
+        assert "gen prompt" in (previews[TRACE]["input"] or "")
+        assert previews[TRACE]["input"] != "{}"
+        assert "root reply" in (previews[TRACE]["output"] or "")
 
 
 # ---------------------------------------------------------------------------
@@ -637,7 +882,8 @@ class TestListPreviews:
         run = _run(session)
         run.input_preview = None
         run.output_preview = None
-        run.preview_call_row_id = None
+        run.input_preview_call_row_id = None
+        run.output_preview_call_row_id = None
         session.add(run)
         session.commit()
 
@@ -680,3 +926,49 @@ class TestBackfill:
         assert job["errors"] == []
         with Session(engine) as session:
             assert "backfill prompt" in (_run(session).input_preview or "")
+
+    def test_backfill_heals_paired_era_rows_and_drains(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A paired-era row (preview strings set, pointers dropped by v40,
+        input published as the empty side) must be SELECTED by the backfill,
+        healed per slot, and not re-selected on the next pass."""
+        with Session(engine) as session:
+            _ingest(session, _agent_task_root_payload("root reply"))
+            _ingest(
+                session, _gen_payload(GEN1, "paired-era prompt", "gen answer")
+            )
+            session.commit()
+            run = _run(session)
+            run.input_preview = "{}"
+            run.input_preview_call_row_id = None
+            run.output_preview_call_row_id = None
+            session.add(run)
+            session.commit()
+
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
+
+        def _run_job(job_id: str) -> dict[str, Any]:
+            _projection_jobs[job_id] = {
+                "status": "running",
+                "processed": 0,
+                "skipped": 0,
+                "errors": [],
+            }
+            _run_projection_backfill(job_id, None, 100)
+            return dict(_projection_jobs[job_id])
+
+        first = _run_job("job-heal-1")
+        assert first["status"] == "done"
+        assert first["processed"] == 1
+        assert first["errors"] == []
+        with Session(engine) as session:
+            run = _run(session)
+            assert "paired-era prompt" in (run.input_preview or "")
+            assert "root reply" in (run.output_preview or "")
+            assert run.input_preview_call_row_id is not None
+            assert run.output_preview_call_row_id is not None
+
+        # The healed row no longer matches the selection — the job drains.
+        second = _run_job("job-heal-2")
+        assert second["processed"] == 0

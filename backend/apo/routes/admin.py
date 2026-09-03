@@ -375,8 +375,16 @@ async def start_projection_backfill(
 def _run_projection_backfill(
     job_id: str, project: str | None, limit: int
 ) -> None:
-    """Worker: reproject traces lacking previews, updating job progress."""
-    from sqlmodel import Session, col, select
+    """Worker: reproject traces lacking previews, updating job progress.
+
+    Selection: never-previewed runs (both slots and pointers empty —
+    fat-era rows), plus paired-era rows where a preview string lost its
+    source pointer to the v40 drop (string ⇒ pointer is the write-path
+    invariant, so its violation marks a row the new per-slot logic has
+    not healed yet). Healed rows stop matching — the job drains.
+    """
+    from sqlalchemy import and_ as sql_and
+    from sqlmodel import Session, col, or_, select
 
     from ..db import engine
     from ..models.db import RunDB
@@ -387,7 +395,24 @@ def _run_projection_backfill(
         with Session(engine) as session:
             query = (
                 select(RunDB.id, RunDB.project)
-                .where(col(RunDB.input_preview).is_(None))
+                .where(
+                    or_(
+                        sql_and(
+                            col(RunDB.input_preview).is_(None),
+                            col(RunDB.output_preview).is_(None),
+                            col(RunDB.input_preview_call_row_id).is_(None),
+                            col(RunDB.output_preview_call_row_id).is_(None),
+                        ),
+                        sql_and(
+                            col(RunDB.input_preview).is_not(None),
+                            col(RunDB.input_preview_call_row_id).is_(None),
+                        ),
+                        sql_and(
+                            col(RunDB.output_preview).is_not(None),
+                            col(RunDB.output_preview_call_row_id).is_(None),
+                        ),
+                    )
+                )
                 .limit(limit)
             )
             if project is not None:
