@@ -14,7 +14,6 @@ from sqlmodel import Session, select
 
 from ..db import engine
 from ..models.db import (
-    AgentTaskBatchRunDB,
     LoggedCallDB,
     ProjectDB,
     RunDB,

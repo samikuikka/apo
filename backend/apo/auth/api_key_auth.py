@@ -19,7 +19,6 @@ results are cached.
 
 import hashlib
 import os
-import secrets
 from uuid import uuid4
 
 from sqlmodel import Session, select
@@ -137,16 +136,3 @@ def validate_legacy_bearer(token: str, session: Session) -> ApiKeyDB | None:
         api_key_cache.set_negative(cache_key)
 
     return api_key
-
-
-def generate_legacy_key() -> tuple[str, str, str]:
-    """Generate a legacy single key (backward compat with existing SDK users).
-
-    Returns:
-        A tuple of (full_key, prefix, hashed_key).
-    """
-    raw = secrets.token_hex(24)
-    full_key = f"sk-{raw}"
-    prefix = full_key[:8]
-    hashed_key = hashlib.sha256(full_key.encode()).hexdigest()
-    return full_key, prefix, hashed_key

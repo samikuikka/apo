@@ -27,7 +27,6 @@ services:
       # deployments use APO_PUBLIC_URL as the single public-origin setting.
       - NEXTAUTH_URL=${APO_PUBLIC_URL:-${NEXTAUTH_URL:-http://localhost:3000}}
       - APO_PUBLIC_URL=${APO_PUBLIC_URL:-${NEXTAUTH_URL:-http://localhost:3000}}
-      - NEXT_PUBLIC_AUTH_DISABLED=false
     depends_on:
       backend:
         condition: service_healthy

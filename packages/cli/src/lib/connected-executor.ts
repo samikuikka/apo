@@ -8,17 +8,6 @@
 
 import type { StoredExecutorState } from "./executor-state.ts";
 
-export interface SourceOwnedCapabilities {
-  protocol_version: 2;
-  executor_version: string;
-  assignment_kinds: ["source_owned"];
-  driver_kinds: ["source-owned-ts"];
-  os: string;
-  architecture: string;
-  runtimes: Record<string, string>;
-  max_concurrency: number;
-}
-
 export interface EnrollResponse {
   executor_id: string;
   credential: string;
@@ -167,34 +156,6 @@ export async function heartbeat(opts: {
   }
 
   return await resp.json() as CatalogEligibility;
-}
-
-export async function claimWork(opts: {
-  backendUrl: string;
-  credential: string;
-  catalogDigest: string;
-  availableSlots: number;
-}): Promise<SourceOwnedAssignment | null> {
-  const resp = await fetch(`${v2Base(opts.backendUrl)}/claims`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${opts.credential}`,
-    },
-    body: JSON.stringify({
-      catalog_digest: opts.catalogDigest,
-      available_slots: opts.availableSlots,
-    }),
-  });
-
-  if (resp.status === 204) return null; // No work available
-  if (resp.status === 409) return null; // Catalog mismatch — treated as ineligible
-  if (!resp.ok) {
-    if (resp.status === 401) throw new Error("Executor credential invalid or revoked");
-    throw new Error(`Claim failed: ${resp.status}`);
-  }
-
-  return await resp.json() as SourceOwnedAssignment;
 }
 
 /** structured claim result so the loop can honor server timing. */

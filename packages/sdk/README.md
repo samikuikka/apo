@@ -1,14 +1,15 @@
 # apo SDK
 
 TypeScript/JavaScript SDK for the [apo](.) backend — an agent testing and
-observability platform. The SDK has three entry points:
+observability platform. The SDK's entry points:
 
-- **`@apo-ai/sdk`** — config + error types shared across the surface.
 - **`@apo-ai/sdk/otel`** — OpenTelemetry-native tracing. Wrap your LLM calls and
   agent steps so they land in apo as structured spans, then attach scores.
 - **`@apo-ai/sdk/agent-task`** — the agent-task evaluation framework. Define tasks,
   adapters, and checks; run them against an agent and collect structured
   results.
+- **`@apo-ai/sdk/agent-task/integrations/{ai-sdk,openai,anthropic}`** —
+  per-framework tracing wrappers re-exported for direct import.
 
 ## Installation
 
@@ -36,57 +37,23 @@ no long-lived npm token is stored in the repository.
 
 ## Configuration
 
-`readConfig()` reads backend/project/credentials from environment variables.
+The tracing surface (`@apo-ai/sdk/otel`) reads credentials from environment
+variables when they are not passed explicitly:
 
-| Field       | Env var (server)            | Env var (Next.js, browser-safe)      | Required |
-|-------------|-----------------------------|--------------------------------------|----------|
-| `endpoint`  | `APO_BACKEND_URL`           | `NEXT_PUBLIC_APO_BACKEND_URL`        | yes      |
-| `project`   | `APO_PROJECT`               | `NEXT_PUBLIC_APO_PROJECT`            | yes      |
-| `publicKey` | `APO_PUBLIC_KEY`            | — *(server-side only — see below)*   | two-key  |
-| `secretKey` | `APO_SECRET_KEY`            | —                                    | two-key  |
-| `apiKey`    | `APO_API_KEY`               | —                                    | legacy   |
+| Purpose                  | Env var             | Used for                                   |
+|--------------------------|---------------------|--------------------------------------------|
+| OTLP traces endpoint     | `APO_OTLP_ENDPOINT` | Where spans are exported                   |
+| Project (diagnostic)     | `APO_PROJECT`       | Resource attribute only — auth owns tenancy |
+| Two-key auth (Basic)     | `APO_PUBLIC_KEY` + `APO_SECRET_KEY` | `Authorization: Basic base64(pk:sk)` |
+| Bearer token             | `APO_AUTH_TOKEN`    | Short-lived task-run tokens; used only when the key pair is absent |
 
-The Next.js (`NEXT_PUBLIC_*`) variants are read first, then the plain server
-variants. `apiKey` is the legacy single-key format (`sk-…`); prefer the
-two-key model (`publicKey` + `secretKey`, generated as `pk-apo-…` / `sk-apo-…`
-in the dashboard).
-
-there is no browser-safe variant of `APO_PUBLIC_KEY`. The public
-identifier alone does not authorize ingestion, and exposing it in a
-browser bundle creates a misleading direct-browser integration.
-`NEXT_PUBLIC_APO_PUBLIC_KEY` is intentionally not read. Telemetry
-submission always requires both halves of an API-key pair sent as HTTP
-Basic (`base64("pk-apo-…:sk-apo-…")`); the SDK never synthesizes partial
-Basic credentials from only one half.
-
-```ts
-import { readConfig, type EnvConfig } from "@apo-ai/sdk";
-
-const config: EnvConfig = readConfig();
-```
-
-## API reference — `@apo-ai/sdk`
-
-The root entry is intentionally thin: shared types + config + errors. The
-actual tracing surface lives at `@apo-ai/sdk/otel`.
-
-### Types
-
-The trace/observation parameter types used by the OTel helpers:
-`CreateTraceParams`, `CreateSpanParams`, `EndSpanParams`, `TraceRunContext`,
-`TraceRunOptions`, `TraceStepOptions`, `TraceEventOptions`, `IngestionEvent`,
-`CreateScoreParams`, `ClientOptions`, `ParameterOverrides`, `ObserveOptions`,
-`ObservationContext`.
-
-### `readConfig(): EnvConfig`
-
-Read endpoint/project/keys from environment variables (table above).
-
-### Errors
-
-`ClientError` (Effect `Data.TaggedError`), `ConfigurationError`,
-`ClientErrorCode`. `ClientError` carries a `code` field for categorising
-failures.
+Telemetry submission always requires both halves of an API-key pair sent as
+HTTP Basic (`base64("pk-apo-…:sk-apo-…")`); the SDK never synthesizes partial
+Basic credentials from only one half. There is deliberately no
+`NEXT_PUBLIC_*` browser variant — a public identifier alone does not
+authorize ingestion, and exposing it in a browser bundle creates a misleading
+direct-browser integration. Use `buildApoAuthHeaders` (exported from
+`@apo-ai/sdk/otel`) to build the headers explicitly.
 
 ## Tracing — `@apo-ai/sdk/otel`
 
@@ -115,7 +82,7 @@ call this if your app already configures OTel itself).
 ```ts
 const handle = await configureApoTelemetry({
   takeOwnership: true,
-  endpoint: process.env.APO_OTLP_ENDPOINT ?? "http://localhost:8000/v1/otlp",
+  endpoint: process.env.APO_OTLP_ENDPOINT ?? "http://localhost:8000/api/public/otel/v1/traces",
   // headers, resource attributes, batch/simple processor, etc.
 });
 
@@ -199,12 +166,10 @@ import {
 - **`test(id, fn)`** — register a test through the scope returned by `task()`.
   The callback receives `t` (flat, eve-style assertions over the run's flow)
   and the task-selected deliverables, inferred from the adapter.
-- **`runTask(task, adapter, options?)`** — execute a single task and return a
-  `TaskRunResult` (transcript + evaluation).
+- **`runTask(taskDir, options?)`** — execute a task and return a
+  `TaskRunResult` (transcript + evaluation). The adapter comes from the task
+  definition.
 - **`loadTask(dir)` / `discoverAgentTaskDirs()`** — load tasks from disk.
-- **`createAgentTaskTraceClient(config)`** — the adapter-side trace client
-  passed into runs; the auth token is supplied by the backend runner via
-  `APO_AUTH_TOKEN`.
 
 ### Testing (`*.eval.ts`)
 
@@ -277,8 +242,8 @@ anything). Matchers: `includes(substring|RegExp)`, `equals(value)` (deep),
 `satisfies(predicate, label)`, `similarity(expected, threshold = 0.8)` (fuzzy,
 normalized Levenshtein).
 
-For apo tasks the flow is built automatically from the run's trace (via
-`createFlowTee`) — no extra wiring.
+For apo tasks the flow is built automatically from the run's trace
+projection — no extra wiring.
 
 **`t.judge(value, instruction)` — LLM-backed assertions.** Configure the judge
 with `runTask(dir, { judge: { model, apiKey?, baseURL? } })`, or set
@@ -297,21 +262,22 @@ never revealed. The SDK appends its JSON response contract to any custom
 `system` constant per task and vary only `user` to preserve the cached prompt
 prefix across a task's criteria (issue #161).
 
-**Testing agents not built on apo's adapter.** Build a `Flow` from the
-framework's own output with a normalizer, then run the same checks:
+**Agents not built on apo's adapter.** `fromOpenAIMessages(messages)`,
+`fromAnthropicMessages(messages)`, and `fromAISDK(result)` convert another
+framework's output into the neutral `Flow` format so it can be inspected with
+`FlowView`:
 
 ```ts
-import { runFlowChecks, test } from "@apo-ai/sdk/agent-task";
-import { fromAISDK } from "@apo-ai/sdk/agent-task";        // or fromOpenAIMessages / fromAnthropicMessages
+import { fromAISDK, FlowView } from "@apo-ai/sdk/agent-task";
 
-const flow = fromAISDK(myGenerateTextResult);          // their framework → Flow
-test("used-tools", (t) => { t.calledTool("read_file"); });
-const results = await runFlowChecks({ flow, deliverables: { reply: myGenerateTextResult.text } });
+const view = new FlowView(fromAISDK(myGenerateTextResult));
+view.toolNamesInOrder; // e.g. ["read_file", "search_content"]
+view.reply;            // last assistant message text
 ```
 
-`fromOpenAIMessages(messages)`, `fromAnthropicMessages(messages)`, and
-`fromAISDK(result)` each convert one source into the neutral `Flow` the checks
-read — the plugs that make the testing framework reusable across agent stacks.
+These normalizers are **deprecated** compatibility adapters — the canonical
+path emits standard OTel spans (see the tracing integrations above), which
+apo projects into the same view without a Flow intermediary.
 
 ### CLI / runtime
 

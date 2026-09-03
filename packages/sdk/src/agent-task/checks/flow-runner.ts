@@ -250,8 +250,8 @@ export async function runTraceChecks(args: {
           : {}),
         ...(check.group_id ? { group_id: check.group_id } : {}),
         ...(check.group_name ? { group_name: check.group_name } : {}),
-        // stamp the snapshot source so consumers can detect
-        // the deprecated legacy-flow compatibility path (source="legacy-flow").
+        // stamp the snapshot source so consumers can tell projection-first
+        // results (canonical) from locally recorded snapshots.
         ...(args.snapshot.source !== "canonical"
           ? { source: args.snapshot.source }
           : {}),

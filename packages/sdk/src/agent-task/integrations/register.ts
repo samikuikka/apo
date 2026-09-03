@@ -59,14 +59,6 @@ export async function registerApoTracing(
 }
 
 /**
- * Get the registered processor (for testing or advanced use).
- * Returns null if `registerApoTracing` hasn't been called.
- */
-export function getApoProcessor(): ApoSpanProcessor | null {
-  return currentProcessor;
-}
-
-/**
  * Alias used by configureApoTelemetry to pick up the processor and add it
  * to the OTLP-exporting provider.
  */

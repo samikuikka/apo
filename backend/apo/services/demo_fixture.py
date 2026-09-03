@@ -38,7 +38,6 @@ from ..models.db import (
     LoggedCallDB,
     OtlpIngestBatchDB,
     OtlpSpanDB,
-    ProjectDB,
     ProjectTaskInventoryDB,
     ProjectTaskSourceDB,
     RunDB,

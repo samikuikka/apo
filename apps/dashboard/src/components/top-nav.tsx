@@ -8,8 +8,7 @@ import { DemoBadge } from "@/components/demo-badge";
 import { UserMenu } from "@/components/user-menu";
 
 // Routes that suppress the main TopNav. Auth flows render their own header
-// (they predate the session), and /public pages render a dedicated
-// PublicTraceHeader instead — showing both would duplicate the brand mark.
+// (they predate the session) — showing both would duplicate the brand mark.
 const NAV_HIDDEN_ROUTES = [
   "/login",
   "/setup",
@@ -18,7 +17,6 @@ const NAV_HIDDEN_ROUTES = [
   "/reset-password",
   "/accept-invitation",
   "/join",
-  "/public",
 ];
 
 function isNavHiddenRoute(pathname: string): boolean {

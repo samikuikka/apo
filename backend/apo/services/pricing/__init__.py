@@ -8,8 +8,6 @@ Public API:
   - ``load_default_prices`` — the JSON-defaults loader (ticket 07)
 """
 
-# pyright: reportRedeclaration=false
-
 from __future__ import annotations
 
 import json
@@ -24,23 +22,6 @@ from .validation import (
     validate_match_pattern,
     validate_model_document,
 )
-
-
-def json_conditions(conditions: list[TierCondition]) -> str:
-    """Serialize a list of TierConditions into the DB JSON column shape.
-
-    Inverse of ``resolution._parse_conditions``.
-    """
-    return json.dumps(
-        [
-            {
-                "keys": [k.value for k in c.keys],
-                "operator": c.operator,
-                "threshold": c.threshold,
-            }
-            for c in conditions
-        ]
-    )
 
 
 def json_conditions(conditions: list[TierCondition]) -> str:

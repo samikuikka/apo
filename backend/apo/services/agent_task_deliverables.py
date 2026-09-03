@@ -33,7 +33,6 @@ from sqlmodel import Session, select
 
 from apo.db_helpers import as_column
 from apo.models.db import (
-    AgentTaskBatchRunDB,
     AgentTaskDeliverableDB,
     AgentTaskRunDB,
 )
@@ -349,23 +348,6 @@ def backfill_deliverable_rows_from_column(session: Session) -> int:
                 )
                 session.rollback()
     return created
-
-
-def derive_deliverables_json_sync(
-    session: Session, task_run: AgentTaskRunDB
-) -> dict[str, object] | None:
-    """The detail-response ``deliverables_json`` field.
-
-    Historical rows still carry the legacy column and return it verbatim;
-    new rows derive the field from ready JSON deliverables. Sync paths
-    (comparisons) hydrate inline values only — store-backed JSON needs the
-    async variant.
-    """
-    derived: dict[str, object] = {}
-    for row in _ready_json_rows(session, task_run.id):
-        if row.inline_value_json is not None:
-            derived[row.name] = row.inline_value_json.get("value")
-    return derived or None
 
 
 async def derive_deliverables_json(

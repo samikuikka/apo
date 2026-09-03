@@ -35,7 +35,6 @@ export async function run(argv: string[]): Promise<number> {
   const config = resolveConfig(flags);
   const taskRef = requirePositional(positional, 0, "task-id | path");
 
-  const flagLocal = getBoolFlag(flags, "local");
   const flagRemote = getBoolFlag(flags, "remote");
   const executorFlag = typeof flags["executor"] === "string" ? flags["executor"] : undefined;
   const noRecord = getBoolFlag(flags, "no-record");
@@ -47,12 +46,9 @@ export async function run(argv: string[]): Promise<number> {
     console.error(red("error: --remote is not supported — task run always executes on this machine (caller execution)"));
     return 2;
   }
-  if (executorFlag && executorFlag !== "caller") {
-    console.error(red(`error: --executor only accepts 'caller' — '${executorFlag}' is not a valid target (task run always executes on this machine)`));
+  if (executorFlag) {
+    console.error(red(`error: --executor is not supported — task run always executes on this machine (caller execution)`));
     return 2;
-  }
-  if (flagLocal || executorFlag === "caller") {
-    console.error(dim("note: --local/--executor caller is a no-op; runs always execute on this machine"));
   }
 
   // Resolve the task's filesystem path + its declared execution preference.
@@ -65,8 +61,7 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   // caller execution is the only recorded runtime. --no-record
-  // forces an unrecorded local run. --executor caller is accepted as a no-op
-  // for one release of backward compatibility.
+  // forces an unrecorded local run.
   if (noRecord) {
     return runLocally(config, resolved.taskDir);
   }

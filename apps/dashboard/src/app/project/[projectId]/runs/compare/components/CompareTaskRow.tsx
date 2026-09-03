@@ -155,8 +155,9 @@ export function CompareTaskRow({
  *    of 60 are still a visible red sliver rather than a rounding error.
  *
  *  Errored/running/no-checks runs fall back to a status dot. Cost/time are
- *  NOT here — they live in the expand (TornadoMetrics), where the A-vs-B
- *  comparison has room to breathe without crowding the collapsed row.
+ *  NOT here — they live in the expand (a compact mirrored A-vs-B view),
+ *  where the comparison has room to breathe without crowding the collapsed
+ *  row.
  *
  *  `delta` (right cell only) is this side's passed count minus the other
  *  side's, rendered `(+2)` / `(−2)` like the folder header, so the row says

@@ -12,15 +12,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
-from typing import Any, Sequence, cast
+from typing import Any, cast
 
 from sqlmodel import Session, select
 
-from apo.db_helpers import as_column
 from apo.models.db import (
     AgentTaskRunDB,
-    ProjectTaskInventoryDB,
     TaskDefinitionRevisionDB,
 )
 

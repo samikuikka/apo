@@ -253,7 +253,7 @@ def list_runs(
             service=service,
             operation=operation,
             span_text=span_text,
-            span_predicates=parse_span_filter(span_filter),
+            span_predicates=span_predicates,
             metric_name=metric_name,
             min_score=min_score,
             max_score=max_score,

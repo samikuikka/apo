@@ -23,7 +23,6 @@ interface CallPreviewTabProps {
   onOpenCorrectionDialog: () => void;
   /** Bumps the header drawer's comment nonce after an inline comment. */
   onCommentCreated: () => void;
-  readOnly?: boolean;
 }
 
 export function CallPreviewTab({
@@ -35,7 +34,6 @@ export function CallPreviewTab({
   correctedOutput,
   onOpenCorrectionDialog,
   onCommentCreated,
-  readOnly = false,
 }: CallPreviewTabProps) {
   const [previewMode, setPreviewMode] = useState<"preview" | "json">("preview");
   const canCorrect = outputText !== null;
@@ -75,13 +73,13 @@ export function CallPreviewTab({
             data={effectiveInput}
             title="Input"
             viewMode={previewMode}
-            comment={readOnly ? undefined : {
+            comment={{
               objectId: call.id,
               objectType: "observation",
               projectId: run?.run?.project,
               dataField: "input",
             }}
-            onCommentCreated={readOnly ? undefined : onCommentCreated}
+            onCommentCreated={onCommentCreated}
           />
 
           <div className="space-y-2">
@@ -89,7 +87,7 @@ export function CallPreviewTab({
               <div className="text-xs font-medium text-muted-foreground">
                 Output
               </div>
-              {canCorrect && previewMode === "preview" && !readOnly && (
+              {canCorrect && previewMode === "preview" && (
                 <Button
                   type="button"
                   variant="ghost"
@@ -108,13 +106,13 @@ export function CallPreviewTab({
                 data={buildTracePreviewData(effectiveOutput, call.metadata)}
                 title=""
                 viewMode={previewMode}
-                comment={readOnly ? undefined : {
+                comment={{
                   objectId: call.id,
                   objectType: "observation",
                   projectId: run?.run?.project,
                   dataField: "output",
                 }}
-                onCommentCreated={readOnly ? undefined : onCommentCreated}
+                onCommentCreated={onCommentCreated}
               />
             )}
           </div>

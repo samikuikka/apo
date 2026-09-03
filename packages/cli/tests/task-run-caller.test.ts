@@ -40,7 +40,7 @@ function writeTask(root: string): string {
   return "caller-task";
 }
 
-describe("task run --executor caller dispatch", () => {
+describe("task run caller-execution dispatch", () => {
   let testDir: string;
   let taskId: string;
 
@@ -61,7 +61,7 @@ describe("task run --executor caller dispatch", () => {
     _throwError = null;
   });
 
-  it("--executor caller + reachable posts to the caller create route and submits result", async () => {
+  it("reachable backend posts to the caller create route and submits result", async () => {
     const calls: string[] = [];
     let callerBody: Record<string, unknown> | undefined;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
@@ -84,7 +84,7 @@ describe("task run --executor caller dispatch", () => {
 
     const code = await run([
       taskId, "--dir", testDir, "--backend", "http://backend.test",
-      "--project", "proj-test", "--api-key", "sk-apo-test", "--executor", "caller",
+      "--project", "proj-test", "--api-key", "sk-apo-test",
     ]);
 
     expect(calls.some((u) => u.includes("/v1/agent-task-batch-runs/caller"))).toBe(true);
@@ -126,7 +126,7 @@ describe("task run --executor caller dispatch", () => {
 
     const code = await run([
       taskId, "--dir", testDir, "--backend", "http://backend.test",
-      "--project", "proj-test", "--api-key", "sk-apo-test", "--executor", "caller",
+      "--project", "proj-test", "--api-key", "sk-apo-test",
     ]);
 
     expect(code).toBe(0);
@@ -144,11 +144,11 @@ describe("task run --executor caller dispatch", () => {
     expect(_captured.env?.APO_AUTH_TOKEN).toBe("jwt-1");
   });
 
-  it("--executor caller + unreachable backend exits 2 without recording", async () => {
+  it("unreachable backend exits 2 without recording", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("fail", { status: 503 }));
     const code = await run([
       taskId, "--dir", testDir, "--backend", "http://backend.test",
-      "--project", "proj-test", "--api-key", "sk-apo-test", "--executor", "caller",
+      "--project", "proj-test", "--api-key", "sk-apo-test",
     ]);
     expect(code).toBe(2);
   });
@@ -258,7 +258,7 @@ describe("task run --executor caller dispatch", () => {
 
     const code = await run([
       taskId, "--dir", testDir, "--backend", "http://backend.test",
-      "--project", "proj-test", "--api-key", "sk-apo-test", "--executor", "caller",
+      "--project", "proj-test", "--api-key", "sk-apo-test",
     ]);
 
     expect(code).toBe(0);
@@ -298,7 +298,7 @@ describe("task run --executor caller dispatch", () => {
 
     const code = await run([
       taskId, "--dir", testDir, "--backend", "http://backend.test",
-      "--project", "proj-test", "--api-key", "sk-apo-test", "--executor", "caller",
+      "--project", "proj-test", "--api-key", "sk-apo-test",
     ]);
 
     expect(code).toBe(2);
@@ -320,7 +320,7 @@ describe("task run execution-target compat flags", () => {
     expect(errors.join("\n")).toContain("--remote is not supported");
   });
 
-  it("exits 2 for a pool --executor target", async () => {
+  it("exits 2 for any --executor target", async () => {
     const errors: string[] = [];
     const origErr = console.error;
     console.error = (msg: string) => { errors.push(msg); };
@@ -329,11 +329,10 @@ describe("task run execution-target compat flags", () => {
 
     console.error = origErr;
     expect(code).toBe(2);
-    expect(errors.join("\n")).toContain("--executor only accepts 'caller'");
-    expect(errors.join("\n")).toContain("pool-7");
+    expect(errors.join("\n")).toContain("--executor is not supported");
   });
 
-  it("exits 2 for a pool target given with --executor=value syntax", async () => {
+  it("exits 2 for an --executor=value target", async () => {
     const errors: string[] = [];
     const origErr = console.error;
     console.error = (msg: string) => { errors.push(msg); };
@@ -342,6 +341,6 @@ describe("task run execution-target compat flags", () => {
 
     console.error = origErr;
     expect(code).toBe(2);
-    expect(errors.join("\n")).toContain("pool-9");
+    expect(errors.join("\n")).toContain("--executor is not supported");
   });
 });

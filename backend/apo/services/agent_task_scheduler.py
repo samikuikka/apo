@@ -22,7 +22,11 @@ from .adaptive_scheduler import (
     recompute_schedule_next_run,
     select_due_task_ids,
 )
-from .execution_queue import PoolResolutionError, create_pooled_batch_run
+from .execution_queue import (
+    PoolResolutionError,
+    create_pooled_batch_run,
+    resolve_execution_pool,
+)
 from .project_task_inventory import task_source_inventory_is_stale
 from .project_task_sources import get_task_source_db
 
@@ -159,11 +163,6 @@ def run_due_schedules_once() -> int:
                 if result.created and result.batch_run_id:
                     created_batch_ids.append(result.batch_run_id)
                 continue
-
-            from apo.services.execution_queue import (
-                PoolResolutionError,
-                resolve_execution_pool,
-            )
 
             try:
                 _ = resolve_execution_pool(

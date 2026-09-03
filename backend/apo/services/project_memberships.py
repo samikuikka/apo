@@ -795,31 +795,3 @@ def serialize_members(
         summaries.append(to_member_summary(membership, user))
     summaries.sort(key=lambda m: (m.role != "owner", m.role != "admin", m.role == "viewer", m.email))
     return summaries
-
-
-def ensure_project_has_owner(
-    session: Session, project_id: str
-) -> ProjectDB | None:
-    """Repair hook: if a project has no owner, promote its creator.
-
-    Returns the project if a repair was performed, ``None`` otherwise.
-    Used defensively by the migration path and by tests.
-    """
-    project = session.get(ProjectDB, project_id)
-    if project is None:
-        return None
-    if count_owners(session, project_id) > 0:
-        return None
-    creator_id = project.created_by
-    if not creator_id:
-        return None
-    existing = get_project_membership(session, project_id, creator_id)
-    if existing is None:
-        _ = create_owner_membership(session, project_id, creator_id)
-    else:
-        existing.role = "owner"
-        existing.updated_at = datetime.now(timezone.utc)
-        session.add(existing)
-        session.commit()
-        session.refresh(existing)
-    return project

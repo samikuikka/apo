@@ -53,16 +53,6 @@ export interface ProjectDetail extends Project {
   task_source: ProjectTaskSource | null;
 }
 
-export interface ProjectTaskSourceFormData {
-  source_type: ProjectTaskSourceType;
-  display_name?: string;
-  repository_url?: string;
-  git_ref?: string;
-  subpath?: string;
-  filesystem_path?: string;
-  demo_seed_id?: string;
-}
-
 export const listProjects = (signal?: AbortSignal): Promise<Project[]> =>
   apiClient("/v1/projects", { cache: "no-store", signal });
 
@@ -83,15 +73,6 @@ export const updateProjectEvidenceRetention = (
   apiClient(`/v1/projects/${projectId}`, {
     method: "PATCH",
     body: { evidence_retention_days: days },
-  });
-
-export const updateProjectTaskSource = (
-  projectId: string,
-  body: ProjectTaskSourceFormData,
-): Promise<ProjectTaskSource> =>
-  apiClient(`/v1/projects/${projectId}/task-source`, {
-    method: "PATCH",
-    body,
   });
 
 export const syncProjectTaskSource = (

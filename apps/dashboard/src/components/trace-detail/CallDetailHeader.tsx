@@ -32,7 +32,6 @@ interface CallDetailHeaderProps {
   selectCall: (callId: string | null) => void;
   /** Bumped when an inline comment is created so the drawer re-fetches. */
   commentNonce: number;
-  readOnly?: boolean;
 }
 
 export function CallDetailHeader({
@@ -41,7 +40,6 @@ export function CallDetailHeader({
   cumulativeMetrics,
   selectCall,
   commentNonce,
-  readOnly = false,
 }: CallDetailHeaderProps) {
   const [showScorePanel, setShowScorePanel] = useState(false);
   const eventType = getEventType(call);
@@ -149,7 +147,6 @@ export function CallDetailHeader({
         <CopyIdPopover ids={[{ label: "Observation ID", value: call.id }, { label: "Trace ID", value: run?.run?.id ?? "" }]}>
           <HeaderPill mono>{call.id.slice(0, 12)}</HeaderPill>
         </CopyIdPopover>
-        {!readOnly && (
         <Button
           type="button"
           variant={showScorePanel ? "secondary" : "outline"}
@@ -159,15 +156,12 @@ export function CallDetailHeader({
           <Star className="h-3 w-3" />
           Score
         </Button>
-        )}
-        {!readOnly && (
         <CommentDrawer
           objectId={call.id}
           objectType="observation"
           projectId={run?.run?.project}
           refreshNonce={commentNonce}
          />
-        )}
       </div>
       {call.status_message && (call.level === "ERROR" || call.level === "WARNING") && (
         <div className={cn(
@@ -180,7 +174,7 @@ export function CallDetailHeader({
           <span className="break-words">{call.status_message}</span>
         </div>
       )}
-      {showScorePanel && !readOnly && (
+      {showScorePanel && (
         <div className="mt-2 border border-border bg-muted/30">
           <ScoreInputPanel
             targetType="observation"

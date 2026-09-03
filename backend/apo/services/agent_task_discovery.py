@@ -54,17 +54,6 @@ def discover_agent_tasks(
     return tasks
 
 
-def discover_agent_task_by_id(
-    task_root: str | None, task_id: str
-) -> DiscoveredAgentTask | None:
-    """Find a single task by its ID."""
-    tasks = discover_agent_tasks(task_root)
-    for task in tasks:
-        if task.id == task_id:
-            return task
-    return None
-
-
 @dataclass
 class ResolvedTask:
     task_id: str

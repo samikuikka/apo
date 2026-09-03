@@ -44,10 +44,6 @@ class _BodyTooLarge(Exception):
     """Raised inside the wrapped ``receive`` once the byte cap is exceeded."""
 
 
-class _BodyTimeout(Exception):
-    """Raised inside the wrapped ``receive`` when the receive deadline elapses."""
-
-
 # (method, path prefix, requires suffix, limit). The specific Deliverable
 # routes are declared before any future catch-all.
 _LIMITED_PATHS: tuple[tuple[str, str, str | None, int], ...] = (

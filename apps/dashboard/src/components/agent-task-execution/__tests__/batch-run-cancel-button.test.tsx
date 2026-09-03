@@ -57,9 +57,4 @@ describe("BatchRunCancelButton", () => {
     const { toast } = await import("sonner");
     expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/Cancel failed/i));
   });
-
-  it("renders disabled when the Batch is already terminal", () => {
-    render(<BatchRunCancelButton batchRunId="batch-1" disabled />);
-    expect(screen.getByRole("button")).toBeDisabled();
-  });
 });

@@ -151,10 +151,10 @@ export type EvaluationItemResult = {
    */
   assertions?: AssertionResult[];
   /**
-   * the snapshot source the checks ran against. Set to
-   * ``"legacy-flow"`` by the deprecated {@link runFlowChecks} wrapper so
-   * consumers can detect they're on the compatibility path. Absent on
-   * projection-first results (the default).
+   * the snapshot source the checks ran against. ``"local"`` marks locally
+   * recorded snapshots; ``"legacy-flow"`` survives only on results recorded
+   * by the removed Flow-path loader. Absent on projection-first results
+   * (the default).
    */
   source?: "canonical" | "local" | "legacy-flow";
   /**

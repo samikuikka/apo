@@ -28,7 +28,7 @@ export interface TaskFolderSelectProps {
 /**
  * Folder-structure task selector. Renders tasks grouped by `folder_path`
  * as a collapsible tree with tri-state folder checkboxes, mirroring the
- * selection UX on the agent-tasks page. Controlled via `selected`.
+ * selection UX on the tasks page. Controlled via `selected`.
  */
 export function TaskFolderSelect({
   tasks,

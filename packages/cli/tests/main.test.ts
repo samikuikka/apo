@@ -114,13 +114,15 @@ describe("per-command help", () => {
     expect(output).toContain("0=pass");
   });
 
-  it("documents --local and --executor caller as compat no-ops on task run --help", async () => {
+  it("does not document removed execution-target flags on task run --help", async () => {
     const { output, code } = await runCapture(["task", "run", "--help"]);
     expect(code).toBe(0);
-    expect(output).toContain("--local");
-    expect(output).toContain("--executor <caller>");
-    // --remote no longer exists as a flag and must not appear in help.
+    // --local, --executor, and --remote no longer exist as flags and must not
+    // appear in help.
+    expect(output).not.toContain("--local");
+    expect(output).not.toContain("--executor");
     expect(output).not.toContain("--remote");
+    expect(output).not.toContain("--ci");
   });
 
   it("documents the implicit-local precedence in the task run note", async () => {

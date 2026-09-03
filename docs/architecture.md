@@ -474,32 +474,29 @@ Rules:
   checks from that execution belong inside that trace
 - trace ingestion atomically claims the task run's trace ID and rejects a
   different second ID; retries using the claimed ID are idempotent
-- `/traces` is the canonical trace inspection surface
-- other product surfaces should reuse the shared trace components from `/traces`, not invent parallel trace UIs
+- the project traces page is the canonical trace inspection surface
+- other product surfaces should reuse the shared trace components from the traces page, not invent parallel trace UIs
 - legacy optimization should not remain in the main shell navigation; keep it as a direct-route compatibility surface only until deletion is safe
 
 ### Canonical Trace Shell
 
 The dashboard should have one canonical trace shell and multiple entry points into it.
 
-- `/traces` owns the shared trace shell
+- the project traces page owns the shared trace shell
 - `TracesPageClient` provides the page frame and selection state
 - `TracePanel` owns the right-side drawer behavior for inline trace inspection from the traces table
 - `TraceWorkspace` owns the actual trace inspection UI: tree, timeline, graph, and detail pane
-- standalone trace routes like `/traces/[runId]` and `/public/traces/[runId]` should render `TraceWorkspacePage`, not fork the trace UI
+- the standalone trace route renders `TraceWorkspacePage`, not a fork of the trace UI
 - task-run, session, and future agent-centric pages should link into or embed this same trace shell instead of shipping page-specific trace viewers
 
 Current canonical render paths:
 
-1. `/traces`
-   - `apps/dashboard/src/app/traces/traces-page-client.tsx`
+1. `/project/[projectId]/traces`
+   - `apps/dashboard/src/app/project/[projectId]/traces/traces-page-client.tsx`
    - `apps/dashboard/src/components/trace-detail/TracePanel.tsx`
    - `apps/dashboard/src/components/trace-detail/TraceWorkspace.tsx`
-2. `/traces/[runId]`
-   - `apps/dashboard/src/app/traces/[runId]/page.tsx`
-   - `apps/dashboard/src/components/trace-detail/TraceWorkspace.tsx`
-3. `/public/traces/[runId]`
-   - `apps/dashboard/src/app/public/traces/[runId]/page.tsx`
+2. `/project/[projectId]/traces/[runId]`
+   - `apps/dashboard/src/app/project/[projectId]/traces/[runId]/page.tsx`
    - `apps/dashboard/src/components/trace-detail/TraceWorkspace.tsx`
 
 Implications for future cleanup:

@@ -5,12 +5,10 @@ import { AnimatedSignalSphere } from "@/components/brand/AnimatedSignalSphere"
 
 type AuthShellProps = {
   children: ReactNode
-  footer?: ReactNode
 }
 
 export default function AuthShell({
   children,
-  footer,
 }: AuthShellProps) {
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
@@ -34,12 +32,6 @@ export default function AuthShell({
             style={{ backgroundColor: "oklch(0.26 0 0)" }}
           >
             {children}
-
-            {footer ? (
-              <div className="mt-6 flex items-center justify-between text-xs text-muted-foreground">
-                {footer}
-              </div>
-            ) : null}
           </div>
         </main>
       </div>

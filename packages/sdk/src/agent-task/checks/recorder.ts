@@ -6,9 +6,6 @@
 
 import type { AssertionResult, CheckLocation } from "../run/types.ts";
 
-/** Back-compat alias; {@link AssertionResult} is the canonical type. */
-export type AssertionRecord = AssertionResult;
-
 /**
  * Optional hook the runner installs when it knows how to map a stack to the
  * task/check module. The Recorder captures ``new Error().stack`` at the

@@ -25,11 +25,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Final
 
-from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from ..models.db import ProjectDB, ProjectTaskSourceDB
-from ..models.schemas import ProjectTaskSource, UpdateProjectTaskSourceRequest
+from ..models.db import ProjectTaskSourceDB
+from ..models.schemas import ProjectTaskSource
 
 DEMO_PROJECT_ID: Final[str] = "demo"
 
@@ -85,115 +84,6 @@ def serialize(
     )
 
 
-def upsert_task_source(
-    session: Session,
-    project_id: str,
-    request: UpdateProjectTaskSourceRequest,
-) -> ProjectTaskSourceDB:
-    """Validate the request and create or replace the project's task source.
-
-    Transition rules:
-
-    - Source type must be one of ``git``, ``filesystem``, ``demo``.
-    - Git sources require ``repository_url``; ``git_ref`` defaults to
-      ``main`` if omitted, ``subpath`` is optional.
-    - Filesystem sources require ``filesystem_path``.
-    - Demo sources only require a ``display_name`` (default applied).
-    - Switching source type wipes fields that do not apply to the new
-      mode so stale data is not retained.
-    - On create, status becomes ``pending_sync``.
-    - On update, only runtime-affecting source changes reset the source
-      to ``pending_sync`` and clear stale sync state. Display-name-only
-      edits do not invalidate inventory.
-    """
-    source_type = request.source_type.strip()
-    if source_type not in VALID_SOURCE_TYPES:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Invalid source_type '{source_type}'. "
-                "Expected one of: git, filesystem, demo."
-            ),
-        )
-
-    display_name = (request.display_name or "").strip() or _default_display_name(source_type)
-
-    repository_url: str | None = None
-    git_ref: str | None = None
-    subpath: str | None = None
-    filesystem_path: str | None = None
-    demo_seed_id: str | None = None
-
-    if source_type == "git":
-        repository_url = (request.repository_url or "").strip() or None
-        if not repository_url:
-            raise HTTPException(
-                status_code=422,
-                detail="repository_url is required for git task sources.",
-            )
-        git_ref = (request.git_ref or "").strip() or "main"
-        subpath_raw = (request.subpath or "").strip()
-        subpath = subpath_raw or None
-    elif source_type == "filesystem":
-        filesystem_path = (request.filesystem_path or "").strip() or None
-        if not filesystem_path:
-            raise HTTPException(
-                status_code=422,
-                detail="filesystem_path is required for filesystem task sources.",
-            )
-    elif source_type == "demo":
-        demo_seed_id = (request.demo_seed_id or "").strip() or None
-
-    existing = get_task_source_db(session, project_id)
-    now = datetime.now(timezone.utc)
-
-    if existing is None:
-        row = ProjectTaskSourceDB(
-            project=project_id,
-            source_type=source_type,
-            display_name=display_name,
-            repository_url=repository_url,
-            git_ref=git_ref,
-            subpath=subpath,
-            filesystem_path=filesystem_path,
-            demo_seed_id=demo_seed_id,
-            status="pending_sync",
-            last_error=None,
-            created_at=now,
-            updated_at=now,
-        )
-        session.add(row)
-    else:
-        source_changed = any(
-            (
-                existing.source_type != source_type,
-                existing.repository_url != repository_url,
-                existing.git_ref != git_ref,
-                existing.subpath != subpath,
-                existing.filesystem_path != filesystem_path,
-                existing.demo_seed_id != demo_seed_id,
-            )
-        )
-        existing.source_type = source_type
-        existing.display_name = display_name
-        existing.repository_url = repository_url
-        existing.git_ref = git_ref
-        existing.subpath = subpath
-        existing.filesystem_path = filesystem_path
-        existing.demo_seed_id = demo_seed_id
-        # Only runtime-affecting source changes invalidate inventory.
-        if source_changed:
-            existing.status = "pending_sync"
-            existing.last_error = None
-            existing.last_resolved_commit_sha = None
-        existing.updated_at = now
-        row = existing
-
-    session.commit()
-    session.refresh(row)
-    return row
-
-
 def mark_syncing(session: Session, row: ProjectTaskSourceDB) -> None:
     """Mark a task source as mid-sync. Used by the sync endpoint."""
     if row.status not in VALID_STATUSES:
@@ -231,13 +121,3 @@ def mark_error(session: Session, row: ProjectTaskSourceDB, message: str) -> None
     session.add(row)
     session.commit()
     session.refresh(row)
-
-
-def _default_display_name(source_type: str) -> str:
-    if source_type == "git":
-        return "Git repository"
-    if source_type == "filesystem":
-        return "Local filesystem"
-    if source_type == "demo":
-        return "Demo workspace"
-    return "Task source"

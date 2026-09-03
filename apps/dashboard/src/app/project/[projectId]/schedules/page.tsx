@@ -41,8 +41,8 @@ export default async function AgentTaskSchedulesPage({
 
     // The task list always comes from the project's configured source
     // inventory — demo included (it is provisioned with a bundled `demo`
-    // source at startup). Projects without a source render the
-    // ProjectTaskSourceEmptyState in the schedules client.
+    // source at startup). Projects without a source get an inline hint in
+    // the schedules client instead of a task picker.
     if (taskSource && !taskSource.inventory_stale) {
       tasks = await listProjectAgentTasks(projectId);
     }

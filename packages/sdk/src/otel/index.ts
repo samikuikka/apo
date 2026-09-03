@@ -7,9 +7,8 @@
  *   - Helper functions (``traceTool``, ``traceAgent``, etc.) emit normal OTel
  *     spans with GenAI or apo vendor attributes
  *
- * This replaces the deprecated ``TraceTracker`` custom event protocol. New
- * users should use this module; existing ``TraceTracker`` code continues to
- * work through a compatibility bridge.
+ * This replaced the removed ``TraceTracker`` custom event protocol — apo
+ * tracing is OTel-only now.
  *
  * @module @apo-ai/sdk/otel
  */

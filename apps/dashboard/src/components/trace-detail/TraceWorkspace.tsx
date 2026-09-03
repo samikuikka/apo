@@ -59,10 +59,6 @@ interface TraceWorkspaceProps {
   refreshRun?: () => void;
   prevId?: string | null;
   nextId?: string | null;
-  /** Render an unauthenticated, view-only surface (public trace page):
-   *  hides visibility toggle, prev/next nav, live streaming, and write
-   *  affordances in the detail pane (bookmark/score/comment/correction). */
-  readOnly?: boolean;
 }
 
 function downloadTrace(run: TraceDetail) {
@@ -79,14 +75,11 @@ function downloadTrace(run: TraceDetail) {
   URL.revokeObjectURL(url);
 }
 
-function useCommentCounts(run: TraceDetail, readOnly = false) {
+function useCommentCounts(run: TraceDetail) {
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const callIdKey = run.calls.map((c) => c.id).join(",");
 
   useEffect(() => {
-    // Public/read-only views have no comment UI and the counts endpoint is
-    // auth-gated, so skip the fetch entirely.
-    if (readOnly) return;
     const runId = run.run.id;
     const callIds = callIdKey ? callIdKey.split(",") : [];
     const allIds = [runId, ...callIds];
@@ -97,7 +90,7 @@ function useCommentCounts(run: TraceDetail, readOnly = false) {
     }).catch(() => {});
 
     return () => { cancelled = true; };
-  }, [readOnly, run.run.id, callIdKey]);
+  }, [run.run.id, callIdKey]);
 
   return commentCounts;
 }
@@ -173,7 +166,6 @@ function TraceNavToolbar({
   onSearchQueryChange,
   prevId,
   nextId,
-  readOnly = false,
 }: {
   run: TraceDetail;
   isLive: boolean;
@@ -183,7 +175,6 @@ function TraceNavToolbar({
   onSearchQueryChange: (value: string) => void;
   prevId: string | null;
   nextId: string | null;
-  readOnly?: boolean;
 }) {
   const router = useRouter();
   const projectId = useProjectId();
@@ -206,7 +197,6 @@ function TraceNavToolbar({
   });
 
   useEffect(() => {
-    if (readOnly) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.altKey && e.key === "ArrowLeft" && prevId) {
         e.preventDefault();
@@ -219,7 +209,7 @@ function TraceNavToolbar({
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [readOnly, prevId, nextId]);
+  }, [prevId, nextId]);
 
   return (
     <div className="flex items-center gap-2 px-2.5 py-2">
@@ -235,32 +225,30 @@ function TraceNavToolbar({
         <div className="w-1" />
       )}
 
-      {!readOnly && (
-        <div className="flex items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            disabled={!prevId}
-            onClick={() => prevId && navigateTo(prevId)}
-            aria-label="Previous trace"
-            type="button"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            disabled={!nextId}
-            onClick={() => nextId && navigateTo(nextId)}
-            aria-label="Next trace"
-            type="button"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
+      <div className="flex items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          disabled={!prevId}
+          onClick={() => prevId && navigateTo(prevId)}
+          aria-label="Previous trace"
+          type="button"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          disabled={!nextId}
+          onClick={() => nextId && navigateTo(nextId)}
+          aria-label="Next trace"
+          type="button"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
 
       <div className="relative flex-1">
         <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -399,7 +387,6 @@ function TraceNavigation({
   commentCounts,
   prevId,
   nextId,
-  readOnly = false,
   onCollapse,
 }: {
   run: TraceDetail;
@@ -413,7 +400,6 @@ function TraceNavigation({
   commentCounts: Record<string, number>;
   prevId: string | null;
   nextId: string | null;
-  readOnly?: boolean;
   onCollapse?: () => void;
 }) {
   return (
@@ -428,7 +414,6 @@ function TraceNavigation({
           onSearchQueryChange={onSearchQueryChange}
           prevId={prevId}
           nextId={nextId}
-          readOnly={readOnly}
         />
         <div className="flex items-center px-2.5 pb-2 pt-0.5">
           <TraceNavTabs run={run} activeView={activeView} onActiveViewChange={onActiveViewChange} />
@@ -458,10 +443,10 @@ function TraceNavigation({
   );
 }
 
-function TraceDetailPane({ mode, onClose, readOnly }: { mode: "page" | "panel"; onClose?: () => void; readOnly?: boolean }) {
+function TraceDetailPane({ mode, onClose }: { mode: "page" | "panel"; onClose?: () => void }) {
   return (
     <div className="h-full min-h-0 min-w-0 overflow-auto bg-background">
-      <TraceDetailView mode={mode} onClose={onClose} readOnly={readOnly} />
+      <TraceDetailView mode={mode} onClose={onClose} />
     </div>
   );
 }
@@ -490,7 +475,6 @@ export function TraceWorkspace({
   refreshRun,
   prevId = null,
   nextId = null,
-  readOnly = false,
 }: TraceWorkspaceProps) {
   const searchParams = useSearchParams();
   const isMobile = useIsMobile();
@@ -515,11 +499,9 @@ export function TraceWorkspace({
   // carries a sparse subset (timing/model/type), so we field-merge to avoid
   // clobbering rich input/output from the initial snapshot. When the trace
   // completes we do one final `refreshRun` to pull authoritative final state.
-  // Skipped for read-only/public views: the stream endpoint requires auth and
-  // public traces are served as a static snapshot.
   const traceCompleted = run.run.completed_at != null;
   const { calls: streamCalls, isLive } = useTraceStream(
-    readOnly || traceCompleted ? null : run.run.id,
+    traceCompleted ? null : run.run.id,
   );
   const mergedCalls = useMemo(
     () => mergeLiveCalls(run.calls, streamCalls),
@@ -551,7 +533,7 @@ export function TraceWorkspace({
     prevIsLiveRef.current = isLive;
   }, [isLive]);
 
-  const commentCounts = useCommentCounts(liveRun, readOnly);
+  const commentCounts = useCommentCounts(liveRun);
 
   const navPanelRef = usePanelRef();
   const [isNavCollapsed, setIsNavCollapsed] = useState(false);
@@ -600,8 +582,8 @@ export function TraceWorkspace({
     [liveRun, view, searchQuery, commentCounts],
   );
   const mobileDetailContent = useMemo(
-    () => <TraceDetailView mode={mode} onClose={onClose} readOnly={readOnly} />,
-    [mode, onClose, readOnly],
+    () => <TraceDetailView mode={mode} onClose={onClose} />,
+    [mode, onClose],
   );
 
   return (
@@ -626,7 +608,6 @@ export function TraceWorkspace({
                 onSearchQueryChange={setSearchQuery}
                 prevId={prevId}
                 nextId={nextId}
-                readOnly={readOnly}
               />
             </div>
             <div className="min-h-0 flex-1">
@@ -665,7 +646,6 @@ export function TraceWorkspace({
                   commentCounts={commentCounts}
                   prevId={prevId}
                   nextId={nextId}
-                  readOnly={readOnly}
                   onCollapse={toggleCollapse}
                 />
               </div>
@@ -685,7 +665,7 @@ export function TraceWorkspace({
           />
 
           <ResizablePanel defaultSize="66%" minSize="25%" className="min-h-0 min-w-0">
-            <TraceDetailPane mode={mode} onClose={onClose} readOnly={readOnly} />
+            <TraceDetailPane mode={mode} onClose={onClose} />
           </ResizablePanel>
         </ResizablePanelGroup>
         )}

@@ -256,21 +256,19 @@ Rules for dashboard IA:
 
 Current route grouping:
 
-- Primary:
-  - `/agent-tasks`
-  - `/agent-task-runs`
-  - `/agent-task-batch-runs`
-  - `/agent-task-schedules`
-  - `/traces`
-- Supporting:
-  - `/datasets`
-  - `/evals`
-  - `/sessions`
-  - `/versions`
-  - `/settings`
-  - `/admin`
-- Legacy:
-  - `/optimization`
+- Project-scoped (under `/project/[projectId]`):
+  - `/project/[projectId]/tasks`
+  - `/project/[projectId]/runs`
+  - `/project/[projectId]/schedules`
+  - `/project/[projectId]/traces`
+  - `/project/[projectId]/compare-views`
+- Workspace:
+  - `/settings` (api keys, system, members)
+  - `/demo` (public demo workspace)
+- Auth / onboarding:
+  - `/login`, `/join`, `/accept-invitation`, `/setup`, `/verify-email`, `/forgot-password`, `/reset-password`
+- Redirects:
+  - pre-rename project URLs (`/project/:id/agent-tasks`, `/project/:id/agent-task-schedules`, …) redirect to their current equivalents via `next.config.mjs`
 
 Task IDs are hierarchical and use FastAPI's `{task_id:path}` converter. Treat
 that catch-all detail route as terminal: task-run collections belong at
@@ -475,8 +473,7 @@ The fastest path is the root `pnpm dev`, which starts all five services concurre
   `pnpm test:public-docs` renders the tunnel + public-docs Compose stack and
   asserts the docs service is hardened (read-only, no caps, no secrets, no host
   port), Caddy routes the docs host terminally, and the Cloudflare Tunnel
-  publishes both hostnames. Probe a live docs origin with
-  `scripts/public-docs-smoke.sh https://docs.test-apo.online`.
+  publishes both hostnames.
 
 ### API Documentation
 

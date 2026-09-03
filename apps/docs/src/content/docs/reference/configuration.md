@@ -45,9 +45,6 @@ credentials are read from the local environment:
 |---|---|---|
 | `TASK_SOURCE_CACHE_DIR` | `<repo>/.cache/task-sources` | Writable dir for cloned Git task sources. Mount a persistent volume in container deploys. |
 | `TASK_SOURCE_GIT_TIMEOUT_SECONDS` | `60` | Per-clone/fetch timeout. |
-| `TASK_INSTALL_DISABLE` | `false` | `true`/`1` skips dependency install (escape hatch for air-gapped deploys). |
-| `TASK_INSTALL_TIMEOUT_SECONDS` | `180` | Per-install timeout (min 30s). |
-| `TASK_INSTALL_CACHE_DIR` | `<TASK_SOURCE_CACHE_DIR>/installs` | Where install markers live. |
 
 ### Deployment profile and public origin
 
@@ -75,17 +72,6 @@ Off by default. The platform works fully without email. To enable delivery:
 | `EMAIL_TRANSPORT_URL` | `smtp://USER:PASS@smtp.provider.com:587` (any SMTP) or `ses://us-east-1` (AWS SES). |
 | `EMAIL_FROM_ADDRESS` | From address. |
 | `EMAIL_FROM_NAME` | From name (optional, defaults to "apo"). |
-
-### GitHub OAuth (optional)
-
-When all four are set, projects get a "Connect GitHub" button for private-repo task sources. When any is missing, only the manual URL-paste flow is available.
-
-| Variable | Purpose |
-|---|---|
-| `GITHUB_CLIENT_ID` | OAuth App client id (`iv1...`). |
-| `GITHUB_CLIENT_SECRET` | OAuth App client secret. |
-| `GITHUB_REDIRECT_URI` | Callback URL (e.g. `http://localhost:8000/v1/github/callback`). |
-| `GITHUB_TOKEN_ENCRYPTION_KEY` | Fernet key for encrypting stored tokens. Generate: `uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. |
 
 ## CLI
 
@@ -228,9 +214,9 @@ container required. The optional `s3` backend keeps the same server API.
 | `APO_ARTIFACT_MAX_ITEM_BYTES` | `104857600` | 100 MiB per Artifact. |
 | `APO_ARTIFACT_MAX_RUN_BYTES` | `524288000` | 500 MiB ready+pending per Task Run. |
 | `APO_ARTIFACT_UPLOAD_TTL_SECONDS` | `86400` | Pending-upload expiry (orphan cleanup). |
-| `APO_ARTIFACT_ORPHAN_GRACE_HOURS` | `48` |
+| `APO_ARTIFACT_ORPHAN_GRACE_HOURS` | `48` | The daily pass reaps artifact-store objects no manifest row references (crash orphans). Objects younger than this grace are left alone; `staging/*.part` files are never touched. |
 | `APO_DEFAULT_DAILY_SPAN_QUOTA` | `0` | Default accepted-spans/day quota applied to NEWLY MINTED API keys. `0` = unlimited. Existing keys are untouched — edit per key (Settings → API Keys) or bulk-apply there. Quota is per key (N keys = N × cap) and resets at UTC midnight; over-quota ingest gets 429. |
-| `APO_USAGE_RETENTION_DAYS` | `400` | Days to keep per-key daily ingest-usage rows. `0` = keep forever. | The daily pass reaps artifact-store objects no manifest row references (crash orphans). Objects younger than this grace are left alone; `staging/*.part` files are never touched. |
+| `APO_USAGE_RETENTION_DAYS` | `400` | Days to keep per-key daily ingest-usage rows. `0` = keep forever. |
 | `APO_S3_BUCKET` | — | Required for S3 writes. |
 | `APO_S3_REGION` | — | Optional; provider default otherwise. |
 | `APO_S3_ENDPOINT_URL` | — | S3-compatible endpoint (R2, MinIO, Backblaze). |

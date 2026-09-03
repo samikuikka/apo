@@ -21,7 +21,7 @@ confined to their own Task Run.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any, cast
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -91,9 +91,8 @@ async def get_deliverables_manifest(
 ) -> AgentTaskDeliverableManifest:
     """Return the Deliverable manifest for one Task Run — metadata only.
 
-    New rows have ``AgentTaskDeliverableDB`` rows; legacy rows synthesize a
-    manifest from ``deliverables_json`` so old data stays listable without a
-    backfill. No body is loaded.
+    Built from the canonical ``AgentTaskDeliverableDB`` rows; no body is
+    loaded.
     """
     task_run = _load_task_run_or_404(session, task_run_id)
     project = require_task_run_access(request, session, task_run, write=False)

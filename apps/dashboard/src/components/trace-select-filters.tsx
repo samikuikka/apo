@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TraceSelectFilters - Select dropdowns for project, flow, task, and model filtering.
+ * TraceSelectFilters - Select dropdowns for project, task, and model filtering.
  *
  * Provides select components that fetch their options from the backend API.
  */
@@ -175,7 +175,6 @@ export function TraceTaskSelect({
  */
 interface ModelMultiSelectProps {
   models: string[];
-  availableModels?: string[];
   onAddModel: (model: string) => void;
   onRemoveModel: (model: string) => void;
   hideLabel?: boolean;
@@ -184,7 +183,6 @@ interface ModelMultiSelectProps {
 
 export function TraceModelMultiSelect({
   models,
-  availableModels: _availableModels,
   onAddModel,
   onRemoveModel,
   hideLabel = false,

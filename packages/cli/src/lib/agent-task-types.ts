@@ -205,29 +205,6 @@ export type ProjectTaskSource = {
   last_error: string | null;
 };
 
-export type UpdateProjectTaskSourceRequest = {
-  source_type: string;
-  display_name?: string | null;
-  repository_url?: string | null;
-  git_ref?: string | null;
-  subpath?: string | null;
-  filesystem_path?: string | null;
-  demo_seed_id?: string | null;
-};
-
-export type GithubAvailability = {
-  enabled: boolean;
-  client_id: string | null;
-};
-
-export type GithubConnection = {
-  project: string;
-  github_username: string | null;
-  github_user_id: string;
-  scopes_granted: string | null;
-  connected_at: string | null;
-};
-
 export type DeliverableSummary = {
   id: string;
   name: string;

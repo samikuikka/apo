@@ -32,7 +32,7 @@ from ..models import (
     ReportAgentTaskRunResultRequest,
     RunDB,
 )
-from ..models.db import ProjectMembershipDB, TaskExecutionAttemptDB
+from ..models.db import TaskExecutionAttemptDB
 from ..models.schemas import (
     as_task_run_status,
     as_trace_persistence_status,
@@ -45,7 +45,6 @@ from ..services.agent_task_batch_listing import (
     list_batch_run_summaries,
 )
 from ..services.agent_task_deliverables import derive_deliverables_json
-from ..services.check_report_storage import load_check_report
 from ..services.judgments import count_judgments
 from ..services.test_result_corrections import projected_check_report
 from ..services.agent_task_outcome import classify_run_outcome
@@ -58,14 +57,7 @@ from ..services.agent_task_projection import (
 )
 from ..services.view_runs import since_cutoff
 from ..services.demo_workspace import require_project_not_demo
-from ..services.project_task_sources import get_task_source_db
-from ..services.agent_task_runner import (
-    create_batch_run,
-    finalize_external_task_run,
-    prepare_external_batch_runs,
-
-)
-from ..services.project_task_source_sync import SyncError
+from ..services.agent_task_runner import finalize_external_task_run
 from ..services.project_memberships import (
     authorize_project_request,
     enforce_project_role_from_request,
@@ -933,8 +925,6 @@ async def report_agent_task_run_result(
     # Inline JSON deliverables persist as canonical
     # AgentTaskDeliverableDB rows (inline under the threshold, gzip+store
     # above, name collisions rejected).
-    # The legacy ``deliverables_json`` column write below continues during
-    # the transition so the detail response field keeps working.
     if payload.deliverables:
         from ..services.agent_task_deliverables import persist_json_deliverable
         from ..services.artifact_stores.registry import get_store

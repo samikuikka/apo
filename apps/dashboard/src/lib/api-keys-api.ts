@@ -207,31 +207,3 @@ export async function patchApiKey(
     },
   }).then(adaptApiKey);
 }
-
-export interface ApiKeyUsageDay {
-  day: string;
-  span_count: number;
-  byte_count: number;
-  request_count: number;
-}
-
-export interface ApiKeyUsage {
-  key_id: string;
-  name: string;
-  project: string;
-  daily_span_quota: number | null;
-  ingest_paused: boolean;
-  usage: ApiKeyUsageDay[];
-}
-
-/** Per-key daily ingest usage rows (admin). */
-export async function fetchApiKeyUsage(
-  project: string,
-  days = 14,
-): Promise<ApiKeyUsage[]> {
-  const data = await apiClient<{ keys: ApiKeyUsage[] }>(
-    `/v1/api-keys/usage`,
-    { query: { project, days } },
-  );
-  return data.keys ?? [];
-}

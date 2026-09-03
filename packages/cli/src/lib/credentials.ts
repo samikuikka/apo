@@ -9,20 +9,6 @@ export type StoredCredentials = {
   task_root?: string;
   project?: string;
   created_at?: string;
-  /**
-   * Project-level default for where `apo task run` executes
-   *. Stored per credential set so different backends can have
-   * different defaults. Lower priority than a task's own `execution`
-   * declaration; overrideable per-invocation by `--local` / `--remote`.
-   * Old credential files lack the field → treated as unset.
-   */
-  default_execution?: "local" | "backend";
-  /**
-   * preferred executor for `apo task run` — either `"caller"` or a
-   * Pool ID. Takes precedence over the legacy `default_execution` field.
-   * Old credential files lack the field → treated as unset.
-   */
-  default_executor?: "caller" | string;
 };
 
 export function readCredentials(): StoredCredentials | null {

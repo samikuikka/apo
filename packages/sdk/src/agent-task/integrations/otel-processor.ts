@@ -8,7 +8,7 @@
  *
  * The processor is global, but run isolation is maintained via
  * {@link AsyncLocalStorage}: {@link getActiveApoRun} returns the current
- * run's trace context, so each span is routed to the correct run's FlowTee.
+ * run's trace context, so each span is routed to the correct run's trace.
  *
  * **Design: eager creation, deferred completion.** The apo span is created
  * at `onStart` (when initial attributes like tool name and model are

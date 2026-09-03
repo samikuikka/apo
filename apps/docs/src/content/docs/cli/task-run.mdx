@@ -64,14 +64,11 @@ The folder scoping is why two families can each define `task("cost-inquiry")` wi
 | Option | Default | Purpose |
 |---|---|---|
 | `<task-id \| path>` | (required) | Task id (folder name) or filesystem path. |
-| `--ci` | off | CI mode: records CI metadata, uses strict exit codes. |
 | `--no-record` | off | Run on this machine without creating a backend Run. |
 
 :::note[Targeting flags are gone]
-`apo task run` always executes on your machine (caller execution) — there is no remote dispatch to target. `--remote` now exits `2` as an unknown option. `--local` and `--executor caller` are accepted as no-ops for old scripts; any other `--executor` value exits `2`. For persistent execution owned by your machine, use [`apo connect`](/cli/connect/).
+`apo task run` always executes on your machine (caller execution) — there is no remote dispatch to target. `--remote`, `--local`, and `--executor` all exit `2` as unknown options. For persistent execution owned by your machine, use [`apo connect`](/cli/connect/).
 :::
-
-With `--ci`, per-run metadata can come from flags or environment: `--ci-actor`, `--ci-system`, `--ci-run-id`, `--ci-run-url`, `--repo`, `--branch`, `--sha`, `--pr` (env equivalents: `APO_CI_*`, `APO_GITHUB_*`, plus GitHub Actions defaults).
 
 ## Output
 

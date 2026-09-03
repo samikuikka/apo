@@ -22,7 +22,6 @@
     ],
     "paths": {
       "@/*": ["./app/*"],
-      "@apo-ai/sdk": ["../../packages/sdk/src/index.ts"],
       "@apo-ai/sdk/*": ["../../packages/sdk/src/*"]
     }
   },

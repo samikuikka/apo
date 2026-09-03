@@ -150,7 +150,7 @@ class ApoCallbackHandler(BaseCallbackHandler):
         }
         if parent_str:
             body["parent_call_id"] = parent_str
-            body["run_id"] = self._find_root(parent_str)
+            body["run_id"] = parent_str
         else:
             body["run_id"] = run_id_str
 
@@ -271,7 +271,7 @@ class ApoCallbackHandler(BaseCallbackHandler):
         }
         if parent_str:
             body["parent_call_id"] = parent_str
-            body["run_id"] = self._find_root(parent_str)
+            body["run_id"] = parent_str
         else:
             body["run_id"] = run_id_str
 
@@ -346,7 +346,7 @@ class ApoCallbackHandler(BaseCallbackHandler):
         }
         if parent_str:
             body["parent_call_id"] = parent_str
-            body["run_id"] = self._find_root(parent_str)
+            body["run_id"] = parent_str
         else:
             body["run_id"] = run_id_str
 
@@ -420,7 +420,7 @@ class ApoCallbackHandler(BaseCallbackHandler):
         }
         if parent_str:
             body["parent_call_id"] = parent_str
-            body["run_id"] = self._find_root(parent_str)
+            body["run_id"] = parent_str
         else:
             body["run_id"] = run_id_str
 
@@ -463,5 +463,3 @@ class ApoCallbackHandler(BaseCallbackHandler):
         }
         self._client.enqueue({"type": "call-update", "body": body})
 
-    def _find_root(self, run_id: str) -> str:
-        return run_id if run_id in self._root_runs else run_id

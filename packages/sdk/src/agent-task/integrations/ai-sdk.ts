@@ -4,9 +4,9 @@
  * Pass the result of {@link createApoTracer} to `generateText`'s
  * `experimental_telemetry` option. The AI SDK already emits OpenTelemetry
  * spans natively (e.g. `ai.toolCall`, `ai.generateText`); this tracer
- * intercepts them and translates them into apo trace spans. The FlowTee
- * picks up TOOL/GENERATION observations and builds the Flow that
- * `t.calledTool`, `t.noFailedActions`, and `t.messageIncludes` read.
+ * intercepts them and translates them into apo trace spans, where they
+ * become the TOOL/GENERATION observations that `t.calledTool`,
+ * `t.noFailedActions`, and `t.messageIncludes` read.
  *
  * The adapter author writes zero manual span code.
  *
@@ -169,8 +169,8 @@ export interface CreateApoTracerOptions {
  * - `ai.generateText` → a GENERATION span (so `t.messageIncludes(text)` works)
  *   and error status → `t.noFailedActions()` catches it
  *
- * Other spans (`ai.generateText.doGenerate`, etc.) are ignored — the FlowTee
- * only cares about TOOL/AGENT/GENERATION observation types.
+ * Other spans (`ai.generateText.doGenerate`, etc.) are ignored — only
+ * TOOL/AGENT/GENERATION observation types are visible to `t.*` assertions.
  */
 export function createApoTracer(
   options: CreateApoTracerOptions,

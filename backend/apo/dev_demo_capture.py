@@ -601,7 +601,7 @@ def cmd_verify(fixture_path: Path) -> int:
     from sqlmodel import Session as SQLSession
 
     from .services.demo_fixture import load_demo_fixture
-    from .services.demo_workspace import DEMO_PROJECT_ID, ensure_demo_project_exists
+    from .services.demo_workspace import DEMO_PROJECT_ID
 
     with tempfile.TemporaryDirectory() as tmp:
         db_url = f"sqlite:///{tmp}/verify.db"

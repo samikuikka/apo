@@ -9,8 +9,7 @@
  * not the primary testing architecture. The canonical path is now the Trace
  * Projection snapshot (`TraceProjectionSnapshot` → `TraceView` →
  * `runTraceChecks`). These normalizers remain available during the
- * deprecation period; `snapshotFromFlow` bridges their output into the
- * projection contract. New integrations should emit standard OTel spans
+ * deprecation period. New integrations should emit standard OTel spans
  * instead of producing a Flow.
  */
 

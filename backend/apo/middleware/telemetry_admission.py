@@ -53,15 +53,6 @@ def is_protected_telemetry_route(method: str, path: str) -> bool:
     return False
 
 
-def unit_source_for(method: str, path: str) -> UnitSource | None:
-    """Return the unit-counting strategy for a protected route, or None."""
-    method_u = method.upper()
-    for route_method, pattern, source in _PROTECTED_ROUTES:
-        if method_u == route_method and pattern.match(path):
-            return source
-    return None
-
-
 class TelemetryAdmissionMiddleware(BaseHTTPMiddleware):
     """Consume request tokens + acquire concurrency for protected telemetry writes."""
 

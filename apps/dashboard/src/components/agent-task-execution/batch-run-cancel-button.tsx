@@ -8,8 +8,6 @@ import { toast } from "sonner";
 
 interface BatchRunCancelButtonProps {
   batchRunId: string;
-  /** Disables the action when the Batch is already terminal. */
-  disabled?: boolean;
 }
 
 /** client cancellation action for the server-rendered Batch detail.
@@ -20,7 +18,6 @@ interface BatchRunCancelButtonProps {
  */
 export function BatchRunCancelButton({
   batchRunId,
-  disabled,
 }: BatchRunCancelButtonProps) {
   const [cancelling, setCancelling] = useState(false);
 
@@ -50,7 +47,7 @@ export function BatchRunCancelButton({
       size="sm"
       className="h-8 gap-1.5 text-[13px] font-normal"
       onClick={handleCancel}
-      disabled={cancelling || disabled}
+      disabled={cancelling}
       aria-busy={cancelling}
     >
       <X className="h-3.5 w-3.5" />

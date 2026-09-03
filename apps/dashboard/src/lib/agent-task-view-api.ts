@@ -146,16 +146,6 @@ export const createTaskViewComparison = (
     body,
   });
 
-/** Read a snapshot by id (shareable, reload-stable). Scoped to its project. */
-export const getTaskViewComparison = (
-  projectId: string,
-  comparisonId: string,
-): Promise<TaskViewComparisonSnapshot> =>
-  apiClient(
-    `/v1/projects/${encodeURIComponent(projectId)}/task-view-comparisons/${encodeURIComponent(comparisonId)}`,
-    NO_CACHE,
-  );
-
 /** Read the frozen snapshot and lightweight summaries for all resolved runs. */
 export const getTaskViewComparisonOverview = (
   projectId: string,

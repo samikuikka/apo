@@ -104,11 +104,6 @@ async def get_run_event_broadcaster() -> RunEventBroadcaster:
     return _broadcaster
 
 
-def reset_run_event_broadcaster() -> None:
-    global _broadcaster
-    _broadcaster = None
-
-
 def set_event_loop(loop: asyncio.AbstractEventLoop) -> None:
     global _event_loop
     _event_loop = loop

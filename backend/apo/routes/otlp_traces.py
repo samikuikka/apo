@@ -24,7 +24,6 @@ from sqlmodel import Session
 from ..auth.deps import require_api_key_scope
 from ..db import get_session
 from ..middleware.telemetry_admission import rate_limit_response
-from ..models.db import ProjectDB
 from ..services.ingest_quota import enforce_ingest_guardrails, record_ingest_usage
 from ..services.otlp_receiver import (
     OtlpDecodeError,
@@ -117,7 +116,6 @@ async def receive_otlp_traces(
         auth_method=getattr(request.state, "auth_method", None),
         service_task_run_id=getattr(request.state, "service_task_run_id", None),
     )
-    project = session.get(ProjectDB, project_id)
 
     # Ingest with transport limits. Request-level failures raise
     # typed errors and write nothing — the route maps them to OTLP responses.

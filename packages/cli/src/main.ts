@@ -130,20 +130,12 @@ const commands: Record<string, CommandEntry> = {
       ["<task-id | path>", "Task id or filesystem path"],
     ],
     options: [
-      ["--ci", "CI mode: records CI metadata, uses strict exit codes"],
       ["--no-record", "Run on this machine WITHOUT recording (skips the backend entirely)"],
-      ["--local", "(compat) accepted no-op — runs are always local now"],
-      ["--executor <caller>", "(compat) accepted no-op; any other target is an error"],
-    ],
-    extraFlags: [
-      "ci-actor", "ci-hostname", "ci-system", "ci-run-id", "ci-run-url",
-      "repo", "branch", "sha", "pr",
     ],
     examples: [
       "apo task run meeting-summary",
       "apo task run ./tasks/my-task",
       "apo task run meeting-summary --no-record",
-      "apo task run bind-e2e --ci",
     ],
     note: "Always executes on this machine (caller execution). Records the run when backend + project + credential are configured; a configured recording that cannot reach the backend exits 2 — use --no-record to skip recording. Exit codes: 0=pass, 1=fail, 2=error.",
   },

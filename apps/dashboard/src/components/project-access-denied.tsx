@@ -10,12 +10,6 @@ import { StatusPage } from "@/components/status-page";
 interface ProjectAccessDeniedProps {
   /** Project identifier from the route, shown as a reference. */
   projectId: string;
-  /**
-   * Optional project name. The backend 403 response does not currently carry
-   * the name, so this is reserved for a future enrichment — when populated it
-   * personalizes the headline (e.g. "You don't have access to 'Prompts'").
-   */
-  projectName?: string;
 }
 
 /**
@@ -29,19 +23,12 @@ interface ProjectAccessDeniedProps {
  * Rendered centrally by the project layout so every project sub-route inherits
  * the behavior instead of each page re-deriving it from error strings.
  */
-export function ProjectAccessDenied({
-  projectId,
-  projectName,
-}: ProjectAccessDeniedProps) {
-  const heading = projectName
-    ? `You don't have access to "${projectName}"`
-    : "You don't have access to this project";
-
+export function ProjectAccessDenied({ projectId }: ProjectAccessDeniedProps) {
   return (
     <StatusPage
       badge="Access required"
       icon={<Lock className="size-8 text-primary" />}
-      title={heading}
+      title="You don't have access to this project"
       description={
         <>
           This project is private to its team. You may be signed in with the

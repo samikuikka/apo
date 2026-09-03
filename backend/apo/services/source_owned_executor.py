@@ -12,7 +12,7 @@ Does not duplicate credential hashing, JWT issuance, or finalization.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlmodel import Session, select
 

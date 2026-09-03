@@ -106,9 +106,7 @@ class NativeTraceBackend:
         # Link the task run's single trace for reverse lookup.
         persisted_run.task_run_id = task_run.id
         # trace-level output carries a compact
-        # Deliverable manifest (name/kind/size only), never a body. New rows
-        # leave ``task_run.deliverables_json`` null; legacy rows still produce
-        # a synthesized manifest so the trace row never duplicates a body.
+        # Deliverable manifest (name/kind/size only), never a body.
         persisted_run.output = _trace_output_for_task_run(task_run)
         # trace-level input comes from the canonical trace projection
         # (Generation Observation inputs), not the redundant task transcript.

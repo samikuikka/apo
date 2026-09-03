@@ -34,7 +34,6 @@ from apo.services.execution_leases import (
     LeaseError,
     _require_current,
 )
-from apo.services.lifecycle import BATCH_RUN_TERMINAL
 
 # Bounded diagnostic tails: 64 KiB each.
 DIAGNOSTIC_TAIL_BYTES = 64 * 1024

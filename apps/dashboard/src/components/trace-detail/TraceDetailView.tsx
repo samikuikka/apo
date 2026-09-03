@@ -22,11 +22,9 @@ import { formatCostMicro, formatDuration, formatTokenTotal } from "@/lib/format"
 export function TraceDetailView({
   mode,
   onClose,
-  readOnly = false,
 }: {
   mode?: "page" | "panel";
   onClose?: () => void;
-  readOnly?: boolean;
 }) {
   const { run } = useTraceData();
   const { selectedCallId } = useSelection();
@@ -48,22 +46,20 @@ export function TraceDetailView({
         </div>
       );
     }
-    return <CallDetailView call={call} readOnly={readOnly} />;
+    return <CallDetailView call={call} />;
   }
 
-  return <TraceDetailRootView run={run} mode={mode} onClose={onClose} readOnly={readOnly} />;
+  return <TraceDetailRootView run={run} mode={mode} onClose={onClose} />;
 }
 
 function TraceDetailRootView({
   run,
   mode,
   onClose,
-  readOnly = false,
 }: {
   run: any;
   mode?: "page" | "panel";
   onClose?: () => void;
-  readOnly?: boolean;
 }) {
   const projectId = useProjectId();
   const { refreshRun } = useTraceData();
@@ -116,21 +112,19 @@ function TraceDetailRootView({
                 <X className="h-4 w-4" />
               </button>
             )}
-            {!readOnly && (
-              <button
-                type="button"
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center transition-colors hover:bg-muted/50"
-                onClick={handleToggleBookmark}
-                aria-label={bookmarked ? "Remove bookmark" : "Add bookmark"}
-              >
-                <Star
-                  className={cn(
-                    "h-4 w-4 transition-colors",
-                    bookmarked ? "fill-warning text-warning" : "text-muted-foreground hover:text-foreground",
-                  )}
-                />
-              </button>
-            )}
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center transition-colors hover:bg-muted/50"
+              onClick={handleToggleBookmark}
+              aria-label={bookmarked ? "Remove bookmark" : "Add bookmark"}
+            >
+              <Star
+                className={cn(
+                  "h-4 w-4 transition-colors",
+                  bookmarked ? "fill-warning text-warning" : "text-muted-foreground hover:text-foreground",
+                )}
+              />
+            </button>
           </div>
         </div>
         <div className="text-sm text-muted-foreground">
@@ -164,26 +158,22 @@ function TraceDetailRootView({
           {run.run.version && <HeaderPill mono>{run.run.version}</HeaderPill>}
           {run.run.environment && run.run.environment !== "default" && <HeaderPill>env: {run.run.environment}</HeaderPill>}
           {run.run.session_id && <HeaderPill mono>session: {run.run.session_id.length > 12 ? `${run.run.session_id.slice(0, 12)}...` : run.run.session_id}</HeaderPill>}
-          {!readOnly && (
-            <Button
-              type="button"
-              variant={showScorePanel ? "secondary" : "outline"}
-              size="xs"
-              onClick={() => setShowScorePanel(!showScorePanel)}
-            >
-              <Star className="h-3 w-3" />
-              Score
-            </Button>
-          )}
-          {!readOnly && (
-            <CommentDrawer
-              objectId={run.run.id}
-              objectType="trace"
-              projectId={run.run.project}
-             />
-          )}
+          <Button
+            type="button"
+            variant={showScorePanel ? "secondary" : "outline"}
+            size="xs"
+            onClick={() => setShowScorePanel(!showScorePanel)}
+          >
+            <Star className="h-3 w-3" />
+            Score
+          </Button>
+          <CommentDrawer
+            objectId={run.run.id}
+            objectType="trace"
+            projectId={run.run.project}
+           />
         </div>
-        {showScorePanel && !readOnly && (
+        {showScorePanel && (
           <div className="mt-2 border border-border bg-muted/30">
             <ScoreInputPanel
               targetType="trace"

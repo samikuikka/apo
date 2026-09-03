@@ -4,9 +4,7 @@ packages:
   - 'backend'
 allowBuilds:
   esbuild: true
-  msgpackr-extract: true
   msw: true
-  protobufjs: false
   # sharp's install script only picks source-vs-prebuilt; when it picks
   # source (global libvips present, or a Node too new for its check) the
   # node-gyp build fails and aborts the whole workspace install (#153),

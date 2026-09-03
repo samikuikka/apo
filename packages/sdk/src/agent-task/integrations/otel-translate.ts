@@ -42,8 +42,8 @@ export function round3(n: number): number {
 // ── the translation contract ─────────────────────────────────────────────
 
 /**
- * apo observation types that the FlowTee recognizes. Only spans with one
- * of these types become FlowEvents that `t.*` assertions read.
+ * apo observation types the projection recognizes. Only spans with one
+ * of these types become events that `t.*` assertions read.
  */
 export type ApoObservationType = "TOOL" | "GENERATION" | "AGENT";
 

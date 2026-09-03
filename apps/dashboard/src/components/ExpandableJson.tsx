@@ -18,7 +18,6 @@ import { Toolbar } from "./expandable-json/toolbar";
 interface ExpandableJsonProps {
   data: unknown;
   label?: string;
-  fillHeight?: boolean;
   className?: string;
 }
 
@@ -65,7 +64,6 @@ function viewportReducer(state: ViewportState, action: ViewportAction): Viewport
 export function ExpandableJson({
   data,
   label,
-  fillHeight = false,
   className,
 }: ExpandableJsonProps) {
   const root = useMemo(() => {
@@ -242,10 +240,7 @@ export function ExpandableJson({
       <div
         ref={measureRef}
         onScroll={handleScroll}
-        className={cn(
-          "overflow-auto bg-gradient-to-b from-background/60 via-background to-muted/20",
-          fillHeight ? "min-h-[320px] max-h-[70vh]" : "max-h-[520px]",
-        )}
+        className="max-h-[520px] overflow-auto bg-gradient-to-b from-background/60 via-background to-muted/20"
       >
         {rows.length === 0 && searchQuery ? (
           <EmptySearchResult query={searchQuery} />

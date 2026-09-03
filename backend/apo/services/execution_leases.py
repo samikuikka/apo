@@ -38,7 +38,7 @@ from apo.models.db import (
 )
 from apo.models.execution import EXECUTOR_PROTOCOL_VERSION
 from apo.services.executor_auth import ATTEMPT_LEASE_SECONDS
-from apo.services.lifecycle import TASK_RUN_TERMINAL, BATCH_RUN_TERMINAL
+from apo.services.lifecycle import TASK_RUN_TERMINAL
 
 # Attempt statuses.
 QUEUED = "queued"

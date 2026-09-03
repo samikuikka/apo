@@ -11,8 +11,8 @@ interface DbStats {
   [key: string]: number;
 }
 
-export function SystemSection({ initialStats = null }: { initialStats?: DbStats | null }) {
-  const [stats, setStats] = useState<DbStats | null>(initialStats);
+export function SystemSection() {
+  const [stats, setStats] = useState<DbStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [confirmNuke, setConfirmNuke] = useState("");
 

@@ -16,7 +16,7 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from ..models.db import ProjectDB, ProjectTaskInventoryDB, ProjectTaskSourceDB
+from ..models.db import ProjectTaskInventoryDB, ProjectTaskSourceDB
 
 _MAX_TASKS = 5000
 _MAX_TASK_ID_BYTES = 512

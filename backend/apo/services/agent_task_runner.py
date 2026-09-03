@@ -6,19 +6,18 @@ Executes agent tasks and persists results as TaskRun rows.
 
 # pyright: reportPrivateUsage=false, reportUnusedFunction=false, reportUnusedImport=false, reportUnusedParameter=false
 
-import json
 import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import cast
 
 from sqlmodel import Session, select
 
 from ..auth.service_tokens import create_agent_task_trace_token
-from ..db import engine
-from ..db_helpers import as_column
+# `engine` is not referenced in this module, but tests monkeypatch it to swap
+# in the test database.
+from ..db import engine  # noqa: F401
 from ..models.db import (
     AgentTaskBatchRunDB,
     AgentTaskRunDB,
@@ -34,7 +33,6 @@ from .agent_task_discovery import DEFAULT_TASK_ROOT, resolve_task_paths
 from .check_report_storage import persist_check_report
 from .trace_backend import get_trace_backend
 from .trace_ownership import (
-    mark_failed,
     mark_pending,
     reconcile_trace_id,
     roll_up_batch,

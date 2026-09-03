@@ -1,15 +1,13 @@
 /**
  * OTel-backed agent-task trace client.
  *
- * Replaces the deprecated ``TraceTracker``-backed ``createAgentTaskTraceClient``
- * with one that uses standard OpenTelemetry spans exported via the canonical
- * OTLP receiver. The ``AgentTaskTraceContext`` interface is identical —
- * ``runTask.ts``, ``FlowTee``, integrations, and task-authoring code work
- * unchanged.
+ * Emits standard OpenTelemetry spans exported via the canonical OTLP
+ * receiver. ``runTask.ts``, integrations, and task-authoring code share the
+ * ``AgentTaskTraceContext`` interface this module produces.
  *
- * Key differences from the TraceTracker path:
+ * How it works:
  *   - Spans are real OTel spans (``tracer.startSpan`` / ``span.end()``)
- *   - Scores are domain records via the score API (not sentinel ingestion events)
+ *   - Scores are domain records via the score API
  *   - Run completion happens when the root span ends (OTel native)
  *   - Export goes through ``configureApoTelemetry``'s OTLP exporter
  *
@@ -58,10 +56,8 @@ interface ActiveSpan {
 }
 
 /**
- * Create an OTel-native agent-task trace client.
- *
- * Drop-in replacement for ``createAgentTaskTraceClient`` that uses
- * ``configureApoTelemetry`` instead of ``TraceTracker``.
+ * Create an OTel-native agent-task trace client backed by
+ * ``configureApoTelemetry``.
  */
 export function createOtelAgentTaskTraceClient(
   config: AgentTaskTraceClientConfig,

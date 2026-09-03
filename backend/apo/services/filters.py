@@ -119,17 +119,6 @@ def _parse_datetime(value: str | datetime | None) -> datetime | None:
         return None
 
 
-def apply_model_filter(
-    statement: Any,
-    models: str,
-    model_col: Any,
-) -> Any:
-    model_list = [m.strip() for m in models.split(",") if m.strip()]
-    if model_list:
-        statement = statement.where(model_col.in_(model_list))
-    return statement
-
-
 def apply_numeric_range(
     statement: Any,
     column: Any,

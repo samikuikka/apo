@@ -550,10 +550,6 @@ async def list_executors(
     return ExecutorListResponse(executors=summaries)
 
 
-class RevokeExecutorRequest(BaseModel):
-    pass
-
-
 @router.post("/projects/{project_id}/executors/{executor_id}/revoke")
 async def revoke_executor_route(
     project_id: str,

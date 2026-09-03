@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ._shared import VALID_OBSERVATION_TYPES, get_str, NormalizedSpan
+from ._shared import VALID_OBSERVATION_TYPES, get_str
 
 
 MAPPER_NAME = "apo-override"

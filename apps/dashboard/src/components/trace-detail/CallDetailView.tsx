@@ -35,7 +35,7 @@ function correctionReducer(state: CorrectionState, action: CorrectionAction): Co
   }
 }
 
-export function CallDetailView({ call, readOnly = false }: { call: any; readOnly?: boolean }) {
+export function CallDetailView({ call }: { call: any }) {
   const { selectCall, detailTab, setDetailTab } = useSelection();
   const { run, cumulativeMetrics } = useTraceData();
   // Bumped when an inline comment is created so the drawer re-fetches.
@@ -84,7 +84,6 @@ export function CallDetailView({ call, readOnly = false }: { call: any; readOnly
         cumulativeMetrics={cumulativeMetrics}
         selectCall={selectCall}
         commentNonce={commentNonce}
-        readOnly={readOnly}
       />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -98,7 +97,6 @@ export function CallDetailView({ call, readOnly = false }: { call: any; readOnly
             <CallPreviewTab
               call={call}
               run={run}
-              readOnly={readOnly}
               effectiveInput={effectiveInput}
               effectiveOutput={effectiveOutput}
               outputText={outputText}
@@ -114,7 +112,7 @@ export function CallDetailView({ call, readOnly = false }: { call: any; readOnly
         </Tabs>
       </div>
 
-      {correction.open && outputText !== null && !readOnly && (
+      {correction.open && outputText !== null && (
         <CorrectionDialog
           original={outputText}
           currentCorrection={correction.corrected}

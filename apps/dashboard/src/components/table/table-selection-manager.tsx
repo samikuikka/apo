@@ -25,7 +25,7 @@ interface TableSelectionManagerProps {
  * - Manages "select all" state in session storage
  *
  * @example
- * const { selectActionColumn } = TableSelectionManager<RunSummary>({
+ * const { selectActionColumn } = useTableSelectionManager<RunSummary>({
  *   projectId: "default",
  *   tableName: "runs",
  *   setSelectedRows: setRowSelection,

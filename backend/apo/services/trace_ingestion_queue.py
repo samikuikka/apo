@@ -397,23 +397,6 @@ class QueueWorker:
                 errors=tuple(errors),
             )
 
-    async def process_loop(self, max_iterations: int = 0) -> None:
-        """Process batches continuously until the queue is empty.
-
-        Args:
-            max_iterations: 0 = unlimited, >0 = stop after N batches.
-        """
-        count = 0
-        while True:
-            processed = await self.process_one()
-            if not processed:
-                break
-            count += 1
-            if max_iterations > 0 and count >= max_iterations:
-                break
-        logger.info("Worker processed %d batch(es)", count)
-
-
 def queue_depth_report() -> dict[str, object]:
     """Queue health for the admin retention report.
 

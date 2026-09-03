@@ -1,47 +1,9 @@
 "use client"
 
 import * as React from "react"
-import { Group, Panel, Separator, type Layout } from "react-resizable-panels"
+import { Group, Panel, Separator } from "react-resizable-panels"
 
 import { cn } from "@/lib/utils"
-
-interface UseDefaultLayoutOptions {
-  id: string;
-  storage?: Storage;
-  defaultLayout?: Layout;
-}
-
-interface UseDefaultLayoutReturn {
-  defaultLayout: Layout;
-  onLayoutChange: (layout: Layout) => void;
-}
-
-function useDefaultLayout(options: UseDefaultLayoutOptions): UseDefaultLayoutReturn {
-  const { id, storage, defaultLayout: initialLayout = {} } = options;
-  
-  const [layout, setLayout] = React.useState<Layout>(() => {
-    if (storage) {
-      const stored = storage.getItem(`panel-layout:${id}`);
-      if (stored) {
-        try {
-          return JSON.parse(stored);
-        } catch {
-          return initialLayout;
-        }
-      }
-    }
-    return initialLayout;
-  });
-  
-  const onLayoutChange = React.useCallback((newLayout: Layout) => {
-    setLayout(newLayout);
-    if (storage) {
-      storage.setItem(`panel-layout:${id}`, JSON.stringify(newLayout));
-    }
-  }, [id, storage]);
-  
-  return { defaultLayout: layout, onLayoutChange };
-}
 
 interface ResizablePanelGroupProps extends React.ComponentProps<typeof Group> {
   direction?: "horizontal" | "vertical";
@@ -97,4 +59,4 @@ function ResizableHandle({
   )
 }
 
-export { ResizablePanelGroup, ResizablePanel, ResizableHandle, useDefaultLayout }
+export { ResizablePanelGroup, ResizablePanel, ResizableHandle }

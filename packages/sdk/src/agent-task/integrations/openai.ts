@@ -6,8 +6,8 @@
  * any manual span code in the adapter.
  *
  * Uses a Proxy to intercept the `create` method, then emits GENERATION +
- * TOOL spans through the trace context. The FlowTee picks these up and
- * builds the Flow that `t.calledTool` reads.
+ * TOOL spans through the trace context, where they become the observations
+ * that `t.calledTool` reads.
  *
  * @example
  * ```ts

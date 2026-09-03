@@ -64,7 +64,6 @@ from ..models.schemas import (  # noqa: F401
     AgentTaskScheduleDetail,
     ScheduleLastBatchSummary,
     CreateAgentTaskScheduleRequest,
-    UpdateAgentTaskScheduleRequest,
     AdaptiveTaskStateSummary,
     ScheduleExecutionOwnerSummary,
     ScheduleOccurrenceSummary,
@@ -142,6 +141,7 @@ __all__ = [
     "ScoreResponse",
     "SessionSummary",
     "TruncatedCheckValue",
+    "ScheduleLastBatchSummary",
     "UpdateRunRequest",
     # Agent task schedule schemas
     "AgentTaskScheduleSummary",

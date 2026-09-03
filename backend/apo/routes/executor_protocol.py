@@ -15,10 +15,7 @@ Executor.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import StreamingResponse
 from jose import JWTError
 from pydantic import BaseModel, Field
 from sqlmodel import Session
@@ -26,38 +23,26 @@ from sqlmodel import Session
 from apo.auth.rate_limit import LoginRateLimiter
 from apo.db import get_session
 from apo.models.db import (
-    AgentTaskBatchRunDB,
-    AgentTaskRunDB,
-    ExecutorDB,
     TaskExecutionAttemptDB,
-    TaskRevisionDB,
 )
 from apo.models.schemas import AgentTaskRunConfiguration
-from apo.models.execution import EXECUTOR_PROTOCOL_VERSION, ExecutorCapabilities
+from apo.models.execution import EXECUTOR_PROTOCOL_VERSION
 from apo.services.execution_finalization import (
     AttemptFailureBody,
-    AttemptResultBody,
     CompletionConflict,
     FinalizationError,
     finalize_attempt_failure,
-    finalize_attempt_result,
 )
 from apo.services.execution_leases import (
     CurrentAttemptLease,
     LeaseError,
-    claim_next_attempt,
     heartbeat_attempt,
     lease_error_to_http,
     start_attempt,
 )
 from apo.services.executor_auth import (
-    EnrollmentError,
-    create_attempt_jwt,
     decode_attempt_jwt,
-    exchange_enrollment_token,
-    resolve_executor_by_credential,
 )
-from apo.services.artifact_stores.registry import get_store
 
 router = APIRouter(prefix="/v1/executor-protocol/v1", tags=["executor-protocol"])
 PROTOCOL_VERSION = EXECUTOR_PROTOCOL_VERSION
@@ -107,15 +92,6 @@ def _bearer_token(request: Request) -> str:
     if not auth.lower().startswith("bearer "):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing bearer credential")
     return auth.split(" ", 1)[1].strip()
-
-
-def require_executor(request: Request, session: Session = Depends(get_session)) -> ExecutorDB:
-    """Resolve an enabled, non-revoked Executor from its apo_ex_ credential."""
-    token = _bearer_token(request)
-    executor = resolve_executor_by_credential(session, token)
-    if executor is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid executor credential")
-    return executor
 
 
 def require_attempt_lease(

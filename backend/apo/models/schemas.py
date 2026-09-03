@@ -736,8 +736,7 @@ class AgentTaskRunDetail(SQLModel):
     # summary projection.
     run_configuration: AgentTaskRunConfiguration | None = None
     # manifest projection returned with Task Run detail. Safe to
-    # render without loading any Deliverable body. Legacy rows with only
-    # ``deliverables_json`` synthesize a manifest on read.
+    # render without loading any Deliverable body.
     deliverables: list[DeliverableSummary] = Field(default_factory=list)
     # Task Definition summary for CodeMirror source display.
     task_definition: dict[str, object] | None = None

@@ -23,24 +23,19 @@ function resolveLang(lang?: string): string {
 export function ShikiCodeBlock({
   code,
   language,
-  maxLines,
   className,
 }: {
   code: string;
   language?: string;
-  maxLines?: number;
   className?: string;
 }) {
   const [html, setHtml] = useState<string>("");
   const [wrapped, setWrapped] = useState(false);
   const lang = resolveLang(language);
-  const lines = code.split("\n");
-  const truncated = maxLines != null && lines.length > maxLines;
-  const displayCode = truncated ? lines.slice(0, maxLines).join("\n") : code;
 
   useEffect(() => {
     let cancelled = false;
-    codeToHtml(displayCode, {
+    codeToHtml(code, {
       lang,
       theme: "github-dark",
     }).then((result) => {
@@ -49,7 +44,7 @@ export function ShikiCodeBlock({
     return () => {
       cancelled = true;
     };
-  }, [displayCode, lang]);
+  }, [code, lang]);
 
   return (
     <div className={cn("group/code relative rounded-md border border-border overflow-hidden", className)}>
@@ -86,15 +81,10 @@ export function ShikiCodeBlock({
           )}
         >
           <pre className="px-4 text-[13px] leading-[1.6] text-muted-foreground">
-            {displayCode.split("\n").map((_, i) => (
+            {code.split("\n").map((_, i) => (
               <div key={i} className="min-h-[1.6em]" />
             ))}
           </pre>
-        </div>
-      )}
-      {truncated && (
-        <div className="border-t border-border/50 bg-card px-3 py-1.5 text-center text-[10px] text-muted-foreground">
-          {lines.length} lines · showing first {maxLines}
         </div>
       )}
     </div>

@@ -15,7 +15,6 @@ Key differences from v1:
 
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
