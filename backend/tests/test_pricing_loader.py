@@ -458,6 +458,26 @@ class TestCacheWriteIsPricedForEveryProvider:
                 assert cost is not None, name
                 assert cost.total == expected_cost, f"{name} {usage_key}"
 
+    def test_gemini_38_flash_priced_bare_and_prefixed(self, session: Session) -> None:
+        """Gemini 3.8 Flash (released 2026-09-02) must not arrive unpriced, and
+        must not be swallowed by the 3.6 or 3.7 patterns. Rates are Google's
+        Standard tier, which is 2x what the 3.7 row carries, so an accidental
+        inherit from that neighbour fails here rather than silently halving
+        every 3.8 run's cost."""
+        load_default_prices(session)
+        for name in ("gemini-3.8-flash", "google/gemini-3.8-flash"):
+            for usage_key, expected_cost in (
+                ("input", 750_000),
+                ("output", 3_750_000),
+                ("cache_read", 75_000),
+                ("cache_write_5m", 41_667),
+            ):
+                cost = compute_cost(
+                    session, name, {usage_key: 1_000_000}, "__global__", NOW
+                )
+                assert cost is not None, f"{name} should be priced, not unpriced"
+                assert cost.total == expected_cost, f"{name} {usage_key}"
+
     def test_gpt56_uses_openrouter_prompt_and_write_rates(self, session: Session) -> None:
         """OpenRouter lists cache writes at 1.25x ordinary input for GPT-5.6.
 

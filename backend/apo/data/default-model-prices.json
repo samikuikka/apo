@@ -747,6 +747,29 @@
       ]
     },
     {
+      "_doc": "Gemini 3.8 Flash, released 2026-09-02. Rates are Google's Standard tier per ai.google.dev/gemini-api/docs/pricing (verified 2026-09-03), which OpenRouter's endpoints API agrees with for the tier a default request lands on: $0.75/$3.75 per MTok, cache read $0.075, explicit cache write $0.0416667 (cheaper than input rather than equal to it, same as the 3.6 entry). INTRODUCTORY rates: Google holds them through 2026-12-31 and doubles them to $1.50/$7.50 (cache read $0.15) on 2027-01-01, which is the `discount: 0.5` OpenRouter reports on every 3.8 endpoint. Bump this row before that date, or add a dated second one with start_date 2027-01-01, or every 3.8 run reads 2x low. Flash models are priced flat by Google: no long-context tier to model. Note the 3.7 entry above carries the flex tier's rates and so under-charges 2x against the Standard tier used here.",
+      "match_pattern": "(?i)^gemini-3\\.8-flash.*$",
+      "provider": "gemini",
+      "display_name": "Gemini 3.8 Flash",
+      "start_date": null,
+      "updated_at": "2026-09-03T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 0.75,
+            "cache_read": 0.075,
+            "cache_write_5m": 0.0416667,
+            "output": 3.75
+          }
+        }
+      ]
+    },
+    {
       "_doc": "2026-08-30 refresh: the 3.5 flash family had no entries, so both tiers of Google's mid-generation flash arrived unpriced. OpenRouter lists flash at $1.50/$9.00 per MTok (cache read $0.15, explicit cache write $0.0833333). Anchored exactly so it cannot swallow the 5x-cheaper flash-lite sibling. Flash models are priced flat by Google: no long-context tier to model.",
       "match_pattern": "(?i)^gemini-3\\.5-flash$",
       "provider": "gemini",
