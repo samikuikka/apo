@@ -35,7 +35,7 @@ describe("apo login as the switch", () => {
     vi.spyOn(credentials, "readCredentials").mockReturnValue(ACTIVE_ON_OTHER);
     vi.spyOn(credentials, "readRememberedLogin").mockReturnValue(REMEMBERED);
     const writeSpy = vi.spyOn(credentials, "writeCredentials").mockReturnValue("/tmp/fake-credentials");
-    // checkSavedKey hits GET /v1/projects with the remembered key.
+    // checkSavedKey hits GET /v1/api-keys with the remembered key.
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("[]", { status: 200 }));
     const { logs, restore } = captureLog();
 
@@ -71,7 +71,7 @@ describe("apo login as the switch", () => {
     vi.spyOn(credentials, "writeCredentials").mockReturnValue("/tmp/fake-credentials");
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.includes("/v1/projects")) return new Response("nope", { status: 401 });
+      if (url.includes("/v1/api-keys")) return new Response("nope", { status: 401 });
       if (url.includes("/auth/verify-password")) {
         return new Response(JSON.stringify({ detail: "bad credentials" }), { status: 401 });
       }

@@ -7,10 +7,11 @@ import { MetadataRow } from "./MetadataRow";
 import { getEventType } from "./trace-utils";
 import { getDisplayName } from "./trace-display";
 import { formatDate, formatEventLabel } from "./call-detail-utils";
+import type { LoggedCall, TraceDetail } from "./contexts/TraceDataContext";
 
 interface CallMetadataTabProps {
-  call: any;
-  run: any;
+  call: LoggedCall;
+  run: TraceDetail | null;
 }
 
 export function CallMetadataTab({ call, run }: CallMetadataTabProps) {

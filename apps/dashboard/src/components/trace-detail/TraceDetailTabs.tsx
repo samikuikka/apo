@@ -8,10 +8,11 @@ import { RunCostBreakdownTooltip } from "./DimensionBreakdownTooltip";
 import { DimensionMixBar } from "./DimensionMixBar";
 import { CallDetailTabs } from "./CallDetailTabs";
 import { useSelection } from "./contexts/SelectionContext";
+import type { TraceDetail } from "./contexts/TraceDataContext";
 import { formatCostMicro } from "@/lib/format";
 
 export interface TraceDetailTabsProps {
-  run: any;
+  run: TraceDetail;
 }
 
 const VALID_RUN_TABS = new Set(["preview", "metadata", "tokens", "costs"]);

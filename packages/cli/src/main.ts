@@ -37,7 +37,25 @@ const commands: Record<string, CommandEntry> = {
       "apo login --force",
       "apo login --email me@corp.com --project my-proj",
     ],
-    note: "Sets the context every command uses: backend, project, task root. Logins are remembered per backend — switch back any time with apo login --backend <url>, no password needed.",
+    note: "Sets the context every command uses: backend, project, task root. Logins are remembered per backend — switch back any time with apo login --backend <url>, no password needed. For short names across accounts, see `apo profile`.",
+  },
+  profile: {
+    handler: loadCommand("profile"),
+    help: "Named connection contexts — save once, switch with one word",
+    args: [
+      ["<subcommand>", "list (default) | use | save | remove"],
+    ],
+    options: [
+      ["--force", "(save) Overwrite an existing profile"],
+      ["--from-login <url>", "(save) Build the profile from a remembered login instead of the active one"],
+    ],
+    examples: [
+      "apo profile save prod",
+      "apo profile use prod",
+      "apo profile list",
+      "apo profile remove prod",
+    ],
+    note: "A profile is a saved login (backend, API key, project, task root) under a short name. `use` verifies the key against the backend before switching, and never touches your active credentials on failure. Profiles are keyed by name, so two profiles can share a backend with different accounts.",
   },
   logout: {
     handler: loadCommand("logout"),
@@ -609,6 +627,7 @@ function printHelp(): void {
   console.log("");
   console.log(bold("Quick start:"));
   console.log("  apo login                Authenticate");
+  console.log("  apo profile use prod     Switch backend + project in one word");
   console.log("  apo project use          Pick a project");
   console.log("  apo task list            See available tasks");
   console.log("  apo task run <task-id>   Run a task");

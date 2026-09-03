@@ -6,7 +6,7 @@ import { CorrectionDialog } from "./CorrectionDialog";
 import { CallDetailHeader } from "./CallDetailHeader";
 import { CallPreviewTab } from "./CallPreviewTab";
 import { CallMetadataTab } from "./CallMetadataTab";
-import { useTraceData } from "./contexts/TraceDataContext";
+import { useTraceData, type LoggedCall } from "./contexts/TraceDataContext";
 import { useSelection } from "./contexts/SelectionContext";
 import { saveCorrection } from "@/lib/traces-api";
 import { extractOutputText } from "./call-detail-utils";
@@ -35,7 +35,7 @@ function correctionReducer(state: CorrectionState, action: CorrectionAction): Co
   }
 }
 
-export function CallDetailView({ call }: { call: any }) {
+export function CallDetailView({ call }: { call: LoggedCall }) {
   const { selectCall, detailTab, setDetailTab } = useSelection();
   const { run, cumulativeMetrics } = useTraceData();
   // Bumped when an inline comment is created so the drawer re-fetches.

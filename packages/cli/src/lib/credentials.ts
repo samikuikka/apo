@@ -8,6 +8,8 @@ export type StoredCredentials = {
   email?: string;
   task_root?: string;
   project?: string;
+  /** Set when these credentials came from `apo profile use` — names the source profile. */
+  profile_name?: string;
   created_at?: string;
 };
 

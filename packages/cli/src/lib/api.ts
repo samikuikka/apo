@@ -140,6 +140,37 @@ export function apiDelete<T>(
   });
 }
 
+/**
+ * Verify a stored API key still works against a backend WITHOUT going through
+ * the uniform error contract: callers need the tri-state (valid / invalid /
+ * unreachable) to decide between switching, re-authenticating, and refusing.
+ *
+ * Probes /v1/api-keys, NOT /v1/projects: the projects list is open to
+ * anonymous callers (demo project), so a 200 there proves nothing about the
+ * key — a bad key would sail through verification.
+ */
+export async function checkSavedKey(
+  backendUrl: string,
+  apiKey: string,
+): Promise<"valid" | "invalid" | "unknown"> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const url = resolveApiUrl(backendUrl, "/v1/api-keys");
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    });
+    if (res.ok) return "valid";
+    if (res.status === 401) return "invalid";
+    return "unknown";
+  } catch {
+    return "unknown";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function isBackendReachable(baseUrl: string): Promise<boolean> {
   try {
     const url = resolveApiUrl(baseUrl, "/health");

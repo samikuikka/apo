@@ -26,6 +26,9 @@ export async function run(argv: string[]): Promise<number> {
 
   console.log(bold("apo status"));
   console.log(`  Login:      ${stored?.email ?? dim("not logged in (run: apo login)")}`);
+  if (stored?.profile_name) {
+    console.log(`  Profile:    ${stored.profile_name} ${dim("(switch: apo profile use <name>)")}`);
+  }
   console.log(`  Backend:    ${config.backendUrl} ${reachable ? green("✓ reachable") : red("✗ unreachable")}`);
   console.log(`  Project:    ${config.projectId ?? dim("(none — run: apo project use)")}`);
   console.log(`  Task root:  ${config.taskRoot} ${rootExists ? "" : yellow("(directory does not exist)")}`);

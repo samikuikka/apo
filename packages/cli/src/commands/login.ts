@@ -5,7 +5,7 @@ import { isAbsolute, resolve } from "path";
 import { parseArgs, getBoolFlag, getFlagValue } from "../lib/args.ts";
 import { type BootstrapResponse } from "../lib/api-types.ts";
 import { dim, green, red } from "../lib/format.ts";
-import { apiPost, AuthError, isBackendReachable } from "../lib/api.ts";
+import { apiPost, AuthError, checkSavedKey, isBackendReachable } from "../lib/api.ts";
 import { pickOption } from "../lib/picker.ts";
 import { resolveProject } from "../lib/projects.ts";
 import {
@@ -34,27 +34,6 @@ async function prompt(rl: any, question: string, defaultValue?: string): Promise
   const suffix = defaultValue ? ` ${dim(`[${defaultValue}]`)}` : "";
   const answer = (await rl.question(`${question}:${suffix} `)).trim();
   return answer || defaultValue || "";
-}
-
-async function checkSavedKey(
-  backendUrl: string,
-  apiKey: string,
-): Promise<"valid" | "invalid" | "unknown"> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
-  try {
-    const res = await fetch(`${backendUrl}/v1/projects`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: controller.signal,
-    });
-    if (res.ok) return "valid";
-    if (res.status === 401) return "invalid";
-    return "unknown";
-  } catch {
-    return "unknown";
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 async function promptPassword(rl: any, question: string): Promise<string> {
