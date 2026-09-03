@@ -40,6 +40,11 @@ on:
       - ".github/workflows/codspeed.yml"
   workflow_dispatch:
 
+# Cancel a superseded run instead of re-measuring stale commits.
+concurrency:
+  group: codspeed-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -52,12 +57,14 @@ jobs:
       contents: read # required for actions/checkout
       id-token: write # required for OIDC authentication with CodSpeed
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Install uv
-        run: pip install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
       - name: Sync dependencies
         working-directory: backend
         run: uv sync --frozen
@@ -75,11 +82,11 @@ jobs:
       contents: read # required for actions/checkout
       id-token: write # required for OIDC authentication with CodSpeed
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.3.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm

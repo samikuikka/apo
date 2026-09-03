@@ -1,6 +1,4 @@
 services:
-  caddy:
-    volumes:
   cloudflared:
     volumes:
       - ./deploy/self-host/cloudflared-config.yml:/etc/cloudflared/config.yml:ro

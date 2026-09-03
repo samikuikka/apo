@@ -6,16 +6,23 @@ on:
   pull_request:
     branches: [main]
 
+# A superseded push's run is worthless — cancel it instead of burning the
+# full frontend+backend minutes on every rapid iteration.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   frontend:
     name: Lint + Typecheck (Frontend)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.3.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -72,21 +79,26 @@ jobs:
   backend:
     name: Typecheck + Test (Backend)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.3.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Install uv
-        run: pip install uv
+        # Cached install: the backend + package overlays re-resolve several
+        # hundred MB of wheels per run without it.
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
       - name: Sync dependencies
         working-directory: backend
         run: uv sync --frozen

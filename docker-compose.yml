@@ -94,6 +94,22 @@ services:
       - EMAIL_TRANSPORT_URL=${EMAIL_TRANSPORT_URL:-}
       - EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS:-}
       - EMAIL_FROM_NAME=${EMAIL_FROM_NAME:-apo}
+      # --- LLM provider credentials for task runs ---
+      # The backend forwards these into task subprocesses; Compose only passes
+      # explicitly listed vars, so without this block setting them in .env is
+      # a silent no-op for docker deployments. All optional — unset task runs
+      # that call an LLM fail with a clear operator-grade error.
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-}
+      - AGENT_TASK_OPENROUTER_MODEL=${AGENT_TASK_OPENROUTER_MODEL:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-}
+      - AGENT_TASK_JUDGE_MODEL=${AGENT_TASK_JUDGE_MODEL:-}
     # NOTE: Single uvicorn worker is intentional. The in-memory rate limiter
     # and SSE broadcaster require a single process. Horizontal scaling needs Redis.
     deploy:
@@ -105,7 +121,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      # Schema migrations run to completion before the server starts serving,
+      # and the self-hosting docs warn they can take minutes on a multi-GB
+      # database. The grace must cover a full upgrade boot — frontend and
+      # caddy gate on service_healthy, so a too-short window fails
+      # `docker compose up -d` on exactly the upgrades that need it most.
+      start_period: 180s
 
 volumes:
   apo_db:
