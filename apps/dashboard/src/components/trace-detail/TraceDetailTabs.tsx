@@ -16,6 +16,24 @@ export interface TraceDetailTabsProps {
 
 const VALID_RUN_TABS = new Set(["preview", "metadata", "tokens", "costs"]);
 
+// Raw-OTel traces record `input: {}` / `output: {}` on their spans; such
+// payloads render as an invisible empty JSON tree, so they count as absent
+// and fall through to the next source / the "No X recorded" empty state.
+function hasPayload(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return true;
+}
+
+function firstMeaningfulPayload(...candidates: unknown[]): unknown {
+  for (const candidate of candidates) {
+    if (hasPayload(candidate)) return candidate;
+  }
+  return null;
+}
+
 function Section({
   title,
   children,
@@ -83,8 +101,8 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
   // trace itself didn't record aggregate input/output.
   const firstCall = calls[0];
   const lastCall = calls[calls.length - 1];
-  const traceInput = run.run.input ?? firstCall?.input ?? null;
-  const traceOutput = run.run.output ?? lastCall?.output ?? null;
+  const traceInput = firstMeaningfulPayload(run.run.input, firstCall?.input);
+  const traceOutput = firstMeaningfulPayload(run.run.output, lastCall?.output);
 
   const totalCost = useMemo(
     () => calls.reduce((sum: number, c: any) => sum + (c.cost || 0), 0),
