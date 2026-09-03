@@ -37,6 +37,7 @@ from ..models.schemas import (
     as_task_run_status,
     as_trace_persistence_status,
 )
+from ..models.columns import CALL_LIGHT
 from ..services.agent_task_configuration import configuration_from_row
 from ..services.agent_task_batch_listing import (
     BatchRunListFilters,
@@ -131,8 +132,11 @@ def _load_primary_models(
         # created_at so the first real model wins. Structural spans like
         # the "agent-task" run-loop CHAIN are not LLM models, and
         # "unknown" means the SDK never captured a model — both skipped.
+        # CALL_LIGHT: only the scalar model/type/created_at fields are
+        # read — the payload JSON columns stay deferred.
         calls = session.exec(
             select(LoggedCallDB)
+            .options(*CALL_LIGHT)
             .where(
                 as_column(cast(object, LoggedCallDB.run_id)).in_(missing),
                 as_column(cast(object, LoggedCallDB.project)) == project,
@@ -722,6 +726,7 @@ async def list_agent_task_runs(
     model: list[str] | None = Query(default=None),
     effort: list[str] | None = Query(default=None),
     since: str | None = Query(default=None),
+    limit: int = Query(default=1000, ge=1, le=5000),
     session: Session = Depends(get_session),
 ):
     """List all task runs, optionally filtered.
@@ -739,6 +744,13 @@ async def list_agent_task_runs(
     explicit ``project`` is authorized before use; omitting it returns
     only the caller's membership Projects (or is unrestricted in
     development open-dev mode).
+
+    ``limit`` caps the response (default 1000, max 5000) over the
+    ``started_at``-descending order — the endpoint answers "the newest N
+    runs for this filter", never an unbounded dump. The default keeps
+    every current caller whole (the dashboard reads one task's history
+    at a time); an explicit ``limit`` is there for API consumers with
+    larger cohorts.
     """
     # Derive the Project scope.
     if project:
@@ -784,6 +796,7 @@ async def list_agent_task_runs(
         query = query.where(col(AgentTaskRunDB.started_at) >= since_cutoff_value)
 
     query = query.order_by(desc(as_column(cast(object, AgentTaskRunDB.started_at))))
+    query = query.limit(limit)
     task_runs = session.exec(query).all()
     triggers = _load_batch_triggers(session, [tr.batch_run_id for tr in task_runs])
     return [to_task_run_summary(tr, triggers.get(tr.batch_run_id)) for tr in task_runs]

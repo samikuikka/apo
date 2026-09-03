@@ -16,7 +16,7 @@ from sqlmodel import create_engine
 
 def test_latest_schema_version_bumped_to_v30() -> None:
     """v30 is registered — the guard that reminds the next bump to add coverage."""
-    assert LATEST_SCHEMA_VERSION == 41
+    assert LATEST_SCHEMA_VERSION == 42
 
 
 def test_migration_maps_drifted_completed_runs_by_verdict() -> None:

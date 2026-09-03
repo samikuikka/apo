@@ -1076,6 +1076,22 @@ def _migrate_to_v41() -> None:
         conn.exec_driver_sql("DROP TABLE IF EXISTS annotation_queues")
 
 
+def _migrate_to_v42() -> None:
+    """Version 42: index ``agent_task_runs.started_at``.
+
+    The task-run list orders by ``started_at`` descending and the ``since``
+    window filters on it — without the index every list request sorts the
+    whole table. New DBs get the index from ``create_all``; existing DBs
+    build it here. One full-table scan on first boot after upgrading;
+    idempotent via ``IF NOT EXISTS``.
+    """
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_agent_task_runs_started_at "
+            "ON agent_task_runs (started_at)"
+        )
+
+
 def _migrate_span_facet_indexes(conn: Connection) -> None:
     """Covering facet indexes + a prunable span-time window.
 
@@ -2552,7 +2568,7 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 41
+LATEST_SCHEMA_VERSION = 42
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -2596,6 +2612,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     39: _migrate_to_v39,
     40: _migrate_to_v40,
     41: _migrate_to_v41,
+    42: _migrate_to_v42,
 }
 
 

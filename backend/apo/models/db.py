@@ -496,9 +496,11 @@ class AgentTaskRunDB(SQLModel, table=True):
     adapter_name: str | None = None
     status: str = Field(index=True)
     pass_result: bool | None = None
+    # Indexed: the task-run list orders by started_at desc and the ``since``
+    # window filters on it — the table's hottest query shape.
     started_at: datetime | None = Field(
         default=None,
-        sa_column=Column(UTCDateTime),
+        sa_column=Column(UTCDateTime, index=True),
     )
     completed_at: datetime | None = Field(
         default=None,

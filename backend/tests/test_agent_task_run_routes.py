@@ -484,6 +484,48 @@ def test_batch_detail_backfills_task_selection_from_children(
     assert resp.json()["selection_query"] == {"task_paths": ["chat/cost-inquiry"]}
 
 
+# ============================================================================
+# limit
+# ============================================================================
+
+
+def test_task_run_list_limit_returns_newest_runs(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """limit caps the response over started_at-descending order — the
+    endpoint answers "the newest N", never an unbounded dump."""
+    now = datetime.now(timezone.utc)
+    session.add(_batch("batch-limit", "proj-limit", now))
+    session.add_all(
+        [
+            _run(f"run-limit-{i}", "batch-limit", "task-1", now - timedelta(minutes=i))
+            for i in range(5)
+        ]
+    )
+    session.commit()
+
+    resp = client.get(
+        "/v1/agent-task-runs", params={"project": "proj-limit", "limit": 2}
+    )
+    assert resp.status_code == 200
+    ids = [r["id"] for r in resp.json()]
+    assert ids == ["run-limit-0", "run-limit-1"]
+
+
+def test_task_run_list_rejects_out_of_range_limit(
+    client: TestClient,
+    session: Session,
+) -> None:
+    session.add(_batch("batch-limit-2", "proj-limit-2", datetime.now(timezone.utc)))
+    session.commit()
+
+    resp = client.get(
+        "/v1/agent-task-runs", params={"project": "proj-limit-2", "limit": 99999}
+    )
+    assert resp.status_code == 422
+
+
 def _batch(
     batch_id: str,
     project: str,

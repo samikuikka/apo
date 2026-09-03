@@ -245,10 +245,14 @@ def _apply_metric_filter(
     if filters.max_score is not None:
         metric_subquery = metric_subquery.where(RUN_METRIC_SCORE_COL <= filters.max_score)
 
-    matching_run_ids = cast(list[str], session.exec(metric_subquery).all())
-    if not matching_run_ids:
+    # Keep the empty-page fast path, but push the id set down as a subquery
+    # instead of materializing it: a materialized list is unscoped (crosses
+    # every project's metrics), can exceed SQLite's host-parameter limit on
+    # large installs, and pays a full Python round-trip per id. The probe
+    # costs one indexed lookup.
+    if session.exec(metric_subquery.limit(1)).first() is None:
         return None
-    return statement.where(RUN_ID_COL.in_(matching_run_ids))
+    return statement.where(RUN_ID_COL.in_(metric_subquery.scalar_subquery()))
 
 
 def _apply_status_filter(statement: Any, status_values: list[str]) -> Any:
