@@ -4,7 +4,7 @@
   "packageManager": "pnpm@11.3.0",
   "scripts": {
     "predev": "fuser -k -TERM 3000/tcp 3001/tcp 3002/tcp 8000/tcp 2>/dev/null; sleep 1; fuser -k 3000/tcp 3001/tcp 3002/tcp 8000/tcp 2>/dev/null || true",
-    "dev": "concurrently \"pnpm --filter dashboard dev\" \"pnpm --filter backend dev\" \"pnpm --filter backend executor\" \"pnpm --filter example-service dev\" \"pnpm --filter example-service-py dev\"",
+    "dev": "concurrently \"pnpm --filter dashboard dev\" \"pnpm --filter backend dev\" \"pnpm --filter example-service dev\" \"pnpm --filter example-service-py dev\"",
     "docs": "pnpm --filter docs dev",
     "docs:build": "pnpm --filter docs build",
     "apo": "node --experimental-strip-types --conditions development packages/cli/src/main.ts",

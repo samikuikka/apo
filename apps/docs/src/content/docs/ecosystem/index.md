@@ -50,26 +50,26 @@ The **real-agent** adapter also ships ten ready-made tasks under `apps/example-s
 
 ## CI integration
 
-apo's CLI has a `--ci` mode designed for automated runs. Strict exit codes (0=pass, 1=fail, 2=error) let you gate pipelines on the verdict:
+`apo task run` has strict exit codes (0=pass, 1=fail, 2=error) by default — gate pipelines directly on the verdict:
 
 ```bash
 # Run a task in CI — fails the pipeline if a test fails
-apo task run extract-parties --ci
+apo task run extract-parties
 ```
 
 ```yaml
 - name: Run agent tasks
-  run: apo task run extract-parties --ci
+  run: apo task run extract-parties
   env:
     APO_BACKEND_URL: ${{ secrets.APO_BACKEND_URL }}
     APO_API_KEY: ${{ secrets.APO_API_KEY }}
 ```
 
-See [`apo task run`](/cli/task-run/) for the full `--ci` reference, and [Loop engineering](/guides/loop-engineering/) for how a coding agent uses the same CLI to close the loop.
+See [`apo task run`](/cli/task-run/) for the exit-code reference, and [Loop engineering](/guides/loop-engineering/) for how a coding agent uses the same CLI to close the loop.
 
 ## See also
 
 - [Reference overview](/reference/overview/) — the API surfaces.
 - [Flow normalizers](/reference/flow-normalizers/) — the normalizer signatures.
 - [Adapter API](/reference/adapter/) — what an adapter implements.
-- [CLI overview](/cli/) — every command, including `--ci` mode.
+- [CLI overview](/cli/) — every command.

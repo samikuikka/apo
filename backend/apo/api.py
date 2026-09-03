@@ -32,7 +32,6 @@ from .routes import (
     agent_task_trace_projection,
     agent_task_views,
     models,
-    analytics,
     scores,
     otlp_traces,
     langfuse_public,
@@ -188,7 +187,6 @@ def create_app() -> FastAPI:
     from .routes import task_definition_sources
     app.include_router(task_definition_sources.router)
     app.include_router(models.router)
-    app.include_router(analytics.router)
     app.include_router(scores.router)
     app.include_router(otlp_traces.router)
     app.include_router(langfuse_public.router)

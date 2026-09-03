@@ -602,24 +602,6 @@ def test_trace_sse_denies_cross_project(
 
 
 # ---------------------------------------------------------------------------
-# Phase 4: Analytics cross-Project denial
-# ---------------------------------------------------------------------------
-
-
-def test_analytics_search_denies_cross_project(
-    session: Session, make_authed_client: Callable[..., TestClient]
-) -> None:
-    _seed_http_world(session)
-
-    bob_client = make_authed_client(_USER_BOB, session)
-    resp = bob_client.post(
-        "/api/v1/traces/search",
-        json={"project": _PROJECT_A, "limit": 10, "offset": 0},
-    )
-    assert resp.status_code in (403, 404)
-
-
-# ---------------------------------------------------------------------------
 # Phase 4: Trace mutation cross-Project denial
 # ---------------------------------------------------------------------------
 
@@ -989,6 +971,39 @@ def test_api_key_cannot_manage_other_projects_keys(
 
 
 # ---------------------------------------------------------------------------
+# Test 26b: run PATCH is a member-level write, not a viewer-level one
+# ---------------------------------------------------------------------------
+
+
+def test_run_patch_denies_viewer_role(
+    session: Session, make_authed_client: Callable[..., TestClient]
+) -> None:
+    """A viewer-role member can read a Project's traces but must not be
+    able to mutate run completion state (completed_at / duration_ms /
+    call_count) — PATCH /v1/runs requires the member floor the other
+    run writes (bookmark, corrections, custom metrics) already use."""
+    from apo.models.db import RunDB
+
+    now = datetime.now(timezone.utc)
+    _make_user(session, _USER_ALICE)
+    _make_user(session, _USER_BOB)
+    _make_project(session, _PROJECT_A, owner_id=_USER_ALICE)
+    _add_membership(session, _PROJECT_A, _USER_BOB, role="viewer")
+    session.add(
+        RunDB(id="trace-a-patch", project=_PROJECT_A, created_at=now)
+    )
+    session.commit()
+
+    bob_client = make_authed_client(_USER_BOB, session)
+    resp = bob_client.patch(
+        f"/v1/runs/trace-a-patch", json={"completed": True, "call_count": 99}
+    )
+    assert resp.status_code == 403, (
+        "viewer-role callers must not be able to patch run completion state"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Test 27: Model-pricing overrides cannot be moved across Projects
 # ---------------------------------------------------------------------------
 
@@ -1268,10 +1283,6 @@ _ROUTE_MODULE_AUDIT: dict[str, tuple[str, list[tuple[str, str]]]] = {
                 "test_key_cannot_read_foreign_project_views",
             ),
         ],
-    ),
-    "analytics": (
-        "project",
-        [("tests/test_project_authorization_boundary.py", "test_analytics_search_denies_cross_project")],
     ),
     "api_keys": (
         "project",

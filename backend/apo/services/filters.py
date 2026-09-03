@@ -69,17 +69,6 @@ def apply_tag_filters(
     return statement
 
 
-def apply_tag_any_filter(
-    statement: Any,
-    tags: list[str],
-    column_name: str = "tags",
-) -> Any:
-    conditions = _build_tag_conditions(tags, column_name)
-    if conditions:
-        statement = statement.where(or_(*conditions))
-    return statement
-
-
 def apply_tag_all_filter(
     statement: Any,
     tags: list[str],

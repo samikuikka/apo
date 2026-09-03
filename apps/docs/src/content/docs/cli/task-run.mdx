@@ -32,7 +32,7 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 ## Synopsis
 
 ```bash
-apo task run <task-id | path> [--ci] [--no-record]
+apo task run <task-id | path> [--no-record]
 ```
 
 ## Description
@@ -97,7 +97,7 @@ If most of the run's model generations ended in error, apo records **no verdict*
 
 ## Exit codes
 
-A failing run exits non-zero whether or not `--ci` is set — so any script gating on this command catches failures either way:
+A failing run exits non-zero — so any script gating on this command catches failures either way:
 
 | Exit code | Meaning |
 |---|---|
@@ -105,7 +105,7 @@ A failing run exits non-zero whether or not `--ci` is set — so any script gati
 | `1` | The run completed but one or more tests failed. |
 | `2` | The run errored (adapter crashed, config missing, backend unreachable, etc.). |
 
-`--ci` doesn't change the exit codes; it records CI metadata (trigger source, actor, commit) on the run and reports a strict `0`/`1`/`2` mapping based on the pass result. Use it when you want the batch run tagged with its originating pipeline.
+The `0`/`1`/`2` mapping is always strict — no flag changes it — which is what makes the command safe to gate a pipeline on.
 
 ## How the Task runs
 
@@ -141,8 +141,9 @@ For persistent execution (dashboard and scheduled runs), use
 # Run a task by id
 apo task run extract-parties
 
-# Run from CI, fail the pipeline on a failing test
-apo task run extract-parties --ci
+# Run from CI and fail the pipeline on a failing test
+# (strict exit codes are the default — no special mode needed)
+apo task run extract-parties
 
 # Run a task by path
 apo task run ./e2e/tasks/extract-parties

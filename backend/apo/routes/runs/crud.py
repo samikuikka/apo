@@ -114,9 +114,13 @@ def update_run(
     run = require_run_not_demo(session, run_id)
 
     _validate_trace_write_access(http_request, session, run_id, run.project)
-    # For non-service-token callers, require member on the derived Project.
+    # For non-service-token callers, require member on the derived Project —
+    # the same floor as the other run writes (bookmark, corrections,
+    # custom metrics). Viewers can read traces, never mutate them.
     if getattr(http_request.state, "auth_method", None) != "service_token":
-        enforce_project_read_from_request(http_request, session, run.project)
+        _ = enforce_project_role_from_request(
+            http_request, session, run.project, minimum_role="member"
+        )
 
     if request.completed:
         run.completed_at = datetime.now(timezone.utc)
