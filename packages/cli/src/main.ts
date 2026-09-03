@@ -49,6 +49,14 @@ const commands: Record<string, CommandEntry> = {
     help: "Show effective configuration (login, backend, project, task root)",
     note: "Prints exactly what commands will use, resolved from flags > environment > ~/.apo/credentials > defaults. No backend auth needed.",
   },
+  run: {
+    handler: loadCommand("run"),
+    help: "Run evals interactively — pick tasks, pick a model, confirm, run",
+    examples: [
+      "apo run",
+    ],
+    note: "The human-facing runner: a folder tree of tasks (space checks a subset), a model picker with type-to-filter, and a run manifest before anything executes. Runs record exactly like `apo task run`. Needs a terminal — agents and CI should use `apo task run <id>`.",
+  },
   "project list": {
     handler: loadCommand("project-list"),
     help: "List projects you can access",
