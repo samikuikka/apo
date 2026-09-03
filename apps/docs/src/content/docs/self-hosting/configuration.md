@@ -110,17 +110,22 @@ Email is **off by default** (log-only). The platform works fully without it, wit
 
   Send the one-hour link to the user privately.
 
-**To enable delivery** (fully optional, provider-agnostic) set two env vars and restart the backend:
+**To enable delivery** (fully optional, provider-agnostic) put the variables in `.env` next to your Compose files, then restart the backend:
 
 ```bash
+# .env
 EMAIL_TRANSPORT_URL=smtp://USER:PASS@smtp.provider.com:587
 EMAIL_FROM_ADDRESS=noreply@yourdomain.com
 # optional:
 EMAIL_FROM_NAME=apo
 ```
 
+```bash
+docker compose up -d backend
+```
+
 - `smtp://…` works with **any** SMTP provider (Resend, Brevo, Mailgun, Gmail, …).
-- `ses://us-east-1` uses **AWS SES** (boto3). Both transports are built in.
+- `ses://us-east-1` uses **AWS SES** via boto3, which is installed when running from source with the `s3` extra. The Docker image ships without boto3 — in Docker, use SES's SMTP interface with an `smtp://…` URL instead.
 - Port `465` = implicit TLS, `587` = STARTTLS (auto-detected).
 
 ## Cost-aware defaults

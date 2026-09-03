@@ -72,6 +72,8 @@ Off by default. The platform works fully without email. To enable delivery:
 | `EMAIL_TRANSPORT_URL` | `smtp://USER:PASS@smtp.provider.com:587` (any SMTP) or `ses://us-east-1` (AWS SES). |
 | `EMAIL_FROM_ADDRESS` | From address. |
 | `EMAIL_FROM_NAME` | From name (optional, defaults to "apo"). |
+| `EMAIL_SMTP_TLS` | Override TLS auto-detection: unset = auto (465 implicit TLS, 587 STARTTLS, other ports plain), `true` = force on, `false` = disable. |
+| `EMAIL_SMTP_TIMEOUT` | SMTP timeout in seconds (default 30). |
 
 ## CLI
 

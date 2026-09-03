@@ -80,6 +80,14 @@ services:
       # Hard ceiling on DB file size in 4 KiB pages (0 = unlimited).
       # e.g. 262144 pages ~= 1 GiB. Writes fail once the cap is hit.
       - APO_MAX_DB_PAGES=${APO_MAX_DB_PAGES:-0}
+      # --- Email delivery (optional) ---
+      # Unset EMAIL_TRANSPORT_URL keeps the log-only fallback: invitations
+      # become copy-link and password-reset links go to the backend logs.
+      # Works with any SMTP provider, e.g. Resend:
+      #   smtp://resend:API_KEY@smtp.resend.com:587
+      - EMAIL_TRANSPORT_URL=${EMAIL_TRANSPORT_URL:-}
+      - EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS:-}
+      - EMAIL_FROM_NAME=${EMAIL_FROM_NAME:-apo}
     # NOTE: Single uvicorn worker is intentional. The in-memory rate limiter
     # and SSE broadcaster require a single process. Horizontal scaling needs Redis.
     deploy:
