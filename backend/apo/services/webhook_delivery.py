@@ -18,6 +18,7 @@ from sqlmodel import Session, select
 
 from ..db import engine
 from ..models.db import WebhookDB
+from .webhook_targets import WebhookDestinationError, assert_public_destination
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,18 @@ def generate_secret() -> str:
 
 async def deliver_webhook(webhook: WebhookDB, event_data: Mapping[str, object]) -> bool:
     assert webhook.id is not None
+
+    # Delivery-time SSRF guard: re-resolve the destination so a URL whose
+    # DNS changed to an internal address after configuration (or a webhook
+    # created before the guard existed) cannot be reached from the server.
+    try:
+        assert_public_destination(webhook.url)
+    except WebhookDestinationError as exc:
+        logger.warning(
+            "Webhook %s blocked: %s", webhook.id, exc,
+        )
+        _update_webhook_status(webhook.id, success=False)
+        return False
 
     payload_bytes = json.dumps(event_data, default=str).encode()
     signature = sign_payload(payload_bytes, webhook.secret)

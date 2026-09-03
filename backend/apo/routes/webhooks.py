@@ -15,6 +15,7 @@ from ..db import get_session
 from ..models.db import WebhookDB
 from ..services.demo_workspace import require_project_not_demo
 from ..services.project_memberships import enforce_project_role_from_request
+from ..services.webhook_targets import validate_webhook_url
 from ..services.webhook_delivery import generate_secret, deliver_webhook
 from ..services.run_events import ALL_EVENT_TYPES, RunEvent
 
@@ -93,6 +94,12 @@ def create_webhook(
     _ = enforce_project_role_from_request(
         request, session, body.project, minimum_role="admin"
     )
+    # SSRF guard: the server POSTs to this URL — non-http(s) schemes and
+    # internal addresses are rejected at configuration time.
+    try:
+        validate_webhook_url(body.url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if body.events:
         invalid = set(body.events) - set(ALL_EVENT_TYPES)
         if invalid:
@@ -181,6 +188,11 @@ def update_webhook(
     )
 
     if body.url is not None:
+        # Same SSRF guard as creation — a URL change re-checks the target.
+        try:
+            validate_webhook_url(body.url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         wh.url = body.url
     if body.description is not None:
         wh.description = body.description

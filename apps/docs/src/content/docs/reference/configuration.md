@@ -198,6 +198,8 @@ purges the OTLP spans of what it deletes.
 | `APO_PROJECTION_WRITE_MODE` | `fat` | How the trace projection stores call I/O. `fat` writes full input/output into `logged_calls` (today's behavior). `dual` additionally writes run-level list previews. `slim` stops writing the fat I/O columns — detail views resolve I/O from the canonical span store, and span-less legacy rows serve their stored columns as fallback. Flip one step at a time; each is independently revertible. |
 | `APO_LIST_READ` | `legacy` | The traces-list preview source. `previews` reads the write-time previews on `runs` (never touching call I/O on list renders); runs without a stored preview fall back to the legacy truncation per run. Flip only after the backfill (`POST /v1/admin/projection/backfill`) verified parity. |
 | `PROJECT_INVITATION_TTL_HOURS` | `168` | How long project invitations stay valid (7 days). |
+| `APO_READ_RATE_LIMIT_MAX` | `120` | Per-identity cap (per window) on the heavy list endpoints (`GET /v1/runs`, facets, task-run and batch-run lists). Generous by design — dashboard polling stays far below it; a leaking script gets 429s instead of pinning the database. `0` disables. |
+| `APO_READ_RATE_LIMIT_WINDOW_SECONDS` | `60` | The window for the read rate limit above. |
 
 See [Self-Hosting → Data Growth and Retention](/self-hosting/data-growth/)
 for what accumulates, how the tiers work, and recommended settings.
