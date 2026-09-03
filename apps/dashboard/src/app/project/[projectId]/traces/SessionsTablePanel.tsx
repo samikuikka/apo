@@ -352,7 +352,7 @@ export function SessionsTablePanel({
                 {table.getRowModel().rows.map((row) => (
                   <TableRow
                     key={row.id}
-                    className="group cursor-pointer border-b border-border/40 transition-colors hover:bg-muted/30"
+                    className="group cursor-pointer border-b border-border/40 transition-colors"
                     onClick={() => onSelectSession(row.original.id)}
                   >
                     {row.getVisibleCells().map((cell) => {
