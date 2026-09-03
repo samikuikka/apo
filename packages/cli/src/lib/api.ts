@@ -143,7 +143,10 @@ export function apiDelete<T>(
 export async function isBackendReachable(baseUrl: string): Promise<boolean> {
   try {
     const url = resolveApiUrl(baseUrl, "/health");
-    await fetch(url.toString(), { method: "GET" });
+    // This is the first call most commands make — a stalled backend must
+    // resolve to "unreachable" quickly, not hang the command on undici's
+    // ~300s default.
+    await fetch(url.toString(), { method: "GET", signal: AbortSignal.timeout(5_000) });
     // Any HTTP response means the server is up. A 401/403 just means auth
     // is enforced — the caller has credentials and will authenticate on
     // the actual API call. Only a network failure (catch) means unreachable.

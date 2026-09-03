@@ -1,123 +1,79 @@
 /**
- * two-phase execution split.
+ * Two-phase execution split, tested against the production projection tee.
  *
- * Test 14: root span end + flush completes BEFORE the first check executes.
- * Test 15: the evaluated trace contains no `checks.run` or `deliverables.validate`
- * child spans — evaluation does not contaminate the trace.
+ * Phase 1 (capture): the adapter runs, spans flow through the tee, the root
+ * span ends. Phase 2 (evaluate): checks run against the frozen snapshot.
  *
- * Strategy: use the LocalTraceProjectionRecorder (Track A) as a capture
- * instrument. We wrap the trace context so we can observe when the root span
- * ends relative to when checks run, and inspect whether any check/deliverable
- * spans were recorded.
+ * - a check sees spans recorded during capture (capture completes before
+ *   evaluation)
+ * - evaluation does not contaminate the captured trace — running checks
+ *   leaves the snapshot byte-identical, and no evaluation spans appear in it
+ *
+ * These guarantees used to be tested through the removed
+ * LocalTraceProjectionRecorder, which had drifted from the production tee
+ * (capability semantics and snapshot shape had diverged).
  */
-
 import { describe, it, expect } from "vitest";
-import { defineCheck, resetFlowChecks } from "../src/agent-task/checks/flow-runner.ts";
-import { createLocalTraceProjectionRecorder } from "../src/agent-task/trace-projection/local-recorder.ts";
+import { createProjectionTee } from "../src/agent-task/trace-projection/projection-tee.ts";
+import { createNoopAgentTaskTraceContext } from "../src/agent-task/tracing.ts";
+import {
+  defineCheck,
+  resetFlowChecks,
+  runTraceChecks,
+} from "../src/agent-task/checks/flow-runner.ts";
 
-describe("two-phase split (Tests 14 + 15)", () => {
-  it("root span ends and flushes before the first check executes", async () => {
-    const recorder = createLocalTraceProjectionRecorder();
-    const checkCallOrder: string[] = [];
-    let rootEndedBeforeFirstCheck = false;
+function recordToolDuringCapture(
+  teeTrace: ReturnType<typeof createProjectionTee>["trace"],
+): void {
+  const toolId = teeTrace.createSpan({
+    task_id: "tool.read_file",
+    step_name: "read_file",
+    observation_type: "TOOL",
+  });
+  teeTrace.endSpan(toolId, { level: "DEFAULT", metadata: { tool_name: "read_file" } });
+  teeTrace.endRoot();
+}
 
-    const captured = await recorder.capture(
-      { project: "p", flow_name: "two-phase-test", taskRunId: "tr-14" },
-      async (trace) => {
-        // Simulate a tool call during execution.
-        const toolId = trace.createSpan({
-          task_id: "tool.read_file",
-          step_name: "read_file",
-          observation_type: "TOOL",
-        });
-        trace.endSpan(toolId, { level: "DEFAULT", metadata: { tool_name: "read_file" } });
+describe("two-phase split (production tee)", () => {
+  it("a check sees spans recorded during capture", async () => {
+    const tee = createProjectionTee(createNoopAgentTaskTraceContext());
 
-        // End the root — Phase 1 is over.
-        trace.endRoot();
-        rootEndedBeforeFirstCheck = true; // root ended, no checks yet
+    // Phase 1: capture, then freeze.
+    recordToolDuringCapture(tee.trace);
+    const snapshot = tee.getSnapshot();
 
-        // Phase 2: checks run AFTER the root ended.
-        const snapshot = recorder.getSnapshot();
-        checkCallOrder.push("checks-start");
+    // Phase 2: evaluate the frozen snapshot.
+    resetFlowChecks();
+    defineCheck("post-trace-check", (t) => {
+      t.calledTool("read_file");
+    });
+    const results = await runTraceChecks({ snapshot, deliverables: {} });
 
-        resetFlowChecks();
-        defineCheck("post-trace-check", (t) => {
-          checkCallOrder.push("inside-check");
-          t.calledTool("read_file");
-        });
-
-        // Dynamically import to avoid circular issues.
-        const { runTraceChecks } = await import("../src/agent-task/checks/flow-runner.ts");
-        const results = await runTraceChecks({ snapshot, deliverables: {} });
-        return results;
-      },
-    );
-
-    // The check ran and passed because read_file was recorded during capture.
-    expect(captured.value).toHaveLength(1);
-    expect(captured.value[0]!.pass).toBe(true);
-    // Root ended before the check started.
-    expect(rootEndedBeforeFirstCheck).toBe(true);
-    expect(checkCallOrder[0]).toBe("checks-start");
-    expect(checkCallOrder[1]).toBe("inside-check");
+    expect(results).toHaveLength(1);
+    expect(results[0]!.pass).toBe(true);
   });
 
-  it("the evaluated trace contains no checks.run or deliverables.validate spans", async () => {
-    const recorder = createLocalTraceProjectionRecorder();
+  it("running checks does not contaminate the captured trace", async () => {
+    const tee = createProjectionTee(createNoopAgentTaskTraceContext());
+    recordToolDuringCapture(tee.trace);
 
-    const captured = await recorder.capture(
-      { project: "p", flow_name: "contamination-test", taskRunId: "tr-15" },
-      async (trace) => {
-        // Phase 1: execution only — no checks.
-        const toolId = trace.createSpan({
-          task_id: "tool.read_file",
-          step_name: "read_file",
-          observation_type: "TOOL",
-        });
-        trace.endSpan(toolId, { level: "DEFAULT", metadata: { tool_name: "read_file" } });
-        trace.endRoot();
+    const before = tee.getSnapshot();
+    const observationsBefore = JSON.stringify(before.observations);
 
-        // Phase 2: evaluation — OUTSIDE the trace. Any spans created here
-        // must NOT appear in the snapshot.
-        const snapshot = recorder.getSnapshot();
-        resetFlowChecks();
-        defineCheck("clean-trace-check", (t) => {
-          t.calledTool("read_file");
-        });
+    resetFlowChecks();
+    defineCheck("reads-only", (t) => {
+      t.calledTool("read_file");
+    });
+    await runTraceChecks({ snapshot: before, deliverables: {} });
 
-        const { runTraceChecks } = await import("../src/agent-task/checks/flow-runner.ts");
-        return runTraceChecks({ snapshot, deliverables: {} });
-      },
-    );
-
-    // Checks passed — the tool was recorded during Phase 1.
-    expect(captured.value[0]!.pass).toBe(true);
-
-    // The snapshot is frozen — no checks.run or deliverables.validate in it.
-    const spanNames = captured.snapshot.observations.map((o) => o.name);
+    const after = tee.getSnapshot();
+    // Timing fields (trace.durationMs) are derived at snapshot time, so
+    // compare the observations themselves: evaluation must add, remove, or
+    // modify none of them.
+    expect(JSON.stringify(after.observations)).toBe(observationsBefore);
+    const spanNames = after.observations.map((o) => o.name);
+    expect(spanNames).toContain("read_file");
     expect(spanNames).not.toContain("checks.run");
     expect(spanNames).not.toContain("deliverables.validate");
-    // Only the tool + root should be present.
-    expect(spanNames).toContain("read_file");
-  });
-
-  it("the frozen snapshot is immutable — Phase 2 cannot add observations", async () => {
-    const recorder = createLocalTraceProjectionRecorder();
-
-    const captured = await recorder.capture(
-      { project: "p", flow_name: "immutability-test" },
-      async (trace) => {
-        trace.endRoot();
-        const snapshotBefore = recorder.getSnapshot();
-        const countBefore = snapshotBefore.observations.length;
-
-        // Phase 2: try to create a span "after" the trace closed.
-        // This should either be impossible (root ended) or not affect the snapshot.
-        const snapshotAfter = recorder.getSnapshot();
-        return { countBefore, countAfter: snapshotAfter.observations.length };
-      },
-    );
-
-    expect(captured.value.countBefore).toBe(captured.value.countAfter);
   });
 });

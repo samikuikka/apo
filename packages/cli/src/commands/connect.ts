@@ -93,8 +93,18 @@ export async function run(argv: string[]): Promise<number> {
     console.log(dim(`Reusing executor: ${state.executor_name}`));
   }
 
-  // 3. Initial heartbeat + catalog check
-  let eligibility = await safeHeartbeat(config.backendUrl, state.credential, catalogDigest, concurrency);
+  // 3. Initial heartbeat + catalog check. A revoked credential is terminal
+  // here; a transient error falls through to the loop's retry.
+  let eligibility: Awaited<ReturnType<typeof safeHeartbeat>>;
+  try {
+    eligibility = await safeHeartbeat(config.backendUrl, state.credential, catalogDigest, concurrency);
+  } catch (err) {
+    if (err instanceof ExecutorCredentialRevoked) {
+      console.error(red(`error: ${err.message}. Re-run \`apo connect\` to re-enroll.`));
+      return 2;
+    }
+    throw err;
+  }
   if (eligibility === null) return 2;
 
   printEligibility(eligibility, projectId, concurrency);
@@ -125,8 +135,17 @@ export async function run(argv: string[]): Promise<number> {
     // metadata change is detected without restarting apo connect.
     catalogDigest = computeLocalDigest(taskRoot);
 
-    // Heartbeat periodically
-    eligibility = await safeHeartbeat(config.backendUrl, state.credential, catalogDigest, concurrency);
+    // Heartbeat periodically. Revocation is terminal (same exit-2 as the
+    // claim path); transient errors retry on the next iteration.
+    try {
+      eligibility = await safeHeartbeat(config.backendUrl, state.credential, catalogDigest, concurrency);
+    } catch (err) {
+      if (err instanceof ExecutorCredentialRevoked) {
+        console.error(red(`error: ${err.message}. Re-run \`apo connect\` to re-enroll.`));
+        return 2;
+      }
+      throw err;
+    }
     if (eligibility === null) {
       await sleep(5000);
       continue;
@@ -198,6 +217,13 @@ export async function run(argv: string[]): Promise<number> {
   return 0;
 }
 
+/**
+ * A revoked executor credential cannot be retried into validity — the only
+ * recovery is re-enrollment. Thrown by ``safeHeartbeat`` so the main loop
+ * exits 2 (same as the claim path) instead of dim-error-retrying forever.
+ */
+class ExecutorCredentialRevoked extends Error {}
+
 async function safeHeartbeat(
   backendUrl: string,
   credential: string,
@@ -208,8 +234,7 @@ async function safeHeartbeat(
     return await heartbeat({ backendUrl, credential, catalogDigest, availableSlots: slots });
   } catch (err) {
     if ((err as Error).message.includes("invalid or revoked")) {
-      console.error(red("error: executor credential revoked."));
-      return null;
+      throw new ExecutorCredentialRevoked("executor credential revoked");
     }
     console.error(dim(`heartbeat error: ${(err as Error).message}`));
     return null;

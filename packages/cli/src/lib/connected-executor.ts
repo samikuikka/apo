@@ -55,6 +55,16 @@ function v2Base(backendUrl: string): string {
   return `${backendUrl}/v1/executor-protocol/v2`;
 }
 
+/**
+ * Every protocol fetch is bounded: a backend that accepts TCP but stalls
+ * would otherwise wedge the executor loop on undici's ~300s default
+ * header timeout. The attempt heartbeat already carried this bound
+ * (issue #176); the rest of the protocol calls get the same treatment.
+ * Control-plane calls are small; result/failure bodies can be large.
+ */
+const CONTROL_TIMEOUT_MS = 30_000;
+const SUBMIT_TIMEOUT_MS = 60_000;
+
 export async function bootstrapAndEnroll(opts: {
   backendUrl: string;
   projectId: string;
@@ -68,6 +78,7 @@ export async function bootstrapAndEnroll(opts: {
   // 1. Bootstrap
   const bootResp = await fetch(`${backendUrl}/v1/projects/${projectId}/connected-executor-bootstrap`, {
     method: "POST",
+    signal: AbortSignal.timeout(CONTROL_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${userAuthToken}`,
@@ -97,6 +108,7 @@ export async function bootstrapAndEnroll(opts: {
   // 2. Enroll
   const enrollResp = await fetch(`${v2Base(backendUrl)}/enroll`, {
     method: "POST",
+    signal: AbortSignal.timeout(CONTROL_TIMEOUT_MS),
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       token: boot.enrollment_token,
@@ -140,6 +152,7 @@ export async function heartbeat(opts: {
 }): Promise<CatalogEligibility> {
   const resp = await fetch(`${v2Base(opts.backendUrl)}/heartbeat`, {
     method: "POST",
+    signal: AbortSignal.timeout(CONTROL_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${opts.credential}`,
@@ -181,6 +194,7 @@ export async function claimWorkStructured(opts: {
 }): Promise<ClaimWorkResult> {
   const resp = await fetch(`${v2Base(opts.backendUrl)}/claims`, {
     method: "POST",
+    signal: AbortSignal.timeout(CONTROL_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${opts.credential}`,
@@ -216,6 +230,7 @@ export async function submitAttestation(opts: {
 }): Promise<{ task_revision_id: string; content_sha256: string }> {
   const resp = await fetch(`${v2Base(opts.backendUrl)}/attempts/${opts.attemptId}/source-attestation`, {
     method: "POST",
+    signal: AbortSignal.timeout(CONTROL_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${opts.attemptJwt}`,
@@ -238,6 +253,7 @@ export async function startAttempt(opts: {
 }): Promise<{ attempt_id: string; status: string; phase: string | null }> {
   const resp = await fetch(`${v2Base(opts.backendUrl)}/attempts/${opts.attemptId}/start`, {
     method: "POST",
+    signal: AbortSignal.timeout(CONTROL_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${opts.attemptJwt}`,
@@ -296,6 +312,7 @@ export async function submitResult(opts: {
 }): Promise<void> {
   const resp = await fetch(`${v2Base(opts.backendUrl)}/attempts/${opts.attemptId}/result`, {
     method: "POST",
+    signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${opts.attemptJwt}`,
@@ -316,8 +333,7 @@ export type SourceOwnedFailureKind =
   | "cancelled"
   | "executor_shutdown"
   | "driver"
-  | "result_invalid"
-  | "driver";
+  | "result_invalid";
 
 export async function submitFailure(opts: {
   backendUrl: string;
@@ -334,6 +350,7 @@ export async function submitFailure(opts: {
 }): Promise<void> {
   const resp = await fetch(`${v2Base(opts.backendUrl)}/attempts/${opts.attemptId}/failure`, {
     method: "POST",
+    signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${opts.attemptJwt}`,

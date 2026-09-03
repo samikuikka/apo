@@ -88,6 +88,15 @@ export interface CallerFailureBody {
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 20_000;
 
 /**
+ * Bounds for the non-heartbeat protocol calls. A backend that accepts TCP
+ * but stalls would otherwise wedge `apo task run` on undici's ~300s default;
+ * the heartbeats already carry their own bound, these cover create/start
+ * (control) and result/failure submission (potentially large bodies).
+ */
+const CONTROL_TIMEOUT_MS = 30_000;
+const SUBMIT_TIMEOUT_MS = 60_000;
+
+/**
  * Per-request bound for one beat. Below the interval so an unanswered beat is
  * abandoned in time for its replacement to go out, and floored so a short
  * test interval still allows a real round-trip. The lease is ~4.5 intervals
@@ -111,6 +120,7 @@ export async function createCallerRun(input: CreateCallerRunInput): Promise<Crea
   const url = `${input.backendUrl.replace(/\/$/, "")}/v1/agent-task-batch-runs/caller`;
   const resp = await fetch(url, {
     method: "POST",
+    signal: AbortSignal.timeout(CONTROL_TIMEOUT_MS),
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${input.apiKey}`,
@@ -163,6 +173,7 @@ function attemptHeaders(lease: CallerLease): Record<string, string> {
 export async function startCallerAttempt(backendUrl: string, lease: CallerLease): Promise<void> {
   const resp = await fetch(attemptUrl(backendUrl, lease, "start"), {
     method: "POST",
+    signal: AbortSignal.timeout(CONTROL_TIMEOUT_MS),
     headers: attemptHeaders(lease),
     body: JSON.stringify({ driver_kind: "caller", runtime: {} }),
   });
@@ -203,6 +214,7 @@ export async function submitCallerResult(
 ): Promise<void> {
   const resp = await fetch(attemptUrl(backendUrl, lease, "result"), {
     method: "POST",
+    signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
     headers: attemptHeaders(lease),
     body: JSON.stringify(body),
   });
@@ -216,6 +228,7 @@ export async function submitCallerFailure(
 ): Promise<void> {
   const resp = await fetch(attemptUrl(backendUrl, lease, "failure"), {
     method: "POST",
+    signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
     headers: attemptHeaders(lease),
     body: JSON.stringify(body),
   });

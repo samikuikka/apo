@@ -3,7 +3,6 @@ import { basename, dirname, join } from "path";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { z } from "zod";
 import { defineAdapter } from "../src/agent-task/adapter/defineAdapter";
-import { runAdapterLifecycle } from "../src/agent-task/adapter/lifecycle";
 import {
   parseAgentTaskCliArgs,
 } from "../src/agent-task/cli";
@@ -18,10 +17,8 @@ import {
 } from "../src/agent-task/task/defineTask";
 import { loadTask } from "../src/agent-task/task/loadTask";
 import { runTaskDir } from "../src/agent-task/task-runtime";
-import { createNoopAgentTaskTraceContext } from "../src/agent-task/tracing";
 import { turn, getTaskTurn, resetTaskTurn } from "../src/agent-task/turn";
 import type {
-  AdapterDefinition,
   DeliverableDefinition,
   TaskDefinition,
 } from "../src/agent-task/types";
@@ -432,57 +429,71 @@ describe("validateDeliverables", () => {
   });
 });
 
-describe("runAdapterLifecycle", () => {
-  it("runs setup, session driving, collection, and cleanup in order", async () => {
-    const order: string[] = [];
-    const adapter: AdapterDefinition = {
-      name: "test-adapter",
-      deliverables: {},
-      async initialize() {
-        order.push("initialize");
-        return { token: "state" };
+describe("adapter lifecycle (via runTask)", () => {
+  // Order is recorded through globalThis because the adapter module is
+  // imported from a temp copy by loadTask — its module scope is not
+  // reachable from the test file directly.
+  type OrderGlobal = { __lifecycle_order?: string[] };
+
+  function lifecycleAdapterModule(options?: { failCollection?: boolean }): string {
+    return `
+import { z } from "zod";
+import { defineAdapter } from "${LOCAL_DEFINE_ADAPTER_IMPORT}";
+
+const order = (globalThis as { __lifecycle_order?: string[] }).__lifecycle_order ??= [];
+
+export const testAdapter = defineAdapter({
+  name: "test-adapter",
+  deliverables: {
+    report: z.object({ title: z.string(), overview: z.string() }),
+  },
+  async initialize() {
+    order.push("initialize");
+    return { token: "state" };
+  },
+  turn: async ({ transcript }) => {
+    if (transcript.length > 0) return null;
+    return "test-prompt";
+  },
+  async startSession() {
+    order.push("startSession");
+    return {
+      async sendUserTurn(turn: unknown) {
+        order.push("sendUserTurn");
+        return { response: "ack:" + String(turn) };
       },
-      async startSession() {
-        order.push("startSession");
-        return {
-          async sendUserTurn() {
-            order.push("sendUserTurn");
-            return { response: "ok" };
-          },
-          async close() {
-            order.push("close");
-          },
-        };
-      },
-      async collectDeliverables() {
-        order.push("collectDeliverables");
-        return { report: "done" };
-      },
-      async cleanup() {
-        order.push("cleanup");
+      async close() {
+        order.push("close");
       },
     };
+  },
+  async collectDeliverables() {
+    order.push("collectDeliverables");
+    ${
+      options?.failCollection
+        ? `throw new Error("collect exploded");`
+        : `return { report: { title: "Summary", overview: "Source overview" } };`
+    }
+  },
+  async cleanup() {
+    order.push("cleanup");
+  },
+});
+`;
+  }
 
-    const result = await runAdapterLifecycle(
-      adapter,
-      {
-        task: { id: "t", adapter: "test-adapter", deliverables: ["report"] },
-        taskDir,
-        files: [],
-      },
-      async (session) => {
-        await session.sendUserTurn(
-          { content: "hello" },
-          {
-            trace: createNoopAgentTaskTraceContext(),
-            turnNumber: 1,
-          },
-        );
-      },
-    );
+  it("runs initialize, session, collection, and cleanup in order", async () => {
+    const g = globalThis as OrderGlobal;
+    g.__lifecycle_order = [];
+    setupTaskDir({
+      adapterContent: lifecycleAdapterModule(),
+      taskContent: buildSingleFileTaskModule(),
+    });
 
-    expect(result.deliverables).toEqual({ report: "done" });
-    expect(order).toEqual([
+    const result = await runTask(taskDir);
+
+    expect(result.result.checks[0]?.pass).toBe(true);
+    expect(g.__lifecycle_order).toEqual([
       "initialize",
       "startSession",
       "sendUserTurn",
@@ -490,6 +501,27 @@ describe("runAdapterLifecycle", () => {
       "cleanup",
       "close",
     ]);
+  });
+
+  it("still runs cleanup and close when collectDeliverables throws", async () => {
+    const g = globalThis as OrderGlobal;
+    g.__lifecycle_order = [];
+    setupTaskDir({
+      adapterContent: lifecycleAdapterModule({ failCollection: true }),
+      taskContent: buildSingleFileTaskModule(),
+    });
+
+    // runTask wraps adapter failures in AgentTaskRunError; the finally
+    // block must still tear the session down — the guarantee a drifted
+    // copy of this lifecycle once lost.
+    await expect(runTask(taskDir)).rejects.toThrow();
+    expect(g.__lifecycle_order).toContain("collectDeliverables");
+    expect(g.__lifecycle_order?.indexOf("cleanup")).toBeGreaterThan(
+      g.__lifecycle_order.indexOf("collectDeliverables"),
+    );
+    expect(g.__lifecycle_order?.indexOf("close")).toBeGreaterThan(
+      g.__lifecycle_order.indexOf("cleanup"),
+    );
   });
 });
 

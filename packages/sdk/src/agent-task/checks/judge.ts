@@ -206,6 +206,15 @@ function parseJudgeJson(raw: string): { pass?: boolean; reasoning?: string } {
 }
 
 /**
+ * Bound on one judge request. Generous — LLM completions on large
+ * deliverables are slow — but finite, because same-prefix judge calls are
+ * serialized (below): one stalled provider request would otherwise delay
+ * every criterion sharing the cached prefix, ~300s each on undici's
+ * default, with no error to see.
+ */
+const JUDGE_TIMEOUT_MS = 120_000;
+
+/**
  * Per-prefix serialization. Checks run concurrently (flow-runner uses
  * Promise.all), so without coordination N criteria judging the same
  * deliverable would all dispatch against a cold cache and mostly miss. This
@@ -272,6 +281,7 @@ export async function callJudge(args: {
 
     const response = await fetch(`${baseURL}/chat/completions`, {
       method: "POST",
+      signal: AbortSignal.timeout(JUDGE_TIMEOUT_MS),
       headers: {
         "Content-Type": "application/json",
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
