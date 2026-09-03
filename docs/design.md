@@ -44,6 +44,7 @@ Tailwind colors (`text-red-400`, `bg-green-500/10`).
 | `--muted-foreground` | `oklch(0.6 0 0)` | Secondary text |
 | `--secondary` | `oklch(0.2 0 0)` | Secondary fills |
 | `--accent` | `oklch(0.25 0 0)` | Hover/active fills |
+| `--accent-hover` | `color-mix(in oklab, var(--accent) 70%, var(--background))` | Opaque composite of `bg-accent/70` — table row hover; the shade pinned cells must use so scrolled-under content can't bleed through sticky cells |
 | `--border` | `oklch(0.28 0 0)` | Visible borders |
 | `--input` | `oklch(0.2 0 0)` | Input backgrounds |
 | `--ring` | `oklch(0.4 0 0)` | Focus ring (gray) |

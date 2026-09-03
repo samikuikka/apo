@@ -19,9 +19,9 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-muted-hover: var(--muted-hover);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-hover: var(--accent-hover);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
@@ -80,14 +80,15 @@
   /* Muted - for less emphasized content */
   --muted: oklch(0.2 0 0);
   --muted-foreground: oklch(0.6 0 0);       /* #999999 - gray text */
-  /* muted@50% composited over background, as one opaque color. Pinned table
-   * cells must paint opaque shades — a translucent hover background lets
-   * horizontally scrolled content bleed through the sticky cells. */
-  --muted-hover: color-mix(in oklab, var(--muted) 50%, var(--background));
 
-  /* Accent - for interactive elements */
+  /* Hover/active fills (see docs/design.md token table) */
   --accent: oklch(0.25 0 0);                /* subtle gray accent */
   --accent-foreground: oklch(1 0 0);
+  /* accent@70% composited over background, as one opaque color. Pinned table
+   * cells must paint opaque shades — a translucent hover background lets
+   * horizontally scrolled content bleed through the sticky cells. Keeps the
+   * pinned band identical to the row's own hover fill (bg-accent/70). */
+  --accent-hover: color-mix(in oklab, var(--accent) 70%, var(--background));
 
   /* Borders - lighter gray for visibility */
   --border: oklch(0.28 0 0);                /* #404040 - visible border */

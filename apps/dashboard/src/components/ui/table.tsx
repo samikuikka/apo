@@ -75,7 +75,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   return (
     <tr
       data-slot="table-row"
-      className={cn("hover:bg-white/5 data-[state=selected]:bg-white/10 border-b border-gray-800 transition-colors duration-200", className)}
+      className={cn("hover:bg-accent/70 data-[state=selected]:bg-accent border-b border-gray-800 transition-colors duration-200", className)}
       {...props}
     />
   )
@@ -108,10 +108,11 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
         "overflow-hidden align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
         DENSITY_CELL_CLASS[density],
         "data-[pinned=left]:bg-background data-[pinned=right]:bg-background",
-        // Opaque hover shade — a translucent one (e.g. bg-muted/50) lets
-        // horizontally scrolled cells show through the sticky pinned cells.
-        "group-hover:data-[pinned=left]:bg-muted-hover group-hover:data-[pinned=right]:bg-muted-hover",
-        "group-data-[state=selected]:data-[pinned=left]:bg-muted group-data-[state=selected]:data-[pinned=right]:bg-muted",
+        // Opaque hover/selected shades matching the row ladder (bg-accent/70,
+        // bg-accent) — translucent ones here would let horizontally scrolled
+        // cells bleed through the sticky pinned cells.
+        "group-hover:data-[pinned=left]:bg-accent-hover group-hover:data-[pinned=right]:bg-accent-hover",
+        "group-data-[state=selected]:data-[pinned=left]:bg-accent group-data-[state=selected]:data-[pinned=right]:bg-accent",
         "data-[pinned-edge=last-left]:shadow-[3px_0_5px_-2px_rgba(0,0,0,0.15)]",
         "data-[pinned-edge=first-right]:shadow-[-3px_0_5px_-2px_rgba(0,0,0,0.15)]",
         className,
