@@ -51,18 +51,17 @@ export function mergeLiveCalls(
       continue;
     }
     // Field-merge: only copy through known update fields that are present.
-    let updated = false;
-    const next: LoggedCall = existing;
+    // Built as a plain record (dynamic keys) and cast once at the spread —
+    // every key comes from MERGEABLE_FIELDS, all real LoggedCall fields.
+    const patch: Record<string, unknown> = {};
     for (const field of MERGEABLE_FIELDS) {
-      const value = streamed[field] as LoggedCall[typeof field];
+      const value = streamed[field];
       if (value != null) {
-        // Build a new object lazily so we don't clone when nothing changed.
-        if (!updated) {
-          merged.set(streamed.id, { ...next });
-          updated = true;
-        }
-        (merged.get(streamed.id) as LoggedCall)[field] = value;
+        patch[field] = value;
       }
+    }
+    if (Object.keys(patch).length > 0) {
+      merged.set(streamed.id, { ...existing, ...(patch as Partial<LoggedCall>) });
     }
   }
 

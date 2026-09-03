@@ -8,14 +8,15 @@ import { GenerationChatPreview } from "./GenerationChatPreview";
 import { DiffView } from "./DiffView";
 import { PreviewModeButton } from "./PreviewModeButton";
 import { buildTracePreviewData, isChatMlInput } from "./call-detail-utils";
+import type { LoggedCall, TraceDetail } from "./contexts/TraceDataContext";
 
 interface CallPreviewTabProps {
-  call: any;
-  run: any;
+  call: LoggedCall;
+  run: TraceDetail | null;
   /** Unified input: tool parameters for TOOL observations, else call.input. */
-  effectiveInput: any;
+  effectiveInput: unknown;
   /** Unified output: tool result for TOOL observations, else call.output. */
-  effectiveOutput: any;
+  effectiveOutput: unknown;
   /** Text projection of effectiveOutput (drives correction affordances). */
   outputText: string | null;
   /** Current corrected output owned by CallDetailView's correction reducer. */

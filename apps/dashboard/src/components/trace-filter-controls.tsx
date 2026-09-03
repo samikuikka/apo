@@ -46,15 +46,12 @@ import {
   TraceModelMultiSelect,
   TraceMetricFilter,
 } from "./trace-select-filters";
+import type { TraceFilterOptions } from "@/lib/traces-api";
 
-export interface FilterOptions {
-  projects?: string[];
-  tasks?: string[];
-  models?: string[];
-  metrics?: string[];
-}
-
-export type TraceFilterOptions = FilterOptions;
+// One definition, in the API layer that produces the options — a local twin
+// here would drift from the fetcher's shape.
+export type { TraceFilterOptions };
+type FilterOptions = TraceFilterOptions;
 
 interface FilterControlsProps {
   filters: TraceFilters;

@@ -2,21 +2,14 @@ import type {
   LoggedCall,
   Trace as SharedTrace,
   TraceDetail as SharedTraceDetail,
-  TraceMetric as SharedTraceMetric,
+  TraceMetric,
 } from "@/components/trace-detail";
 import { apiClient } from "./api-client";
 import { isApiError } from "./api-error";
 import { getBrowserBackendBaseUrl } from "./config";
 import { backendFetch } from "./backend-fetch";
 
-export interface TraceMetric {
-  metric_name: string;
-  metric_type: "quality" | "aggregate";
-  score: number;
-  reasoning?: string;
-  meta?: Record<string, unknown>;
-  created_at: string;
-}
+export type { TraceMetric };
 
 interface TraceSummaryTransport {
   id: string;
@@ -76,7 +69,7 @@ type TraceTransport = Omit<SharedTrace, "scopeKey"> & {
 
 interface TraceDetailTransport {
   run: TraceTransport;
-  metrics: SharedTraceMetric[];
+  metrics: TraceMetric[];
   calls: LoggedCall[];
 }
 

@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import { useTraceData } from "./contexts/TraceDataContext";
+import { useTraceData, type TraceDetail } from "./contexts/TraceDataContext";
 import { useSelection } from "./contexts/SelectionContext";
 import { CallDetailView } from "./CallDetailView";
 import { TraceDetailTabs } from "./TraceDetailTabs";
@@ -57,7 +57,7 @@ function TraceDetailRootView({
   mode,
   onClose,
 }: {
-  run: any;
+  run: TraceDetail;
   mode?: "page" | "panel";
   onClose?: () => void;
 }) {
@@ -65,8 +65,8 @@ function TraceDetailRootView({
   const { refreshRun } = useTraceData();
   const [showScorePanel, setShowScorePanel] = useState(false);
   const [bookmarked, setBookmarked] = useState<boolean>(run.run.bookmarked ?? false);
-  const totalCost = run.calls.reduce((sum: number, c: any) => sum + (c.cost || 0), 0);
-  const totalTokens = run.calls.reduce((sum: number, c: any) => sum + (c.total_tokens || 0), 0);
+  const totalCost = run.calls.reduce((sum: number, c) => sum + (c.cost || 0), 0);
+  const totalTokens = run.calls.reduce((sum: number, c) => sum + (c.total_tokens || 0), 0);
   const summaryParts = formatMetaParts([
     run.run.duration_ms != null ? formatDuration(run.run.duration_ms) : null,
     totalCost > 0 ? formatCostMicro(totalCost) : null,

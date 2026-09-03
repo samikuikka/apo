@@ -24,10 +24,11 @@ import {
   getObservationType,
 } from "./call-detail-utils";
 import type { CumulativeMetrics } from "@/lib/cumulative-metrics";
+import type { LoggedCall, TraceDetail } from "./contexts/TraceDataContext";
 
 interface CallDetailHeaderProps {
-  call: any;
-  run: any;
+  call: LoggedCall;
+  run: TraceDetail | null;
   cumulativeMetrics: Map<string, CumulativeMetrics>;
   selectCall: (callId: string | null) => void;
   /** Bumped when an inline comment is created so the drawer re-fetches. */

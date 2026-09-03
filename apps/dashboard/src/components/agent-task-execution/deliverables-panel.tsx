@@ -10,16 +10,22 @@
  * Download action. Conversation History remains Trace-derived.
  */
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Download, FileText, Loader2 } from "lucide-react";
 import { ExpandableJson } from "@/components/ExpandableJson";
-import { ShikiCodeBlock } from "@/components/shiki-code-block";
 import { DeliverableMarkdown } from "@/components/agent-task-execution/deliverable-markdown";
 import { looksLikeMarkdown } from "@/lib/looks-like-markdown";
 import {
   type DeliverableSummary,
   fetchDeliverableBody,
 } from "@/lib/agent-task-deliverables-api";
+
+// shiki is a heavy dependency — loaded only when a code deliverable renders.
+const ShikiCodeBlock = dynamic(
+  () => import("@/components/shiki-code-block").then((m) => m.ShikiCodeBlock),
+  { ssr: false, loading: () => <div className="min-h-12" /> },
+);
 
 interface DeliverablesPanelProps {
   items: DeliverableSummary[];

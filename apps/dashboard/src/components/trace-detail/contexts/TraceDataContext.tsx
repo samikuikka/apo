@@ -34,6 +34,14 @@ export interface Trace {
   call_count: number;
   bookmarked?: boolean;
   task_run_id?: string | null;
+  // Run-level preview payloads and scalars the detail response carries.
+  external_id?: string | null;
+  tags?: string[];
+  primary_model?: string | null;
+  /** Preview of the trace-level input (mirrors the backend's projection). */
+  input?: unknown;
+  /** Preview of the trace-level output (mirrors the backend's projection). */
+  output?: unknown;
 }
 
 export interface LoggedCall {
@@ -44,8 +52,10 @@ export interface LoggedCall {
   created_at: string;
   latency_ms?: number | null;
   cost?: number | null;
-  input: any;
-  output: any;
+  /** Raw recorded payload — any JSON shape the projection captured. Helpers
+   * in call-detail-utils / CallDetailTabs normalize it for rendering. */
+  input: unknown;
+  output: unknown;
   task_id: string | null;
   parent_call_id?: string | null;
   call_type?: string;
