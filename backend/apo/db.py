@@ -1063,6 +1063,19 @@ def _migrate_to_v40() -> None:
         _drop_column_if_exists(conn, "runs", "preview_call_row_id")
 
 
+def _migrate_to_v41() -> None:
+    """Version 41: drop the annotation-queues table.
+
+    The annotation-queue API (human-scoring queues over traces and
+    observations) never gained a UI or any consumer; the router was removed
+    with it. Any scores the queues wrote keep living in ``run_metrics`` —
+    only the queue bookkeeping rows are dropped. Idempotent via
+    ``DROP TABLE IF EXISTS``.
+    """
+    with engine.begin() as conn:
+        conn.exec_driver_sql("DROP TABLE IF EXISTS annotation_queues")
+
+
 def _migrate_span_facet_indexes(conn: Connection) -> None:
     """Covering facet indexes + a prunable span-time window.
 
@@ -2539,7 +2552,7 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 40
+LATEST_SCHEMA_VERSION = 41
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -2582,6 +2595,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     38: _migrate_to_v38,
     39: _migrate_to_v39,
     40: _migrate_to_v40,
+    41: _migrate_to_v41,
 }
 
 

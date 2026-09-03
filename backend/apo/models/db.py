@@ -263,7 +263,7 @@ class RunMetricDB(SQLModel, table=True):
     # Langfuse-inspired: Track where the score came from
     source: str = Field(
         default="API", index=True
-    )  # ANNOTATION (human), API (programmatic), EVAL (automated)
+    )  # API (programmatic), EVAL (automated)
     config_id: int | None = Field(
         default=None, foreign_key="score_configs.id", index=True
     )
@@ -310,7 +310,7 @@ class CallMetricDB(SQLModel, table=True):
     data_type: str = Field(default="NUMERIC")  # NUMERIC, CATEGORICAL, BOOLEAN
 
     # Track where the score came from
-    source: str = Field(default="API", index=True)  # ANNOTATION, API, EVAL
+    source: str = Field(default="API", index=True)  # API, EVAL
     config_id: int | None = Field(
         default=None, foreign_key="score_configs.id", index=True
     )
@@ -858,36 +858,6 @@ class AdaptiveTaskStateDB(SQLModel, table=True):
     last_run_at: datetime | None = None
     last_status: str | None = None  # "passed" | "failed" | "error"
     next_run_at: datetime | None = Field(default=None, index=True)
-
-
-class AnnotationQueueDB(SQLModel, table=True):
-    """
-    Annotation queue for human scoring of traces and observations.
-    """
-
-    __tablename__: ClassVar[str] = "annotation_queues"
-
-    id: int | None = Field(default=None, primary_key=True)
-    project: str = Field(index=True)
-    name: str = Field(index=True)
-    target_type: str = Field(index=True, description="TRACE or OBSERVATION")
-    score_config_id: int | None = Field(
-        default=None, foreign_key="score_configs.id", index=True
-    )
-    total_items: int = Field(default=0)
-    completed_items: int = Field(default=0)
-    is_active: bool = Field(default=True, index=True)
-
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        sa_column=Column(UTCDateTime, server_default=func.now()),
-    )
-    updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        sa_column=Column(
-            UTCDateTime, server_default=func.now(), onupdate=func.now()
-        ),
-    )
 
 
 class WebhookDB(SQLModel, table=True):

@@ -594,8 +594,8 @@ class TestProjectDeleteRoleCheck:
 # ---------------------------------------------------------------------------
 #
 # These tests pin down the gaps the post-implementation review found:
-# ordinary members must not be able to enumerate API keys, webhooks, or
-# annotation queues for projects where they lack the management role.
+# ordinary members must not be able to enumerate API keys or webhooks
+# for projects where they lack the management role.
 
 
 class TestApiKeyListAdminScoped:
@@ -769,101 +769,3 @@ class TestWebhookReadAdminScoped:
         assert resp.status_code == 403, (
             "members must not read webhook details by id"
         )
-
-
-class TestAnnotationQueueListScoped:
-    """Annotation queue inventory must respect project boundary."""
-
-    def test_member_can_list_queues_for_their_project(
-        self,
-        client: TestClient,
-        session: Session,
-        make_authed_client: Any,
-    ) -> None:
-        # Members need to see queues to work on annotations.
-        owner = _make_user(session, "owner@test.com", "Owner")
-        project = _make_project(session, owner)
-        member = _make_user(session, "member@test.com", "Member")
-        add_member(
-            session,
-            project_id=project.id,
-            email="member@test.com",
-            role="member",
-            actor_role="owner",
-        )
-        owner_client = _authed_client_for(make_authed_client, owner, session)
-        create_resp = owner_client.post(
-            "/api/v1/annotations/queues",
-            json={
-                "project": project.id,
-                "name": "Review queue",
-                "target_type": "TRACE",
-            },
-        )
-        assert create_resp.status_code == 200
-
-        member_client = _authed_client_for(
-            make_authed_client, member, session
-        )
-        resp = member_client.get(
-            "/api/v1/annotations/queues", params={"project": project.id}
-        )
-        assert resp.status_code == 200
-        assert len(resp.json()) == 1
-
-    def test_non_member_cannot_list_queues(
-        self,
-        client: TestClient,
-        session: Session,
-        make_authed_client: Any,
-    ) -> None:
-        owner = _make_user(session, "owner@test.com", "Owner")
-        project = _make_project(session, owner)
-        other = _make_user(session, "other@test.com", "Other")
-
-        other_client = _authed_client_for(make_authed_client, other, session)
-        resp = other_client.get(
-            "/api/v1/annotations/queues", params={"project": project.id}
-        )
-        assert resp.status_code == 403
-
-    def test_unscoped_list_excludes_unrelated_projects(
-        self,
-        client: TestClient,
-        session: Session,
-        make_authed_client: Any,
-    ) -> None:
-        owner_a = _make_user(session, "owner-a@test.com", "Owner A")
-        project_a = _make_project(session, owner_a, "Project A")
-        owner_b = _make_user(session, "owner-b@test.com", "Owner B")
-        project_b = _make_project(session, owner_b, "Project B")
-
-        owner_a_client = _authed_client_for(
-            make_authed_client, owner_a, session
-        )
-        owner_a_client.post(
-            "/api/v1/annotations/queues",
-            json={
-                "project": project_a.id,
-                "name": "A queue",
-                "target_type": "TRACE",
-            },
-        )
-        owner_b_client = _authed_client_for(
-            make_authed_client, owner_b, session
-        )
-        owner_b_client.post(
-            "/api/v1/annotations/queues",
-            json={
-                "project": project_b.id,
-                "name": "B queue",
-                "target_type": "TRACE",
-            },
-        )
-
-        # Owner A's unscoped list must NOT include project B's queue.
-        resp = owner_a_client.get("/api/v1/annotations/queues")
-        assert resp.status_code == 200
-        queue_projects = {q["project"] for q in resp.json()}
-        assert project_a.id in queue_projects
-        assert project_b.id not in queue_projects

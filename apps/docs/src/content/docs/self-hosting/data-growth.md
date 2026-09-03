@@ -65,6 +65,13 @@ admin projection backfill once after upgrading so pre-v40 rows are re-derived
 per slot (until then their slots are protected from downgrades and any `{}`
 side falls back to the read-time computation).
 
+### Upgrading across schema v41
+
+Schema v41 drops the `annotation_queues` table. The annotation-queue API
+(human-scoring queues over traces) never gained a UI and was removed with its
+router; any scores those queues recorded stay in `run_metrics` — only the
+queue bookkeeping rows are deleted. The migration is instant and forward-only.
+
 ## What grows, roughly
 
 | Data | Grows with | Typical weight |

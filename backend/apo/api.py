@@ -22,7 +22,6 @@ from .routes import (
     ingestion,
     runs,
     admin,
-    metrics_analytics,
     trace_stream,
     agent_task_runs,
     agent_task_deliverables,
@@ -35,7 +34,6 @@ from .routes import (
     models,
     analytics,
     scores,
-    annotations,
     otlp_traces,
     langfuse_public,
     run_events,
@@ -177,7 +175,6 @@ def create_app() -> FastAPI:
     app.include_router(runs.router)
     app.include_router(runs.navigation_router)
     app.include_router(admin.router)
-    app.include_router(metrics_analytics.router)
     app.include_router(trace_stream.router)
     app.include_router(agent_task_runs.router)
     app.include_router(agent_task_deliverables.router)
@@ -193,7 +190,6 @@ def create_app() -> FastAPI:
     app.include_router(models.router)
     app.include_router(analytics.router)
     app.include_router(scores.router)
-    app.include_router(annotations.router)
     app.include_router(otlp_traces.router)
     app.include_router(langfuse_public.router)
     app.include_router(run_events.router)

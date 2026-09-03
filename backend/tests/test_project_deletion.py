@@ -21,7 +21,6 @@ from apo.models.db import (
     AgentTaskBatchRunDB,
     AgentTaskRunDB,
     AgentTaskScheduleDB,
-    AnnotationQueueDB,
     ApiKeyDB,
     ApiKeyDailyUsageDB,
     CallMetricDB,
@@ -167,9 +166,6 @@ def _seed_full_project(session: Session, project_id: str, owner_id: str) -> None
 
     # Direct soft-reference tables (no FK to projects, but must be cleaned).
     session.add(ScoreConfigDB(project=project_id, name="faithfulness", data_type="NUMERIC"))
-    session.add(
-        AnnotationQueueDB(project=project_id, name="review", target_type="TRACE")
-    )
     session.add(WebhookDB(project=project_id, url="https://hook.test", secret="s"))
     session.add(SessionDB(id=f"sess-{project_id}", project=project_id))
     session.add(
@@ -356,13 +352,6 @@ def _dependent_counts(session: Session, project_id: str) -> dict[str, int]:
         "score_configs": len(
             session.exec(
                 select(ScoreConfigDB).where(ScoreConfigDB.project == project_id)
-            ).all()
-        ),
-        "annotation_queues": len(
-            session.exec(
-                select(AnnotationQueueDB).where(
-                    AnnotationQueueDB.project == project_id
-                )
             ).all()
         ),
         "webhooks": len(

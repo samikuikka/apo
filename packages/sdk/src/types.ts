@@ -85,7 +85,7 @@ export interface CreateScoreParams {
   name: string;
   value: number | string | boolean;
   dataType?: "NUMERIC" | "CATEGORICAL" | "BOOLEAN";
-  source?: "API" | "EVAL" | "ANNOTATION";
+  source?: "API" | "EVAL";
   configId?: number;
   comment?: string;
   observationId?: string;

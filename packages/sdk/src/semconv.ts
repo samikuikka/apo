@@ -80,4 +80,4 @@ export const OBSERVATION_TYPES = [
 
 export const SCORE_DATA_TYPES = ["NUMERIC", "CATEGORICAL", "BOOLEAN"] as const;
 
-export const SCORE_SOURCES = ["API", "EVAL", "ANNOTATION"] as const;
+export const SCORE_SOURCES = ["API", "EVAL"] as const;

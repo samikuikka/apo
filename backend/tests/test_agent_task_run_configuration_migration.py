@@ -16,12 +16,12 @@ from sqlmodel import create_engine
 
 
 def test_latest_schema_version_bumped_to_v15() -> None:
-    """The latest schema version is registered (v30).
+    """The latest schema version is registered (v41).
 
     The test name preserves its v15 origin; the assertion is the guard that
     reminds the next schema bump to add migration coverage.
     """
-    assert LATEST_SCHEMA_VERSION == 40
+    assert LATEST_SCHEMA_VERSION == 41
 
 
 def test_migration_adds_configuration_columns_on_pre_v15_schema() -> None:

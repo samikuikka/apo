@@ -72,7 +72,7 @@ class RunMetric(SQLModel):
     string_value: str | None = None
     data_type: str = "NUMERIC"  # NUMERIC, CATEGORICAL, BOOLEAN
     # Langfuse-inspired: Track where the score came from
-    source: str = "API"  # ANNOTATION, API, EVAL
+    source: str = "API"  # API, EVAL
     config_id: int | None = None
     reasoning: str | None = None
     meta: JsonMap | None = None
@@ -1046,42 +1046,6 @@ class ScoreConfigResponse(SQLModel):
     categories: dict[str, object] | None = None
     description: str | None = None
     is_archived: bool = False
-
-
-# ============================================================================
-# Annotation Queues
-# ============================================================================
-
-
-class CreateAnnotationQueueRequest(SQLModel):
-    """Request to create an annotation queue."""
-
-    project: str
-    name: str
-    target_type: str = "TRACE"
-    score_config_id: int | None = None
-
-
-class AnnotationQueueResponse(SQLModel):
-    """Annotation queue response."""
-
-    id: int
-    project: str
-    name: str
-    target_type: str
-    score_config_id: int | None = None
-    total_items: int = 0
-    completed_items: int = 0
-    is_active: bool = True
-    created_at: datetime
-    updated_at: datetime
-
-
-class CompleteAnnotationRequest(SQLModel):
-    """Request to complete an annotation with a score."""
-
-    score_value: float | str | bool
-    comment: str | None = None
 
 
 # ============================================================================

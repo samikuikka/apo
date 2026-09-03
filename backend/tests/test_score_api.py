@@ -98,7 +98,7 @@ class TestTraceScoreAPI:
                 "name": "verdict",
                 "value": "pass",
                 "data_type": "CATEGORICAL",
-                "source": "ANNOTATION",
+                "source": "EVAL",
             },
         )
 

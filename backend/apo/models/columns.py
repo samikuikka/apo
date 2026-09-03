@@ -67,7 +67,6 @@ RUN_METRIC_RUN_ID_COL: ColumnElement[str | None] = as_column(cast(object, RunMet
 RUN_METRIC_PROJECT_COL: ColumnElement[str] = as_column(cast(object, RunMetricDB.project))
 RUN_METRIC_NAME_COL: ColumnElement[str] = as_column(cast(object, RunMetricDB.metric_name))
 RUN_METRIC_SCORE_COL: ColumnElement[float | None] = as_column(cast(object, RunMetricDB.score))
-RUN_METRIC_SOURCE_COL: ColumnElement[str] = as_column(cast(object, RunMetricDB.source))
 RUN_METRIC_CREATED_AT_COL: ColumnElement[datetime] = as_column(cast(object, RunMetricDB.created_at))
 
 # --- SessionDB ---

@@ -535,7 +535,7 @@ export interface ScoreOptions {
   name: string;
   value: number | string | boolean;
   dataType?: "NUMERIC" | "CATEGORICAL" | "BOOLEAN";
-  source?: "API" | "EVAL" | "ANNOTATION";
+  source?: "API" | "EVAL";
   comment?: string;
   observationId?: string;
 }

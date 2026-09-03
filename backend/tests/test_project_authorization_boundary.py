@@ -602,18 +602,8 @@ def test_trace_sse_denies_cross_project(
 
 
 # ---------------------------------------------------------------------------
-# Phase 4: Analytics + metrics_analytics cross-Project denial
+# Phase 4: Analytics cross-Project denial
 # ---------------------------------------------------------------------------
-
-
-def test_metrics_analytics_denies_cross_project(
-    session: Session, make_authed_client: Callable[..., TestClient]
-) -> None:
-    _seed_http_world(session)
-
-    bob_client = make_authed_client(_USER_BOB, session)
-    resp = bob_client.get(f"/v1/metrics-analytics/summary?project={_PROJECT_A}")
-    assert resp.status_code in (403, 404)
 
 
 def test_analytics_search_denies_cross_project(
@@ -999,88 +989,6 @@ def test_api_key_cannot_manage_other_projects_keys(
 
 
 # ---------------------------------------------------------------------------
-# Test 26 (annotations): queue list scoping and annotation target validation
-# ---------------------------------------------------------------------------
-
-
-def _seed_annotation_world(session: Session) -> str:
-    """Queues in A and B; a trace in B. Returns B's trace ID."""
-    from apo.models.db import AnnotationQueueDB, RunDB
-
-    now = datetime.now(timezone.utc)
-    _make_user(session, _USER_CAROL)
-    _seed_http_world(session)
-    _add_membership(session, _PROJECT_A, _USER_CAROL, role="admin")
-    _add_membership(session, _PROJECT_B, _USER_CAROL, role="admin")
-
-    for pid in (_PROJECT_A, _PROJECT_B):
-        session.add(
-            AnnotationQueueDB(
-                project=pid,
-                name=f"queue-{pid}",
-                target_type="TRACE",
-                is_active=True,
-            )
-        )
-    session.add(
-        RunDB(
-            id="trace-b-target",
-            project=_PROJECT_B,
-            task_id="evals/b",
-            flow_name="flow-b",
-            version="1",
-            created_at=now,
-        )
-    )
-    session.commit()
-    return "trace-b-target"
-
-
-def test_annotation_queue_list_scopes_api_key_to_bound_project(
-    session: Session, make_api_key_client: Callable[..., TestClient]
-) -> None:
-    """Carol administers A and B, but her A-bound key lists only A's queues."""
-    _seed_annotation_world(session)
-
-    a_key_client = make_api_key_client(_USER_CAROL, _PROJECT_A, session)
-    resp = a_key_client.get("/api/v1/annotations/queues")
-    assert resp.status_code == 200
-    projects = {q["project"] for q in resp.json()}
-    assert projects == {_PROJECT_A}
-
-
-def test_annotation_complete_cannot_target_other_projects_trace(
-    session: Session, make_authed_client: Callable[..., TestClient]
-) -> None:
-    """An A-member with an A queue cannot attach an annotation score to a
-    B trace: the target is validated against the queue's Project."""
-    from collections.abc import Callable
-
-    from apo.models.db import AnnotationQueueDB, RunMetricDB
-
-    b_trace_id = _seed_annotation_world(session)
-
-    alice_client = make_authed_client(_USER_ALICE, session)
-    queue = session.exec(
-        select(AnnotationQueueDB).where(AnnotationQueueDB.project == _PROJECT_A)
-    ).first()
-    assert queue is not None
-
-    resp = alice_client.post(
-        f"/api/v1/annotations/queues/{queue.id}/complete",
-        params={"trace_id": b_trace_id},
-        json={"score_value": 5, "comment": "forged"},
-    )
-    assert resp.status_code == 404
-
-    # No score row was created for B's trace anywhere.
-    forged = session.exec(
-        select(RunMetricDB).where(RunMetricDB.run_id == b_trace_id)
-    ).first()
-    assert forged is None
-
-
-# ---------------------------------------------------------------------------
 # Test 27: Model-pricing overrides cannot be moved across Projects
 # ---------------------------------------------------------------------------
 
@@ -1365,13 +1273,6 @@ _ROUTE_MODULE_AUDIT: dict[str, tuple[str, list[tuple[str, str]]]] = {
         "project",
         [("tests/test_project_authorization_boundary.py", "test_analytics_search_denies_cross_project")],
     ),
-    "annotations": (
-        "project",
-        [
-            ("tests/test_project_authorization_boundary.py", "test_annotation_queue_list_scopes_api_key_to_bound_project"),
-            ("tests/test_project_authorization_boundary.py", "test_annotation_complete_cannot_target_other_projects_trace"),
-        ],
-    ),
     "api_keys": (
         "project",
         [("tests/test_project_authorization_boundary.py", "test_api_key_cannot_manage_other_projects_keys")],
@@ -1428,10 +1329,6 @@ _ROUTE_MODULE_AUDIT: dict[str, tuple[str, list[tuple[str, str]]]] = {
                 "test_traces_list_is_credential_scoped",
             )
         ],
-    ),
-    "metrics_analytics": (
-        "project",
-        [("tests/test_project_authorization_boundary.py", "test_metrics_analytics_denies_cross_project")],
     ),
     "models": (
         "project",

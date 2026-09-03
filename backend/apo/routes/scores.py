@@ -95,7 +95,7 @@ async def create_trace_score_endpoint(
     """
     Create a score for a trace (run-level).
 
-    Supports API, EVAL, and ANNOTATION score sources.
+    Supports API and EVAL score sources.
     """
     credential_project = _credential_project(http_request)
     if credential_project is not None:
@@ -136,7 +136,7 @@ async def create_observation_score_endpoint(
     """
     Create a score for an observation (call/span level).
 
-    Supports API, EVAL, and ANNOTATION score sources.
+    Supports API and EVAL score sources.
     """
     credential_project = _credential_project(http_request)
     if credential_project is not None:

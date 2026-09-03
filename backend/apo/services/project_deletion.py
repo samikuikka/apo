@@ -47,7 +47,6 @@ from ..models.db import (
     AgentTaskRunDB,
     AgentTaskScheduleDB,
     AgentTaskScheduleOccurrenceDB,
-    AnnotationQueueDB,
     ApiKeyDB,
     ApiKeyDailyUsageDB,
     ArchivedModelDB,
@@ -200,9 +199,6 @@ def delete_project_data(
     )
     deleted["otlp_ingest_batches"] = _delete_by_column(
         session, OtlpIngestBatchDB, OtlpIngestBatchDB.project_id == project_id
-    )
-    deleted["annotation_queues"] = _delete_by_column(
-        session, AnnotationQueueDB, AnnotationQueueDB.project == project_id
     )
     deleted["score_configs"] = _delete_by_column(
         session, ScoreConfigDB, ScoreConfigDB.project == project_id

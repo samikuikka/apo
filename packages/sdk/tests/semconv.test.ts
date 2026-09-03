@@ -53,7 +53,7 @@ describe("apo.* semantic conventions", () => {
     });
 
     it("exports score sources", () => {
-      expect(SCORE_SOURCES).toEqual(["API", "EVAL", "ANNOTATION"]);
+      expect(SCORE_SOURCES).toEqual(["API", "EVAL"]);
     });
   });
 });
