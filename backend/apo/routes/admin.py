@@ -324,8 +324,8 @@ async def get_reprice_status(
 #
 # ``POST /v1/admin/projection/backfill`` re-projects traces whose runs have
 # no stored previews yet (dual/slim mode), one commit per trace — idempotent
-# and resumable, so a process death mid-job just means re-running. Flip
-# ``APO_LIST_READ=previews`` only after a backfill reports parity.
+# and resumable, so a process death mid-job just means re-running. Trace lists
+# are always preview-only; missing previews stay empty until this job fills them.
 # ---------------------------------------------------------------------------
 
 _projection_jobs: dict[str, dict[str, object]] = {}

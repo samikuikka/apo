@@ -1,13 +1,12 @@
 # pyright: reportAny=false, reportAttributeAccessIssue=false, reportDeprecated=false, reportExplicitAny=false, reportImplicitOverride=false, reportImplicitStringConcatenation=false, reportMissingParameterType=false, reportOptionalMemberAccess=false, reportPrivateLocalImportUsage=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedFunction=false, reportUnusedParameter=false
 
-"""Slim projection, previews, and span-sourced reads (storage migration stage 2).
+"""Slim projection, stored previews, and span-sourced detail reads.
 
-Covers: write-time preview parity with the legacy read-time truncation,
-preview refresh rules (class priority, same-source refresh, dangling
-source), golden detail equality across fat and slim modes for the same
-trace, list rendering that never touches call I/O columns, the slim-mode
-reader reroutes (detail, export, Langfuse compat, task-run snapshot), the
-span-less fallback, and the preview backfill job.
+Covers preview refresh rules (class priority, same-source refresh, dangling
+source), golden detail equality across fat and slim modes for the same trace,
+preview-only list rendering, the slim-mode detail reroutes (detail, export,
+Langfuse compat, task-run snapshot), the span-less detail fallback, and the
+preview backfill job.
 """
 
 import json
@@ -25,7 +24,6 @@ from apo.routes.runs.list_query import _fetch_io_previews
 from apo.services.otlp_receiver import OtlpReceiver
 from apo.services.trace_projector import get_trace_projector
 from apo.services.projection_io import (
-    list_read_mode,
     projection_write_mode,
     resolve_call_io,
     truncate_preview,
@@ -182,7 +180,6 @@ def _call(session: Session, span_id: str) -> LoggedCallDB:
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("APO_PROJECTION_WRITE_MODE", raising=False)
-    monkeypatch.delenv("APO_LIST_READ", raising=False)
     reset_apo_file_db()
     yield
     with Session(engine) as session:
@@ -204,33 +201,28 @@ def _clean(monkeypatch: pytest.MonkeyPatch):
 
 
 class TestModes:
-    def test_defaults_are_fat_and_legacy(self) -> None:
-        assert projection_write_mode() == "fat"
-        assert list_read_mode() == "legacy"
+    def test_defaults_are_slim_and_preview_only(self) -> None:
+        assert projection_write_mode() == "slim"
 
     def test_invalid_values_fall_back(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "banana")
-        monkeypatch.setenv("APO_LIST_READ", "banana")
-        assert projection_write_mode() == "fat"
-        assert list_read_mode() == "legacy"
+        assert projection_write_mode() == "slim"
 
     def test_valid_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
         for mode in ("fat", "dual", "slim"):
             monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", mode)
             assert projection_write_mode() == mode
-        monkeypatch.setenv("APO_LIST_READ", "previews")
-        assert list_read_mode() == "previews"
 
 
 # ---------------------------------------------------------------------------
-# Preview writes (dual mode)
+# Preview writes
 # ---------------------------------------------------------------------------
 
 
 class TestPreviewWrites:
-    def test_preview_parity_with_legacy_truncation(
+    def test_list_reads_stored_preview_projection(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
@@ -250,11 +242,12 @@ class TestPreviewWrites:
         assert run.input_preview_call_row_id == gen.row_id
         assert run.output_preview_call_row_id == gen.row_id
 
-        # The list API's preview read must agree with the legacy truncation
-        # of the same call's I/O.
-        legacy = _fetch_io_previews(session, [TRACE], "p1")
-        with_previews = _fetch_io_previews(session, [TRACE], "p1")
-        assert with_previews == legacy
+        assert _fetch_io_previews(session, [TRACE], "p1") == {
+            TRACE: {
+                "input": run.input_preview,
+                "output": run.output_preview,
+            }
+        }
 
     def test_generation_beats_earlier_non_generation(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
@@ -439,69 +432,11 @@ class TestPreviewRootPreference:
         assert run.output_preview_call_row_id == _call(session, GEN1).row_id
         assert "real prompt" in (run.input_preview or "")
 
-    def test_legacy_read_prefers_root_summary(self, session: Session) -> None:
-        """The read-time rule (fat write + legacy list read) must match the
-        write-time tiers — root-with-payload beats first GENERATION."""
-        _ingest(session, _root_summary_payload())
-        _ingest(
-            session,
-            _gen_payload(GEN1, "You are an AI assistant for Bind…", "Hello."),
-        )
-        session.commit()
-        previews = _fetch_io_previews(session, [TRACE], "p1")
-        assert "Hello world" in (previews[TRACE]["input"] or "")
-        assert "You are an AI assistant" not in (previews[TRACE]["input"] or "")
-
-    def test_legacy_read_falls_back_when_root_has_no_payload(
-        self, session: Session
-    ) -> None:
-        _ingest(session, _payload(ROOT, parent=None))
-        _ingest(session, _gen_payload(GEN1, "fallback prompt", "fallback answer"))
-        session.commit()
-        previews = _fetch_io_previews(session, [TRACE], "p1")
-        assert "fallback prompt" in (previews[TRACE]["input"] or "")
-
-
 class TestPreviewPerFieldPrecedence:
     """Issue #203: a root span with a payload on only ONE side takes only
     that slot. The pair-gated precedence let a one-sided root publish the
     empty side too — an agent-task root (``apo.task.run``, output-only)
     blanked the input preview the GENERATION tier used to serve."""
-
-    def test_legacy_read_one_sided_root_fills_only_output_slot(
-        self, session: Session
-    ) -> None:
-        _ingest(session, _agent_task_root_payload("Task complete."))
-        _ingest(
-            session,
-            _gen_payload(GEN1, "You are simulating a user interacting with Bind…", "Hello."),
-        )
-        session.commit()
-        previews = _fetch_io_previews(session, [TRACE], "p1")
-        # The input slot falls through to the GENERATION tier…
-        assert "You are simulating a user" in (previews[TRACE]["input"] or "")
-        assert previews[TRACE]["input"] != "{}"
-        # …while the root's output still wins its own slot.
-        assert "Task complete." in (previews[TRACE]["output"] or "")
-
-    def test_legacy_read_payload_less_root_publishes_nothing(
-        self, session: Session
-    ) -> None:
-        """A root carrying no payload at all must not publish ``{}``
-        placeholders — slots stay open for calls that can fill them."""
-        _ingest(session, _payload(ROOT, parent=None))
-        _ingest(
-            session,
-            _payload(
-                GEN2,
-                name="tool.run",
-                gen_attrs=[{"key": "input", "value": {"stringValue": "tool-in"}}],
-            ),
-        )
-        session.commit()
-        previews = _fetch_io_previews(session, [TRACE], "p1")
-        assert "tool-in" in (previews[TRACE]["input"] or "")
-        assert previews[TRACE]["output"] is None
 
     def test_dual_write_one_sided_root_takes_only_output_slot(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
@@ -573,7 +508,7 @@ class TestPairedEraUpgrade:
     but lose the source pointers to the v40 drop. The per-slot rules must
     treat a payload-carrying pointer-less slot as a real incumbent (no
     downgrades from late low-tier spans), keep a poisoned ``"{}"`` slot
-    freely winnable, and previews-mode reads must not serve the poison."""
+    freely winnable, and list reads must not serve the poison."""
 
     @staticmethod
     def _strip_pointers(session: Session) -> None:
@@ -663,12 +598,10 @@ class TestPairedEraUpgrade:
         assert "root reply" in (run.output_preview or "")
         assert run.input_preview_call_row_id == _call(session, GEN1).row_id
 
-    def test_previews_mode_does_not_serve_poisoned_stored_slot(
+    def test_list_does_not_serve_poisoned_stored_slot(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Paired-era one-sided row in previews mode: the poisoned ``"{}"``
-        input falls back to the legacy computation while the healthy
-        stored output keeps serving from storage."""
+        """A poisoned paired-era slot stays empty until backfill repairs it."""
         monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
         _ingest(session, _agent_task_root_payload("root reply"))
         _ingest(session, _gen_payload(GEN1, "gen prompt", "gen answer"))
@@ -679,10 +612,8 @@ class TestPairedEraUpgrade:
         session.add(run)
         session.commit()
 
-        monkeypatch.setenv("APO_LIST_READ", "previews")
         previews = _fetch_io_previews(session, [TRACE], "p1")
-        assert "gen prompt" in (previews[TRACE]["input"] or "")
-        assert previews[TRACE]["input"] != "{}"
+        assert previews[TRACE]["input"] is None
         assert "root reply" in (previews[TRACE]["output"] or "")
 
 
@@ -712,6 +643,7 @@ class TestSlimGolden:
         self, session: Session, client: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Fat projection of the trace, then capture the detail response.
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "fat")
         self._seed_trace(session)
         fat_response = _detail(client, include="messages")
 
@@ -834,7 +766,7 @@ class TestSlimGolden:
 
 
 # ---------------------------------------------------------------------------
-# List reads never touch call I/O (previews mode)
+# List reads never touch call I/O
 # ---------------------------------------------------------------------------
 
 
@@ -855,23 +787,17 @@ class TestListPreviews:
         bind = session.get_bind()
         event.listen(bind, "before_cursor_execute", _capture)
         try:
-            monkeypatch.setenv("APO_LIST_READ", "previews")
             previews = _fetch_io_previews(session, [TRACE], "p1")
         finally:
             event.remove(bind, "before_cursor_execute", _capture)
         assert previews[TRACE]["input"] is not None
         io_reads = [s for s in statements if "FROM logged_calls" in s]
         assert not io_reads, (
-            "previews-mode list rendering must not query logged_calls; "
+            "list rendering must not query logged_calls; "
             f"saw: {io_reads}"
         )
 
-        # Legacy mode still works and agrees.
-        monkeypatch.setenv("APO_LIST_READ", "legacy")
-        legacy = _fetch_io_previews(session, [TRACE], "p1")
-        assert legacy == previews
-
-    def test_null_preview_falls_back(
+    def test_null_preview_never_falls_back_to_call_io(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "dual")
@@ -887,9 +813,23 @@ class TestListPreviews:
         session.add(run)
         session.commit()
 
-        monkeypatch.setenv("APO_LIST_READ", "previews")
-        previews = _fetch_io_previews(session, [TRACE], "p1")
-        assert previews[TRACE]["input"] is not None  # legacy fallback served
+        statements: list[str] = []
+
+        def _capture(_conn, _cursor, statement, _params, *_a, **_kw):
+            statements.append(statement)
+
+        bind = session.get_bind()
+        event.listen(bind, "before_cursor_execute", _capture)
+        try:
+            # The old value may remain in an upgraded installation's .env.
+            # It is intentionally ignored: list reads are preview-only.
+            monkeypatch.setenv("APO_LIST_READ", "legacy")
+            previews = _fetch_io_previews(session, [TRACE], "p1")
+        finally:
+            event.remove(bind, "before_cursor_execute", _capture)
+
+        assert previews[TRACE] == {"input": None, "output": None}
+        assert not [s for s in statements if "FROM logged_calls" in s]
 
 
 # ---------------------------------------------------------------------------
@@ -903,6 +843,7 @@ class TestBackfill:
     ) -> None:
         # Fat-era trace on the FILE engine — the job (and reproject_trace)
         # bind apo.db's engine.
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "fat")
         with Session(engine) as session:
             _ingest(session, _payload(ROOT, parent=None))
             _ingest(

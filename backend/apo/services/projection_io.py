@@ -4,11 +4,10 @@ Stage 2 of storage single-homing: the canonical span store is the one home
 of span data, and the product projection (``logged_calls``) is a derived
 view. This module owns the three pieces that make that safe:
 
-- **Write/read modes** (``APO_PROJECTION_WRITE_MODE`` = fat | dual | slim,
-  ``APO_LIST_READ`` = legacy | previews). fat is today's behavior; dual
-  writes fat columns AND run-level previews; slim stops writing the fat
-  I/O columns entirely. Every flip is an env var, so each step is
-  independently revertible without a deploy.
+- **Write mode** (``APO_PROJECTION_WRITE_MODE`` = fat | dual | slim). ``slim``
+  is the default: canonical spans own full call I/O and every projection writes
+  the small run-level previews used by trace lists. ``fat`` and ``dual`` remain
+  temporary rollback modes for installations completing the preview backfill.
 - **One resolver** (``resolve_call_io``) computing the I/O a call's fat
   columns would hold, straight from the canonical span. The projector
   WRITES through it and the read paths RESOLVE through it, so write/read
@@ -40,7 +39,6 @@ from .otel_normalization import NormalizedSpan, normalize_span
 logger = logging.getLogger(__name__)
 
 WRITE_MODE_ENV = "APO_PROJECTION_WRITE_MODE"
-LIST_READ_ENV = "APO_LIST_READ"
 
 # The run-list preview length — matches the truncation the list API has
 # always applied at read time; previews freeze it at write time instead.
@@ -48,28 +46,18 @@ PREVIEW_MAX_CHARS = 200
 
 
 def projection_write_mode() -> str:
-    """``fat`` (default) | ``dual`` | ``slim`` — read fresh so operators can
+    """``slim`` (default) | ``dual`` | ``fat`` — read fresh so operators can
     flip modes without a restart."""
-    value = os.environ.get(WRITE_MODE_ENV, "fat").strip().lower()
+    value = os.environ.get(WRITE_MODE_ENV, "slim").strip().lower()
     if value in ("fat", "dual", "slim"):
         return value
     if value:
         logger.warning(
-            "invalid %s=%r — falling back to fat (expected fat|dual|slim)",
+            "invalid %s=%r — falling back to slim (expected fat|dual|slim)",
             WRITE_MODE_ENV,
             value,
         )
-    return "fat"
-
-
-def list_read_mode() -> str:
-    """``legacy`` (default) | ``previews`` — the list API's preview source.
-
-    Only flip to ``previews`` after the backfill verified parity for
-    existing runs; a NULL preview falls back to the legacy truncation
-    path per run, so the flip can never blank a list."""
-    value = os.environ.get(LIST_READ_ENV, "legacy").strip().lower()
-    return "previews" if value == "previews" else "legacy"
+    return "slim"
 
 
 def truncate_preview(value: object) -> str | None:

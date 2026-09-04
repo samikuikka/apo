@@ -18,6 +18,7 @@ import json
 from datetime import datetime, timezone
 
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 from sqlmodel import Session, select, text
 from apo.db import engine, init_db
 from apo.models.db import (
@@ -149,8 +150,11 @@ class TestTraceProjectorBasics:
             assert child_call is not None
             assert child_call.parent_call_id == "root-h-01"
 
-    def test_project_maps_normalized_fields_to_call(self):
-        """The normalizer's output maps to LoggedCallDB columns."""
+    def test_fat_mode_maps_normalized_fields_to_call(
+        self, monkeypatch: MonkeyPatch
+    ):
+        """The rollback mode still maps normalized I/O to fat columns."""
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "fat")
         span = _make_canonical_span(
             trace_id="proj-fields-01",
             span_id="span-f-01",

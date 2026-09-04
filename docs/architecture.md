@@ -207,10 +207,10 @@ The write path has explicit ownership boundaries:
    that literal: `APO_PROJECTION_WRITE_MODE=slim` stops copying call I/O into
    `logged_calls` entirely — the projector writes through the same resolver
    (`projection_io.resolve_call_io`) the read paths hydrate from, so stored
-   and resolved values cannot drift, and run-level list previews
-   (`runs.input_preview/output_preview`) replace read-time truncation under
-   `APO_LIST_READ=previews`. Span-less legacy rows serve their stored columns
-   as a measured fallback until the fat columns can be dropped. A successful projection
+   and resolved values cannot drift. Run-level list previews
+   (`runs.input_preview/output_preview`) are the only trace-list I/O source;
+   missing previews stay empty until the admin backfill repairs them. Detail
+   views still serve stored columns for span-less historical rows. A successful projection
    stamps the canonical span with the normalizer version in the same database
    transaction as its derived writes. Failed projections therefore remain
    visibly stale, while replay advances the stamp only after the replacement
@@ -670,4 +670,3 @@ project operator's tunnel deployment.
 - **Publication gate**: the docs build fails CI on drift — a stale `apo.dev`
   reference, a broken same-origin link, a missing schema artifact, or a
   Copy Prompt/origin disagreement.
-

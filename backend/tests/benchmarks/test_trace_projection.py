@@ -15,10 +15,15 @@ from apo.services.trace_repository import NativeTraceRepository
 from .conftest import BENCH_PROJECT, SPANS_PER_TRACE, bench_trace_id
 
 
-def test_bench_get_projection_snapshot(
+def test_bench_get_slim_projection_snapshot(
     benchmark: BenchmarkFixture, bench_session: Session
 ) -> None:
-    """One full trace snapshot: hydration + per-call projection mapping."""
+    """One slim trace snapshot: canonical hydration + projection mapping.
+
+    The benchmark identity starts with the slim-default architecture. The old
+    default left hydration as a no-op and measured a materially different read
+    path, so its historical timings are not a valid baseline for this work.
+    """
     repo = NativeTraceRepository()
     snapshot = benchmark(
         repo.get_projection_snapshot,
