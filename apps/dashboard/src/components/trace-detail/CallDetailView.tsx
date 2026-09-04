@@ -10,6 +10,7 @@ import { useTraceData, type LoggedCall } from "./contexts/TraceDataContext";
 import { useSelection } from "./contexts/SelectionContext";
 import { saveCorrection } from "@/lib/traces-api";
 import { extractOutputText } from "./call-detail-utils";
+import { useCallPayload } from "./use-call-payload";
 
 const VALID_CALL_TABS = new Set(["preview", "metadata"]);
 
@@ -35,9 +36,16 @@ function correctionReducer(state: CorrectionState, action: CorrectionAction): Co
   }
 }
 
-export function CallDetailView({ call }: { call: LoggedCall }) {
+export function CallDetailView({ call: slimCall }: { call: LoggedCall }) {
   const { selectCall, detailTab, setDetailTab } = useSelection();
   const { run, cumulativeMetrics } = useTraceData();
+  const runId = run?.run?.id ?? "";
+  const projectId = run?.run?.project;
+  // The trace was fetched slim (call metadata + previews): resolve the full
+  // payload for the selected call on demand instead of shipping every call's
+  // megabyte-scale I/O with the page.
+  const { call, loading: payloadLoading, error: payloadError, retry: retryPayload } =
+    useCallPayload(runId, projectId, slimCall, run?.slim_calls === true);
   // Bumped when an inline comment is created so the drawer re-fetches.
   const [commentNonce, setCommentNonce] = useState(0);
   const refreshCommentCounts = useCallback(
@@ -64,7 +72,6 @@ export function CallDetailView({ call }: { call: LoggedCall }) {
   const effectiveInput = isTool && hasToolParams ? call.tool_parameters : call.input;
   const effectiveOutput = isTool && hasToolResult ? call.tool_result : call.output;
   const outputText = extractOutputText(effectiveOutput);
-  const runId = run?.run?.id ?? "";
 
   const handleSaveCorrection = useCallback(async (text: string | null) => {
     try {
@@ -85,6 +92,24 @@ export function CallDetailView({ call }: { call: LoggedCall }) {
         selectCall={selectCall}
         commentNonce={commentNonce}
       />
+
+      {(payloadLoading || payloadError) && (
+        <div className="flex items-center gap-2 border-b border-border bg-muted/20 px-3 py-1 text-[11px] text-muted-foreground">
+          {payloadLoading ? (
+            <>
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-muted-foreground/50" />
+              Loading call payload…
+            </>
+          ) : (
+            <>
+              <span className="text-destructive">Could not load call payload.</span>
+              <button type="button" onClick={retryPayload} className="underline underline-offset-2 hover:text-foreground">
+                Retry
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Tabs value={section} onValueChange={(v) => setDetailTab(v)} className="flex flex-1 flex-col overflow-hidden">

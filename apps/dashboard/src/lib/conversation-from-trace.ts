@@ -59,6 +59,26 @@ export interface ConversationView {
 }
 
 /**
+ * Generation calls in backend call order — metadata-only, so it works on a
+ * slim trace fetch where the I/O payloads are deferred.
+ */
+export function orderedGenerations(trace: TraceDetail): LoggedCall[] {
+  return trace.calls.filter(isGeneration).sort(compareCallOrder);
+}
+
+/**
+ * The conversation carried by ONE generation call (its accumulated input
+ * messages plus its own output reply), or `[]` when the call recorded no
+ * messages array. Feeding this the last chat generation reproduces the
+ * primary path of `deriveConversationFromTrace` without needing every
+ * other call's payload.
+ */
+export function conversationFromGeneration(call: LoggedCall): ChatMessage[] {
+  const combined = [...readMessages(call.input), ...readMessages(call.output)];
+  return combined.length > 0 ? dedupe(combined) : [];
+}
+
+/**
  * Reconstruct the conversation view from a trace's generation calls.
  *
  * Returns `{ messages: [] }` when there is no trace, no generation calls, or

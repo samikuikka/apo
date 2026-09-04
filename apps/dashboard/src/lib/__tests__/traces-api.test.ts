@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { getAdjacentTraces, getTraceDetail } from "../traces-api";
+import { getAdjacentTraces, getCallDetail, getTraceDetail } from "../traces-api";
 
 const mockFetch = vi.fn();
 globalThis.fetch = mockFetch;
@@ -133,5 +133,55 @@ describe("getTraceDetail", () => {
     });
 
     await expect(getTraceDetail("r1")).rejects.toThrow("Trace not found");
+  });
+
+  it("sends slim=true only when requested", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(sampleDetail),
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(sampleDetail),
+    });
+
+    await getTraceDetail("r1", "proj-123", undefined, { slim: true });
+    await getTraceDetail("r1", "proj-123");
+
+    const slimUrl = mockFetch.mock.calls[0][0] as string;
+    const fullUrl = mockFetch.mock.calls[1][0] as string;
+    expect(slimUrl).toContain("slim=true");
+    expect(fullUrl).not.toContain("slim=");
+  });
+
+  it("normalizes the slim_calls marker through to the caller", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ ...sampleDetail, slim_calls: true }),
+    });
+
+    const detail = await getTraceDetail("r1", "proj-123", undefined, {
+      slim: true,
+    });
+
+    expect(detail.slim_calls).toBe(true);
+    expect(detail.run.scopeKey).toBeNull();
+  });
+});
+
+describe("getCallDetail", () => {
+  it("fetches one call scoped by run, call and project", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ id: "c1", input: { a: 1 } }),
+    });
+    const controller = new AbortController();
+
+    await getCallDetail("r1", "c1", "proj-123", controller.signal);
+
+    const [calledUrl, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(calledUrl).toContain("/v1/runs/r1/calls/c1");
+    expect(calledUrl).toContain("project=proj-123");
+    expect(init?.signal).toBe(controller.signal);
   });
 });

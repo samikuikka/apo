@@ -9,6 +9,7 @@ import { useProjectId } from "@/lib/project-router";
 import { usePanelRef, type PanelSize } from "react-resizable-panels";
 import { toast } from "sonner";
 import { getCommentCounts } from "@/lib/comments-api";
+import { getTraceDetail } from "@/lib/traces-api";
 import { setSearchParamShallow } from "@/lib/shallow-search-params";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -61,11 +62,15 @@ interface TraceWorkspaceProps {
   nextId?: string | null;
 }
 
-function downloadTrace(run: TraceDetail) {
+async function downloadTrace(run: TraceDetail, projectId?: string) {
   if (run.calls.length > 50) {
     toast.info(`Downloading trace with ${run.calls.length} observations`);
   }
-  const data = { run: run.run, calls: run.calls, metrics: run.metrics };
+  // The workspace may hold a slim fetch (call metadata only) — an explicit
+  // export must carry the full payloads, so re-fetch without slim.
+  const data = run.slim_calls
+    ? await getTraceDetail(run.run.id, projectId)
+    : { run: run.run, calls: run.calls, metrics: run.metrics };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -291,7 +296,7 @@ function TraceNavToolbar({
         size="icon"
         className="h-8 w-8 shrink-0"
         aria-label="Download trace as JSON"
-        onClick={() => downloadTrace(run)}
+        onClick={() => void downloadTrace(run, projectId)}
       >
         <Download className="h-3.5 w-3.5" />
       </Button>

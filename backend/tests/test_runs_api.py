@@ -170,6 +170,138 @@ def test_get_run_details_omits_messages_unless_included(client: TestClient, sess
     assert included.json()["calls"][0]["messages"] == msgs
 
 
+def test_get_run_details_slim_ships_metadata_only(client: TestClient, session: Session):
+    # Agentic traces repeat the accumulated conversation in every
+    # generation's input, so the full detail payload grows quadratically
+    # (measured: 281 calls → 18 MB). ?slim=true defers the fat columns and
+    # ships call metadata + bounded first/last previews instead.
+    now = datetime.now(timezone.utc)
+
+    session.add(RunDB(id="r-slim", project="p", task_id="t", created_at=now, call_count=3))
+    session.add(LoggedCallDB(
+        id="s0", project="p", model="m", task_id="t", run_id="r-slim",
+        created_at=now, step_index=0,
+        input={"messages": [{"role": "user", "content": "hello"}]},
+        messages=[], output={},
+    ))
+    session.add(LoggedCallDB(
+        id="s1", project="p", model="m", task_id="t", run_id="r-slim",
+        created_at=now, step_index=1,
+        input={"messages": [{"role": "user", "content": "x" * 20000}]},
+        messages=[], output={},
+        tool_parameters={"q": 1}, tool_result={"r": 2},
+        cost_breakdown={"input": 3}, raw_usage={"in": 5},
+    ))
+    session.add(LoggedCallDB(
+        id="s2", project="p", model="m", task_id="t", run_id="r-slim",
+        created_at=now, step_index=2,
+        input={}, messages=[],
+        output={"text": "final answer"},
+    ))
+    session.commit()
+
+    response = client.get("/v1/runs/r-slim?project=p&slim=true")
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["slim_calls"] is True
+    assert "capabilities" not in data  # messages capability needs the fat columns
+
+    calls = data["calls"]
+    assert [c["id"] for c in calls] == ["s0", "s1", "s2"]
+
+    # Middle call: heavy keys absent, metadata kept.
+    assert "input" not in calls[1]
+    assert "output" not in calls[1]
+    assert "messages" not in calls[1]
+    assert "tool_parameters" not in calls[1]
+    assert "tool_result" not in calls[1]
+    assert calls[1]["model"] == "m"
+    assert calls[1]["cost_breakdown"] == {"input": 3}
+    assert calls[1]["raw_usage"] == {"in": 5}
+
+    # First/last calls carry bounded previews for the trace Preview tab.
+    assert calls[0]["input"] == '{"messages": [{"role": "user", "content": "hello"}]}'
+    assert calls[2]["output"] == '{"text": "final answer"}'
+
+    # Default (non-slim) response keeps the full contract.
+    full = client.get("/v1/runs/r-slim?project=p").json()
+    assert full["calls"][1]["input"]["messages"][0]["content"] == "x" * 20000
+    assert "slim_calls" not in full
+
+
+def test_get_run_details_slim_preview_is_bounded(client: TestClient, session: Session):
+    now = datetime.now(timezone.utc)
+    session.add(RunDB(id="r-bound", project="p", task_id="t", created_at=now, call_count=1))
+    session.add(LoggedCallDB(
+        id="b0", project="p", model="m", task_id="t", run_id="r-bound",
+        created_at=now, step_index=0,
+        input={"blob": "z" * 50000}, messages=[], output={},
+    ))
+    session.commit()
+
+    data = client.get("/v1/runs/r-bound?project=p&slim=true").json()
+    preview = data["calls"][0]["input"]
+    assert isinstance(preview, str)
+    assert len(preview) < 9000
+    assert preview.endswith("...")
+
+
+def test_get_run_details_include_messages_beats_slim(client: TestClient, session: Session):
+    # ?include=messages needs the fat columns anyway — slim is ignored rather
+    # than returning a payload that claims messages but defers them.
+    now = datetime.now(timezone.utc)
+    msgs: list[dict[str, object]] = [{"role": "user", "content": "hi"}]
+    session.add(RunDB(id="r-both", project="p", task_id="t", created_at=now, call_count=1))
+    session.add(LoggedCallDB(
+        id="both0", project="p", model="m", task_id="t", run_id="r-both",
+        created_at=now, input={"messages": msgs}, messages=msgs, output={},
+    ))
+    session.commit()
+
+    data = client.get("/v1/runs/r-both?project=p&slim=true&include=messages").json()
+    assert "slim_calls" not in data
+    assert data["calls"][0]["messages"] == msgs
+    assert data["calls"][0]["input"]["messages"] == msgs
+
+
+def test_get_call_details_returns_full_payload(client: TestClient, session: Session):
+    now = datetime.now(timezone.utc)
+    msgs: list[dict[str, object]] = [{"role": "user", "content": "hi"}]
+    session.add(RunDB(id="r-call", project="p", task_id="t", created_at=now, call_count=1))
+    session.add(LoggedCallDB(
+        id="k0", project="p", model="m", task_id="t", run_id="r-call",
+        created_at=now, step_index=0,
+        input={"messages": msgs}, messages=msgs, output={"text": "yo"},
+        tool_name="search", tool_parameters={"q": 1}, tool_result={"r": 2},
+    ))
+    # Same call id in another project must stay invisible through ?project=p.
+    session.add(RunDB(id="r-call2", project="other", task_id="t", created_at=now, call_count=1))
+    session.add(LoggedCallDB(
+        id="k0", project="other", model="m", task_id="t", run_id="r-call2",
+        created_at=now, step_index=0, input={"nope": True}, messages=[], output={},
+    ))
+    session.commit()
+
+    detail = client.get("/v1/runs/r-call/calls/k0?project=p")
+    assert detail.status_code == 200
+    call = detail.json()
+    assert call["id"] == "k0"
+    assert call["input"]["messages"] == msgs
+    assert call["output"] == {"text": "yo"}
+    assert call["tool_parameters"] == {"q": 1}
+    assert call["tool_result"] == {"r": 2}
+    assert "messages" not in call  # opt-in, same as the run-detail contract
+
+    included = client.get("/v1/runs/r-call/calls/k0?project=p&include=messages")
+    assert included.json()["messages"] == msgs
+
+    # Unknown call, wrong run, and wrong project all 404.
+    assert client.get("/v1/runs/r-call/calls/missing?project=p").status_code == 404
+    assert client.get("/v1/runs/r-other/calls/k0?project=p").status_code == 404
+    assert client.get("/v1/runs/r-call2/calls/k0?project=p").status_code == 404
+
+
 def test_get_run_details_reports_projection_capabilities(client: TestClient, session: Session):
     # Issue #164 DX ask: surface which evidence categories the trace's
     # projection carries, so an `unsupported` assertion verdict can be told
