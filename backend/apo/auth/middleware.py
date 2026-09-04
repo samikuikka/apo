@@ -196,6 +196,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
             setattr(request.state, key, value)
 
         response = await call_next(request)
+        # API-key usage is bookkeeping, not authentication. Defer its write
+        # until the protected handler has finished so it cannot hold or wait
+        # on SQLite's single writer while a caller-create request persists its
+        # Batch, Run, Revision, and Attempt transaction.
+        api_key_id = user_info.get("api_key_id")
+        if auth_method == "api_key" and isinstance(api_key_id, str):
+            api_key_usage_tracker.record_use(api_key_id, engine)
         _add_no_cache_headers(response, path)
         # Anonymous demo responses are never cacheable (shared caches must
         # not pin demo state that a fixture refresh can replace).
@@ -405,8 +412,6 @@ def _authenticate_basic(public_key: str, secret_key: str) -> AuthContext | None:
         if _is_expired(api_key.expires_at):
             return None
 
-        api_key_usage_tracker.record_use(api_key.id, engine)
-
         return {
             "project": api_key.project,
             "user_id": api_key.created_by,
@@ -464,8 +469,6 @@ def _authenticate_bearer(token: str) -> AuthContext | None:
 
         if _is_expired(api_key.expires_at):
             return None
-
-        api_key_usage_tracker.record_use(api_key.id, engine)
 
         return {
             "project": api_key.project,
