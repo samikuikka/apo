@@ -5,10 +5,11 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 /**
- * "Start here" guide rail for the demo tasks page: four
- * steps pointing at the dataset's narrative anchors. The run/batch ids are
- * the fixture's stable identity contract — capture (phase 4) must keep
- * them so the rail keeps pointing at real evidence.
+ * "Start here" guide rail for the demo tasks page: five
+ * steps pointing at the dataset's narrative anchors across both halves of
+ * the fixture — the DABstep benchmark runs and the longer real-agent runs.
+ * The run/batch ids are the fixture's stable identity contract — capture
+ * must keep them so the rail keeps pointing at real evidence.
  */
 export function StartHereRail({ capturedOn }: { capturedOn: string }) {
   const [open, setOpen] = useState(true);
@@ -37,13 +38,13 @@ export function StartHereRail({ capturedOn }: { capturedOn: string }) {
               n={1}
               title="Open the failed run"
               href="/project/demo/runs/task/demo-run-001"
-              hint="document-qa failed its citation check — see the evidence."
+              hint="The agent answered 'yes' — the benchmark's ground truth is 'Not Applicable'."
             />
             <RailStep
               n={2}
               title="Read the judge"
               href="/project/demo/runs/task/demo-run-001"
-              hint="One check, rejudged under two contracts — verdicts can move."
+              hint="Judged three times for stability — the Checks tab shows every pass and fail."
             />
             <RailStep
               n={3}
@@ -55,7 +56,13 @@ export function StartHereRail({ capturedOn }: { capturedOn: string }) {
               n={4}
               title="Compare models"
               href="/project/demo/runs/compare?a=demo-batch-001&b=demo-batch-002"
-              hint="Two batches, same tasks — where they disagree is the story."
+              hint="GLM vs DeepSeek on the same benchmark task — where they disagree is the story."
+            />
+            <RailStep
+              n={5}
+              title="See a human override"
+              href="/project/demo/runs/task/demo-run-corrected"
+              hint="The judge failed this code review; a reviewer set it back to pass — then browse the real-agent tasks."
             />
           </ol>
         ) : null}
