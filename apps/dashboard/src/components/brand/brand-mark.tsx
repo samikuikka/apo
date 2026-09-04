@@ -9,7 +9,8 @@ type BrandMarkProps = {
 };
 
 /**
- * BrandMark — the app identity lockup. Symbol-only; ships without a name.
+ * BrandMark — the app identity lockup. The sphere alone reads as a faint
+ * smudge at UI sizes, so it always ships with the wordmark beside it.
  */
 export function BrandMark({ href = "/", size = 32, className }: BrandMarkProps) {
   return (
@@ -17,11 +18,14 @@ export function BrandMark({ href = "/", size = 32, className }: BrandMarkProps) 
       href={href}
       aria-label="Home"
       className={cn(
-        "flex items-center px-1 text-foreground transition-colors hover:bg-muted/40",
+        "flex items-center gap-1.5 px-1 text-foreground transition-colors hover:bg-muted/40",
         className,
       )}
     >
       <SignalSphere size={size} decorative />
+      <span className="text-sm font-semibold lowercase tracking-tight">
+        apo
+      </span>
     </Link>
   );
 }

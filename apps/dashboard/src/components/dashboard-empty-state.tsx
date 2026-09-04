@@ -1,17 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Loader2, Plus } from "lucide-react";
+import { ArrowRight, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { createProject } from "@/lib/projects-api";
 import { isApiError } from "@/lib/api-error";
 
 /**
- * The authenticated-empty home state: the demo choice is
- * gone — signed-in visitors create their first project; the demo lives on
- * the anonymous landing and /demo.
+ * The authenticated-empty home state: create your first project, or step
+ * into the demo workspace first to see what a populated apo looks like.
  */
 export function DashboardEmptyState() {
   const router = useRouter();
@@ -96,6 +96,20 @@ export function DashboardEmptyState() {
             </button>
           )}
         </div>
+        <Link
+          href="/project/demo/tasks"
+          className="mt-3 flex w-full items-center gap-3 px-1 py-2 text-left text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <span className="flex-1">
+            <span className="block text-sm font-medium">
+              Or explore the demo workspace
+            </span>
+            <span className="block text-xs text-muted-foreground/70">
+              Captured example runs — every failure with its evidence.
+            </span>
+          </span>
+          <ArrowRight className="size-4" />
+        </Link>
       </div>
     </main>
   );

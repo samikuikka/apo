@@ -16,11 +16,10 @@ test.describe("Demo journey @agent", () => {
     page,
     context,
   }) => {
-    // The landing sells the demo with fixture numbers before any CTA.
+    // The landing: normal chrome (brand mark, Sign in) plus one demo CTA.
     await page.goto("/");
-    await expect(page.getByText("See apo in action.")).toBeVisible();
-    await expect(page.getByText("RUNS CAPTURED")).toBeVisible();
-    await page.getByRole("link", { name: "Explore the demo" }).click();
+    await expect(page.getByTestId("anon-sign-in")).toBeVisible();
+    await page.getByTestId("open-demo").click();
 
     // Demo tasks page: populated catalog, badge, guide rail, no session.
     await expect(page).toHaveURL(/\/project\/demo\/tasks/);
