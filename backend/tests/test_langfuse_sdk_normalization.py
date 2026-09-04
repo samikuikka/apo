@@ -15,6 +15,7 @@ import json
 from datetime import datetime, timezone
 
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 from sqlmodel import Session, select, text
 
 from apo.db import engine, init_db
@@ -211,13 +212,16 @@ def _canonical(span_id: str, attrs: dict[str, object], parent: str | None = None
     )
 
 
-def test_projected_row_carries_the_payload_not_an_empty_dict(clean_db):
+def test_fat_mode_projected_row_carries_the_payload_not_an_empty_dict(
+    clean_db, monkeypatch: MonkeyPatch
+):
     """The reported symptom: sim-user rendered blank in the trace view.
 
     The projector defaults input/output to `{}` when no convention matches, so an
     unmapped namespace surfaced as an empty observation rather than as missing
     data.
     """
+    monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "fat")
     root = _canonical("root-lf-01", {"apo.observation.type": "AGENT"})
     sim_user = _canonical(
         "sim-lf-0001",
@@ -246,7 +250,10 @@ def test_projected_row_carries_the_payload_not_an_empty_dict(clean_db):
         assert call.completion_tokens == 34
 
 
-def test_reprojecting_the_same_span_stays_idempotent(clean_db):
+def test_reprojecting_the_same_span_stays_idempotent(
+    clean_db, monkeypatch: MonkeyPatch
+):
+    monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "fat")
     span = _canonical("sim-lf-0002", SIM_USER_ATTRS)
 
     projector = TraceProjector()

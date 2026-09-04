@@ -24,10 +24,8 @@ from ...models import LoggedCallDB, RunDB, RunMetricDB, RunMetric, RunSummary
 from ...services.filters import apply_date_range, apply_numeric_range, apply_tag_filters
 from ...models.columns import (
     CALL_LIGHT,
-    LOGGED_CALL_CREATED_AT_COL,
     LOGGED_CALL_LEVEL_COL,
     LOGGED_CALL_MODEL_COL,
-    LOGGED_CALL_PARENT_COL,
     LOGGED_CALL_PROJECT_COL,
     LOGGED_CALL_RUN_ID_COL,
     RUN_CALL_COUNT_COL,
@@ -46,11 +44,7 @@ from ...models.columns import (
     RUN_METRIC_RUN_ID_COL,
     RUN_METRIC_SCORE_COL,
 )
-from ...services.projection_io import (
-    has_preview_payload,
-    list_read_mode,
-    truncate_preview,
-)
+from ...services.projection_io import has_preview_payload
 from ...services.trace_search import apply_trace_search
 from .metrics import calculate_run_metrics_from_calls
 
@@ -461,124 +455,27 @@ def _fetch_io_previews(
     if not run_ids:
         return {}
 
-    if list_read_mode() == "previews":
-        # Write-time previews first — the whole point is never touching the
-        # fat I/O columns on list renders. A slot is served from storage
-        # only when it carries real payload evidence: NULL slots (never
-        # written, or the backfill hasn't reached them) AND slots the
-        # pre-v40 paired writer published as the empty side ("{}" — issue
-        # #203) fall back to the legacy truncation path per slot.
-        query = select(
-            as_column(RunDB.id),
-            as_column(RunDB.input_preview),
-            as_column(RunDB.output_preview),
-        ).where(as_column(RunDB.id).in_(run_ids))
-        if project is not None:
-            query = query.where(as_column(RunDB.project) == project)
-        previewed: dict[str, dict[str, str | None]] = {}
-        needs_legacy: list[str] = []
-        for row in cast("list[tuple[object, ...]]", cast(object, session.exec(query).all())):
-            run_id = str(row[0])
-            input_preview = cast("str | None", row[1])
-            output_preview = cast("str | None", row[2])
-            input_serves = has_preview_payload(input_preview)
-            output_serves = has_preview_payload(output_preview)
-            if input_serves and output_serves:
-                previewed[run_id] = {
-                    "input": input_preview,
-                    "output": output_preview,
-                }
-                continue
-            if not input_serves and not output_serves:
-                continue
-            # One healthy slot, one falling back: keep the healthy stored
-            # slot and let the legacy pass below refill the other.
-            needs_legacy.append(run_id)
-            previewed[run_id] = {
-                "input": input_preview if input_serves else None,
-                "output": output_preview if output_serves else None,
-            }
-        legacy = _legacy_io_previews(
-            session,
-            [rid for rid in run_ids if rid not in previewed] + needs_legacy,
-            project,
-        )
-        for rid in needs_legacy:
-            # Healthy stored slot wins; legacy only refills the empty side.
-            stored = previewed[rid]
-            refilled = legacy.get(rid, {"input": None, "output": None})
-            previewed[rid] = {
-                "input": stored["input"] if stored["input"] is not None else refilled["input"],
-                "output": stored["output"] if stored["output"] is not None else refilled["output"],
-            }
-        previewed.update(
-            {rid: slots for rid, slots in legacy.items() if rid not in previewed}
-        )
-        for rid in run_ids:
-            if rid not in previewed:
-                previewed[rid] = {"input": None, "output": None}
-        return previewed
+    # Trace lists consume only the small write-time projection on ``runs``.
+    # Missing or pre-v40 poisoned slots render empty until the resumable admin
+    # backfill repairs them. Falling through to full call I/O made one list
+    # render materialize tens of megabytes of JSON and OOM production.
+    query = select(
+        as_column(RunDB.id),
+        as_column(RunDB.input_preview),
+        as_column(RunDB.output_preview),
+    ).where(as_column(RunDB.id).in_(run_ids))
+    if project is not None:
+        query = query.where(as_column(RunDB.project) == project)
 
-    return _legacy_io_previews(session, run_ids, project)
-
-
-def _legacy_io_previews(
-    session: Session, run_ids: list[str], project: str | None
-) -> dict[str, dict[str, str | None]]:
-    if not run_ids:
-        return {}
-
-    # Per-slot precedence (issues #192 + #203): each field falls through the
-    # tiers independently — root calls first, then GENERATION calls, then
-    # anything — and a call fills a slot only when its OWN side carries a
-    # payload, so a one-sided root (e.g. an agent-task's apo.task.run,
-    # output-only) takes just the slot it can fill and the other side stays
-    # open for the next tier. Mirrors the write-time per-slot logic in
-    # projection_io.maybe_update_run_preview.
-    result: dict[str, dict[str, str | None]] = {
+    previews: dict[str, dict[str, str | None]] = {
         rid: {"input": None, "output": None} for rid in run_ids
     }
-
-    def _fill_open_slots(run_id: str, call: LoggedCallDB) -> None:
-        slot = result[run_id]
-        if slot["input"] is None and has_preview_payload(call.input):
-            slot["input"] = _truncate_preview(call.input)
-        if slot["output"] is None and has_preview_payload(call.output):
-            slot["output"] = _truncate_preview(call.output)
-
-    tiers: list[list[Any]] = [
-        # Top tier (issue #192): a root call carrying a payload is the
-        # trace's own summary — one turn in, one answer out — and beats a
-        # generation's whole-prompt input, whose head is the system prompt.
-        [LOGGED_CALL_PARENT_COL.is_(None)],
-        # Second tier: the first GENERATION call.
-        [LoggedCallDB.observation_type == "GENERATION"],
-        # Last tier: the first call of any kind.
-        [],
-    ]
-    for conditions in tiers:
-        open_runs = [
-            rid for rid, slot in result.items()
-            if slot["input"] is None or slot["output"] is None
-        ]
-        if not open_runs:
-            break
-        query = select(LoggedCallDB).options(*CALL_LIGHT).where(
-            LOGGED_CALL_RUN_ID_COL.in_(open_runs),
-            *conditions,
-        )
-        if project is not None:
-            query = query.where(LOGGED_CALL_PROJECT_COL == project)
-        calls = session.exec(
-            query.order_by(
-                LOGGED_CALL_CREATED_AT_COL, as_column(LoggedCallDB.row_id)
-            )
-        ).all()
-        for call in calls:
-            if call.run_id is not None:
-                _fill_open_slots(call.run_id, call)
-
-    return result
-
-
-_truncate_preview = truncate_preview
+    for row in cast("list[tuple[object, ...]]", cast(object, session.exec(query).all())):
+        run_id = str(row[0])
+        input_preview = cast("str | None", row[1])
+        output_preview = cast("str | None", row[2])
+        previews[run_id] = {
+            "input": input_preview if has_preview_payload(input_preview) else None,
+            "output": output_preview if has_preview_payload(output_preview) else None,
+        }
+    return previews

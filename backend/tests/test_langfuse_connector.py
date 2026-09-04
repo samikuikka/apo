@@ -28,6 +28,7 @@ from sqlmodel import Session, select, text
 from apo.db import engine, init_db
 from apo.models.db import LoggedCallDB, RunDB
 from apo.services.otlp_receiver import OtlpReceiver
+from apo.services.projection_io import hydrate_calls_from_spans
 from apo.services.trace_ingestion_queue import QueueWorker
 from apo.models.trace_ingestion import TraceIngestionContext
 from apo.auth.api_key_auth import _hash_secret_key
@@ -154,6 +155,7 @@ class TestLangfuseConnectorProjectsFixture:
                 .order_by(LoggedCallDB.created_at)  # pyright: ignore[reportArgumentType]
             ).all()
             assert len(calls) == 3
+            hydrate_calls_from_spans(session, list(calls))
 
             # The root has the earliest start time.
             root = calls[0]
@@ -168,7 +170,7 @@ class TestLangfuseConnectorProjectsFixture:
             assert gen.cost == 45600
             assert gen.cost_provenance == "provided"
             # I/O came through apo.observation.input/output (wrapped as
-            # { value: ... }) and landed in the call columns.
+            # { value: ... }) and resolves from the canonical spans.
             assert isinstance(gen.input, dict)
             assert "messages" in gen.input
             assert gen.input["messages"][0]["role"] == "user"
@@ -256,6 +258,7 @@ class TestLangfuseConnectorProjectsFixture:
             calls = session.exec(
                 select(LoggedCallDB).where(LoggedCallDB.run_id == expected_trace_id)
             ).all()
+            hydrate_calls_from_spans(session, list(calls))
             gen = next(c for c in calls if c.model == "gpt-4o")
             # String input must survive — not be discarded to {}.
             assert isinstance(gen.input, str), f"expected str, got {type(gen.input)}: {gen.input!r}"

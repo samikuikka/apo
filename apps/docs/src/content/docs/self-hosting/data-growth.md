@@ -60,10 +60,9 @@ Schema v40 replaces the paired `runs.preview_call_row_id` with per-slot
 carrying a payload on only one side no longer publishes the empty side as
 `{}`. The migration rewrites the (small) runs table and is forward-only like
 v34 — **back up the data volume first**. Stored preview strings survive
-untouched; installations running `APO_LIST_READ=previews` should re-run the
-admin projection backfill once after upgrading so pre-v40 rows are re-derived
-per slot (until then their slots are protected from downgrades and any `{}`
-side falls back to the read-time computation).
+untouched. Run the admin projection backfill once after upgrading so pre-v40
+rows are re-derived per slot. Trace lists use only these bounded, stored
+previews; a missing slot stays empty until the resumable backfill repairs it.
 
 ### Upgrading across schema v41
 

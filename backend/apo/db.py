@@ -877,9 +877,9 @@ def _migrate_to_v35() -> None:
 
     ``runs.input_preview`` / ``output_preview`` (200-char truncations frozen
     at projection time) plus ``preview_call_row_id`` (soft reference to the
-    source call). Written only in dual/slim projection modes; a NULL preview
-    makes the list API's preview read fall back to the legacy truncation
-    path per run, so this migration alone changes no behavior.
+    source call). Written only in dual/slim projection modes. The list API
+    consumes only these bounded values; a NULL preview renders empty until
+    the resumable projection backfill repairs it.
     """
     with engine.begin() as conn:
         _add_column_if_missing(conn, "runs", "input_preview", "TEXT")

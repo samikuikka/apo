@@ -25,6 +25,7 @@ from apo.routes.langfuse_public import (
     list_sessions,
     get_session_detail,
 )
+from apo.services.projection_io import hydrate_calls_from_spans
 
 
 def _fake_request(project: str = "default") -> Request:
@@ -392,6 +393,7 @@ def test_generation_update_via_langfuse():
     with Session(engine) as session:
         call = session.exec(select(LoggedCallDB).where(LoggedCallDB.id == "lf-obs-001")).first()
         assert call is not None
+        hydrate_calls_from_spans(session, [call])
         assert call.output == {"text": "updated world"}
         assert call.prompt_tokens == 15
         assert call.completion_tokens == 30
