@@ -11,8 +11,13 @@ import {
 export const dynamic = "force-dynamic";
 
 // Per-request memo so generateMetadata and the page body share one backend
-// fetch — the trace detail payload is large (every call's full input/output).
-const getTraceDetailCached = cache(getTraceDetail);
+// fetch. The fetch is slim (call metadata + bounded previews): agentic traces
+// repeat the accumulated conversation in every generation's input, so the
+// full payload grows quadratically with trace length — the selected call's
+// payload is fetched on demand client-side instead.
+const getTraceDetailCached = cache((runId: string, projectId?: string) =>
+  getTraceDetail(runId, projectId, undefined, { slim: true }),
+);
 
 // Tab title: "Trace <short id>". Falls back to "Trace" on fetch failure.
 export async function generateMetadata({

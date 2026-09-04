@@ -111,6 +111,10 @@ export interface TraceDetail {
   run: Trace;
   metrics: TraceMetric[];
   calls: LoggedCall[];
+  /** Backend marker for `?slim=true` fetches: per-call input/output/tool
+   * payloads were omitted — fetch them per call via
+   * `getCallDetail` before rendering a call's payload. */
+  slim_calls?: boolean;
 }
 
 export const LARGE_TRACE_THRESHOLD = 100;

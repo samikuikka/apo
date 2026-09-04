@@ -234,6 +234,16 @@ covering indexes (`project_id, service_name, trace_id` and
 index-only, with `(project_id, start_time)` letting the default 7-day
 window prune.
 
+Trace *detail* reads keep agentic payloads bounded: every GENERATION call's
+`input` carries the whole accumulated conversation, so the full detail of a
+long trace grows quadratically (a 281-call trace is ~18 MB). The dashboard
+fetches `GET /v1/runs/{id}?slim=true` — call metadata with deferred
+input/output/messages/tool payloads (plus bounded first/last previews for
+the trace Preview tab, marked by `slim_calls: true`) — and loads one call's
+full payload on demand from `GET /v1/runs/{id}/calls/{id}`. The default
+(non-slim) response keeps shipping full call I/O for API consumers (the
+CLI, the SDK, exports).
+
 ### Cost System
 
 Cost is data, not code. apo prices calls against a normalized

@@ -1,12 +1,15 @@
-# pyright: reportCallInDefaultInitializer=false, reportPrivateUsage=false, reportUnusedCallResult=false
+# pyright: reportAny=false, reportCallInDefaultInitializer=false, reportExplicitAny=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnusedCallResult=false
 
+import json
 from datetime import datetime, timezone
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import asc, delete
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.orm import defer
 from sqlmodel import Session, select
 
 from ...db import get_session
@@ -345,19 +348,26 @@ def get_run_details(
     http_request: Request,
     project: str = "default",
     include: str | None = Query(default=None),
+    slim: bool = Query(default=False, description="Ship call metadata only: input/output/tool payloads are omitted (first/last calls carry short previews) so agentic traces don't serialize megabytes of accumulated history. Fetch GET /v1/runs/{run_id}/calls/{call_id} for a single call's full payload."),
     session: Session = Depends(get_session),
     _: None = Depends(require_api_key_scope("full")),
 ):
     """Full trace detail for one run: calls (messages deferred unless
     ``?include=messages``), stored + derived metrics, derived status, and
     projection capabilities. ``?include=attributes`` attaches canonical
-    OTLP span attributes per call."""
+    OTLP span attributes per call. ``?slim=true`` defers every call's
+    heavy I/O columns (the dashboard's mode) — the response carries a
+    ``slim_calls: true`` marker instead."""
     _enforce_project_read(http_request, session, project)
     run = session.exec(
         select(RunDB).where(RunDB.id == run_id, RunDB.project == project)
     ).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+
+    # `?include=messages` needs the heavy columns anyway — slim only applies
+    # to the metadata-only shape.
+    effective_slim = slim and not (include and "messages" in include)
 
     calls_query = select(
         LoggedCallDB
@@ -374,14 +384,31 @@ def get_run_details(
     # lazy-load only when a panel is opened. This cuts the base payload from
     # MB-scale (50-200 calls × full input/output/messages/tool_result) to
     # scalar-level metadata.
-    if not (include and "messages" in include):
+    if effective_slim:
+        # Slim mode: never even parse the fat columns. Agentic traces repeat
+        # the whole accumulated conversation in every generation's input, so
+        # the full payload grows quadratically with trace length (measured:
+        # 281 calls → 18 MB). Keep cost_breakdown/raw_usage loaded — the
+        # costs/tokens tabs aggregate them and they are a few ints per call.
+        calls_query = calls_query.options(
+            defer(LoggedCallDB.input),  # pyright: ignore[reportArgumentType]
+            defer(LoggedCallDB.output),  # pyright: ignore[reportArgumentType]
+            defer(LoggedCallDB.messages),  # pyright: ignore[reportArgumentType]
+            defer(LoggedCallDB.tool_parameters),  # pyright: ignore[reportArgumentType]
+            defer(LoggedCallDB.tool_result),  # pyright: ignore[reportArgumentType]
+        )
+    elif not (include and "messages" in include):
         calls_query = calls_query.options(*CALL_LIGHT)
 
     calls = session.exec(calls_query).all()
 
     # Slim mode: resolve I/O from canonical spans (span-less rows keep
     # their stored columns). In-memory only — nothing is persisted.
-    hydrate_calls_from_spans(session, list(calls))
+    # Skipped in slim mode: re-hydrating would load every span's fat
+    # attributes, which is exactly what slim mode exists to avoid. The
+    # per-call endpoint hydrates on demand.
+    if not effective_slim:
+        hydrate_calls_from_spans(session, list(calls))
 
     stored_metrics = session.exec(
         select(RunMetricDB).where(
@@ -400,10 +427,6 @@ def get_run_details(
 
     all_metrics = list(metrics_dict.values())
 
-    calls_models: list[LoggedCall] = [
-        LoggedCall.model_validate(call, from_attributes=True) for call in calls
-    ]
-
     # `messages` duplicates content already present in each call's input/output
     # (the projector copies input.messages + output.messages verbatim), which
     # roughly doubles the response for agentic traces. Ship it only on opt-in
@@ -415,11 +438,34 @@ def get_run_details(
         else {"calls": {"__all__": {"messages"}}}
     )
 
-    response = RunDetail(
-        run=Run.model_validate(run),
-        metrics=[RunMetric.model_validate(m) for m in all_metrics],
-        calls=calls_models,
-    ).model_dump(by_alias=True, exclude=exclude)
+    response: dict[str, Any]
+    if effective_slim:
+        response = {
+            "run": Run.model_validate(run).model_dump(by_alias=True),
+            "metrics": [
+                RunMetric.model_validate(m).model_dump(by_alias=True)
+                for m in all_metrics
+            ],
+            "calls": [_slim_call_payload(call) for call in calls],
+            "slim_calls": True,
+        }
+        # The trace-level Preview tab falls back to the first call's input /
+        # last call's output when the run itself recorded none — give those
+        # two slots a bounded preview so the tab keeps working without the
+        # full payloads. Two single-row lazy loads, capped in size.
+        if calls:
+            _attach_slim_previews(
+                cast("list[dict[str, object]]", response["calls"]), calls[0], calls[-1]
+            )
+    else:
+        calls_models: list[LoggedCall] = [
+            LoggedCall.model_validate(call, from_attributes=True) for call in calls
+        ]
+        response = RunDetail(
+            run=Run.model_validate(run),
+            metrics=[RunMetric.model_validate(m) for m in all_metrics],
+            calls=calls_models,
+        ).model_dump(by_alias=True, exclude=exclude)
 
     # Same three-valued status the run LIST derives (error/warning/success
     # from call levels) — consumers like `apo traces show` read it, and the
@@ -432,10 +478,13 @@ def get_run_details(
     # Same capability semantics as the projection snapshot (issue #164 DX
     # ask): let a reader see which evidence categories this trace's
     # projection carries, so an `unsupported` assertion verdict can be told
-    # apart from a misbehaving producer.
-    response["capabilities"] = derive_capabilities(list(calls), run).model_dump(
-        mode="json", by_alias=True
-    )
+    # apart from a misbehaving producer. Skipped in slim mode — the messages
+    # capability would require loading every generation's output, which is
+    # the work slim mode exists to avoid.
+    if not effective_slim:
+        response["capabilities"] = derive_capabilities(list(calls), run).model_dump(
+            mode="json", by_alias=True
+        )
 
     # `?include=attributes` attaches each call's canonical OtlpSpanDB
     # attributes (issue #164 DX ask) so a producer can verify its OTLP
@@ -455,6 +504,56 @@ def get_run_details(
                 call["attributes"] = raw
 
     return response
+
+
+# Preview budget for a slim call's first/last slots — large enough that the
+# trace-level Preview tab stays readable, small enough that two of them never
+# matter next to the megabytes they stand in for.
+_SLIM_PREVIEW_CHARS = 8000
+
+
+def _slim_call_payload(call: LoggedCallDB) -> dict[str, object]:
+    """Serialize a call from its LOADED columns only.
+
+    The heavy I/O columns are deferred in slim mode; touching them (directly
+    or via ``LoggedCall.model_validate``) would lazy-load every row, which is
+    the exact cost slim mode avoids. Unloaded keys are simply absent from the
+    payload. ``meta`` keeps its response alias ``metadata``.
+    """
+    state = sa_inspect(call)
+    if state is None or state.mapper is None:  # defensive; persistent instances always inspect
+        raise ValueError(f"call {call.id} is not a persistent instance")
+    unloaded = state.unloaded
+    payload: dict[str, object] = {}
+    for attr in state.mapper.column_attrs:
+        if attr.key in unloaded:
+            continue
+        key = "metadata" if attr.key == "meta" else attr.key
+        payload[key] = getattr(call, attr.key)
+    return payload
+
+
+def _slim_preview(value: object) -> str | None:
+    if value is None:
+        return None
+    text = value if isinstance(value, str) else json.dumps(value, default=str)
+    if len(text) <= _SLIM_PREVIEW_CHARS:
+        return text
+    return text[:_SLIM_PREVIEW_CHARS] + "..."
+
+
+def _attach_slim_previews(
+    payloads: list[dict[str, object]], first: LoggedCallDB, last: LoggedCallDB
+) -> None:
+    """Give the trace Preview tab its two fallback slots (first call input,
+    last call output) as bounded strings. The attribute access lazy-loads
+    those two rows' fat columns — a deliberate, bounded exception."""
+    first_input = _slim_preview(first.input)
+    if first_input is not None and payloads:
+        payloads[0]["input"] = first_input
+    last_output = _slim_preview(last.output)
+    if last_output is not None and payloads:
+        payloads[-1]["output"] = last_output
 
 
 class CustomMetricResult(BaseModel):
@@ -515,6 +614,41 @@ async def post_custom_metrics(
         "metrics_stored": results_count,
         "errors": errors if errors else None,
     }
+
+
+@router.get("/{run_id}/calls/{call_id}")
+def get_call_details(
+    run_id: str,
+    call_id: str,
+    http_request: Request,
+    project: str = "default",
+    include: str | None = Query(
+        default=None, description="'messages' ships the recorded messages array too"
+    ),
+    session: Session = Depends(get_session),
+    _: None = Depends(require_api_key_scope("full")),
+):
+    """Full payload for ONE call of a run — the on-demand companion of
+    ``GET /v1/runs/{run_id}?slim=true``. Returns the call's complete
+    input/output/tool payloads (messages only with ``?include=messages``).
+    404 when the call does not exist or belongs to another run/project."""
+    _enforce_project_read(http_request, session, project)
+    call = session.exec(
+        select(LoggedCallDB).where(
+            LoggedCallDB.id == call_id, LoggedCallDB.project == project
+        )
+    ).first()
+    if not call or call.run_id != run_id:
+        raise HTTPException(status_code=404, detail="Call not found")
+
+    # Same slim-write-mode hydration as the run-detail read path: span-backed
+    # calls resolve their I/O from canonical spans, in memory.
+    hydrate_calls_from_spans(session, [call])
+
+    exclude = None if include and "messages" in include else {"messages"}
+    return LoggedCall.model_validate(call, from_attributes=True).model_dump(
+        by_alias=True, exclude=exclude
+    )
 
 
 @router.patch("/{run_id}/calls/{call_id}/correction")

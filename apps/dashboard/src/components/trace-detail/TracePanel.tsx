@@ -41,7 +41,11 @@ export function TracePanel() {
     document.body.style.overflow = "hidden";
 
     try {
-      const data = await getTraceDetail(runId, projectId ?? undefined);
+      // Slim fetch: the panel renders call metadata first — the selected
+      // call's payload loads on demand (see useCallPayload).
+      const data = await getTraceDetail(runId, projectId ?? undefined, undefined, {
+        slim: true,
+      });
       // A newer fetch may have aborted this controller while we awaited.
       // Guard the update (rather than early-returning) so the finally block
       // below still runs the same cleanup on every path.

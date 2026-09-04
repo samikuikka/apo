@@ -71,6 +71,15 @@ interface TraceDetailTransport {
   run: TraceTransport;
   metrics: TraceMetric[];
   calls: LoggedCall[];
+  /** Present on `?slim=true` responses — call payloads are deferred. */
+  slim_calls?: boolean;
+}
+
+export interface GetTraceDetailOptions {
+  /** `?slim=true`: omit per-call input/output/tool payloads (agentic traces
+   * ship megabytes of accumulated history otherwise) — the selected call's
+   * full payload is fetched separately via `getCallDetail`. */
+  slim?: boolean;
 }
 
 interface PaginatedTraceSummaryTransport {
@@ -277,11 +286,12 @@ export async function getTraceDetail(
   runId: string,
   projectId?: string,
   signal?: AbortSignal,
+  options?: GetTraceDetailOptions,
 ): Promise<TraceDetail> {
   try {
     const data = await apiClient<TraceDetailTransport>(`/v1/runs/${runId}`, {
       ...NO_CACHE,
-      query: { project: projectId },
+      query: { project: projectId, slim: options?.slim ? true : undefined },
       signal,
     });
     return normalizeTraceDetail(data);
@@ -291,6 +301,21 @@ export async function getTraceDetail(
     }
     throw error;
   }
+}
+
+/** Full payload for ONE call of a trace — the on-demand companion of a
+ * `?slim=true` trace fetch. */
+export async function getCallDetail(
+  runId: string,
+  callId: string,
+  projectId?: string,
+  signal?: AbortSignal,
+): Promise<LoggedCall> {
+  return apiClient<LoggedCall>(`/v1/runs/${runId}/calls/${callId}`, {
+    ...NO_CACHE,
+    query: { project: projectId },
+    signal,
+  });
 }
 
 export const bulkDeleteTraces = (runIds: string[]): Promise<void> =>
