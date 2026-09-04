@@ -26,6 +26,7 @@ from apo.models.db import (
     AgentTaskRunDB,
     AgentTaskScheduleDB,
     AgentTaskScheduleOccurrenceDB,
+    AgentTaskTestResultCorrectionDB,
     LoggedCallDB,
     ProjectTaskInventoryDB,
     ProjectTaskSourceDB,
@@ -78,6 +79,9 @@ class TestFixtureLoads:
         inventory = session_exec_ids(session)
         assert "tasks/dabstep/dabstep-merchant-high-fraud-fine-risk" in inventory
         assert "tasks/dabstep/dabstep-issuing-country-most-transactions" in inventory
+        # The merged real-agent dataset keeps its own task family.
+        assert "real-agent/documents/document-qa" in inventory
+        assert "real-agent/security/security-audit" in inventory
 
         revision = ensure_task_definition_revision(
             session,
@@ -102,15 +106,24 @@ class TestFixtureLoads:
                 AgentTaskBatchRunDB.project == DEMO_PROJECT_ID
             )
         ).all()
-        # The captured dabstep dataset (22 runs) plus the pinned anchors.
-        assert len(batches) >= 20
+        # DABstep dataset (22 runs) + merged real-agent dataset (30 runs)
+        # plus the pinned anchors on both sides.
+        assert len(batches) >= 50
         assert {"demo-batch-001", "demo-batch-002"} <= {b.id for b in batches}
+        assert {"demo-batch-ra-001", "demo-batch-ra-002"} <= {b.id for b in batches}
 
         run = session.get(AgentTaskRunDB, "demo-run-001")
         assert run is not None
         assert run.status == "failed"
         assert run.configured_model == "z-ai/glm-5.3-flash"
         assert run.task_id == "tasks/dabstep/dabstep-merchant-high-fraud-fine-risk"
+
+        # The real-agent flagship: document-qa judged against sonnet.
+        ra_run = session.get(AgentTaskRunDB, "demo-run-ra-001")
+        assert ra_run is not None
+        assert ra_run.status == "failed"
+        assert ra_run.configured_model == "anthropic/claude-sonnet-4.5"
+        assert ra_run.task_id == "real-agent/documents/document-qa"
 
         deliverable = session.exec(
             select(AgentTaskDeliverableDB).where(
@@ -145,12 +158,35 @@ class TestFixtureLoads:
         assert "delivered" in statuses
         assert "missed" in statuses
 
+        # The real-agent side keeps its own schedule under a renamed anchor.
+        regression = session.get(AgentTaskScheduleDB, "demo-schedule-regression")
+        assert regression is not None
+        assert regression.enabled is False
+        ra_occurrences = session.exec(
+            select(AgentTaskScheduleOccurrenceDB).where(
+                AgentTaskScheduleOccurrenceDB.schedule_id == "demo-schedule-regression"
+            )
+        ).all()
+        assert {o.status for o in ra_occurrences} >= {"delivered", "missed"}
+
     def test_views(self, session: Session) -> None:
         assert _load(session)
         views = session.exec(
             select(TaskViewDB).where(TaskViewDB.project_id == DEMO_PROJECT_ID)
         ).all()
         assert {v.id for v in views} >= {"demo-view-1", "demo-view-2"}
+        # Merged real-agent model views.
+        assert {"demo-view-mini", "demo-view-sonnet"} <= {v.id for v in views}
+
+    def test_merged_correction_loads(self, session: Session) -> None:
+        assert _load(session)
+        corrections = session.exec(
+            select(AgentTaskTestResultCorrectionDB).where(
+                AgentTaskTestResultCorrectionDB.task_run_id == "demo-run-corrected"
+            )
+        ).all()
+        assert corrections
+        assert {c.action for c in corrections} == {"set_pass"}
 
     def test_otel_replay_claims_and_projects(self, session: Session) -> None:
         assert _load(session)
