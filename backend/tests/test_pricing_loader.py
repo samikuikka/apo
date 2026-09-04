@@ -458,6 +458,34 @@ class TestCacheWriteIsPricedForEveryProvider:
                 assert cost is not None, name
                 assert cost.total == expected_cost, f"{name} {usage_key}"
 
+    def test_gemini_3x_flash_family_shares_one_flat_rate(self, session: Session) -> None:
+        """Google prices the whole 3.x Flash family at ONE standard rate, with no
+        long-context tier (tiering is a Pro feature). 3.7 drifted to the flex tier
+        and metered 2x low until 2026-09-04; pinning the family together is what
+        makes that kind of per-version drift fail loudly instead of silently
+        halving or doubling a run's cost."""
+        load_default_prices(session)
+        family = ("gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash")
+        expected = {
+            "input": 750_000,
+            "output": 3_750_000,
+            "cache_read": 75_000,
+            "cache_write_5m": 41_667,
+        }
+        for name in family:
+            for usage_key, expected_cost in expected.items():
+                cost = compute_cost(
+                    session, name, {usage_key: 1_000_000}, "__global__", NOW
+                )
+                assert cost is not None, f"{name} should be priced, not unpriced"
+                assert cost.total == expected_cost, f"{name} {usage_key}"
+
+        # No long-context tier: a 1M-token prompt costs exactly 1M x the flat input
+        # rate, with no doubling at any threshold.
+        for name in family:
+            big = compute_cost(session, name, {"input": 1_000_000}, "__global__", NOW)
+            assert big is not None and big.total == 750_000, f"{name} must not tier"
+
     def test_gemini_38_flash_priced_bare_and_prefixed(self, session: Session) -> None:
         """Gemini 3.8 Flash (released 2026-09-02) must not arrive unpriced, and
         must not be swallowed by the 3.6 or 3.7 patterns. Rates are Google's

@@ -724,13 +724,13 @@
       ]
     },
     {
-      "_doc": "Issue #146: was arriving unpriced (OpenRouter-prefixed as google/...). Rates verified 2026-08-14 against OpenRouter /api/v1/models: $0.375/$1.875 per MTok, cache read $0.0375. Unlike earlier Gemini flash entries, OpenRouter publishes an explicit cache-write price for this model ($0.0208333/1M) rather than billing writes as input, so cache_write_5m carries that rate. Base tier only — Google's beyond-200k rates for this model were not verified at entry time, so long-context calls price at base (under-charging there).",
+      "_doc": "Rates corrected 2026-09-04: this row carried $0.375/$1.875 (cache read $0.0375, write $0.0208333), which is OpenRouter's FLEX tier. A default request lands on the STANDARD tier, so 3.7 runs metered 2x low. Re-probed against openrouter.ai/api/v1/models/google/gemini-3.7-flash/endpoints (tag google-ai-studio) and ai.google.dev/gemini-api/docs/pricing: $0.75/$3.75 per MTok, cache read $0.075, explicit cache write $0.0416667 \u2014 identical to the 3.6 and 3.8 rows, because Google prices the whole 3.x Flash family at one flat rate. Flash has NO long-context tier (that is Pro), so the earlier 'beyond-200k not verified' caveat did not apply either. These are introductory rates that double on 2027-01-01 across the family.",
       "match_pattern": "(?i)^gemini-3\\.7-flash.*$",
       "provider": "gemini",
       "display_name": "Gemini 3.7 Flash",
       "start_date": null,
-      "updated_at": "2026-08-14T00:00:00Z",
-      "last_reviewed": "2026-08",
+      "updated_at": "2026-09-04T00:00:00Z",
+      "last_reviewed": "2026-09",
       "pricing_tiers": [
         {
           "name": "default",
@@ -738,10 +738,10 @@
           "priority": 0,
           "conditions": [],
           "prices": {
-            "input": 0.375,
-            "cache_read": 0.0375,
-            "cache_write_5m": 0.0208333,
-            "output": 1.875
+            "input": 0.75,
+            "cache_read": 0.075,
+            "cache_write_5m": 0.0416667,
+            "output": 3.75
           }
         }
       ]
