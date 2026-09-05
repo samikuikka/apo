@@ -15,11 +15,11 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Download, FileText, Loader2 } from "lucide-react";
 import { ExpandableJson } from "@/components/ExpandableJson";
 import { DeliverableMarkdown } from "@/components/agent-task-execution/deliverable-markdown";
-import { looksLikeMarkdown } from "@/lib/looks-like-markdown";
 import {
   type DeliverableSummary,
   fetchDeliverableBody,
 } from "@/lib/agent-task-deliverables-api";
+import { looksLikeMarkdown, parseJsonText } from "@/lib/looks-like-markdown";
 
 // shiki is a heavy dependency — loaded only when a code deliverable renders.
 const ShikiCodeBlock = dynamic(
@@ -129,10 +129,14 @@ function JsonRow({ item }: { item: DeliverableSummary }) {
 }
 
 function BodyValue({ value }: { value: unknown }) {
-  const isObject = typeof value === "object" && value !== null;
   const isString = typeof value === "string";
+  // A serialized-JSON body (e.g. a conversation transcript) renders in the
+  // tree viewer like any object deliverable.
+  const parsedJson = isString ? parseJsonText(value) : null;
+  const viewValue: unknown = parsedJson ?? value;
+  const isObject = typeof viewValue === "object" && viewValue !== null;
   if (isObject) {
-    return <ExpandableJson data={value} className="!rounded-none !border-0 !shadow-none" />;
+    return <ExpandableJson data={viewValue} className="!rounded-none !border-0 !shadow-none" />;
   }
   if (isString && looksLikeMarkdown(value)) {
     return <DeliverableMarkdown text={value} />;

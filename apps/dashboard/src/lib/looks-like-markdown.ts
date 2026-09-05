@@ -34,7 +34,32 @@ const INLINE = [
 
 export function looksLikeMarkdown(text: string): boolean {
   if (!text || text.length < 3) return false;
+  // Pretty-printed JSON is not prose — and its string values can carry
+  // markdown fragments (a chat transcript's bold/link syntax) that light up
+  // the markers below. Feeding 100s of KB of escaped JSON to the markdown
+  // parser freezes the tab for tens of seconds.
+  if (parseJsonText(text) !== null) return false;
   return (
     STRUCTURAL.some((re) => re.test(text)) || INLINE.some((re) => re.test(text))
   );
+}
+
+/**
+ * Parse a string deliverable body as a JSON object or array, or return null.
+ *
+ * Deliverable bodies can arrive as pre-serialized JSON text (a `conversation`
+ * transcript is pretty-printed JSON); only object/array roots qualify, so
+ * scalar-looking strings ("42", plain prose) stay strings. Callers use the
+ * parsed value to route the body into the JSON tree viewer instead of the
+ * markdown/code renderers.
+ */
+export function parseJsonText(text: string): object | null {
+  const trimmed = text.trimStart();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+  try {
+    const value: unknown = JSON.parse(trimmed);
+    return typeof value === "object" && value !== null ? value : null;
+  } catch {
+    return null;
+  }
 }

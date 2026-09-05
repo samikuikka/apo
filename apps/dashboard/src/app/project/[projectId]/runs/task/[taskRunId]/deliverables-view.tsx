@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, FileText } from "lucide-react";
 import { ExpandableJson } from "@/components/ExpandableJson";
 import { ShikiCodeBlock } from "@/components/shiki-code-block";
 import { DeliverableMarkdown } from "@/components/agent-task-execution/deliverable-markdown";
-import { looksLikeMarkdown } from "@/lib/looks-like-markdown";
+import { looksLikeMarkdown, parseJsonText } from "@/lib/looks-like-markdown";
 
 export function DeliverablesView({ deliverables }: { deliverables: Record<string, unknown> }) {
   const entries = Object.entries(deliverables);
@@ -23,10 +23,14 @@ export function DeliverablesView({ deliverables }: { deliverables: Record<string
 
 function DeliverableFile({ name, value }: { name: string; value: unknown }) {
   const [expanded, setExpanded] = useState(false);
-  const isObject = typeof value === "object" && value !== null;
   const isString = typeof value === "string";
+  // A serialized-JSON body (e.g. a conversation transcript) renders in the
+  // tree viewer like any object deliverable.
+  const parsedJson = isString ? parseJsonText(value) : null;
+  const viewValue: unknown = parsedJson ?? value;
+  const isObject = typeof viewValue === "object" && viewValue !== null;
   const code = isObject
-    ? JSON.stringify(value, null, 2)
+    ? JSON.stringify(viewValue, null, 2)
     : isString
       ? value
       : String(value ?? "");
@@ -45,13 +49,13 @@ function DeliverableFile({ name, value }: { name: string; value: unknown }) {
         <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate font-mono text-sm text-foreground">{name}</span>
         <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground/50">
-          {isObject ? `${Object.keys(value).length} keys` : `${lines} line${lines !== 1 ? "s" : ""}`}
+          {isObject ? `${Object.keys(viewValue).length} keys` : `${lines} line${lines !== 1 ? "s" : ""}`}
         </span>
       </button>
       {expanded && (
         <div className="border-t border-border/50 bg-background/50">
           {isObject ? (
-            <ExpandableJson data={value} className="!rounded-none !border-0 !shadow-none" />
+            <ExpandableJson data={viewValue} className="!rounded-none !border-0 !shadow-none" />
           ) : isString && looksLikeMarkdown(value) ? (
             <DeliverableMarkdown text={value} />
           ) : (
