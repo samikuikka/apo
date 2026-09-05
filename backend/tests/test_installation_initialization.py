@@ -1,5 +1,5 @@
 # pyright: reportAny=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnusedCallResult=false, reportUnusedImport=false
-# pyright: reportAttributeAccessIssue=false
+# pyright: reportAttributeAccessIssue=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportMissingParameterType=false
 
 """Acceptance tests: installation initialization (tests 1-7)."""
 
@@ -150,3 +150,153 @@ class TestBootstrapIntegration:
         status = get_installation_setup_status(fresh_session)
         assert status.setup_available is False  # Still closed.
         assert status.has_users is False  # No user was created.
+
+
+def _add_fixture_placeholder(session: Session) -> object:
+    """Mimic the demo fixture's inert author row (demo@apo.invalid)."""
+    from apo.models.db import UserDB
+
+    user = UserDB(
+        email="demo@apo.invalid",
+        name="Apo Demo",
+        password_hash="!",
+        is_active=False,
+        is_admin=False,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+class TestFixturePlaceholderDoesNotClaimInstallation:
+    """The demo fixture's inert author row must never initialize the install.
+
+    Every fresh demo-enabled volume boots with that row present; before the
+    credential filter, the singleton backfill fired on it and permanently
+    closed /auth/setup and the INIT_USER bootstrap."""
+
+    def test_placeholder_only_install_keeps_setup_open(self, fresh_session: Session) -> None:
+        from apo.services.installation_initialization import get_installation_setup_status
+
+        _add_fixture_placeholder(fresh_session)
+        status = get_installation_setup_status(fresh_session)
+        assert status.has_users is False
+        assert status.setup_available is True
+
+    def test_claim_succeeds_with_placeholder_present(self, fresh_session: Session) -> None:
+        from apo.services.installation_initialization import (
+            claim_initial_user,
+            get_installation_setup_status,
+        )
+
+        _add_fixture_placeholder(fresh_session)
+        user = claim_initial_user(
+            fresh_session,
+            email="admin@test.com",
+            name="Admin",
+            password="a-strong-password-123",
+            is_instance_admin=True,
+        )
+        assert user.is_admin is True
+
+        status = get_installation_setup_status(fresh_session)
+        assert status.setup_available is False
+        assert status.has_users is True
+
+    def test_mis_backfilled_installation_is_reopened(self, fresh_session: Session) -> None:
+        """Old-bug state: the singleton was backfilled onto the placeholder."""
+        from apo.models.db import InstallationStateDB
+        from apo.services.installation_initialization import get_installation_setup_status
+
+        placeholder = _add_fixture_placeholder(fresh_session)
+        fresh_session.add(
+            InstallationStateDB(
+                id="installation",
+                initialized_at=placeholder.created_at,
+                initial_user_id=placeholder.id,
+            )
+        )
+        fresh_session.commit()
+
+        status = get_installation_setup_status(fresh_session)
+        assert status.setup_available is True
+        assert status.has_users is False
+
+    def test_mis_backfill_with_credential_user_stays_closed(
+        self, fresh_session: Session
+    ) -> None:
+        """Once any credential user exists, the recorded claim stands."""
+        from apo.auth import hash_password
+        from apo.models.db import InstallationStateDB, UserDB
+        from apo.services.installation_initialization import get_installation_setup_status
+
+        placeholder = _add_fixture_placeholder(fresh_session)
+        fresh_session.add(
+            InstallationStateDB(
+                id="installation",
+                initialized_at=placeholder.created_at,
+                initial_user_id=placeholder.id,
+            )
+        )
+        fresh_session.add(
+            UserDB(
+                email="real@test.com",
+                name="Real",
+                password_hash=hash_password("a-strong-password-123"),
+            )
+        )
+        fresh_session.commit()
+
+        status = get_installation_setup_status(fresh_session)
+        assert status.setup_available is False
+        assert status.has_users is True
+
+    def test_deactivated_real_user_keeps_setup_closed(self, fresh_session: Session) -> None:
+        """Deactivating the last real admin must not reopen setup."""
+        from apo.services.installation_initialization import (
+            claim_initial_user,
+            get_installation_setup_status,
+        )
+
+        user = claim_initial_user(
+            fresh_session,
+            email="admin@test.com",
+            name="Admin",
+            password="a-strong-password-123",
+            is_instance_admin=True,
+        )
+        user.is_active = False
+        fresh_session.add(user)
+        fresh_session.commit()
+
+        status = get_installation_setup_status(fresh_session)
+        assert status.setup_available is False
+
+    def test_setup_endpoint_succeeds_with_fixture_placeholder(
+        self, client, session  # type: ignore[no-untyped-def]
+    ) -> None:
+        from apo.models.db import UserDB
+
+        session.add(
+            UserDB(
+                email="demo@apo.invalid",
+                name="Apo Demo",
+                password_hash="!",
+                is_active=False,
+                is_admin=False,
+            )
+        )
+        session.commit()
+
+        resp = client.post(
+            "/auth/setup",
+            json={"email": "admin@test.com", "password": "SecurePass123", "name": "Admin"},
+        )
+        assert resp.status_code == 200
+
+        resp = client.post(
+            "/auth/setup",
+            json={"email": "other@test.com", "password": "SecurePass123", "name": "Other"},
+        )
+        assert resp.status_code == 409
