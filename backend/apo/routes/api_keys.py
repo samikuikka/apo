@@ -1,4 +1,4 @@
-# pyright: reportCallInDefaultInitializer=false
+# pyright: reportCallInDefaultInitializer=false, reportPrivateUsage=false
 
 """
 API Key management endpoints for SDK authentication.
@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, col, delete, select
 
-from ..auth import verify_password
+from ..auth import _dummy_hash, verify_password
 from ..services.ingest_quota import today_usage
 from ..auth.api_key_auth import generate_key_pair
 from ..auth.api_key_cache import (
@@ -434,6 +434,7 @@ def bootstrap_api_key(
 
     user = session.exec(select(UserDB).where(UserDB.email == body.email)).first()
     if user is None or not user.is_active:
+        _ = verify_password(body.password, _dummy_hash)
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not verify_password(body.password, user.password_hash):

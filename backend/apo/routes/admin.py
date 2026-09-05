@@ -1,5 +1,6 @@
 # pyright: reportCallInDefaultInitializer=false, reportDeprecated=false, reportPrivateLocalImportUsage=false
 
+import hmac
 import os
 
 from typing import cast
@@ -9,6 +10,7 @@ from sqlmodel import Session, text
 
 from ..auth.deps import require_api_key_scope
 from ..db import get_session, DATA_DIR, SQLITE_FILE_NAME
+from ..models.db import UserDB
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
@@ -16,11 +18,33 @@ ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 type StatsMap = dict[str, int]
 
 
-def verify_admin(request: Request) -> bool:
-    if not ADMIN_API_KEY:
-        return False
-    provided = request.headers.get("x-admin-key")
-    return provided == ADMIN_API_KEY
+def verify_admin(request: Request, session: Session) -> bool:
+    """Accept the operator's ADMIN_API_KEY or an installation-admin session.
+
+    Two legitimate caller groups reach these maintenance routes:
+
+    - ops tooling / scripts present ``x-admin-key`` directly;
+    - the dashboard's system page calls through ``/backend-proxy/*``, which
+      the frontend's Next.js rewrite proxies to the backend with only the
+      caller's session cookie — request headers like ``x-admin-key`` cannot
+      be attached frontend-side, so the admin session itself must authorize.
+
+    Only cookie sessions qualify (not project API keys): an admin's project
+    key must not double as an instance-maintenance credential. Role and
+    active status come from a fresh DB lookup, so revoking admin or
+    deactivating the user takes effect immediately.
+    """
+    if ADMIN_API_KEY:
+        provided = request.headers.get("x-admin-key", "")
+        if hmac.compare_digest(provided, ADMIN_API_KEY):
+            return True
+    if getattr(request.state, "auth_method", None) == "cookie":
+        user_id = getattr(request.state, "user_id", None)
+        if isinstance(user_id, str) and user_id:
+            user = session.get(UserDB, user_id)
+            if user is not None and user.is_active and user.is_admin:
+                return True
+    return False
 
 
 def _get_all_tables(session: Session) -> list[str]:
@@ -46,7 +70,7 @@ async def reset_database(
     _: object = Depends(require_api_key_scope("full")),
 ):
     """Reset the database by deleting all data."""
-    if not verify_admin(request):
+    if not verify_admin(request, session):
         raise HTTPException(
             status_code=401, detail="Unauthorized: Admin access required"
         )
@@ -75,7 +99,7 @@ async def nuke_database(
     _: object = Depends(require_api_key_scope("full")),
 ):
     """Completely delete and recreate the database file. Requires 'YES_I_AM_SURE' confirmation."""
-    if not verify_admin(request):
+    if not verify_admin(request, session):
         raise HTTPException(
             status_code=401, detail="Unauthorized: Admin access required"
         )
@@ -119,7 +143,7 @@ async def get_db_stats(
     _: object = Depends(require_api_key_scope("full")),
 ) -> dict[str, str | int | StatsMap]:
     """Get database statistics for admin monitoring."""
-    if not verify_admin(request):
+    if not verify_admin(request, session):
         raise HTTPException(
             status_code=401, detail="Unauthorized: Admin access required"
         )
@@ -148,10 +172,11 @@ async def get_db_stats(
 @router.get("/retention")
 async def get_retention_info(
     request: Request,
+    session: Session = Depends(get_session),
     _: object = Depends(require_api_key_scope("full")),
 ):
     """Report DB size, per-table bytes, and the active retention policy."""
-    if not verify_admin(request):
+    if not verify_admin(request, session):
         raise HTTPException(
             status_code=401, detail="Unauthorized: Admin access required"
         )
@@ -184,6 +209,7 @@ async def get_retention_info(
 @router.get("/retention/preview")
 async def preview_retention_effects(
     request: Request,
+    session: Session = Depends(get_session),
     _: object = Depends(require_api_key_scope("full")),
 ):
     """Dry run of evidence expiry: what the next pass would delete, per project.
@@ -192,7 +218,7 @@ async def preview_retention_effects(
     first, confirm the run list is what you expect, then let maintenance
     act. Deletes nothing.
     """
-    if not verify_admin(request):
+    if not verify_admin(request, session):
         raise HTTPException(
             status_code=401, detail="Unauthorized: Admin access required"
         )
@@ -213,6 +239,7 @@ async def preview_retention_effects(
 @router.post("/retention/cleanup")
 async def trigger_retention_cleanup(
     request: Request,
+    session: Session = Depends(get_session),
     _: object = Depends(require_api_key_scope("full")),
 ):
     """Run the maintenance cleanup immediately.
@@ -221,7 +248,7 @@ async def trigger_retention_cleanup(
     expired credentials); the age-based purge only runs when
     ``APO_RETENTION_DAYS`` is configured.
     """
-    if not verify_admin(request):
+    if not verify_admin(request, session):
         raise HTTPException(
             status_code=401, detail="Unauthorized: Admin access required"
         )
@@ -261,10 +288,11 @@ class RepriceRequest(BaseModel):
 async def start_reprice(
     request: Request,
     body: RepriceRequest,
+    session: Session = Depends(get_session),
     _: object = Depends(require_api_key_scope("full")),
 ) -> dict[str, str]:
     """Kick off a reprice job. Returns ``{job_id}`` immediately."""
-    if not verify_admin(request):
+    if not verify_admin(request, session):
         raise HTTPException(status_code=401, detail="Unauthorized: Admin access required")
 
     job_id = uuid.uuid4().hex[:12]
@@ -309,10 +337,11 @@ def _run_reprice_job(job_id: str, req: RepriceRequest) -> None:
 async def get_reprice_status(
     job_id: str,
     request: Request,
+    session: Session = Depends(get_session),
     _: object = Depends(require_api_key_scope("full")),
 ) -> dict[str, object]:
     """Poll a reprice job's status."""
-    if not verify_admin(request):
+    if not verify_admin(request, session):
         raise HTTPException(status_code=401, detail="Unauthorized: Admin access required")
     if job_id not in _reprice_jobs:
         raise HTTPException(status_code=404, detail="unknown reprice job")
@@ -340,10 +369,11 @@ class ProjectionBackfillRequest(BaseModel):
 async def start_projection_backfill(
     request: Request,
     body: ProjectionBackfillRequest,
+    session: Session = Depends(get_session),
     _: object = Depends(require_api_key_scope("full")),
 ) -> dict[str, str]:
     """Kick off the preview backfill. Requires dual or slim write mode."""
-    if not verify_admin(request):
+    if not verify_admin(request, session):
         raise HTTPException(status_code=401, detail="Unauthorized: Admin access required")
     from ..services.projection_io import projection_write_mode
 
@@ -439,10 +469,11 @@ def _run_projection_backfill(
 async def get_projection_backfill_status(
     job_id: str,
     request: Request,
+    session: Session = Depends(get_session),
     _: object = Depends(require_api_key_scope("full")),
 ) -> dict[str, object]:
     """Poll a projection backfill job's status."""
-    if not verify_admin(request):
+    if not verify_admin(request, session):
         raise HTTPException(status_code=401, detail="Unauthorized: Admin access required")
     if job_id not in _projection_jobs:
         raise HTTPException(status_code=404, detail="unknown projection backfill job")

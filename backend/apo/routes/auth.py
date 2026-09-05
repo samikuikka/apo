@@ -1,6 +1,7 @@
 # pyright: reportCallInDefaultInitializer=false, reportPrivateUsage=false
 
 import hashlib
+import hmac
 import logging
 import os
 import secrets
@@ -57,6 +58,17 @@ from ..services.email_templates import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Per-account lockout for password verification, keyed by email. The per-IP
+# limiter can be reset at will by spoofing x-forwarded-for on deployments
+# where the header reaches the app unsanitized; the email key cannot be
+# spoofed away. The threshold sits above the per-IP one so an attacker
+# cannot cheaply lock out a victim account, while online password guessing
+# (one bcrypt verification per attempt) stays impractical at this rate.
+_account_rate_limiter = LoginRateLimiter(
+    max_attempts=int(os.environ.get("AUTH_RATE_LIMIT_ACCOUNT_MAX_ATTEMPTS", "20")),
+    window_seconds=int(os.environ.get("AUTH_RATE_LIMIT_ACCOUNT_WINDOW_SECONDS", "900")),
+)
 
 RESET_TOKEN_EXPIRY_HOURS = 1
 
@@ -272,14 +284,21 @@ def verify_password_endpoint(
 ):
     """Verify email + password without minting a session (used by `apo login`).
 
-    Rate-limited per client IP (429 with Retry-After). Returns the user's
-    non-demo Projects so the CLI can offer a project picker. Anti-enumeration:
-    inactive/unknown users get the same 401 via a dummy hash.
+    Rate-limited per client IP and per account, both 429 with Retry-After.
+    Returns the user's non-demo Projects so the CLI can offer a project
+    picker. Anti-enumeration: inactive/unknown users get the same 401 via a
+    dummy hash. Failed password checks count against the per-account limiter
+    (keyed by email) so a spoofed x-forwarded-for cannot reset the budget.
     """
     ip = get_client_ip(request)
+    email_key = f"account:{body.email.lower()}"
 
+    retry_after = 0
     if not login_rate_limiter.is_allowed(ip):
-        retry_after = login_rate_limiter.get_retry_after(ip)
+        retry_after = max(retry_after, login_rate_limiter.get_retry_after(ip))
+    if not _account_rate_limiter.is_allowed(email_key):
+        retry_after = max(retry_after, _account_rate_limiter.get_retry_after(email_key))
+    if retry_after:
         raise HTTPException(
             status_code=429,
             detail="Too many login attempts",
@@ -295,9 +314,11 @@ def verify_password_endpoint(
     if user:
         if not user.is_active:
             _ = verify_password(body.password, _dummy_hash)
+            _account_rate_limiter.record_attempt(email_key)
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         if not verify_password(body.password, user.password_hash):
+            _account_rate_limiter.record_attempt(email_key)
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         if _is_email_verification_required() and user.email_verified_at is None:
@@ -379,7 +400,7 @@ def verify_email(
         session.commit()
         raise HTTPException(status_code=401, detail="Invalid or expired code")
 
-    if _hash_otp(body.code) != token.code_hash:
+    if not hmac.compare_digest(_hash_otp(body.code), token.code_hash):
         token.attempts += 1
         if token.attempts >= MAX_OTP_ATTEMPTS:
             token.used_at = now
@@ -469,12 +490,19 @@ async def forgot_password(
     )
     reset_url = f"{base_url}/reset-password?token={token}"
     logger.info("Password reset requested for %s", body.email)
-    logger.info("Reset URL: %s", reset_url)
+
+    email_service = get_email_service()
+    # The log-based reset flow (documented for self-hosters without SMTP)
+    # reads the link from the backend logs. With a real transport configured
+    # the token must not persist in logs at all — it is a one-hour
+    # account-takeover credential.
+    if not email_service.is_configured:
+        logger.info("Reset URL: %s", reset_url)
 
     if user.email:
         html_body, text_body = render_password_reset_email(reset_url, user.name)
         try:
-            await get_email_service().send(
+            await email_service.send(
                 to=user.email,
                 subject="Reset your password",
                 html=html_body,
@@ -531,6 +559,9 @@ def reset_password(
 
     user.password_hash = hash_password(body.new_password)
     reset_token.used_at = now
+    # A password reset is a credential-change: any session cookie issued
+    # before the reset must stop working, same as change-password does.
+    invalidate_user_sessions(session, user.id)
 
     other_tokens = session.exec(
         select(PasswordResetTokenDB).where(

@@ -7,10 +7,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apo.auth.rate_limit import LoginRateLimiter, login_rate_limiter
+from apo.routes.auth import _account_rate_limiter
 
 
 def _reset_rate_limiter() -> None:
     login_rate_limiter._attempts.clear()
+    _account_rate_limiter._attempts.clear()
 
 
 class TestLoginRateLimiterIsAllowed:
@@ -138,6 +140,74 @@ class TestLoginRateLimiterRecordAttempt:
 def _clean_rate_limiter():
     _reset_rate_limiter()
     yield
+
+
+class TestVerifyPasswordAccountLockout:
+    """The per-account limiter is keyed by email, so it cannot be reset by
+    rotating a spoofed x-forwarded-for (which resets the per-IP budget)."""
+
+    def test_locks_account_after_failed_threshold(self, client: TestClient) -> None:
+        client.post(
+            "/auth/setup",
+            json={"email": "lockme@test.com", "password": "SecurePass123", "name": "L"},
+        )
+        _account_rate_limiter.max_attempts = 3
+        try:
+            for _ in range(3):
+                resp = client.post(
+                    "/auth/verify-password",
+                    json={"email": "lockme@test.com", "password": "WrongPass123"},
+                )
+                assert resp.status_code == 401
+
+            resp = client.post(
+                "/auth/verify-password",
+                json={"email": "lockme@test.com", "password": "WrongPass123"},
+            )
+            assert resp.status_code == 429
+            assert "Retry-After" in resp.headers
+        finally:
+            _account_rate_limiter.max_attempts = 20
+
+    def test_correct_password_still_blocked_once_locked(
+        self, client: TestClient
+    ) -> None:
+        client.post(
+            "/auth/setup",
+            json={"email": "lockme@test.com", "password": "SecurePass123", "name": "L"},
+        )
+        _account_rate_limiter.max_attempts = 3
+        try:
+            for _ in range(3):
+                client.post(
+                    "/auth/verify-password",
+                    json={"email": "lockme@test.com", "password": "WrongPass123"},
+                )
+            resp = client.post(
+                "/auth/verify-password",
+                json={"email": "lockme@test.com", "password": "SecurePass123"},
+            )
+            assert resp.status_code == 429
+        finally:
+            _account_rate_limiter.max_attempts = 20
+
+    def test_successful_login_does_not_count_against_account(
+        self, client: TestClient
+    ) -> None:
+        client.post(
+            "/auth/setup",
+            json={"email": "fine@test.com", "password": "SecurePass123", "name": "F"},
+        )
+        _account_rate_limiter.max_attempts = 3
+        try:
+            for _ in range(5):
+                resp = client.post(
+                    "/auth/verify-password",
+                    json={"email": "fine@test.com", "password": "SecurePass123"},
+                )
+                assert resp.status_code == 200
+        finally:
+            _account_rate_limiter.max_attempts = 20
     _reset_rate_limiter()
 
 

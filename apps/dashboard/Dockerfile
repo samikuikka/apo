@@ -23,14 +23,17 @@ ENV NODE_ENV=production
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/apps/dashboard/.next/standalone ./
-COPY --from=builder /app/apps/dashboard/.next/static ./apps/dashboard/.next/static
+COPY --from=builder --chown=node:node /app/apps/dashboard/.next/standalone ./
+COPY --from=builder --chown=node:node /app/apps/dashboard/.next/static ./apps/dashboard/.next/static
 # Public static assets (logos, brand SVGs, favicon, etc.) — Next.js does
 # not bundle these into .next/standalone, so they must be copied separately
 # or routes that read from /public (e.g. /brand/signal-sphere.svg) will 404.
-COPY --from=builder /app/apps/dashboard/public ./apps/dashboard/public
+COPY --from=builder --chown=node:node /app/apps/dashboard/public ./apps/dashboard/public
 
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+# The Next.js server is the internet-reachable process; it must not run as
+# root (the backend container already runs as its own non-root appuser).
+USER node
 CMD ["node", "apps/dashboard/server.js"]

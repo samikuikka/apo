@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readCredentials, type StoredCredentials } from "./credentials.ts";
@@ -51,6 +51,7 @@ export function writeProfile(profile: Profile): string {
   mkdirSync(profilesDir(), { recursive: true });
   const path = profilePath(profile.name);
   writeFileSync(path, JSON.stringify(profile, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(path, 0o600);
   return path;
 }
 

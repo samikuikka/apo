@@ -100,3 +100,8 @@ backend/data/artifacts/
 # Spec-verification screenshots from agent sessions — evidence lives in
 # session reports, not the repo
 spec*-proof/
+
+# Locally-managed Cloudflare tunnel credentials (docker-compose.cloudflare-
+# tunnel.override.yml mounts this as the connector secret) — must never be
+# swept into a commit.
+.cloudflared/
