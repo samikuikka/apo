@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -43,6 +43,9 @@ export function writeCredentials(creds: StoredCredentials): string {
   writeFileSync(path, JSON.stringify(payload, null, 2) + "\n", {
     mode: 0o600,
   });
+  // writeFileSync's mode only applies at file creation — re-tighten in case
+  // an earlier writer (or a restored backup) left the file world-readable.
+  chmodSync(path, 0o600);
   return path;
 }
 
@@ -102,6 +105,7 @@ export function writeRememberedLogin(creds: StoredCredentials): string {
   mkdirSync(loginsDir(), { recursive: true });
   const path = rememberedLoginPath(creds.backend_url);
   writeFileSync(path, JSON.stringify(creds, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(path, 0o600);
   return path;
 }
 

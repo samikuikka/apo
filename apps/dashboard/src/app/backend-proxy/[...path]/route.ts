@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { getServerBackendBaseUrl } from "@/lib/config.server";
 
 const HOP_BY_HOP_HEADERS = new Set([
@@ -74,10 +75,17 @@ async function proxyToBackend(
   const headers = buildProxyHeaders(request.headers);
   // Instance-maintenance endpoints (/v1/admin/*) authenticate with the
   // operator's ADMIN_API_KEY via the x-admin-key header. The key must never
-  // reach the browser, so the proxy attaches it server-side only, and only
-  // for the admin path prefix.
+  // reach the browser, and it must only be attached for a caller the
+  // dashboard has authenticated as an installation admin — without the
+  // session check the proxy would be an unauthenticated admin surface
+  // (reset-db / nuke-db / invitation management) on whatever origin can
+  // reach it.
   const adminApiKey = process.env.ADMIN_API_KEY;
   if (adminApiKey && pathname.startsWith("v1/admin/")) {
+    const session = await auth();
+    if (session?.user?.is_admin !== true) {
+      return Response.json({ detail: "Admin access required" }, { status: 403 });
+    }
     headers.set("x-admin-key", adminApiKey);
   }
   const init: RequestInit = {

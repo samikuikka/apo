@@ -272,6 +272,7 @@ def make_authed_client_fixture():
             ) -> Response:
                 request.state.user_id = user_id
                 request.state.is_admin = is_admin
+                request.state.auth_method = "cookie"
                 return await call_next(request)
 
         new_app = FastAPI()

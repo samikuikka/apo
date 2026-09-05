@@ -79,6 +79,31 @@ class TestForgotPassword:
             log_calls = [str(call) for call in mock_logger.info.call_args_list]
             assert any("Reset URL" in c for c in log_calls)
 
+    def test_reset_url_not_logged_when_email_transport_configured(
+        self, client: TestClient
+    ) -> None:
+        """With a real transport the one-hour takeover token must not hit the
+        logs; the log-based flow only exists for the log-only fallback."""
+
+        class _ConfiguredEmailService:
+            is_configured = True
+
+            async def send(self, to: str, subject: str, html: str, text: str | None = None) -> None:
+                return None
+
+        _setup_user(client)
+        with (
+            patch(
+                "apo.routes.auth.get_email_service",
+                return_value=_ConfiguredEmailService(),
+            ),
+            patch("apo.routes.auth.logger") as mock_logger,
+        ):
+            resp = client.post("/auth/forgot-password", json={"email": "admin@test.com"})
+        assert resp.status_code == 200
+        log_calls = [str(call) for call in mock_logger.info.call_args_list]
+        assert not any("Reset URL" in c for c in log_calls)
+
 
 class TestResetPassword:
     def _get_reset_token(
@@ -108,6 +133,27 @@ class TestResetPassword:
         user = session.exec(select(UserDB)).first()
         assert user is not None
         assert verify_password("NewSecure456", user.password_hash)
+
+    def test_reset_invalidates_existing_sessions(
+        self, client: TestClient, session: Session
+    ) -> None:
+        """A completed reset is a credential change: session cookies minted
+        before the reset must stop authenticating (token_invalid_before)."""
+        token, _ = self._get_reset_token(client, session)
+        user_before = session.exec(select(UserDB)).first()
+        assert user_before is not None
+        assert user_before.token_invalid_before is None
+
+        resp = client.post(
+            "/auth/reset-password",
+            json={"token": token, "new_password": "NewSecure456"},
+        )
+        assert resp.status_code == 200
+
+        session.expire_all()
+        user_after = session.exec(select(UserDB)).first()
+        assert user_after is not None
+        assert user_after.token_invalid_before is not None
 
     def test_can_login_with_new_password_after_reset(
         self, client: TestClient, session: Session

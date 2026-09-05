@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import ColumnElement, desc, func
 from sqlmodel import Session, select
 
-from ..auth import verify_password
+from ..auth import _dummy_hash, verify_password
 from ..auth.rate_limit import LoginRateLimiter
 from ..db import get_session
 from ..models.db import (
@@ -296,6 +296,7 @@ def bootstrap_project(
 
     user = session.exec(select(UserDB).where(UserDB.email == body.email)).first()
     if user is None or not user.is_active:
+        _ = verify_password(body.password, _dummy_hash)
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")

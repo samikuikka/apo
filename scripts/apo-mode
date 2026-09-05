@@ -82,6 +82,10 @@ case "$MODE" in
     set_env "APO_DEPLOYMENT_PROFILE" "server"
     set_env "APO_PUBLIC_URL" "$TUNNEL_URL"
     set_env "APO_INGRESS_MODE" "cloudflare-tunnel"
+    # Dev sign-in provisions a passwordless account and must never ride
+    # along into a publicly reachable profile — force it off when entering
+    # tunnel mode, whatever the local .env carried.
+    set_env "DEV_SIGNIN_ENABLED" "false"
     # Default the public docs hostname only when absent.
     if [[ -z "$(get_env "APO_DOCS_HOST")" ]]; then
       set_env "APO_DOCS_HOST" "docs.test-apo.online"
