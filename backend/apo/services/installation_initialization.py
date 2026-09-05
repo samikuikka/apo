@@ -21,6 +21,12 @@ from ..models.db import InstallationStateDB, UserDB
 
 INSTALLATION_STATE_ID = "installation"
 
+# The demo fixture writes this placeholder as the password hash of its inert
+# author account (``demo@apo.invalid``): display data that activity rows can
+# point at, but never a credential. Such rows must not count as "this
+# installation has users".
+_PLACEHOLDER_PASSWORD_HASH = "!"
+
 
 @dataclass(frozen=True)
 class InstallationSetupStatus:
@@ -34,18 +40,48 @@ class InstallationAlreadyInitializedError(RuntimeError):
     """Raised when an initial-user claim is attempted after initialization."""
 
 
+def _earliest_credential_user(session: Session) -> UserDB | None:
+    """Earliest user row that represents a real, human-created account.
+
+    Every fresh demo-enabled installation boots with the fixture's inert
+    author row already present. Before this filter existed, the singleton
+    backfill fired on that row and permanently closed both first-admin
+    paths (/auth/setup 409, INIT_USER bootstrap no-op) on fresh volumes.
+    Real accounts count regardless of active status — deactivating the
+    last real admin must not reopen setup to whoever visits next.
+    """
+    return session.exec(
+        select(UserDB)
+        .where(col(UserDB.password_hash) != _PLACEHOLDER_PASSWORD_HASH)
+        .order_by(col(UserDB.created_at))
+        .limit(1)
+    ).first()
+
+
+def _fixture_claimed_installation(
+    state: InstallationStateDB, session: Session
+) -> bool:
+    """Whether a pre-fix backfill recorded the fixture placeholder as the
+    initial user while no credential user exists."""
+    if state.initial_user_id is None:
+        return False
+    recorded = session.get(UserDB, state.initial_user_id)
+    if recorded is None or recorded.password_hash != _PLACEHOLDER_PASSWORD_HASH:
+        return False
+    return _earliest_credential_user(session) is None
+
+
 def _ensure_singleton(session: Session) -> InstallationStateDB:
     """Ensure the singleton row exists and return it.
 
-    When first created on a database that already has Users, backfills
-    ``initialized_at`` from the earliest User. Also repairs a pre-backfill
-    singleton that has ``initialized_at IS NULL`` but Users exist.
+    ``initialized_at`` backfills from the earliest *credential* user (see
+    ``_earliest_credential_user``) — the demo fixture's placeholder author
+    never claims the installation. A state that an older backfill claimed
+    for the placeholder is repaired while no credential user exists.
     """
     state = session.get(InstallationStateDB, INSTALLATION_STATE_ID)
     if state is None:
-        earliest = session.exec(
-            select(UserDB).order_by(col(UserDB.created_at)).limit(1)
-        ).first()
+        earliest = _earliest_credential_user(session)
         if earliest is not None:
             state = InstallationStateDB(
                 id=INSTALLATION_STATE_ID,
@@ -58,23 +94,33 @@ def _ensure_singleton(session: Session) -> InstallationStateDB:
         session.commit()
         session.refresh(state)
     elif state.initialized_at is None:
-        # Repair a pre-backfill singleton: if users exist, mark initialized.
-        earliest = session.exec(
-            select(UserDB).order_by(col(UserDB.created_at)).limit(1)
-        ).first()
+        # Repair a pre-backfill singleton: if credential users exist, mark
+        # initialized.
+        earliest = _earliest_credential_user(session)
         if earliest is not None:
             state.initialized_at = earliest.created_at
             state.initial_user_id = earliest.id
             session.add(state)
             session.commit()
             session.refresh(state)
+    elif _fixture_claimed_installation(state, session):
+        # The pre-fix backfill recorded the demo fixture's placeholder as
+        # the initial user, which closed every real first-admin path. With
+        # no credential user in the database the installation is factually
+        # unclaimed — reopen it so /auth/setup and the INIT_USER bootstrap
+        # work again.
+        state.initialized_at = None
+        state.initial_user_id = None
+        session.add(state)
+        session.commit()
+        session.refresh(state)
     return state
 
 
 def get_installation_setup_status(session: Session) -> InstallationSetupStatus:
     """Return durable initialization eligibility plus current User presence."""
     state = _ensure_singleton(session)
-    has_users = session.exec(select(UserDB).limit(1)).first() is not None
+    has_users = _earliest_credential_user(session) is not None
     setup_available = state.initialized_at is None
     return InstallationSetupStatus(has_users=has_users, setup_available=setup_available)
 
