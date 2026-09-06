@@ -98,3 +98,50 @@ def test_counts_runs_with_no_session_id(session: Session):
     assert result.total_pages == 1
     assert sorted(row.session_id for row in result.data) == ["(none)", "s1"]
     assert next(r.trace_count for r in result.data if r.session_id == "(none)") == 2
+
+
+def test_calls_subquery_is_project_scoped_in_the_query_plan(session: Session):
+    """G4 (issue #230): the logged_calls aggregation subquery must carry the
+    project predicate so SQLite drives it off the project index — without
+    it, every sessions page view scans the whole installation's calls."""
+    from sqlalchemy import event
+
+    now = datetime.now(timezone.utc)
+    _run(session, "r1", "s1", now)
+    _call(session, "c1", "r1", cost=1, tokens=1)
+    session.commit()
+
+    captured: list[tuple[str, object]] = []
+
+    def _capture(conn, cursor, statement, parameters, context, executemany):  # pyright: ignore[reportUnusedParameter]
+        if "FROM logged_calls" in statement:
+            captured.append((statement, parameters))
+
+    event.listen(session.bind, "before_cursor_execute", _capture)
+    try:
+        _ = list_sessions(_REQ, project="p", page=0, page_size=20, session=session)
+    finally:
+        event.remove(session.bind, "before_cursor_execute", _capture)
+
+    assert captured, "sessions query with the logged_calls subquery never executed"
+    statement, bound_params = captured[0]
+
+    # The statement arrives dialect-compiled (qmark placeholders) with its
+    # parameter sequence — replay both verbatim under EXPLAIN.
+    params_arg = (
+        bound_params
+        if isinstance(bound_params, dict)
+        else cast("tuple[object, ...]", bound_params)
+    )
+    plan = session.connection().exec_driver_sql(
+        "EXPLAIN QUERY PLAN " + statement,
+        params_arg,
+    ).fetchall()
+    plan_text = " | ".join(str(row[3]) for row in plan)
+
+    assert "SCAN logged_calls" not in plan_text, (
+        f"logged_calls subquery is not project-scoped — full scan per view: {plan_text}"
+    )
+    # The subquery must actually filter by project inside, not outside
+    # (placeholder style is dialect-compiled — assert the bare predicate).
+    assert "logged_calls l WHERE l.project" in statement

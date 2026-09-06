@@ -26,11 +26,16 @@ def list_sessions(
 ) -> PaginatedSessionSummary:
     """List sessions with aggregated trace counts and metrics."""
     conditions: list[str] = []
+    # The same predicates against logged_calls (aliased ``l``) so the calls
+    # subquery below narrows to the caller's projects instead of aggregating
+    # the whole installation on every page view.
+    call_conditions: list[str] = []
     params: dict[str, object] = {}
 
     if project:
         _ = enforce_project_read_from_request(http_request, session, project)
         conditions.append("r.project = :project")
+        call_conditions.append("l.project = :project")
         params["project"] = project
     else:
         # No project would aggregate sessions across every tenant; scope to the
@@ -40,13 +45,18 @@ def list_sessions(
             if allowed:
                 placeholders = ", ".join(f":p{i}" for i in range(len(allowed)))
                 conditions.append(f"r.project IN ({placeholders})")
+                call_conditions.append(f"l.project IN ({placeholders})")
                 for i, pid in enumerate(allowed):
                     params[f"p{i}"] = pid
             else:
                 # Member of nothing: return an empty page rather than everything.
                 conditions.append("1 = 0")
+                call_conditions.append("1 = 0")
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    call_where = (
+        f"WHERE {' AND '.join(call_conditions)}" if call_conditions else ""
+    )
 
     # Count the groups the page query will actually produce. COUNT(DISTINCT
     # session_id) skips NULL, so runs with no session (reported as the "(none)"
@@ -60,7 +70,9 @@ def list_sessions(
     total_count = count_row[0] if count_row else 0
 
     # Cost and tokens live on logged_calls, not runs. Pre-aggregate per run in a
-    # subquery so the outer COUNT(*) still counts traces rather than calls.
+    # subquery so the outer COUNT(*) still counts traces rather than calls; the
+    # subquery carries the same project predicates so SQLite drives it off the
+    # logged_calls project index rather than scanning every tenant's calls.
     offset = page * page_size
     rows = session.execute(
         text(
@@ -73,7 +85,7 @@ def list_sessions(
             "FROM runs r "
             "LEFT JOIN ("
             "  SELECT run_id, SUM(cost) as run_cost, SUM(total_tokens) as run_tokens"
-            "  FROM logged_calls GROUP BY run_id"
+            f"  FROM logged_calls l {call_where} GROUP BY run_id"
             ") c ON c.run_id = r.id "
             f"{where} "
             "GROUP BY r.session_id "
