@@ -1,17 +1,17 @@
 ---
 title: Overview
-description: Give every agent task an executable definition of done.
+description: Executable capability specifications for agent harnesses — define what your agent must do, run the real system, verify the outcome.
 ---
 
 import EndToEndLoopDemo from '../../components/demos/EndToEndLoopDemo.astro';
 
-**apo** is an end-to-end testing framework for agent systems. It turns the behavior you expect into an executable definition of done: write the tests, run the real agent, and get a pass/fail verdict backed by the test breakdown, trace, and deliverables. If evaluation cannot complete, apo surfaces an execution error instead of inventing a verdict.
+**apo** is a testing and engineering system for agent harnesses. You write down what your agent must be capable of — the tasks, the constraints, the deliverables that define done — and apo turns that into an executable specification: run the real agent, verify the actual outcome, and get a pass/fail verdict backed by the test breakdown, trace, and deliverables. If evaluation cannot complete, apo surfaces an execution error instead of inventing a verdict.
 
 <EndToEndLoopDemo />
 
-The loop can be driven by a developer, CI, or a coding agent. apo owns one Task Run and its evidence. The caller owns the code change and decides whether to run again.
+The loop can be driven by a developer, CI, or a coding agent. apo owns one Task Run and its evidence. The caller owns the code change and decides whether to run again. That separation is why apo returns a control signal you can act on, not a score to monitor.
 
-That separation is why apo is a testing framework rather than an eval dashboard: it returns a control signal you can act on, not just a score to monitor.
+apo is not another eval framework, and not an observability platform. Testing frameworks ask whether one execution passed a test. Observability platforms ask what your system already did. apo starts from the specification — what this harness must be able to do — and gives you the loop to engineer the harness until it can. [Why apo](/why-apo/) lays out the full map.
 
 ## It runs in your system
 
