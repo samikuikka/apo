@@ -30,10 +30,6 @@ const PAGE_DESCRIPTION =
 	"Executable capability specifications for agent harnesses. Define what your agent must be capable of, run the real system, verify the outcome — and engineer the harness until it passes.";
 const OG_IMAGE = new URL("/og-landing.png", Astro.site).href;
 const CANONICAL = new URL("/", Astro.site).href;
-
-// PROTOTYPE — "Where apo fits" section variants, switchable via ?variant=.
-// Dev-only: variants B/C and the switcher are stripped from production builds.
-const PROTO = !import.meta.env.PROD;
 ---
 
 <!doctype html>
@@ -173,19 +169,20 @@ const PROTO = !import.meta.env.PROD;
 				</div>
 			</section>
 
-			<!-- Where apo fits — PROTOTYPE variants. A ships today; B/C are
-			     dev-only (?variant=B / ?variant=C). -->
-			<section class="landing-section landing-section--bordered" data-landing-cats data-variant="A">
+			<!-- Where apo fits — three categories, three different questions. -->
+			<section class="landing-section landing-section--bordered" data-landing-cats>
 				<div class="landing-container">
 					<h2 class="landing-section__heading">Where apo fits</h2>
-					<p class="landing-section__sub">Three categories, three different questions.</p>
+					<p class="landing-section__sub">
+						Where a tool's loop starts decides what it can tell you.
+					</p>
 					<div class="landing-cats">
 						<article class="cat" style="--i: 0">
 							<span class="cat__kind">Testing libraries</span>
 							<h3 class="cat__q">Did this run pass?</h3>
 							<div class="cat__gliff" aria-hidden="true">
-								<span class="cat__row">run → expect() <span class="cat__ok">✓</span></span>
-								<span class="cat__row">run → expect() <span class="cat__bad">✗</span></span>
+								<span class="cat__row" style="--i: 0">run → expect() <span class="cat__ok">✓</span></span>
+								<span class="cat__row" style="--i: 1">run → expect() <span class="cat__bad">✗</span></span>
 							</div>
 							<span class="cat__names">DeepEval · Promptfoo</span>
 						</article>
@@ -193,18 +190,26 @@ const PROTO = !import.meta.env.PROD;
 							<span class="cat__kind">Observability platforms</span>
 							<h3 class="cat__q">What did it do?</h3>
 							<div class="cat__gliff cat__gliff--spans" aria-hidden="true">
-								<span class="cat__span" style="--w: 78%"></span>
-								<span class="cat__span cat__span--child" style="--w: 46%"></span>
-								<span class="cat__span" style="--w: 62%"></span>
+								<span class="cat__span" style="--w: 78%; --i: 0"></span>
+								<span class="cat__span cat__span--child" style="--w: 46%; --i: 1"></span>
+								<span class="cat__span" style="--w: 62%; --i: 2"></span>
 							</div>
 							<span class="cat__names">Langfuse · Arize · Braintrust</span>
 						</article>
 						<article class="cat cat--apo" style="--i: 2">
 							<span class="cat__kind">apo</span>
 							<h3 class="cat__q">Can it do the job?</h3>
-							<div class="cat__gliff" aria-hidden="true">
-								<span class="cat__row">spec → run → <span class="cat__pass">PASS</span></span>
-								<span class="cat__row cat__row--return">↺ improve the harness</span>
+							<div class="cat__loop" aria-hidden="true">
+								<svg class="cat__loop-svg" viewBox="0 0 200 64" preserveAspectRatio="xMidYMid meet">
+									<path class="loop__fwd" d="M14 20 H186" />
+									<path class="loop__head" d="M179 14 L188 20 L179 26" />
+									<path class="loop__back" d="M186 28 V48 H14 V28" />
+									<path class="loop__head loop__head--dim" d="M7 34 L14 28 L21 34" />
+								</svg>
+								<span class="loop__node" style="left: 14%">spec</span>
+								<span class="loop__node" style="left: 47%">run</span>
+								<span class="loop__node loop__node--pass" style="left: 80%">PASS</span>
+								<span class="loop__return-label">improve the harness</span>
 							</div>
 							<span class="cat__names">capability specifications</span>
 						</article>
@@ -214,85 +219,6 @@ const PROTO = !import.meta.env.PROD;
 					</p>
 				</div>
 			</section>
-
-			{PROTO && (
-				<section class="landing-section landing-section--bordered" data-variant="B" hidden>
-					<div class="landing-container">
-						<h2 class="landing-section__heading">Where the loop starts</h2>
-						<p class="landing-section__sub">
-							Every tool's pipeline begins somewhere — that decides what it can tell you.
-						</p>
-						<div class="flows">
-							<div class="flow">
-								<span class="flow__label">Observability platforms</span>
-								<div class="flow__band">
-									<span class="flow__node">traffic</span>
-									<span class="flow__arrow">→</span>
-									<span class="flow__node">traces</span>
-									<span class="flow__arrow">→</span>
-									<span class="flow__node">datasets</span>
-									<span class="flow__arrow">→</span>
-									<span class="flow__node">scores</span>
-									<span class="flow__arrow">→</span>
-									<span class="flow__node">monitor</span>
-								</div>
-							</div>
-							<div class="flow">
-								<span class="flow__label">Testing libraries</span>
-								<div class="flow__band">
-									<span class="flow__node">test case</span>
-									<span class="flow__arrow">→</span>
-									<span class="flow__node">run</span>
-									<span class="flow__arrow">→</span>
-									<span class="flow__node">assert</span>
-									<span class="flow__arrow">→</span>
-									<span class="flow__node">✓/✗</span>
-								</div>
-							</div>
-							<div class="flow flow--apo">
-								<span class="flow__label flow__label--apo">apo</span>
-								<div class="flow__band flow__band--apo">
-									<span class="flow__node flow__node--apo">specification</span>
-									<span class="flow__arrow">→</span>
-									<span class="flow__node flow__node--apo">run the harness</span>
-									<span class="flow__arrow">→</span>
-									<span class="flow__node flow__node--apo">PASS / FAIL</span>
-									<span class="flow__arrow flow__arrow--return">↺ improve the harness</span>
-								</div>
-							</div>
-						</div>
-						<p class="flows__foot">
-							apo starts from the specification. <a href="/why-apo/">The full map →</a>
-						</p>
-					</div>
-				</section>
-			)}
-
-			{PROTO && (
-				<section class="landing-section landing-section--bordered" data-variant="C" hidden>
-					<div class="landing-container">
-						<div class="manifesto">
-							<div class="mani-row">
-								<span class="mani__who">testing libraries</span>
-								<span class="mani__q">Did this run pass?</span>
-							</div>
-							<div class="mani-row">
-								<span class="mani__who">observability platforms</span>
-								<span class="mani__q">What did it do?</span>
-							</div>
-							<div class="mani-row mani-row--apo">
-								<span class="mani__who">apo</span>
-								<div class="mani__apo">
-									<span class="mani__q mani__q--apo">Can it do the job?</span>
-									<span class="mani__sub">
-										— and can we engineer it until it can? <a href="/why-apo/">The full map →</a>
-									</span>
-								</div>
-							</div>
-						</div>
-					</div>
-				</section>
-			)}
 
 			<!-- The product -->
 			<section class="landing-section landing-section--bordered">
@@ -324,14 +250,6 @@ const PROTO = !import.meta.env.PROD;
 			</div>
 		</footer>
 
-		{PROTO && (
-			<div class="proto-bar" data-proto-bar>
-				<button type="button" class="proto-bar__btn" data-proto-prev aria-label="Previous variant">←</button>
-				<span class="proto-bar__label" data-proto-label>A</span>
-				<button type="button" class="proto-bar__btn" data-proto-next aria-label="Next variant">→</button>
-			</div>
-		)}
-
 		<script>
 			// Stagger the category cards in when the section scrolls into view —
 			// same onVisible helper the features bento uses. The import must be
@@ -345,58 +263,6 @@ const PROTO = !import.meta.env.PROD;
 				});
 			}
 		</script>
-
-		{PROTO && (
-			<script>
-				// PROTOTYPE switcher — flips the "Where apo fits" variants via ?variant=.
-				const VARIANTS = [
-					{ key: "A", name: "Three questions (current)" },
-					{ key: "B", name: "Where the loop starts" },
-					{ key: "C", name: "What each tool asks" },
-				];
-				const sections = Array.from(
-					document.querySelectorAll<HTMLElement>("[data-variant]"),
-				);
-				const label = document.querySelector<HTMLElement>("[data-proto-label]");
-
-				function currentKey(): string {
-					return new URLSearchParams(location.search).get("variant") ?? "A";
-				}
-
-				function show(key: string) {
-					const known = VARIANTS.some((v) => v.key === key) ? key : "A";
-					for (const s of sections) s.hidden = s.dataset.variant !== known;
-					const v = VARIANTS.find((x) => x.key === known)!;
-					if (label) label.textContent = `${v.key} — ${v.name}`;
-					history.replaceState(null, "", `/?variant=${known}`);
-				}
-
-				function cycle(dir: 1 | -1) {
-					const i = VARIANTS.findIndex((v) => v.key === currentKey());
-					const next = VARIANTS[(i + dir + VARIANTS.length) % VARIANTS.length]!;
-					show(next.key);
-				}
-
-				document
-					.querySelector("[data-proto-prev]")
-					?.addEventListener("click", () => cycle(-1));
-				document
-					.querySelector("[data-proto-next]")
-					?.addEventListener("click", () => cycle(1));
-				document.addEventListener("keydown", (e) => {
-					const t = e.target as HTMLElement | null;
-					if (
-						t &&
-						(t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
-					)
-						return;
-					if (e.key === "ArrowLeft") cycle(-1);
-					if (e.key === "ArrowRight") cycle(1);
-				});
-
-				show(currentKey());
-			</script>
-		)}
 	</body>
 </html>
 
@@ -462,10 +328,15 @@ const PROTO = !import.meta.env.PROD;
 
 	.cat__q {
 		margin: 0;
-		font-size: 1.05rem;
+		font-size: 1.15rem;
 		font-weight: 600;
 		letter-spacing: -0.01em;
 		color: var(--sl-color-gray-1);
+	}
+
+	.cat--apo .cat__q {
+		font-size: 1.3rem;
+		color: var(--sl-color-white);
 	}
 
 	/* Gliffs sit at the card bottom; each represents the category's
@@ -482,15 +353,19 @@ const PROTO = !import.meta.env.PROD;
 		font-size: 0.7rem;
 		color: var(--sl-color-gray-3);
 		white-space: nowrap;
+		opacity: 0;
+		transform: translateX(-4px);
+		transition: opacity 0.3s ease, transform 0.3s ease;
+		transition-delay: calc(var(--i, 0) * 180ms + 0.4s);
 	}
 
-	.cat__row--return {
-		color: var(--sl-color-gray-4);
+	[data-landing-cats][data-visible] .cat__row {
+		opacity: 1;
+		transform: translateX(0);
 	}
 
 	/* Verdict marks are state — the sanctioned accent use. */
-	.cat__ok,
-	.cat__pass {
+	.cat__ok {
 		color: var(--sl-color-accent);
 		font-weight: 700;
 	}
@@ -508,15 +383,118 @@ const PROTO = !import.meta.env.PROD;
 	.cat__span {
 		display: block;
 		height: 0.45rem;
-		width: var(--w, 60%);
+		width: 0;
 		background: var(--sl-color-gray-4);
 		opacity: 0.75;
+		transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+		transition-delay: calc(var(--i, 0) * 160ms + 0.45s);
+	}
+
+	[data-landing-cats][data-visible] .cat__span {
+		width: var(--w);
 	}
 
 	.cat__span--child {
 		margin-left: 12%;
 		height: 0.35rem;
 		background: var(--sl-color-gray-5);
+	}
+
+	/* apo's loop — spec → run → PASS, returning to improve the harness. */
+	.cat__loop {
+		position: relative;
+		margin-top: auto;
+		width: 100%;
+		max-width: 15rem;
+		aspect-ratio: 200 / 64;
+	}
+
+	.cat__loop-svg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		overflow: visible;
+	}
+
+	.loop__fwd,
+	.loop__back {
+		fill: none;
+		stroke-width: 1.2;
+		stroke-dasharray: 3 5;
+	}
+
+	.loop__fwd {
+		stroke: var(--sl-color-accent);
+		opacity: 0.55;
+	}
+
+	.loop__back {
+		stroke: var(--sl-color-gray-4);
+		opacity: 0.4;
+	}
+
+	.loop__head {
+		fill: none;
+		stroke: var(--sl-color-accent);
+		stroke-width: 1.2;
+		opacity: 0.7;
+	}
+
+	.loop__head--dim {
+		stroke: var(--sl-color-gray-4);
+		opacity: 0.5;
+	}
+
+	[data-landing-cats][data-visible] .loop__fwd {
+		animation: catDashFlow 1.4s linear infinite;
+	}
+
+	[data-landing-cats][data-visible] .loop__back {
+		animation: catDashFlow 2.2s linear infinite;
+	}
+
+	@keyframes catDashFlow {
+		from {
+			stroke-dashoffset: 0;
+		}
+		to {
+			stroke-dashoffset: -16;
+		}
+	}
+
+	.loop__node {
+		position: absolute;
+		top: 31.25%;
+		transform: translate(-50%, -50%);
+		z-index: 2;
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.62rem;
+		padding: 0.12rem 0.4rem;
+		background: var(--sl-color-black);
+		border: 1px solid var(--sl-color-gray-5);
+		color: var(--sl-color-gray-2);
+		white-space: nowrap;
+	}
+
+	.loop__node--pass {
+		color: var(--sl-color-accent);
+		border-color: var(--sl-color-accent);
+		font-weight: 700;
+	}
+
+	.loop__return-label {
+		position: absolute;
+		top: 75%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		z-index: 2;
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.58rem;
+		color: var(--sl-color-gray-4);
+		background: var(--sl-color-accent-low, #0a1a0e);
+		padding: 0 0.35rem;
+		white-space: nowrap;
 	}
 
 	.cat__names {
@@ -556,207 +534,22 @@ const PROTO = !import.meta.env.PROD;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.cat {
+		.cat,
+		.cat__row {
 			opacity: 1 !important;
 			transform: none !important;
 			transition: none !important;
 		}
-	}
 
-	/* ══════════════════════════════════════════════════════════════════
-	   PROTOTYPE (dev only) — variant B: flow bands, variant C: manifesto,
-	   and the floating switcher bar.
-	   ══════════════════════════════════════════════════════════════════ */
-
-	.flows {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		max-width: 58rem;
-		margin: 0 auto;
-	}
-
-	.flow {
-		display: grid;
-		grid-template-columns: 11rem 1fr;
-		gap: 1.25rem;
-		align-items: center;
-	}
-
-	.flow__label {
-		font-family: var(--sl-font-mono, ui-monospace, monospace);
-		font-size: 0.7rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--sl-color-gray-4);
-		text-align: right;
-	}
-
-	.flow__label--apo {
-		color: var(--sl-color-accent-high, #4ade80);
-	}
-
-	.flow__band {
-		display: flex;
-		align-items: baseline;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-		font-family: var(--sl-font-mono, ui-monospace, monospace);
-		font-size: 0.8rem;
-		color: var(--sl-color-gray-3);
-	}
-
-	.flow__node {
-		padding: 0.3rem 0.6rem;
-		border: 1px solid var(--sl-color-gray-6);
-		background: var(--sl-color-gray-6);
-		white-space: nowrap;
-	}
-
-	.flow__arrow {
-		color: var(--sl-color-gray-5);
-	}
-
-	.flow__band--apo {
-		font-size: 0.95rem;
-		color: var(--sl-color-gray-1);
-	}
-
-	.flow__node--apo {
-		border-color: var(--sl-color-accent);
-		background: var(--sl-color-accent-low, #0a1a0e);
-	}
-
-	.flow__band--apo .flow__arrow {
-		color: var(--sl-color-accent-high, #4ade80);
-	}
-
-	.flow__arrow--return {
-		color: var(--sl-color-gray-3);
-		padding-left: 0.75rem;
-	}
-
-	.flows__foot {
-		margin-top: 1.75rem;
-		text-align: center;
-		font-size: 0.875rem;
-		color: var(--sl-color-gray-3);
-	}
-
-	.flows__foot a {
-		color: var(--sl-color-accent-high, #4ade80);
-	}
-
-	@media (max-width: 48rem) {
-		.flow {
-			grid-template-columns: 1fr;
-			gap: 0.4rem;
+		.cat__span {
+			width: var(--w) !important;
+			transition: none !important;
 		}
 
-		.flow__label {
-			text-align: left;
+		.loop__fwd,
+		.loop__back {
+			animation: none !important;
 		}
-	}
-
-	.manifesto {
-		max-width: 46rem;
-		margin: 0 auto;
-	}
-
-	.mani-row {
-		display: grid;
-		grid-template-columns: 9rem 1fr;
-		gap: 1.25rem;
-		padding: 1.2rem 0;
-		border-top: 1px solid var(--sl-color-gray-6);
-		align-items: baseline;
-	}
-
-	.mani-row--apo {
-		border-top-color: color-mix(in oklab, var(--sl-color-accent) 30%, transparent);
-		border-left: 2px solid var(--sl-color-accent);
-		padding-left: 1.25rem;
-		margin-top: 0.75rem;
-	}
-
-	.mani__who {
-		font-family: var(--sl-font-mono, ui-monospace, monospace);
-		font-size: 0.7rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--sl-color-gray-4);
-	}
-
-	.mani-row--apo .mani__who {
-		color: var(--sl-color-accent-high, #4ade80);
-	}
-
-	.mani__q {
-		font-size: 1.5rem;
-		font-weight: 600;
-		letter-spacing: -0.02em;
-		color: var(--sl-color-gray-2);
-	}
-
-	.mani__q--apo {
-		font-size: clamp(1.8rem, 4vw, 2.4rem);
-		color: var(--sl-color-white);
-	}
-
-	.mani__sub {
-		display: block;
-		margin-top: 0.6rem;
-		font-size: 0.8rem;
-		color: var(--sl-color-gray-4);
-	}
-
-	.mani__sub a {
-		color: var(--sl-color-accent-high, #4ade80);
-	}
-
-	@media (max-width: 48rem) {
-		.mani-row {
-			grid-template-columns: 1fr;
-			gap: 0.35rem;
-		}
-	}
-
-	.proto-bar {
-		position: fixed;
-		bottom: 1rem;
-		left: 50%;
-		transform: translateX(-50%);
-		z-index: 100;
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
-		padding: 0.45rem 0.65rem;
-		background: var(--sl-color-black);
-		border: 1px solid var(--sl-color-accent);
-		font-family: var(--sl-font-mono, ui-monospace, monospace);
-		box-shadow: 0 0 18px oklch(0.72 0.19 145 / 0.15);
-	}
-
-	.proto-bar__btn {
-		padding: 0.2rem 0.6rem;
-		background: var(--sl-color-gray-6);
-		border: 1px solid var(--sl-color-gray-5);
-		color: var(--sl-color-gray-1);
-		font: inherit;
-		cursor: pointer;
-	}
-
-	.proto-bar__btn:hover {
-		border-color: var(--sl-color-accent);
-	}
-
-	.proto-bar__label {
-		min-width: 22ch;
-		text-align: center;
-		font-size: 0.75rem;
-		color: var(--sl-color-gray-2);
 	}
 
 	/* The standalone landing page owns the full document. Reset Starlight's
