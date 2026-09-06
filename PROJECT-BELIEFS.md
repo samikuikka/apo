@@ -6,7 +6,7 @@ It exists so future work stays aligned with the actual point of view of the prod
 
 ## What This Product Is
 
-This project is an opinionated end-to-end testing framework for agent systems.
+This project is an opinionated testing and engineering system for agent harnesses.
 
 Its job is to give every agent task an **executable definition of done**. A team states the behavior it expects, apo runs the real system, and a completed evaluation produces a machine-actionable control signal: pass or fail, backed by the test breakdown, trace, and deliverables. Runtime and infrastructure failures are surfaced separately as errors.
 
@@ -20,7 +20,18 @@ The emphasis is on:
 - making failures debuggable through traces
 - letting teams choose how often different subsets should run
 
-The testing framework is the product category. Closing the engineering loop is what that framework enables.
+## The Category
+
+The agent tooling landscape has two established starting objects, and both categories are full:
+
+- **Testing/eval frameworks** start from a *test case plus evaluator*: did this execution satisfy my assertion or metric?
+- **Observability/eval platforms** start from an *execution record*: trace production traffic, score it, mine datasets, monitor.
+
+apo starts from a third object: the **capability specification** — "this harness must be capable of doing X, under these conditions, while satisfying these constraints, and leaving behind this result." apo's job is to make that statement executable and to support the loop that engineers the harness until it holds.
+
+Those other products can contain tests. apo treats the specification as the product: traces explain failures, judges verify subjective requirements, datasets provide scenarios, CI prevents regressions — but every primitive is organized around the specification, not around an execution or a score.
+
+This is a deliberate boundary, not a limitation to grow out of. apo is not trying to be another eval framework or a production observability platform; the acceptance-test layer for agent systems is the ground to own. What that framework enables is **harness engineering**: expert knowledge encoded as executable specifications, with humans or coding agents changing the harness until the specifications pass.
 
 ## Core Beliefs
 
