@@ -33,12 +33,20 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 # Exact (method, path) pairs. Only the heavy list/aggregate reads — detail
-# reads by id are cheap and stay unthrottled.
+# reads by id are cheap and stay unthrottled. bulk-export is a POST in
+# method but a read in cost (loads + serializes up to 200 runs), so it
+# shares the budget; the Langfuse list routes ride the same list machinery
+# as /v1/runs.
 _PROTECTED_READS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("GET", re.compile(r"^/v1/runs$")),
     ("GET", re.compile(r"^/v1/runs/facets")),
+    ("GET", re.compile(r"^/v1/runs/sessions$")),
+    ("GET", re.compile(r"^/v1/runs/distinct-")),
+    ("POST", re.compile(r"^/v1/runs/bulk-export$")),
     ("GET", re.compile(r"^/v1/agent-task-runs$")),
     ("GET", re.compile(r"^/v1/agent-task-batch-runs$")),
+    ("GET", re.compile(r"^/v1/agent-task-batch-runs/[^/]+$")),
+    ("GET", re.compile(r"^/api/public/(traces|observations|sessions)$")),
 )
 
 

@@ -70,3 +70,72 @@ def test_throttle_scopes_identities_separately() -> None:
     assert throttle.is_allowed("user_id:a")
     assert not throttle.is_allowed("user_id:a")
     assert throttle.is_allowed("user_id:b")
+
+
+def _blind_spot_client(max_requests: int) -> TestClient:
+    """The real middleware over the Wave-2 blind-spot route shapes.
+
+    Mirrors `_throttled_client` for the routes G5 (issue #230) added:
+    sessions, distinct-*, bulk-export (POST), batch-run detail, and the
+    Langfuse lists — plus the detail variants that must stay unthrottled.
+    """
+    mini = FastAPI()
+
+    @mini.get("/v1/runs/sessions")
+    def sessions() -> dict[str, bool]:
+        return {"ok": True}
+
+    @mini.get("/v1/runs/distinct-models")
+    def distinct_models() -> dict[str, bool]:
+        return {"ok": True}
+
+    @mini.post("/v1/runs/bulk-export")
+    def bulk_export() -> dict[str, bool]:
+        return {"ok": True}
+
+    @mini.get("/v1/agent-task-batch-runs/{batch_run_id}")
+    def batch_detail(batch_run_id: str) -> dict[str, bool]:
+        return {"ok": True}
+
+    @mini.get("/api/public/traces")
+    def langfuse_traces() -> dict[str, bool]:
+        return {"ok": True}
+
+    @mini.get("/api/public/observations")
+    def langfuse_observations() -> dict[str, bool]:
+        return {"ok": True}
+
+    @mini.get("/api/public/traces/{trace_id}")
+    def langfuse_trace_detail(trace_id: str) -> dict[str, bool]:
+        return {"ok": True}
+
+    mini.add_middleware(
+        ReadThrottleMiddleware,
+        throttle=ReadThrottle(max_requests=max_requests, window_seconds=60),
+    )
+    return TestClient(mini, raise_server_exceptions=False)
+
+
+def test_throttle_covers_the_g5_blind_spots() -> None:
+    """Each newly protected path trips the same per-identity cap."""
+    heavy_calls = [
+        ("get", "/v1/runs/sessions"),
+        ("get", "/v1/runs/distinct-models"),
+        ("post", "/v1/runs/bulk-export"),
+        ("get", "/v1/agent-task-batch-runs/b-1"),
+        ("get", "/api/public/traces"),
+        ("get", "/api/public/observations"),
+    ]
+    for method, path in heavy_calls:
+        # Fresh client per path: one identity's window is shared across all
+        # protected routes, so earlier paths would starve later ones.
+        client = _blind_spot_client(max_requests=2)
+        call = getattr(client, method)
+        statuses = [call(path).status_code for _ in range(3)]
+        assert statuses == [200, 200, 429], f"{method.upper()} {path}: {statuses}"
+
+
+def test_throttle_leaves_langfuse_detail_reads_alone() -> None:
+    client = _blind_spot_client(max_requests=2)
+    for _ in range(5):
+        assert client.get("/api/public/traces/t-1").status_code == 200

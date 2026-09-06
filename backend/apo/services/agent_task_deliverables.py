@@ -100,6 +100,13 @@ async def persist_json_deliverable(
             f"Deliverable name '{name}' already exists on task run {task_run_id}"
         )
 
+    # JSON deliverables count toward the same per-run byte budget as
+    # Artifacts — without this they could grow a run's total without bound.
+    from apo.services.artifact_stores.registry import artifact_limits
+
+    _, max_run, _ = artifact_limits()
+    _reject_run_total_overflow(session, task_run_id, size, max_run)
+
     if size <= INLINE_THRESHOLD_BYTES:
         row = AgentTaskDeliverableDB(
             id=_new_id(),

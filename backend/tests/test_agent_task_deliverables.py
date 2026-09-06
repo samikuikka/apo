@@ -231,3 +231,63 @@ class TestManifest:
         assert "inline_value_json" not in dumped
 
 
+
+
+class TestJsonDeliverableRunBudget:
+    """G6 (issue #230): JSON deliverables count toward the run's total
+    Deliverable byte budget — they used to bypass it entirely."""
+
+    async def test_over_budget_json_is_rejected(self, store, monkeypatch):
+        monkeypatch.setenv("APO_ARTIFACT_MAX_RUN_BYTES", "100")
+        with Session(engine) as session:
+            _seed_run(session)
+            with pytest.raises(ValueError, match="total Deliverable byte limit"):
+                await persist_json_deliverable(
+                    session,
+                    project="p1",
+                    task_run_id="run-1",
+                    name="big",
+                    value={"big": "x" * 4096},
+                    store=store,
+                )
+
+    async def test_budget_counts_cumulative_json_rows(self, store, monkeypatch):
+        monkeypatch.setenv("APO_ARTIFACT_MAX_RUN_BYTES", str(64 * 1024 + 64))
+        with Session(engine) as session:
+            _seed_run(session)
+            # First inline row lands near the budget...
+            await persist_json_deliverable(
+                session,
+                project="p1",
+                task_run_id="run-1",
+                name="one",
+                value="a" * (64 * 1024 - 32),
+                store=store,
+            )
+            session.commit()
+            # ...so a second modest row crosses the cumulative line.
+            with pytest.raises(ValueError, match="total Deliverable byte limit"):
+                await persist_json_deliverable(
+                    session,
+                    project="p1",
+                    task_run_id="run-1",
+                    name="two",
+                    value="b" * 512,
+                    store=store,
+                )
+
+    async def test_under_budget_json_still_lands(self, store, monkeypatch):
+        monkeypatch.setenv("APO_ARTIFACT_MAX_RUN_BYTES", str(1024 * 1024))
+        with Session(engine) as session:
+            _seed_run(session)
+            row = await persist_json_deliverable(
+                session,
+                project="p1",
+                task_run_id="run-1",
+                name="verdict",
+                value={"ok": True},
+                store=store,
+            )
+            session.commit()
+            assert row.status == "ready"
+            assert row.inline_value_json == {"value": {"ok": True}}
