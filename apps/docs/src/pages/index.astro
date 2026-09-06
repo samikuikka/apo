@@ -25,9 +25,9 @@ const COPY_PROMPT_TEXT =
 // Open Graph / Twitter card metadata. The preview image is generated at build
 // time by src/pages/og-landing.png.ts — see that file for the design. Keep these
 // in sync with the <title>/<meta description> below (single source via consts).
-const PAGE_TITLE = "apo — Opinionated agent testing framework";
+const PAGE_TITLE = "apo — Capability testing for agent harnesses";
 const PAGE_DESCRIPTION =
-	"End-to-end testing for agent systems. apo runs your real agent, checks what it actually produced, and shows you exactly what went wrong when something breaks.";
+	"Executable capability specifications for agent harnesses. Define what your agent must be capable of, run the real system, verify the outcome — and engineer the harness until it passes.";
 const OG_IMAGE = new URL("/og-landing.png", Astro.site).href;
 const CANONICAL = new URL("/", Astro.site).href;
 ---
@@ -56,7 +56,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 		<meta property="og:image" content={OG_IMAGE} />
 		<meta property="og:image:width" content="1200" />
 		<meta property="og:image:height" content="630" />
-		<meta property="og:image:alt" content="apo — opinionated agent testing framework" />
+		<meta property="og:image:alt" content="apo — capability testing for agent harnesses" />
 		{/* Twitter / X — summary_large_image gives the big banner card. */}
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:title" content={PAGE_TITLE} />
@@ -140,10 +140,10 @@ const CANONICAL = new URL("/", Astro.site).href;
 					<div class="landing-hero__text">
 						<span class="landing-alpha-badge">Public Alpha</span>
 						<h1 class="landing-hero__title">
-							Opinionated agent testing framework.
+							Define what your agent must be capable of.
 						</h1>
 						<p class="landing-hero__sub">
-							End-to-end testing for agent systems. apo runs your real agent, checks what it actually produced, and shows you exactly what went wrong when something breaks.
+							apo turns that definition into an executable specification: it runs your real agent harness, verifies what the agent actually produced, and returns pass or fail with the evidence to fix what broke.
 						</p>
 						<div class="landing-cta">
 							<CopyPromptButton text={COPY_PROMPT_TEXT} />
@@ -169,6 +169,36 @@ const CANONICAL = new URL("/", Astro.site).href;
 				</div>
 			</section>
 
+			<!-- Where apo fits — the category in three rows. -->
+			<section class="landing-section landing-section--bordered">
+				<div class="landing-container">
+					<h2 class="landing-section__heading">Not another eval tool.</h2>
+					<p class="landing-section__sub">
+						Agent tooling has two established poles. apo starts from a third object: the specification.
+					</p>
+					<div class="landing-map">
+						<div class="landing-map__row">
+							<span class="landing-map__who">Testing &amp; eval frameworks</span>
+							<span class="landing-map__q">Did this execution satisfy my test?</span>
+						</div>
+						<div class="landing-map__row">
+							<span class="landing-map__who">Observability platforms</span>
+							<span class="landing-map__q">What did my system already do?</span>
+						</div>
+						<div class="landing-map__row landing-map__row--apo">
+							<span class="landing-map__who">apo</span>
+							<span class="landing-map__q">
+								Can this harness reliably do what we require — and can we engineer it until it can?
+							</span>
+						</div>
+					</div>
+					<p class="landing-section__sub landing-map__foot">
+						Production failures become apo regression tests. Coding agents work against the specification until it passes.
+						<a href="/why-apo/">The full map →</a>
+					</p>
+				</div>
+			</section>
+
 			<!-- The product -->
 			<section class="landing-section landing-section--bordered">
 				<div class="landing-container">
@@ -191,7 +221,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 
 		<footer class="landing-footer">
 			<div class="landing-container landing-footer__inner">
-				<span>apo — opinionated agent testing framework.</span>
+				<span>apo — executable capability specifications for agent harnesses.</span>
 				<span class="landing-footer__links">
 					<a href="/overview/">Docs</a>
 					<a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -216,6 +246,64 @@ const CANONICAL = new URL("/", Astro.site).href;
 		border-radius: 999px;
 		text-transform: uppercase;
 		white-space: nowrap;
+	}
+
+	/* Category map — three rows, the apo row accented. */
+	.landing-map {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		max-width: 46rem;
+		margin: 0 auto;
+	}
+
+	.landing-map__row {
+		display: grid;
+		grid-template-columns: minmax(10rem, 15rem) 1fr;
+		gap: 1rem;
+		align-items: baseline;
+		padding: 0.75rem 1rem;
+		border: 1px solid var(--sl-color-gray-5);
+		background: var(--sl-color-gray-6);
+	}
+
+	.landing-map__who {
+		color: var(--sl-color-gray-3);
+		font-weight: 600;
+		font-size: 0.875rem;
+	}
+
+	.landing-map__q {
+		color: var(--sl-color-gray-2);
+		font-size: 0.875rem;
+	}
+
+	.landing-map__row--apo {
+		border-color: var(--sl-color-accent);
+		background: var(--sl-color-accent-low, #0a1a0e);
+	}
+
+	.landing-map__row--apo .landing-map__who {
+		color: var(--sl-color-accent-high, #4ade80);
+	}
+
+	.landing-map__row--apo .landing-map__q {
+		color: var(--sl-color-gray-1);
+	}
+
+	.landing-map__foot {
+		margin-top: 1.25rem;
+	}
+
+	.landing-map__foot a {
+		color: var(--sl-color-accent-high, #4ade80);
+	}
+
+	@media (max-width: 40rem) {
+		.landing-map__row {
+			grid-template-columns: 1fr;
+			gap: 0.25rem;
+		}
 	}
 
 	/* The standalone landing page owns the full document. Reset Starlight's
