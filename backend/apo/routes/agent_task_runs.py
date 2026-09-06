@@ -717,7 +717,7 @@ async def get_agent_task_batch_run(
 
 
 @router.get("/agent-task-runs", response_model=list[AgentTaskRunSummary])
-async def list_agent_task_runs(
+def list_agent_task_runs(
     request: Request,
     project: str | None = Query(default=None),
     status: list[str] | None = Query(default=None),
@@ -730,6 +730,11 @@ async def list_agent_task_runs(
     session: Session = Depends(get_session),
 ):
     """List all task runs, optionally filtered.
+
+    Sync by design: the handler does sync SQL over up to ``limit`` rows,
+    and a sync ``def`` puts that scan in the threadpool instead of
+    blocking the event loop (one list call must never freeze the
+    single-worker service, ``/health`` included).
 
     ``model``/``effort``/``status`` are repeatable and exact but
     case-insensitive — a hand-edited URL must not silently

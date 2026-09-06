@@ -2,10 +2,19 @@
 
 """Bulk export query and serialization for runs.
 
-The route handler owns HTTP concerns (format dispatch, JSONResponse
-wrapping, CSV header). Everything from the DB fetch through the per-run
-serialization lives here so it is testable without going through
-FastAPI.
+The route handler owns HTTP concerns (format dispatch, download headers).
+Everything from the DB fetch through the per-run serialization lives here
+so it is testable without going through FastAPI.
+
+Two bounds keep one export from exhausting a memory-capped shared
+backend (issue #230 G2): the request caps `run_ids` (Pydantic 422
+beyond), and the render produces the file body exactly once — no
+pre-serialized copy nested inside a JSON envelope (~3–4× resident) —
+with a byte budget that fails the export instead of buffering without
+bound. The response is a buffered download (Content-Disposition), not a
+StreamingResponse: the request-size middleware pre-reads and replays
+capped write bodies, which drops streamed response bodies under nested
+BaseHTTPMiddleware.
 """
 
 import csv
@@ -13,8 +22,8 @@ import json
 from io import StringIO
 from typing import cast
 
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
 from sqlalchemy import asc
 from sqlmodel import Session, select
 
@@ -45,9 +54,17 @@ _CSV_COLUMNS = [
     "Metrics Count",
 ]
 
+MAX_EXPORT_RUN_IDS = 200
+
+# Semantic ceiling on one export's rendered size: a handful of very large
+# agentic traces within the run-id cap can still overflow a memory-limited
+# backend, so past this budget the export fails with a clear error instead
+# of buffering without bound. Roughly an hour of today's largest traces.
+MAX_EXPORT_BYTES = 128 * 1024 * 1024
+
 
 class BulkExportRequest(BaseModel):
-    run_ids: list[str]
+    run_ids: list[str] = Field(min_length=1, max_length=MAX_EXPORT_RUN_IDS)
     format: str = "json"
 
 
@@ -56,15 +73,15 @@ def export_runs(
     run_ids: list[str],
     project: str,
     fmt: str,
-) -> JSONResponse:
+) -> Response:
     if not run_ids:
-        return JSONResponse(
+        return Response(
             status_code=400,
-            content={"detail": "No run IDs provided"},
+            content='{"detail": "No run IDs provided"}',
+            media_type="application/json",
         )
 
     runs_data = collect_runs_for_export(session, run_ids, project)
-
     if fmt == "csv":
         return _render_csv(runs_data, len(run_ids))
     return _render_json(runs_data, len(run_ids))
@@ -151,7 +168,7 @@ def _load_calls_by_run(
 
 def _render_csv(
     runs_data: list[dict[str, object]], count: int
-) -> JSONResponse:
+) -> Response:
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow(_CSV_COLUMNS)
@@ -180,22 +197,53 @@ def _render_csv(
             ]
         )
 
-    return JSONResponse(
-        content={
-            "data": output.getvalue(),
-            "filename": f"runs_export_{count}_runs.csv",
-            "media_type": "text/csv",
-        }
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="runs_export_{count}_runs.csv"'
+        },
     )
 
 
 def _render_json(
     runs_data: list[dict[str, object]], count: int
-) -> JSONResponse:
-    return JSONResponse(
-        content={
-            "data": json.dumps(runs_data, indent=2, default=str),
-            "filename": f"runs_export_{count}_runs.json",
-            "media_type": "application/json",
-        }
+) -> Response:
+    """Render the export JSON exactly once, under a byte budget.
+
+    Each run serializes independently so the budget check can fail the
+    export before the final join; dropping the dict as it serializes keeps
+    peak memory at roughly one copy of the data instead of the ~3–4× of
+    the old envelope render.
+    """
+    parts = ["["]
+    total = 1
+    for i, run_item in enumerate(runs_data):
+        chunk = json.dumps(run_item, default=str)
+        if i > 0:
+            chunk = ",\n" + chunk
+        total += len(chunk)
+        if total > MAX_EXPORT_BYTES:
+            return Response(
+                status_code=413,
+                content=json.dumps(
+                    {
+                        "detail": (
+                            f"Export exceeds the {MAX_EXPORT_BYTES} byte budget; "
+                            "narrow the selection and export in smaller batches"
+                        )
+                    }
+                ),
+                media_type="application/json",
+            )
+        parts.append(chunk)
+        runs_data[i] = {}  # free the serialized dict
+    parts.append("]")
+
+    return Response(
+        content="".join(parts),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="runs_export_{count}_runs.json"'
+        },
     )

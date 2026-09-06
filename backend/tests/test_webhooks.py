@@ -343,6 +343,12 @@ class TestWebhookCRUD:
 
 class TestWebhookDelivery:
     async def test_deliver_success(self, session: Session):
+        # deliver_webhook records its delivery-status update through the
+        # module-level engine — bind it to the test engine so the row this
+        # test committed is the one it updates (same as the fire_webhooks
+        # tests below).
+        from tests.conftest import engine as test_engine
+
         secret = generate_secret()
         wh = WebhookDB(
             project="example-service",
@@ -360,6 +366,7 @@ class TestWebhookDelivery:
         import httpx
 
         original_post = httpx.AsyncClient.post
+        original_engine = wd_module.engine
 
         async def mock_post(self_client: httpx.AsyncClient, url: str, **kwargs: object):
             content = kwargs.get("content", b"")
@@ -369,6 +376,7 @@ class TestWebhookDelivery:
             return resp
 
         httpx.AsyncClient.post = mock_post  # pyright: ignore[reportGeneralTypeIssues, reportAttributeAccessIssue]
+        wd_module.engine = test_engine
         try:
             event_data = {
                 "event_type": "batch_run.completed",
@@ -384,8 +392,13 @@ class TestWebhookDelivery:
             assert verify_signature(payload, secret, sign_payload(payload, secret))
         finally:
             httpx.AsyncClient.post = original_post  # type: ignore[assignment]
+            wd_module.engine = original_engine
 
     async def test_deliver_retry_then_fail(self, session: Session):
+        # Same engine binding as test_deliver_success: the retry/fail path
+        # writes the delivery status through the module-level engine.
+        from tests.conftest import engine as test_engine
+
         secret = generate_secret()
         wh = WebhookDB(
             project="example-service",
@@ -401,12 +414,14 @@ class TestWebhookDelivery:
         import httpx
 
         original_post = httpx.AsyncClient.post
+        original_engine = wd_module.engine
 
         async def mock_post_fail(self_client: httpx.AsyncClient, url: str, **kwargs: object):
             resp = httpx.Response(500, request=httpx.Request("POST", url))
             return resp
 
         httpx.AsyncClient.post = mock_post_fail  # pyright: ignore[reportGeneralTypeIssues, reportAttributeAccessIssue]
+        wd_module.engine = test_engine
         try:
             event_data = {
                 "event_type": "batch_run.completed",
@@ -418,6 +433,7 @@ class TestWebhookDelivery:
             assert result is False
         finally:
             httpx.AsyncClient.post = original_post  # type: ignore[assignment]
+            wd_module.engine = original_engine
 
     async def test_fire_webhooks_for_event_filters_by_events(self, session: Session):
         from tests.conftest import engine as test_engine

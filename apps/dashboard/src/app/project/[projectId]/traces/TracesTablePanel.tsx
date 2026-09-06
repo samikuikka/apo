@@ -584,12 +584,11 @@ export function TracesTablePanel({
         await bulkDeleteTraces(selectedIds);
         window.location.reload();
       } else if (action.id === "export") {
-        const result = await exportTraces(selectedIds);
-        const blob = new Blob([result.data], { type: result.media_type });
+        const { blob, filename } = await exportTraces(selectedIds);
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = result.filename;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);

@@ -4,7 +4,7 @@ import type {
   TraceDetail as SharedTraceDetail,
   TraceMetric,
 } from "@/components/trace-detail";
-import { apiClient } from "./api-client";
+import { apiClient, apiClientRaw } from "./api-client";
 import { isApiError } from "./api-error";
 import { getBrowserBackendBaseUrl } from "./config";
 import { backendFetch } from "./backend-fetch";
@@ -133,11 +133,27 @@ export interface TraceListParams {
   pageSize?: number;
 }
 
-export interface TraceExportResult {
+export interface TraceExportFile {
+  blob: Blob;
   filename: string;
-  media_type: string;
-  data: string;
 }
+
+const _CONTENT_DISPOSITION_FILENAME = /filename="?([^";]+)"?/i;
+
+export const exportTraces = async (
+  runIds: string[],
+): Promise<TraceExportFile> => {
+  const res = await apiClientRaw("/v1/runs/bulk-export", {
+    method: "POST",
+    body: { run_ids: runIds, format: "json" },
+  });
+  const disposition = res.headers?.get("content-disposition") ?? "";
+  const match = _CONTENT_DISPOSITION_FILENAME.exec(disposition);
+  return {
+    blob: await res.blob(),
+    filename: match?.[1] ?? "runs_export.json",
+  };
+};
 
 export interface FacetBucket {
   value: string;
@@ -322,14 +338,6 @@ export const bulkDeleteTraces = (runIds: string[]): Promise<void> =>
   apiClient("/v1/runs/bulk-delete", {
     method: "POST",
     body: { run_ids: runIds },
-  });
-
-export const exportTraces = (
-  runIds: string[],
-): Promise<TraceExportResult> =>
-  apiClient("/v1/runs/bulk-export", {
-    method: "POST",
-    body: { run_ids: runIds, format: "json" },
   });
 
 interface TraceSessionSummaryTransport {

@@ -28,6 +28,17 @@ describe("listTaskRuns", () => {
       },
     });
   });
+
+  it("passes an explicit limit through", async () => {
+    vi.mocked(apiClient).mockResolvedValue([]);
+
+    await listTaskRuns("t", "p", undefined, 200);
+
+    expect(apiClient).toHaveBeenCalledWith("/v1/agent-task-runs", {
+      cache: "no-store",
+      query: expect.objectContaining({ limit: 200 }),
+    });
+  });
 });
 
 describe("getProjectAgentTask", () => {

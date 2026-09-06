@@ -1,4 +1,4 @@
-# pyright: reportAny=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false
+# pyright: reportAny=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportAttributeAccessIssue=false
 
 """Direct unit tests for batch-run listing and bulk-run export.
 
@@ -324,6 +324,27 @@ def test_batch_list_hydrates_unpriced_call_count(session: Session):
 # ---------------------------------------------------------------------------
 
 
+def _seed_exportable_run(session: Session, run_id: str = "r1") -> None:
+    now = datetime.now(timezone.utc)
+    session.add(
+        RunDB(id=run_id, project="p", task_id="t", created_at=now, call_count=1)
+    )
+    session.add(
+        LoggedCallDB(
+            id="c1",
+            project="p",
+            model="m",
+            task_id="t",
+            run_id=run_id,
+            created_at=now,
+            input={},
+            messages=[],
+            output={},
+        )
+    )
+    session.commit()
+
+
 def test_collect_runs_for_export_serializes_run_metrics_calls(session: Session):
     now = datetime.now(timezone.utc)
     session.add(
@@ -378,6 +399,72 @@ def test_collect_runs_for_export_respects_project_scope(session: Session):
     data = collect_runs_for_export(session, ["r1", "r2"], "proj-a")
     assert len(data) == 1
     assert data[0]["run"]["id"] == "r1"  # pyright: ignore[reportIndexIssue]
+
+
+# ---------------------------------------------------------------------------
+# Bulk export route (scene): bounded request, raw download responses
+# ---------------------------------------------------------------------------
+
+
+class TestBulkExportRoute:
+    def test_rejects_more_than_max_run_ids(self, client):
+        resp = client.post(
+            "/v1/runs/bulk-export",
+            params={"project": "p"},
+            json={"run_ids": [f"r{i}" for i in range(201)], "format": "json"},
+        )
+        assert resp.status_code == 422
+
+    def test_rejects_empty_run_ids(self, client):
+        resp = client.post(
+            "/v1/runs/bulk-export",
+            params={"project": "p"},
+            json={"run_ids": [], "format": "json"},
+        )
+        assert resp.status_code == 422
+
+    def test_json_export_streams_raw_download(self, session: Session, client):
+        import json as jsonlib
+
+        _seed_exportable_run(session)
+        resp = client.post(
+            "/v1/runs/bulk-export",
+            params={"project": "p"},
+            json={"run_ids": ["r1"], "format": "json"},
+        )
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("application/json")
+        assert "runs_export_1_runs.json" in resp.headers["content-disposition"]
+        data = jsonlib.loads(resp.content)
+        assert data[0]["run"]["id"] == "r1"
+        assert len(data[0]["calls"]) == 1
+
+    def test_json_export_fails_past_byte_budget(
+        self, session: Session, client, monkeypatch: pytest.MonkeyPatch
+    ):
+        import apo.routes.runs.bulk_export as bulk_export_module
+
+        monkeypatch.setattr(bulk_export_module, "MAX_EXPORT_BYTES", 8)
+        _seed_exportable_run(session)
+        resp = client.post(
+            "/v1/runs/bulk-export",
+            params={"project": "p"},
+            json={"run_ids": ["r1"], "format": "json"},
+        )
+        assert resp.status_code == 413
+        assert "budget" in resp.json()["detail"]
+
+    def test_csv_export_streams_raw_download(self, session: Session, client):
+        _seed_exportable_run(session)
+        resp = client.post(
+            "/v1/runs/bulk-export",
+            params={"project": "p"},
+            json={"run_ids": ["r1"], "format": "csv"},
+        )
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/csv")
+        assert "runs_export_1_runs.csv" in resp.headers["content-disposition"]
+        assert resp.text.startswith("Run ID,")
 
 
 if __name__ == "__main__":

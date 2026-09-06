@@ -70,6 +70,13 @@ export async function generateMetadata({
 
 const EMPTY_TASK_RUNS: Awaited<ReturnType<typeof listTaskRuns>> = [];
 
+// Page-aligned fetch bound: TaskRunHistory paginates 20 rows per page
+// client-side, so 200 rows = 10 pages of the newest runs — enough for the
+// drill-down without the default 1,000-row scan per task-page view (one
+// bounded list call serves the page; the unfiltered "N of M" twin fetch is
+// gone). API consumers can still ask for up to 5,000 explicitly.
+const TASK_RUN_HISTORY_LIMIT = 200;
+
 export default async function TaskDetailPage({
   params,
   searchParams,
@@ -86,26 +93,23 @@ export default async function TaskDetailPage({
 
   let task: Awaited<ReturnType<typeof getProjectAgentTask>> | null = null;
   let taskRuns = EMPTY_TASK_RUNS;
-  let totalRuns = 0;
   let facets: Awaited<ReturnType<typeof fetchTaskViewConfigFacets>> = [];
   let error: string | null = null;
   let canDeleteRuns = false;
 
   try {
-    // The scoped list is what renders; the unscoped twin exists only to give
-    // the count line its "N of M" denominator. Facets feed the control menus
-    // and are best-effort (a facets failure must not blank the run history).
-    // The project read feeds the run-delete role gate (best-effort too).
-    const [resolved, scoped, all, facetResult, project] = await Promise.all([
+    // The scoped list is what renders, bounded to the newest
+    // TASK_RUN_HISTORY_LIMIT rows. Facets feed the control menus and are
+    // best-effort (a facets failure must not blank the run history). The
+    // project read feeds the run-delete role gate (best-effort too).
+    const [resolved, scoped, facetResult, project] = await Promise.all([
       getProjectAgentTask(projectId, taskId),
-      listTaskRuns(taskId, projectId, cohort),
-      scopeActive ? listTaskRuns(taskId, projectId) : Promise.resolve(null),
+      listTaskRuns(taskId, projectId, cohort, TASK_RUN_HISTORY_LIMIT),
       fetchTaskViewConfigFacets(projectId).catch(() => []),
       getProject(projectId).catch(() => null),
     ]);
     task = resolved;
     taskRuns = scoped;
-    totalRuns = scopeActive ? (all ?? scoped).length : scoped.length;
     facets = facetResult;
     canDeleteRuns =
       project?.current_user_role === "owner" ||
@@ -156,8 +160,12 @@ export default async function TaskDetailPage({
           <Badge variant="outline" className="text-[10px]">{fileCount} files</Badge>
           <Badge variant="outline" className="text-[10px]">
             {scopeActive
-              ? `${taskRuns.length} of ${totalRuns} task runs in view`
-              : `${taskRuns.length} task runs`}
+              ? taskRuns.length === TASK_RUN_HISTORY_LIMIT
+                ? `${TASK_RUN_HISTORY_LIMIT}+ task runs in view (newest first)`
+                : `${taskRuns.length} task runs in view`
+              : taskRuns.length === TASK_RUN_HISTORY_LIMIT
+                ? `${TASK_RUN_HISTORY_LIMIT}+ task runs (newest first)`
+                : `${taskRuns.length} task runs`}
           </Badge>
         </div>
       </div>
