@@ -143,7 +143,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 							Define what your agent must be capable of.
 						</h1>
 						<p class="landing-hero__sub">
-							apo turns that definition into an executable specification: it runs your real agent harness, verifies what the agent actually produced, and returns pass or fail with the evidence to fix what broke.
+							Executable specifications. Real agent runs. Pass or fail with evidence.
 						</p>
 						<div class="landing-cta">
 							<CopyPromptButton text={COPY_PROMPT_TEXT} />
@@ -169,32 +169,43 @@ const CANONICAL = new URL("/", Astro.site).href;
 				</div>
 			</section>
 
-			<!-- Where apo fits — the category in three rows. -->
-			<section class="landing-section landing-section--bordered">
+			<!-- Where apo fits — three categories, three questions. -->
+			<section class="landing-section landing-section--bordered" data-landing-cats>
 				<div class="landing-container">
-					<h2 class="landing-section__heading">Not another eval tool.</h2>
-					<p class="landing-section__sub">
-						Agent tooling has two established poles. apo starts from a third object: the specification.
-					</p>
-					<div class="landing-map">
-						<div class="landing-map__row">
-							<span class="landing-map__who">Testing &amp; eval frameworks</span>
-							<span class="landing-map__q">Did this execution satisfy my test?</span>
-						</div>
-						<div class="landing-map__row">
-							<span class="landing-map__who">Observability platforms</span>
-							<span class="landing-map__q">What did my system already do?</span>
-						</div>
-						<div class="landing-map__row landing-map__row--apo">
-							<span class="landing-map__who">apo</span>
-							<span class="landing-map__q">
-								Can this harness reliably do what we require — and can we engineer it until it can?
-							</span>
-						</div>
+					<h2 class="landing-section__heading">Where apo fits</h2>
+					<p class="landing-section__sub">Three categories, three different questions.</p>
+					<div class="landing-cats">
+						<article class="cat" style="--i: 0">
+							<span class="cat__kind">Eval frameworks</span>
+							<h3 class="cat__q">Did this run pass?</h3>
+							<div class="cat__gliff" aria-hidden="true">
+								<span class="cat__row">run → expect() <span class="cat__ok">✓</span></span>
+								<span class="cat__row">run → expect() <span class="cat__bad">✗</span></span>
+							</div>
+							<span class="cat__names">DeepEval · Promptfoo</span>
+						</article>
+						<article class="cat" style="--i: 1">
+							<span class="cat__kind">Observability</span>
+							<h3 class="cat__q">What did it do?</h3>
+							<div class="cat__gliff cat__gliff--spans" aria-hidden="true">
+								<span class="cat__span" style="--w: 78%"></span>
+								<span class="cat__span cat__span--child" style="--w: 46%"></span>
+								<span class="cat__span" style="--w: 62%"></span>
+							</div>
+							<span class="cat__names">Langfuse · Arize · Braintrust</span>
+						</article>
+						<article class="cat cat--apo" style="--i: 2">
+							<span class="cat__kind">apo</span>
+							<h3 class="cat__q">Can it do the job?</h3>
+							<div class="cat__gliff" aria-hidden="true">
+								<span class="cat__row">spec → run → <span class="cat__pass">PASS</span></span>
+								<span class="cat__row cat__row--return">↺ improve the harness</span>
+							</div>
+							<span class="cat__names">capability specifications</span>
+						</article>
 					</div>
-					<p class="landing-section__sub landing-map__foot">
-						Production failures become apo regression tests. Coding agents work against the specification until it passes.
-						<a href="/why-apo/">The full map →</a>
+					<p class="landing-cats__foot">
+						apo starts from the specification. <a href="/why-apo/">The full map →</a>
 					</p>
 				</div>
 			</section>
@@ -228,6 +239,20 @@ const CANONICAL = new URL("/", Astro.site).href;
 				</span>
 			</div>
 		</footer>
+
+		<script>
+			// Stagger the category cards in when the section scrolls into view —
+			// same onVisible helper the features bento uses. The import must be
+			// inside the script tag to reach the browser.
+			import { onVisible } from "../components/demos/demo-motion";
+
+			const cats = document.querySelector<HTMLElement>("[data-landing-cats]");
+			if (cats) {
+				onVisible(cats, (state) => {
+					cats.toggleAttribute("data-visible", state === "visible");
+				});
+			}
+		</script>
 	</body>
 </html>
 
@@ -248,61 +273,149 @@ const CANONICAL = new URL("/", Astro.site).href;
 		white-space: nowrap;
 	}
 
-	/* Category map — three rows, the apo row accented. */
-	.landing-map {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		max-width: 46rem;
+	/* Category cards — three terse cards, one question each. */
+	.landing-cats {
+		display: grid;
+		gap: 1rem;
+		grid-template-columns: 1fr;
+		max-width: 62rem;
 		margin: 0 auto;
 	}
 
-	.landing-map__row {
-		display: grid;
-		grid-template-columns: minmax(10rem, 15rem) 1fr;
-		gap: 1rem;
-		align-items: baseline;
-		padding: 0.75rem 1rem;
+	@media (min-width: 40rem) {
+		.landing-cats {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+
+	.cat {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		min-height: 11rem;
+		padding: 1.1rem 1.1rem 0.9rem;
 		border: 1px solid var(--sl-color-gray-5);
 		background: var(--sl-color-gray-6);
 	}
 
-	.landing-map__who {
-		color: var(--sl-color-gray-3);
-		font-weight: 600;
-		font-size: 0.875rem;
-	}
-
-	.landing-map__q {
-		color: var(--sl-color-gray-2);
-		font-size: 0.875rem;
-	}
-
-	.landing-map__row--apo {
+	.cat--apo {
 		border-color: var(--sl-color-accent);
 		background: var(--sl-color-accent-low, #0a1a0e);
 	}
 
-	.landing-map__row--apo .landing-map__who {
+	.cat__kind {
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--sl-color-gray-4);
+	}
+
+	.cat--apo .cat__kind {
 		color: var(--sl-color-accent-high, #4ade80);
 	}
 
-	.landing-map__row--apo .landing-map__q {
+	.cat__q {
+		margin: 0;
+		font-size: 1.05rem;
+		font-weight: 600;
+		letter-spacing: -0.01em;
 		color: var(--sl-color-gray-1);
 	}
 
-	.landing-map__foot {
-		margin-top: 1.25rem;
+	/* Gliffs sit at the card bottom; each represents the category's
+	   starting object — assertions, traces, the loop. */
+	.cat__gliff {
+		margin-top: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
 	}
 
-	.landing-map__foot a {
+	.cat__row {
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.7rem;
+		color: var(--sl-color-gray-3);
+		white-space: nowrap;
+	}
+
+	.cat__row--return {
+		color: var(--sl-color-gray-4);
+	}
+
+	/* Verdict marks are state — the sanctioned accent use. */
+	.cat__ok,
+	.cat__pass {
+		color: var(--sl-color-accent);
+		font-weight: 700;
+	}
+
+	.cat__bad {
+		color: oklch(0.7 0.16 25);
+		font-weight: 700;
+	}
+
+	.cat__gliff--spans {
+		gap: 0.4rem;
+		padding: 0.4rem 0 0.15rem;
+	}
+
+	.cat__span {
+		display: block;
+		height: 0.45rem;
+		width: var(--w, 60%);
+		background: var(--sl-color-gray-4);
+		opacity: 0.75;
+	}
+
+	.cat__span--child {
+		margin-left: 12%;
+		height: 0.35rem;
+		background: var(--sl-color-gray-5);
+	}
+
+	.cat__names {
+		margin-top: 0.75rem;
+		padding-top: 0.55rem;
+		border-top: 1px solid var(--sl-color-gray-6);
+		font-size: 0.7rem;
+		color: var(--sl-color-gray-4);
+	}
+
+	.cat--apo .cat__names {
+		border-top-color: color-mix(in oklab, var(--sl-color-accent) 25%, transparent);
+		color: var(--sl-color-gray-3);
+	}
+
+	.landing-cats__foot {
+		margin-top: 1.5rem;
+		text-align: center;
+		color: var(--sl-color-gray-3);
+	}
+
+	.landing-cats__foot a {
 		color: var(--sl-color-accent-high, #4ade80);
 	}
 
-	@media (max-width: 40rem) {
-		.landing-map__row {
-			grid-template-columns: 1fr;
-			gap: 0.25rem;
+	/* Staggered reveal — same idiom as the features bento. */
+	.cat {
+		opacity: 0;
+		transform: translateY(6px);
+		transition: opacity 0.35s ease, transform 0.35s ease;
+		transition-delay: calc(var(--i, 0) * 120ms);
+	}
+
+	[data-landing-cats][data-visible] .cat {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.cat {
+			opacity: 1 !important;
+			transform: none !important;
+			transition: none !important;
 		}
 	}
 
