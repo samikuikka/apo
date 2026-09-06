@@ -145,6 +145,11 @@ def create_app() -> FastAPI:
     # validate transport limits at app construction (not lazily).
     transport_limits = load_telemetry_transport_limits()
 
+    # validate per-route write-body limits the same way.
+    from .services.request_body_limits import load_request_body_limits
+
+    body_limits = load_request_body_limits()
+
     # validate admission limits and construct the controller.
     admission_limits = load_telemetry_admission_limits()
     admission_controller = TelemetryAdmissionController(admission_limits)
@@ -168,7 +173,9 @@ def create_app() -> FastAPI:
     app.add_middleware(ReadThrottleMiddleware, throttle=ReadThrottle())
     app.add_middleware(TelemetryAdmissionMiddleware, controller=admission_controller)
     app.add_middleware(AuthMiddleware)
-    app.add_middleware(RequestSizeMiddleware, otlp_limits=transport_limits)
+    app.add_middleware(
+        RequestSizeMiddleware, otlp_limits=transport_limits, body_limits=body_limits
+    )
     app.add_middleware(SecurityHeadersMiddleware)
 
     app.include_router(health.router)

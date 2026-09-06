@@ -625,6 +625,7 @@ export const listTaskRuns = (
   taskId: string,
   project?: string,
   cohort?: TaskRunCohortFilter,
+  limit?: number,
 ): Promise<AgentTaskRunSummary[]> =>
   apiClient("/v1/agent-task-runs", {
     ...NO_CACHE,
@@ -635,6 +636,7 @@ export const listTaskRuns = (
       effort: cohort?.effort,
       since: cohort?.since,
       status: cohort?.status,
+      limit,
     },
   });
 

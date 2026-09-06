@@ -82,10 +82,7 @@ async function parseErrorDetail(res: Response): Promise<string> {
     : `Request failed (${res.status})`;
 }
 
-export async function apiClient<T>(
-  path: string,
-  opts: RequestOptions = {},
-): Promise<T> {
+function buildInit(opts: RequestOptions): RequestInit {
   const headers = new Headers(opts.headers);
   const init: RequestInit = {};
   if (opts.method) init.method = opts.method;
@@ -96,8 +93,14 @@ export async function apiClient<T>(
     init.body = JSON.stringify(opts.body);
   }
   init.headers = headers;
+  return init;
+}
 
-  const res = await backendFetch(buildUrl(path, opts.query), init);
+export async function apiClient<T>(
+  path: string,
+  opts: RequestOptions = {},
+): Promise<T> {
+  const res = await backendFetch(buildUrl(path, opts.query), buildInit(opts));
   if (!res.ok) {
     throw new ApiError(res.status, await parseErrorDetail(res));
   }
@@ -109,4 +112,20 @@ export async function apiClient<T>(
     return undefined as T;
   }
   return res.json() as Promise<T>;
+}
+
+/**
+ * Raw-response variant of {@link apiClient} for endpoints that return a
+ * file rather than JSON: same URL/body/ApiError handling, but the caller
+ * gets the `Response` itself (blob(), headers) instead of parsed JSON.
+ */
+export async function apiClientRaw(
+  path: string,
+  opts: RequestOptions = {},
+): Promise<Response> {
+  const res = await backendFetch(buildUrl(path, opts.query), buildInit(opts));
+  if (!res.ok) {
+    throw new ApiError(res.status, await parseErrorDetail(res));
+  }
+  return res;
 }

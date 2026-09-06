@@ -158,6 +158,18 @@ push into the store per request/minute; they do not cap total storage
 | `APO_TELEMETRY_GLOBAL_BYTES_PER_MINUTE` | `62914560` | Deployment-wide ingest rate (60 MiB/min). |
 | `APO_TELEMETRY_GLOBAL_BYTE_BURST` | `20971520` | Deployment-wide burst allowance (20 MiB). |
 
+## Request body limits
+
+Byte caps on non-telemetry write routes, enforced before the body is
+buffered. Oversized bodies get `413`. There is no disable flag: `0` never
+means unlimited — an invalid value fails startup.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `APO_RESULT_MAX_BODY_BYTES` | `10485760` | Max task-run `result` submission body (10 MiB). |
+| `APO_ARTIFACT_UPLOAD_MAX_BODY_BYTES` | `104857600` | Max artifact upload body (100 MiB). |
+| `APO_WRITE_MAX_BODY_BYTES` | `10485760` | Max body for other member writes: executor-protocol `result`/`failure` (v1/v2), judgments, comments, and `/v1/runs` POSTs (create, custom-metrics, bulk-export, reproject). |
+
 ## Auth and sessions
 
 | Variable | Default | Purpose |
