@@ -74,7 +74,7 @@ def _report_value(conn, run_id: str):
 
 def test_v20_remains_registered() -> None:
     assert 20 in _SCHEMA_MIGRATIONS
-    assert LATEST_SCHEMA_VERSION == 42
+    assert LATEST_SCHEMA_VERSION == 43
 
 
 def test_migration_backfills_counts_and_evidence_and_nulls_legacy() -> None:

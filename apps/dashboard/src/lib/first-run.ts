@@ -42,6 +42,8 @@ export function shellQuote(value: string): string {
 // matter which application origin the dashboard is served from. Deliberately
 // not derived from APO_PUBLIC_URL.
 export const HOSTED_DOCS_URL = "https://docs.test-apo.online/hosted-alpha/";
+/** The alpha operating policy (admission, fair use, retention, backups). */
+export const HOSTED_ALPHA_POLICY_URL = "https://docs.test-apo.online/alpha-policy/";
 export const EXAMPLE_URL =
   "https://github.com/samikuikka/apo/tree/main/apps/example-service/e2e/agent-task-demo";
 

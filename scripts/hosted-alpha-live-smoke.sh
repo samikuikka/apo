@@ -159,10 +159,57 @@ if expect_status "has-users (CLI API entry)" 200; then
   assert_no_basic_challenge "has-users (CLI API entry)"
 fi
 
-# --- Protected data: Apo's own 401/403 JSON, never an ingress gate ---
+# --- Anonymous project list: the demo contract, never a data leak ---
+# Every install ships the demo workspace as a versioned fixture; the anonymous project
+# list answers 200 listing exactly it. Any other project id is a cross-tenant
+# leak; a Basic challenge would mean an ingress gate intercepts the route.
 fetch "$APP_URL" GET /v1/projects
-if expect_status_in "protected data (Apo auth enforced)" 401 403; then
-  assert_no_basic_challenge "protected data (Apo auth enforced)"
+if expect_status "anonymous project list (demo contract)" 200; then
+  if assert_no_basic_challenge "anonymous project list"; then
+    projects_body="$(curl -sS --max-time "$TIMEOUT" "$APP_URL/v1/projects" 2>/dev/null || echo "")"
+    if echo "$projects_body" | python3 -c "
+import sys, json
+try:
+    projects = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+if not isinstance(projects, list):
+    sys.exit(1)
+ids = {p.get('id') for p in projects if isinstance(p, dict)}
+sys.exit(0 if ids <= {'demo'} else 1)
+" 2>/dev/null; then
+      PASS=$((PASS + 1))
+    else
+      echo "FAIL: anonymous /v1/projects exposes more than the demo workspace — data leak" >&2
+      FAIL=$((FAIL + 1))
+    fi
+  fi
+fi
+
+# --- Direct routing: Caddy must dial the backend for /backend-proxy/* ---
+# When the frontend hop proxies this prefix, responses carry the Next.js
+# fingerprint (pragma: no-cache with appended cache-control) — the stall
+# class behind the post-#174 routing change. Absent pragma on a 200 means
+# Caddy forwarded straight to uvicorn.
+fetch "$APP_URL" GET /backend-proxy/v1/projects
+if expect_status "backend-proxy direct routing (post-#174)" 200; then
+  if echo "$HEADERS" | grep -qi '^pragma: *no-cache'; then
+    echo "FAIL: /backend-proxy/v1/projects carries the Next-hop fingerprint (pragma: no-cache) — Caddy is routing through the frontend, not the backend" >&2
+    FAIL=$((FAIL + 1))
+  else
+    PASS=$((PASS + 1))
+  fi
+fi
+
+# --- SSE promptness (warning only): headers must arrive, body may stay ---
+# silent — the demo has no pending batches. A header-less 2 s window is the
+# measured stall symptom of SSE behind the frontend rewrite.
+sse_headers="$(curl -sS -N --max-time 2 -D - -o /dev/null \
+  "$APP_URL/backend-proxy/v1/events?project=demo" 2>/dev/null || true)"
+if echo "$sse_headers" | grep -qi '^content-type: *text/event-stream'; then
+  PASS=$((PASS + 1))
+else
+  echo "WARN: SSE headers not observed within 2 s on /backend-proxy/v1/events?project=demo (stall symptom — inspect routing)" >&2
 fi
 
 # --- Hosted docs: /start.md and /hosted-alpha/ must be live (not stale) ---

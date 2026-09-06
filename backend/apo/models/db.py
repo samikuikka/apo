@@ -862,6 +862,27 @@ class AdaptiveTaskStateDB(SQLModel, table=True):
     next_run_at: datetime | None = Field(default=None, index=True)
 
 
+class MaintenanceStateDB(SQLModel, table=True):
+    """One-row record of the daily maintenance loop's last completed pass.
+
+    The loop itself is a daemon thread whose summary used to be discarded —
+    an operator could not tell whether it ever ran. The row is the persisted
+    answer (surfaced via ``GET /v1/admin/retention``); ``id`` is always 1.
+    """
+
+    __tablename__: ClassVar[str] = "maintenance_state"
+
+    id: int = Field(primary_key=True, default=1)
+    last_started_at: datetime | None = Field(
+        default=None, sa_column=Column(UTCDateTime)
+    )
+    last_finished_at: datetime | None = Field(
+        default=None, sa_column=Column(UTCDateTime)
+    )
+    duration_ms: int | None = None
+    summary: dict[str, int] = Field(default_factory=dict, sa_column=Column(JSON))
+
+
 class WebhookDB(SQLModel, table=True):
     __tablename__: ClassVar[str] = "webhooks"
 

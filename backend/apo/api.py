@@ -142,6 +142,13 @@ def create_app() -> FastAPI:
         load_telemetry_transport_limits,
     )
 
+    # The daily maintenance loop logs its pass summaries at INFO; the root
+    # logger stays at WARNING by default, so apo's own INFO lines would be
+    # invisible without this (issue #231's "log-invisible maintenance").
+    import logging
+
+    logging.getLogger("apo").setLevel(logging.INFO)
+
     # validate transport limits at app construction (not lazily).
     transport_limits = load_telemetry_transport_limits()
 

@@ -96,11 +96,11 @@ describe("/join new-account flow", () => {
         email: "invitee@example.com",
         password: "hunter2hunter2",
         redirect: false,
-        redirectTo: "/project/proj-new-1/tasks?welcome=1",
+        redirectTo: "/project/proj-new-1/tasks",
       });
     });
     expect(vi.mocked(useRouter).mock.results[0]?.value.push).toHaveBeenCalledWith(
-      "/project/proj-new-1/tasks?welcome=1",
+      "/project/proj-new-1/tasks",
     );
   });
 });

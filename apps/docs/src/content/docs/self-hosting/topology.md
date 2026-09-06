@@ -65,6 +65,17 @@ If you need any of the above, you are outside the alpha contract. apo will break
 | Local | This machine only on `127.0.0.1:3000` | `docker compose up -d --build` |
 | Server | Public HTTPS domain through Caddy | `docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build` |
 
+Upgrades that touch `deploy/self-host/Caddyfile` need one more command —
+`up -d --build` never recreates caddy on a config-file change, and the
+single-file bind mount pins the old inode:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --force-recreate caddy
+```
+
+See [Publish Apo on Your Domain](/self-hosting/public-server/) for why and
+the post-recreate verification.
+
 Use [Publish Apo on Your Domain](/self-hosting/public-server/) for the complete Server Profile procedure and external smoke test.
 
 ## Local deploy path
