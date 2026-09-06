@@ -49,6 +49,38 @@ dependency (via Next.js) ships prebuilt binaries that install without
 running its build script — its native source build is disabled in
 `pnpm-workspace.yaml` precisely so it can never abort the install (#153).
 
+## Run it outside the monorepo
+
+The monorepo path above is the default. If you keep your evaluation tree
+outside the repository (a separate project directory, a CI runner), copy the
+example **plus its sibling `app/` directory** and install at the workspace
+root — the adapter imports `../../app/lib/agent/service.ts`, so the tree has
+a fixed shape:
+
+```text
+my-evals/
+├── package.json        ← install here: npm i @apo-ai/sdk ai @ai-sdk/openai zod
+├── node_modules/
+├── app/                ← copy from apps/example-service/app (the real agent)
+└── e2e/
+    └── agent-task-demo/   ← copy from apps/example-service/e2e/agent-task-demo
+```
+
+```bash
+mkdir -p my-evals/e2e
+cp -r apo/apps/example-service/app my-evals/app
+cp -r apo/apps/example-service/e2e/agent-task-demo my-evals/e2e/agent-task-demo
+cd my-evals
+npm init -y && npm install @apo-ai/sdk ai @ai-sdk/openai zod
+
+cd e2e/agent-task-demo
+OPENROUTER_API_KEY=... apo task run tasks/ai-sdk-agent/data-extraction --dir .
+```
+
+`package.json` inside `agent-task-demo` declares the same runtime
+dependencies for container installs — a root `npm install` that includes
+them satisfies both.
+
 ## Run it
 
 ```bash
