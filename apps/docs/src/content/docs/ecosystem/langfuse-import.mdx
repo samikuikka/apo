@@ -7,12 +7,12 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
 apo's canonical write contract is OTLP. When your agent or sandbox already sends telemetry to [Langfuse](https://langfuse.com) but cannot reach an apo instance on `localhost`, the **Langfuse Trace Source Connector** bridges the gap: it reads a single trace from Langfuse's public API, deterministically converts the observation graph into standard OTLP/JSON, and submits it through apo's existing authenticated OTLP receiver.
 
-This is an adoption path, not a second persistence model. The imported execution is still a **Trace** — no `LangfuseTrace` table, no vendor-specific dashboard. Once projected, it appears in the normal trace list and detail view alongside natively-instrumented runs.
+This is an adoption path, not a second persistence model. The imported execution is still a **Trace**: no `LangfuseTrace` table, no vendor-specific dashboard. Once projected, it appears in the normal trace list and detail view alongside natively-instrumented runs.
 
 ## When to use the connector
 
 :::tip[Native OTEL is primary]
-If your agent can reach apo directly — even through a proxy — emit OTLP natively. The connector exists for the case where the execution path can only reach a public service like Langfuse Cloud.
+If your agent can reach apo directly (even through a proxy) emit OTLP natively. The connector exists for the case where the execution path can only reach a public service like Langfuse Cloud.
 :::
 
 Use the connector when:
@@ -25,11 +25,11 @@ Do **not** use it to:
 
 - Continuously synchronize Langfuse into apo (one trace per command, on demand).
 - Replace native OTLP export from new code.
-- Run Task checks against imported traces. That requires the **Task Evaluation** model (a separate spec) — the connector does not synthesize runs, verdicts, or scores.
+- Run Task checks against imported traces. That requires the **Task Evaluation** model (a separate spec): the connector does not synthesize runs, verdicts, or scores.
 
 ## How identity is preserved
 
-The connector does **not** reuse Langfuse trace IDs verbatim — they may not satisfy the OTel hex format and could collide across Langfuse deployments. Instead it derives deterministic IDs:
+The connector does **not** reuse Langfuse trace IDs verbatim, they may not satisfy the OTel hex format and could collide across Langfuse deployments. Instead it derives deterministic IDs:
 
 ```
 apoTraceId = first 32 hex chars of SHA-256(
@@ -50,7 +50,7 @@ You need:
 - An active project (`apo project use`).
 - Langfuse Public API credentials for the project that owns the trace. These are the same keys Langfuse's own SDKs use.
 
-The connector reads credentials from the environment only — never from CLI flags, never persisted by apo, never logged:
+The connector reads credentials from the environment only, never from CLI flags, never persisted by apo, never logged:
 
 | Variable | Required | Purpose |
 |---|---|---|
@@ -59,7 +59,7 @@ The connector reads credentials from the environment only — never from CLI fla
 | `LANGFUSE_HOST` | no | Defaults to `https://cloud.langfuse.com`. Set for self-hosted Langfuse. |
 
 :::caution[Keys stay in your CLI process]
-The Langfuse keys are used to read the source trace and are then discarded. They are never sent to apo, stored in credentials, logged, or attached to the imported trace. The imported trace is authenticated to apo with your normal apo API key — the Langfuse keys are not.
+The Langfuse keys are used to read the source trace and are then discarded. They are never sent to apo, stored in credentials, logged, or attached to the imported trace. The imported trace is authenticated to apo with your normal apo API key, the Langfuse keys are not.
 :::
 
 ## Import a trace
@@ -88,7 +88,7 @@ Open the trace with the mapped ID:
 apo traces show 1c8e69d970579e05740de59fc2917b04
 ```
 
-The trace carries two root tags — `imported` and `source:langfuse` — plus any tags from the Langfuse trace itself, so it is filterable in the dashboard alongside natively-instrumented runs.
+The trace carries two root tags (`imported` and `source:langfuse`) plus any tags from the Langfuse trace itself, so it is filterable in the dashboard alongside natively-instrumented runs.
 
 ## What the connector maps
 
@@ -140,10 +140,10 @@ apo does not store Langfuse credentials, do not open a Langfuse-specific databas
 | Code | Meaning |
 |---|---|
 | `0` | Every source observation was accepted and the projected Trace became readable before the visibility deadline (15s). |
-| `75` | The source trace returned no observations yet — Langfuse Cloud ingestion lags ~30-90s after a run ends. Retryable: re-run, or pass `--wait <seconds>` to poll the source in-process. No apo write was attempted. |
+| `75` | The source trace returned no observations yet, Langfuse Cloud ingestion lags ~30-90s after a run ends. Retryable: re-run, or pass `--wait <seconds>` to poll the source in-process. No apo write was attempted. |
 | `2` | Configuration, Langfuse hard read error (auth / 404 / 5xx), conversion, apo ingestion, partial OTLP rejection, or projection visibility failure. |
 
-The connector never returns `1`: an import is not a test verdict. Exit `75` (`sysexits.h` `EX_TEMPFAIL`) lets CI/e2e callers distinguish "not ingested yet" from a real failure without parsing stderr — loop on `75`, surface `2`. Partial state is always reported honestly with mapped trace ID, accepted/rejected counts, and OTLP batch IDs, so re-running is safe — already-accepted chunks are durable and deterministic IDs prevent duplicates.
+The connector never returns `1`: an import is not a test verdict. Exit `75` (`sysexits.h` `EX_TEMPFAIL`) lets CI/e2e callers distinguish "not ingested yet" from a real failure without parsing stderr, loop on `75`, surface `2`. Partial state is always reported honestly with mapped trace ID, accepted/rejected counts, and OTLP batch IDs, so re-running is safe, already-accepted chunks are durable and deterministic IDs prevent duplicates.
 
 ## Troubleshooting
 
@@ -151,12 +151,12 @@ The connector never returns `1`: an import is not a test verdict. Exit `75` (`sy
 |---|---|
 | `Missing required environment variable: LANGFUSE_PUBLIC_KEY` | Both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` must be set in the environment. Flags like `--langfuse-secret-key` are intentionally not supported. |
 | `Langfuse authentication failed (401)` | The keys belong to a different Langfuse project, or were rotated. Confirm the keys match the trace you're trying to import. |
-| `Langfuse returned no observations` (exit 75) | The trace isn't queryable in Langfuse yet. Langfuse Cloud ingestion typically lags ~30-90s after a run finishes — this is the common case right after a `task run`. Re-run, or pass `--wait <seconds>` (e.g. `--wait 120`) to poll the source until observations appear. If it persists, the trace ID is wrong or the trace is genuinely empty in Langfuse. |
+| `Langfuse returned no observations` (exit 75) | The trace isn't queryable in Langfuse yet. Langfuse Cloud ingestion typically lags ~30-90s after a run finishes, this is the common case right after a `task run`. Re-run, or pass `--wait <seconds>` (e.g. `--wait 120`) to poll the source until observations appear. If it persists, the trace ID is wrong or the trace is genuinely empty in Langfuse. |
 | `apo accepted the OTLP writes but trace … was still not readable after 15000ms` | All spans were accepted, but projection is still pending. The mapped trace ID and batch IDs are printed so you can inspect the durable inbox queue. This is **not** data loss. |
 | `apo rejected N span(s) from batch …` | Some chunks were durable, some were rejected. Re-running is safe; the rejected spans will re-convert and the accepted ones will idempotently re-project. |
-| `--max-observations` exceeded | Raise the ceiling (`--max-observations 20000`, max 50000), or break the source trace into smaller pieces — the connector is single-trace by design. |
+| `--max-observations` exceeded | Raise the ceiling (`--max-observations 20000`, max 50000), or break the source trace into smaller pieces, the connector is single-trace by design. |
 
 ## Reference
 
-- [CLI: `apo traces import langfuse`](/cli/traces-import-langfuse/) — full option and environment reference.
-- [OTLP-native instrumentation](/ecosystem/otel-framework-setup/) — preferred when the agent can reach apo.
+- [CLI: `apo traces import langfuse`](/cli/traces-import-langfuse/): full option and environment reference.
+- [OTLP-native instrumentation](/ecosystem/otel-framework-setup/): preferred when the agent can reach apo.

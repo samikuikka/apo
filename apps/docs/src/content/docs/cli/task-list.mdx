@@ -1,14 +1,14 @@
 ---
 title: "apo task list"
-description: "List discovered tasks — from the backend or the local filesystem."
+description: "List discovered tasks, from the backend or the local filesystem."
 ---
 
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-List the tasks available to run — from the **same universe `apo task run` executes against**: the task root your [`apo login`](/cli/auth/) captured. The last line always names the source.
+List the tasks available to run, from the **same universe `apo task run` executes against**: the task root your [`apo login`](/cli/auth/) captured. The last line always names the source.
 
-Pass `--catalog` to list the backend's *published* inventory instead (what every source has synced to the project) — useful for seeing tasks other machines published. When no local task root exists, the catalog is the fallback. An explicit `--dir <path>` (or `APO_TASK_ROOT`) scans that directory. If the task root doesn't exist, the command exits `2` instead of silently reporting an empty list.
+Pass `--catalog` to list the backend's *published* inventory instead (what every source has synced to the project): useful for seeing tasks other machines published. When no local task root exists, the catalog is the fallback. An explicit `--dir <path>` (or `APO_TASK_ROOT`) scans that directory. If the task root doesn't exist, the command exits `2` instead of silently reporting an empty list.
 
 <TerminalDemo
   command="apo task list"
@@ -43,7 +43,7 @@ apo task list [--dir <path>] [--catalog]
   ]}
 />
 
-The `ID` is the task folder name — pass it to [`apo task run`](/cli/task-run/). For tasks grouped in subfolders, the id is **folder-scoped**: the name prefixed by its folder path (e.g. `chat/cost-inquiry`). The `Adapter` column shows the adapter's declared `name`. `Checks` is `yes` when the task registers any `test(...)` blocks, `-` when it has none.
+The `ID` is the task folder name, pass it to [`apo task run`](/cli/task-run/). For tasks grouped in subfolders, the id is **folder-scoped**: the name prefixed by its folder path (e.g. `chat/cost-inquiry`). The `Adapter` column shows the adapter's declared `name`. `Checks` is `yes` when the task registers any `test(...)` blocks, `-` when it has none.
 
 :::tip[Not sure which universe you're in?]
 The trailing source line on every `task list` output is the quick answer: `scanned <path>` (runnable) or `backend catalog (project …)` (published). [`apo status`](/cli/status/) prints the effective backend, project, task root, and your remembered logins.
@@ -51,6 +51,6 @@ The trailing source line on every `task list` output is the quick answer: `scann
 
 ## See also
 
-- [`apo task run`](/cli/task-run/) — run one of these tasks.
-- [`apo task show`](/cli/task-show/) — see a task's details.
-- [CLI overview](/cli/) — the full command surface.
+- [`apo task run`](/cli/task-run/): run one of these tasks.
+- [`apo task show`](/cli/task-show/): see a task's details.
+- [CLI overview](/cli/): the full command surface.

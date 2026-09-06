@@ -3,12 +3,12 @@ title: Flow normalizers
 description: "Convert an existing agent log (OpenAI, Anthropic, or Vercel AI SDK) into apo's Flow format, so trace assertions work without an adapter."
 ---
 
-If your agent already runs outside apo — built on the OpenAI, Anthropic, or Vercel AI SDK — you can convert a **recorded log** of that run into apo's `Flow` format, then inspect it with `FlowView`.
+If your agent already runs outside apo (built on the OpenAI, Anthropic, or Vercel AI SDK) you can convert a **recorded log** of that run into apo's `Flow` format, then inspect it with `FlowView`.
 
 This is the "bring your existing agent" path: you already have agent runs logged as message arrays or result objects, and you don't want to re-run the agent through apo's adapter to examine them.
 
-:::caution[Deprecated — prefer OTel]
-The Flow converters and `FlowView` are **compatibility adapters**, kept for the transition. New integrations should emit standard OpenTelemetry spans instead of producing a Flow — the task runner consumes OTel natively, and live `t.*` assertions read the [trace projection](/reference/assertions/) (`TraceView`), not a `Flow`. See [Tracing integrations](/reference/tracing-integrations/) for the OTel path. `FlowView` remains the way to inspect a recorded log by hand.
+:::caution[Deprecated, prefer OTel]
+The Flow converters and `FlowView` are **compatibility adapters**, kept for the transition. New integrations should emit standard OpenTelemetry spans instead of producing a Flow, the task runner consumes OTel natively, and live `t.*` assertions read the [trace projection](/reference/assertions/) (`TraceView`), not a `Flow`. See [Tracing integrations](/reference/tracing-integrations/) for the OTel path. `FlowView` remains the way to inspect a recorded log by hand.
 :::
 
 ## When to use a normalizer vs an adapter
@@ -16,10 +16,10 @@ The Flow converters and `FlowView` are **compatibility adapters**, kept for the 
 | | Adapter | Normalizer |
 |---|---|---|
 | **Source** | apo drives your agent *live* | you feed in a *recorded* log |
-| **Runs the agent?** | yes | no — it reads a past run |
+| **Runs the agent?** | yes | no, it reads a past run |
 | **Status** | the primary path | deprecated escape hatch, for logs you already have |
 
-If your agent *can* run live through apo, use an [adapter](/concepts/adapters/) — that's the primary path. Normalizers exist for when you can't or won't re-run the agent (a production trace, an eval harness's stored output) but still want to see what it did.
+If your agent *can* run live through apo, use an [adapter](/concepts/adapters/): that's the primary path. Normalizers exist for when you can't or won't re-run the agent (a production trace, an eval harness's stored output) but still want to see what it did.
 
 ## The three converters
 
@@ -81,7 +81,7 @@ const flow = fromAISDK(result);
 
 ## Reading the Flow
 
-Once you have a `Flow`, inspect it with `FlowView` — a typed read-model over the recording. Construct one and read its derived getters:
+Once you have a `Flow`, inspect it with `FlowView`, a typed read-model over the recording. Construct one and read its derived getters:
 
 ```typescript
 import { FlowView } from "@apo-ai/sdk/agent-task";
@@ -96,10 +96,10 @@ view.failedActions;        // count of tool/subagent calls that errored
 ```
 
 :::note[FlowView is for inspecting recordings, not live runs]
-`FlowView` is the read-model for a recording you converted by hand. In a **live** task run, the `t.*` assertions query a different read-model — `TraceView`, built from the run's trace projection snapshot — which is what [Tracing integrations](/reference/tracing-integrations/) feeds. `FlowView` exists for the recorded-log case; the two are not interchangeable.
+`FlowView` is the read-model for a recording you converted by hand. In a **live** task run, the `t.*` assertions query a different read-model (`TraceView`, built from the run's trace projection snapshot) which is what [Tracing integrations](/reference/tracing-integrations/) feeds. `FlowView` exists for the recorded-log case; the two are not interchangeable.
 :::
 
-`FlowView` is the only public way to assert against a converted recording today. The previous `runFlowChecks` helper that ran a registered test suite against a `Flow` was **removed** — the check runner now operates on the projection snapshot internally (`runTraceChecks`, not part of the public SDK surface). To run a full registered test suite against a run, drive it through the task runner, which builds the projection for you. (`test(...)` still registers into a shared global registry that throws on duplicate ids; the task runner calls `resetFlowChecks()` before loading each task's tests.)
+`FlowView` is the only public way to assert against a converted recording today. The previous `runFlowChecks` helper that ran a registered test suite against a `Flow` was **removed**: the check runner now operates on the projection snapshot internally (`runTraceChecks`, not part of the public SDK surface). To run a full registered test suite against a run, drive it through the task runner, which builds the projection for you. (`test(...)` still registers into a shared global registry that throws on duplicate ids; the task runner calls `resetFlowChecks()` before loading each task's tests.)
 
 ## Input types
 
@@ -144,6 +144,6 @@ interface AISDKResult {
 
 ## See also
 
-- [Adapters](/concepts/adapters/) — the primary path (apo drives your agent live).
-- [Assertions API](/reference/assertions/) — the full `t.*` assertion vocabulary.
-- [Ecosystem](/ecosystem/) — example adapters and CI integration.
+- [Adapters](/concepts/adapters/): the primary path (apo drives your agent live).
+- [Assertions API](/reference/assertions/): the full `t.*` assertion vocabulary.
+- [Ecosystem](/ecosystem/): example adapters and CI integration.

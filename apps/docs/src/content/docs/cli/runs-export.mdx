@@ -1,12 +1,12 @@
 ---
 title: "apo runs export"
-description: "Dump a run as a self-contained JSON bundle — the backup to make before evidence expires or a run is deleted."
+description: "Dump a run as a self-contained JSON bundle, the backup to make before evidence expires or a run is deleted."
 ---
 
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-Evidence expires; verdicts don't. Before an [`APO_EVIDENCE_RETENTION_DAYS`](/self-hosting/data-growth/) window takes a run's checks, traces, and deliverables — or before you delete a run that might matter later — `apo runs export` captures everything the run holds in one versioned JSON file.
+Evidence expires; verdicts don't. Before an [`APO_EVIDENCE_RETENTION_DAYS`](/self-hosting/data-growth/) window takes a run's checks, traces, and deliverables (or before you delete a run that might matter later) `apo runs export` captures everything the run holds in one versioned JSON file.
 
 <TerminalDemo
   command="apo runs export run_de89cab0 --out bad-run.json"
@@ -17,7 +17,7 @@ Evidence expires; verdicts don't. Before an [`APO_EVIDENCE_RETENTION_DAYS`](/sel
 />
 
 :::tip[Bookmark instead for keepers]
-If the run should stay inspectable *in apo* rather than in a file, bookmark its trace in the dashboard — bookmarked runs keep every byte of evidence forever, whatever the retention window.
+If the run should stay inspectable *in apo* rather than in a file, bookmark its trace in the dashboard, bookmarked runs keep every byte of evidence forever, whatever the retention window.
 :::
 
 ## Synopsis
@@ -30,7 +30,7 @@ apo runs export <run-id> [--out <file>] [--spans]
 
 Takes a **run id** (unique prefix or `last` works, like [`apo runs show`](/cli/runs-show/)) and writes the bundle. Without `--out`, the file lands in the current directory as `run-<id-prefix>-<timestamp>.json`.
 
-The bundle is self-contained — after the run's evidence expires, the file still fully explains it:
+The bundle is self-contained, after the run's evidence expires, the file still fully explains it:
 
 | Section | Contents |
 |---|---|
@@ -44,7 +44,7 @@ The bundle is self-contained — after the run's evidence expires, the file stil
 
 ## Requirements
 
-Project member (same as reading the run). Artifact-heavy bundles can be large — the command allows two minutes for the fetch. Never prompts, so it is safe for agents and CI.
+Project member (same as reading the run). Artifact-heavy bundles can be large, the command allows two minutes for the fetch. Never prompts, so it is safe for agents and CI.
 
 ## Exit codes
 
@@ -62,7 +62,7 @@ apo runs export last --out regression-evidence/run-$(date +%F).json
 # Full fidelity, raw spans included
 apo runs export de89cab --spans
 
-# Export first, delete after — the safe order for garbage runs you might revisit
+# Export first, delete after: the safe order for garbage runs you might revisit
 apo runs export de89cab && apo runs delete de89cab --yes
 ```
 
@@ -79,6 +79,6 @@ The file path, its size, and a one-line content summary:
 
 ## See also
 
-- [Data Growth and Retention](/self-hosting/data-growth/) — what expires, what never does, and how bookmarks protect runs.
-- [`apo runs delete`](/cli/runs-delete/) — the irreversible step export protects you from.
-- [`apo runs show`](/cli/runs-show/) — read a run in the terminal without a file.
+- [Data Growth and Retention](/self-hosting/data-growth/): what expires, what never does, and how bookmarks protect runs.
+- [`apo runs delete`](/cli/runs-delete/): the irreversible step export protects you from.
+- [`apo runs show`](/cli/runs-show/): read a run in the terminal without a file.

@@ -1,12 +1,12 @@
 ---
 title: "apo task show"
-description: "Show a task's details — adapter, checks, deliverables, and latest run."
+description: "Show a task's details, adapter, checks, deliverables, and latest run."
 ---
 
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-Show a task's details — adapter, checks, and how it has been performing. With a backend project, the task comes from the synced catalog and includes its display name, tags, run stats (total · passed · failed · errored · pass rate · avg duration), and the latest run. Comes from the task root your login captured — the same universe as [`apo task list`](/cli/task-list/) and [`apo task run`](/cli/task-run/). `--catalog` looks it up in the backend's published inventory instead; an explicit `--dir` scans a specific directory.
+Show a task's details, adapter, checks, and how it has been performing. With a backend project, the task comes from the synced catalog and includes its display name, tags, run stats (total · passed · failed · errored · pass rate · avg duration), and the latest run. Comes from the task root your login captured, the same universe as [`apo task list`](/cli/task-list/) and [`apo task run`](/cli/task-run/). `--catalog` looks it up in the backend's published inventory instead; an explicit `--dir` scans a specific directory.
 
 <TerminalDemo
   command="apo task show real-agent/documents/document-qa"
@@ -53,7 +53,7 @@ With a backend project, the task comes from the synced inventory and includes th
 
 `Checks` is a `yes`/`no` flag. The `Latest run:` line (when one exists) gives the run id and its status.
 
-Without a backend project, the task is read from the local filesystem — it shows `Deliverables:` (comma-joined) and a `Files:` list instead, and no latest run:
+Without a backend project, the task is read from the local filesystem, it shows `Deliverables:` (comma-joined) and a `Files:` list instead, and no latest run:
 
 <TerminalOutput
   lines={[
@@ -69,6 +69,6 @@ Without a backend project, the task is read from the local filesystem — it sho
 
 ## See also
 
-- [`apo task list`](/cli/task-list/) — see all tasks.
-- [`apo task run`](/cli/task-run/) — run the task.
-- [CLI overview](/cli/) — the full command surface.
+- [`apo task list`](/cli/task-list/): see all tasks.
+- [`apo task run`](/cli/task-run/): run the task.
+- [CLI overview](/cli/): the full command surface.

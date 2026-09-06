@@ -1,12 +1,12 @@
 ---
 title: "apo runs correct"
-description: "Correct a recorded test result — set effective PASS/FAIL or restore the recorded result."
+description: "Correct a recorded test result, set effective PASS/FAIL or restore the recorded result."
 ---
 
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-Sometimes the eval is wrong, not the agent. `apo runs correct` records a human decision about one recorded top-level test: set its **effective** result to PASS or FAIL, or restore the recorded result. The Check Report, assertions, judge responses, and judgments stay untouched machine evidence — a correction is interpretation after execution, never a rewrite of it.
+Sometimes the eval is wrong, not the agent. `apo runs correct` records a human decision about one recorded top-level test: set its **effective** result to PASS or FAIL, or restore the recorded result. The Check Report, assertions, judge responses, and judgments stay untouched machine evidence, a correction is interpretation after execution, never a rewrite of it.
 
 <TerminalDemo
   command='apo runs correct run_de89cab0 report-is-complete --pass --reason "Retention is present; judge missed the table"'
@@ -28,23 +28,23 @@ apo runs correct <run-id> <test-id> (--pass | --fail | --clear) [--reason <text>
 
 Takes a **run id** (unique prefix or `last` works, like [`apo runs show`](/cli/runs-show/)) and the exact **test id** of one recorded top-level test. Exactly one action flag is required:
 
-- `--pass` — the test's effective result becomes PASS
-- `--fail` — the effective result becomes FAIL
-- `--clear` — removes the active correction; the recorded result is effective again
+- `--pass`, the test's effective result becomes PASS
+- `--fail`, the effective result becomes FAIL
+- `--clear`, removes the active correction; the recorded result is effective again
 
-`--reason` is **required** for `--pass`/`--fail` (3–1000 characters, trimmed) and recorded with the correction. `--clear` needs no reason. The command never prompts or opens an editor — it is safe for agents and CI.
+`--reason` is **required** for `--pass`/`--fail` (3–1000 characters, trimmed) and recorded with the correction. `--clear` needs no reason. The command never prompts or opens an editor, it is safe for agents and CI.
 
-The effective result is what every current surface uses: run and batch verdicts, lists, stats, comparisons created after the correction, the dashboard, and `apo runs show --exit-status`. Re-running the same correction with the same reason is an idempotent success — no duplicate row is appended.
+The effective result is what every current surface uses: run and batch verdicts, lists, stats, comparisons created after the correction, the dashboard, and `apo runs show --exit-status`. Re-running the same correction with the same reason is an idempotent success, no duplicate row is appended.
 
 ## What a correction is not
 
 - **Not a rejudge.** [`apo runs rejudge`](/cli/runs-rejudge/) produces a new *machine* judgment by replaying the eval; a correction records a *human* decision about existing evidence. The original and every rejudge judgment remain recorded verbatim.
-- **Not an edit.** The recorded Check Report — reasoning, assertions, judge prompts and responses — is never rewritten. Corrected tests carry their recorded result and the correction's provenance (who, when, why) alongside the effective one.
+- **Not an edit.** The recorded Check Report (reasoning, assertions, judge prompts and responses) is never rewritten. Corrected tests carry their recorded result and the correction's provenance (who, when, why) alongside the effective one.
 - **Not a rerun.** Execution timestamps, traces, deliverables, cost, and tokens are untouched. Schedules and webhooks are not replayed.
 
 ## Requirements
 
-The run must be terminal with a verdict (`passed`/`failed`) and a recorded check report. Running, errored, or no-verdict runs are read-only — apo refuses with exit code `2` rather than guessing.
+The run must be terminal with a verdict (`passed`/`failed`) and a recorded check report. Running, errored, or no-verdict runs are read-only, apo refuses with exit code `2` rather than guessing.
 
 Corrections need human authority: a browser session member, a full-scope project API key, or open-dev mode. Ingest keys and executor credentials are refused.
 
@@ -53,7 +53,7 @@ Corrections need human authority: a browser session member, a full-scope project
 | Code | Meaning |
 |---|---|
 | `0` | Correction (or idempotent re-correction) recorded. Does **not** mirror the resulting run verdict. |
-| `2` | Usage error or API failure — unknown run/test, non-correctable run, bad reason, missing action flag, auth failure. |
+| `2` | Usage error or API failure, unknown run/test, non-correctable run, bad reason, missing action flag, auth failure. |
 
 ## Examples
 
@@ -85,7 +85,7 @@ The test's recorded → effective transition, the run's new verdict and counts, 
 
 ## See also
 
-- [`apo runs show`](/cli/runs-show/) — corrected tests are marked `(corrected)` with their recorded result.
-- [`apo runs judgments`](/cli/runs-judgments/) — machine judgments, unaffected by corrections.
-- [Tests](/concepts/tests/) — recorded vs. effective results, corrections vs. rejudges.
-- [Run and debug](/guides/run-and-debug/) — deciding between fixing the agent, correcting history, or repairing the test.
+- [`apo runs show`](/cli/runs-show/): corrected tests are marked `(corrected)` with their recorded result.
+- [`apo runs judgments`](/cli/runs-judgments/): machine judgments, unaffected by corrections.
+- [Tests](/concepts/tests/): recorded vs. effective results, corrections vs. rejudges.
+- [Run and debug](/guides/run-and-debug/): deciding between fixing the agent, correcting history, or repairing the test.

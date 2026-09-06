@@ -8,7 +8,7 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
 ## `apo login`
 
-Authenticate with a backend and set the context **every** command uses: backend URL, account, project, and task root. The login is remembered per backend (`~/.apo/logins/`), so switching between backends — local dev ↔ a hosted server — is one command with no password.
+Authenticate with a backend and set the context **every** command uses: backend URL, account, project, and task root. The login is remembered per backend (`~/.apo/logins/`), so switching between backends (local dev ↔ a hosted server) is one command with no password.
 
 <TerminalDemo
   command="apo login"
@@ -35,9 +35,9 @@ apo login [--email <addr> --password <pw> --project <id|name>] [--backend <url>]
 
 ### Description
 
-Verifies any existing saved key against the backend first — so you don't get stuck "logged in" with a key that every command rejects. If the key is invalid or absent, prompts for backend URL, email, and a masked password, then lists your projects and asks which one to scope the key to.
+Verifies any existing saved key against the backend first, so you don't get stuck "logged in" with a key that every command rejects. If the key is invalid or absent, prompts for backend URL, email, and a masked password, then lists your projects and asks which one to scope the key to.
 
-A new key is minted server-side (`POST /v1/api-keys/bootstrap`) and scoped to the chosen project. The key is written to `~/.apo/credentials` (the **active** login) alongside the backend URL, project id, and task root — and the whole context is remembered under `~/.apo/logins/<backend>.json`.
+A new key is minted server-side (`POST /v1/api-keys/bootstrap`) and scoped to the chosen project. The key is written to `~/.apo/credentials` (the **active** login) alongside the backend URL, project id, and task root, and the whole context is remembered under `~/.apo/logins/<backend>.json`.
 
 The task root captured here is the universe [`apo task list`](/cli/task-list/) and [`apo task run`](/cli/task-run/) resolve against; pass `--dir` to set it explicitly at login time.
 
@@ -47,7 +47,7 @@ The task root captured here is the universe [`apo task list`](/cli/task-list/) a
 apo login --backend http://localhost:8000
 ```
 
-If a remembered login exists for that backend, it is verified and restored — no email, no password:
+If a remembered login exists for that backend, it is verified and restored, no email, no password:
 
 <TerminalOutput
   lines={[
@@ -58,7 +58,7 @@ If a remembered login exists for that backend, it is verified and restored — n
   ]}
 />
 
-A remembered key the backend rejects (rotated, different database behind the same URL) falls through to normal email + password re-authentication. Logging into a new backend never destroys the old login — it stays remembered, and the success message tells you how to switch back.
+A remembered key the backend rejects (rotated, different database behind the same URL) falls through to normal email + password re-authentication. Logging into a new backend never destroys the old login, it stays remembered, and the success message tells you how to switch back.
 
 :::caution[You need a project first]
 `apo login` lists the projects your account can access and asks you to pick one. On a fresh backend with no projects yet, it exits with:
@@ -98,7 +98,7 @@ The mint endpoint rejects any project id that has no `ProjectDB` row (a `404`), 
 ### Examples
 
 ```bash
-# Interactive — prompts for everything
+# Interactive: prompts for everything
 apo login
 
 # Non-interactive (CI, scripts)
@@ -110,7 +110,7 @@ apo login --force --backend https://apo.internal.company.com
 
 ## `apo logout`
 
-Sign out. Deletes the active credentials **and** the remembered login for that backend — a real sign-out leaves no valid API key on disk. (Switch backends with `apo login --backend` instead of logging out — switching keeps both logins.)
+Sign out. Deletes the active credentials **and** the remembered login for that backend, a real sign-out leaves no valid API key on disk. (Switch backends with `apo login --backend` instead of logging out, switching keeps both logins.)
 
 ### Synopsis
 
@@ -131,5 +131,5 @@ If you weren't logged in, prints `Not logged in.`
 
 ## See also
 
-- [Project commands](/cli/project/) — switch projects after logging in.
-- [CLI overview](/cli/) — the full command surface.
+- [Project commands](/cli/project/): switch projects after logging in.
+- [CLI overview](/cli/): the full command surface.

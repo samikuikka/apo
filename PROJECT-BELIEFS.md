@@ -27,9 +27,9 @@ The agent tooling landscape has two established starting objects, and both categ
 - **Testing/eval frameworks** start from a *test case plus evaluator*: did this execution satisfy my assertion or metric?
 - **Observability/eval platforms** start from an *execution record*: trace production traffic, score it, mine datasets, monitor.
 
-apo starts from a third object: the **capability specification** — "this harness must be capable of doing X, under these conditions, while satisfying these constraints, and leaving behind this result." apo's job is to make that statement executable and to support the loop that engineers the harness until it holds.
+apo starts from a third object: the **capability specification**: "this harness must be capable of doing X, under these conditions, while satisfying these constraints, and leaving behind this result." apo's job is to make that statement executable and to support the loop that engineers the harness until it holds.
 
-Those other products can contain tests. apo treats the specification as the product: traces explain failures, judges verify subjective requirements, datasets provide scenarios, CI prevents regressions — but every primitive is organized around the specification, not around an execution or a score.
+Those other products can contain tests. apo treats the specification as the product: traces explain failures, judges verify subjective requirements, datasets provide scenarios, CI prevents regressions, but every primitive is organized around the specification, not around an execution or a score.
 
 This is a deliberate boundary, not a limitation to grow out of. apo is not trying to be another eval framework or a production observability platform; the acceptance-test layer for agent systems is the ground to own. What that framework enables is **harness engineering**: expert knowledge encoded as executable specifications, with humans or coding agents changing the harness until the specifications pass.
 
@@ -53,7 +53,7 @@ A task says what "good" means through multiple explicit **tests**.
 
 A test is one assertion about the run. The code registers each one with `test(...)`, and a task usually needs several rather than one vague judgment or one brittle exact-match assertion.
 
-`test` is the canonical product term. There is no longer a separate `criteria` or `checks` category — those were an artifact of treating judges and code assertions as different things (see belief 4).
+`test` is the canonical product term. There is no longer a separate `criteria` or `checks` category, those were an artifact of treating judges and code assertions as different things (see belief 4).
 
 ### 4. Tests can be deterministic or judged, and live in the same place
 
@@ -61,16 +61,16 @@ Some outcomes can be checked with fast, deterministic code (did the agent call t
 
 Both are necessary:
 
-- deterministic tests alone are too narrow — they miss whether the result is genuinely good
-- judged tests alone are too soft — they miss concrete, checkable facts
+- deterministic tests alone are too narrow, they miss whether the result is genuinely good
+- judged tests alone are too soft, they miss concrete, checkable facts
 
-So a task uses **both**, and they are **the same kind of thing**: a judged assertion is written inside a `test(...)` next to code assertions, not as a separate "LLM judge" concept or first-class category. A test may be non-deterministic; that is fine. What matters is that fast cheap tests catch basic failures while real LLM judges catch whether the product actually works for users — and a task should have both, in one place.
+So a task uses **both**, and they are **the same kind of thing**: a judged assertion is written inside a `test(...)` next to code assertions, not as a separate "LLM judge" concept or first-class category. A test may be non-deterministic; that is fine. What matters is that fast cheap tests catch basic failures while real LLM judges catch whether the product actually works for users, and a task should have both, in one place.
 
 ### 5. Per-run verdicts are binary; comparison needs graded signal
 
 At the level of a completed evaluation, the verdict is a clear decision: **pass** or **fail**. If any test fails, the run fails. The question is whether it met the standard, not what score it got. A Task Run that cannot complete evaluation has an error status rather than a false verdict.
 
-But binary verdicts do not survive aggregation. A run that failed 1 of 15 tests and a run that failed 14 of 15 are both "fail," yet they are not equally bad. When comparing runs — across versions, changes, or time — collapsing both to the same binary loses the signal needed to tell whether a change improved things.
+But binary verdicts do not survive aggregation. A run that failed 1 of 15 tests and a run that failed 14 of 15 are both "fail," yet they are not equally bad. When comparing runs (across versions, changes, or time) collapsing both to the same binary loses the signal needed to tell whether a change improved things.
 
 So the product holds both:
 
@@ -82,7 +82,7 @@ Example:
 - a single run: `Failed`, with supporting detail `14/15 tests passed`
 - comparing that run to a later one at `9/15`: the verdict is still "fail" for both, but the graded signal shows the system regressed
 
-The graded signal exists to compare runs and detect improvement or regression — not to turn the per-run outcome into fuzzy scoring.
+The graded signal exists to compare runs and detect improvement or regression, not to turn the per-run outcome into fuzzy scoring.
 
 ### 6. Not all tests should run all the time
 
@@ -118,7 +118,7 @@ Preferred terms:
 - `Test`: one assertion within a task; may be deterministic code or an LLM-backed judgment
 - `Trace`: the debugging surface for runtime behavior
 
-`Criteria` and `Checks` are retired as separate canonical terms. They were an artifact of treating judges and code assertions as different things; under belief 4 they are the same thing — tests. Existing code and UI may still say "checks," but the source-of-truth term is `test`.
+`Criteria` and `Checks` are retired as separate canonical terms. They were an artifact of treating judges and code assertions as different things; under belief 4 they are the same thing, tests. Existing code and UI may still say "checks," but the source-of-truth term is `test`.
 
 ## What Is Not a Product Belief
 

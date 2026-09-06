@@ -14,7 +14,7 @@ extract-parties/
     contract.pdf
 ```
 
-The `.eval.ts` registers the task and imports the adapter from wherever it lives in your codebase. The adapter is the bridge to your application — apo doesn't know how to run your agent, so you give it a method that does. If that's unfamiliar, read [Adapters](/concepts/adapters/) first; this guide assumes you understand what the adapter is for.
+The `.eval.ts` registers the task and imports the adapter from wherever it lives in your codebase. The adapter is the bridge to your application, apo doesn't know how to run your agent, so you give it a method that does. If that's unfamiliar, read [Adapters](/concepts/adapters/) first; this guide assumes you understand what the adapter is for.
 
 ### Install the SDK
 
@@ -25,7 +25,7 @@ pnpm add @apo-ai/sdk
 # or: npm install @apo-ai/sdk
 ```
 
-Requires Node.js ≥ 20. TypeScript consumers also install `@types/node`. No special tsconfig is required — the package ships compiled ESM + `.d.ts`.
+Requires Node.js ≥ 20. TypeScript consumers also install `@types/node`. No special tsconfig is required, the package ships compiled ESM + `.d.ts`.
 
 ## 1. Register the definition
 
@@ -51,7 +51,7 @@ The `task(...)` call registers:
 - the **deliverables** (the structured outputs the run will be judged against; must match the adapter's declared and collected keys),
 - the task-scoped **`test` function**, whose deliverable types are inferred from the adapter.
 
-The adapter itself lives wherever makes sense in your project — typically alongside your agent code, not inside the task folder. A shared adapter that serves many tasks is just a module you import wherever needed. Full reference: [Adapters](/concepts/adapters/).
+The adapter itself lives wherever makes sense in your project, typically alongside your agent code, not inside the task folder. A shared adapter that serves many tasks is just a module you import wherever needed. Full reference: [Adapters](/concepts/adapters/).
 
 ## 2. Define the turn behavior
 

@@ -6,7 +6,7 @@ description: "Show a trace's call tree, timing, tokens, and cost."
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-`apo traces show` reads a trace — the full call tree of a run: every model call, every tool call, the inputs, the outputs, the messages exchanged. It's what you open when a test fails and you need to see what the agent actually did.
+`apo traces show` reads a trace, the full call tree of a run: every model call, every tool call, the inputs, the outputs, the messages exchanged. It's what you open when a test fails and you need to see what the agent actually did.
 
 <TerminalDemo
   command="apo traces show f1a2b3c4"
@@ -41,7 +41,7 @@ apo traces show <trace-id> [--verbose] [--errors-only]
 
 ## Description
 
-Shows a trace's call details. The argument is a **trace id** (required, a 32-character hex string) or a unique prefix. A trace id is a separate field on a run — `apo runs show` prints it at the bottom of its output.
+Shows a trace's call details. The argument is a **trace id** (required, a 32-character hex string) or a unique prefix. A trace id is a separate field on a run, `apo runs show` prints it at the bottom of its output.
 
 ## Options
 
@@ -78,9 +78,9 @@ Shows a trace's call details. The argument is a **trace id** (required, a 32-cha
   ]}
 />
 
-Recorded task runs always contain the runtime's own spans (`apo.task.run`, `task.load`, `adapter.open-session`, `adapter.collect-deliverables`) around the agent's work — they carry no model, cost, or tokens. Model calls show their model, cost, and token split; tool calls show their arguments and results.
+Recorded task runs always contain the runtime's own spans (`apo.task.run`, `task.load`, `adapter.open-session`, `adapter.collect-deliverables`) around the agent's work, they carry no model, cost, or tokens. Model calls show their model, cost, and token split; tool calls show their arguments and results.
 
-With `--verbose`, each call expands to show its full input and output — the messages sent to the model, the tool results returned, the deliverables collected. With `--errors-only`, only calls that errored or warned are shown, for fast triage.
+With `--verbose`, each call expands to show its full input and output, the messages sent to the model, the tool results returned, the deliverables collected. With `--errors-only`, only calls that errored or warned are shown, for fast triage.
 
 ## Why the trace matters
 
@@ -101,6 +101,6 @@ apo traces show f1a2b3c4 --errors-only
 
 ## See also
 
-- [`apo runs show`](/cli/runs-show/) — get the trace id from a run's output.
-- [Traces](/concepts/traces/) — what a trace is and how to read it.
-- [Run and debug](/guides/run-and-debug/) — the workflow from failing test to trace to fix.
+- [`apo runs show`](/cli/runs-show/): get the trace id from a run's output.
+- [Traces](/concepts/traces/): what a trace is and how to read it.
+- [Run and debug](/guides/run-and-debug/): the workflow from failing test to trace to fix.

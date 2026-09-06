@@ -5,9 +5,9 @@ description: "Import one Langfuse-captured trace into apo through the OTLP recei
 
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-`apo traces import langfuse` reads a single trace from a Langfuse deployment's public Observations API, converts the observation graph into standard OTLP/JSON, and submits it to apo's authenticated OTLP receiver. The imported execution projects into the normal Trace model — no Langfuse-specific tables, no vendor dashboard branch.
+`apo traces import langfuse` reads a single trace from a Langfuse deployment's public Observations API, converts the observation graph into standard OTLP/JSON, and submits it to apo's authenticated OTLP receiver. The imported execution projects into the normal Trace model, no Langfuse-specific tables, no vendor dashboard branch.
 
-This is the right command when the agent or sandbox can reach Langfuse but not your `localhost` apo backend. When the agent can reach apo directly, prefer native OTLP export — see [OTLP framework setup](/ecosystem/otel-framework-setup/).
+This is the right command when the agent or sandbox can reach Langfuse but not your `localhost` apo backend. When the agent can reach apo directly, prefer native OTLP export, see [OTLP framework setup](/ecosystem/otel-framework-setup/).
 
 ## Synopsis
 
@@ -39,7 +39,7 @@ Re-importing the same source trace is idempotent: deterministic IDs fill the sam
 |---|---|---|
 | `--langfuse-host <url>` | `LANGFUSE_HOST` or `https://cloud.langfuse.com` | Override the source Langfuse deployment. Only the origin is retained (no path, query, or credentials). |
 | `--max-observations <count>` | `10000` | Safety ceiling on the number of observations fetched before any apo write. Range `1..50000`. |
-| `--wait <seconds>` | off | Poll the Langfuse Observations API until the source trace looks fully ingested — a quiet observation count held for the settle window with no dangling parent links — or the deadline elapses. Absorbs the ~30-90s ingestion lag typical of Langfuse Cloud right after a run. `0` disables polling. |
+| `--wait <seconds>` | off | Poll the Langfuse Observations API until the source trace looks fully ingested (a quiet observation count held for the settle window with no dangling parent links) or the deadline elapses. Absorbs the ~30-90s ingestion lag typical of Langfuse Cloud right after a run. `0` disables polling. |
 | `--settle <seconds>` | `15` | The quiet period the observation count must hold before the trace counts as ingested. Only meaningful alongside `--wait`. |
 | `--trace-id <apo-trace-id>` | off | Merge mode: emit spans under this apo trace id instead of the namespaced hash, merging imported spans into an existing run trace (propagated-traceparent case). Expects a 32-hex W3C trace id. |
 | `--parent-span-id <span-id>` | off | The span in the target apo trace that the imported subtree hangs under. Declares an expected external parent so the completeness check can tell it apart from a not-yet-ingested parent. Expects a 16-hex W3C span id. |
@@ -57,7 +57,7 @@ There is **no** `--langfuse-secret-key` flag. Langfuse keys are read from the en
 | `LANGFUSE_SECRET_KEY` | yes | Langfuse project secret key. |
 | `LANGFUSE_HOST` | no | Defaults to `https://cloud.langfuse.com`. Set for self-hosted Langfuse. Overrideable with `--langfuse-host`. |
 
-Standard apo configuration also applies — `APO_BACKEND_URL` / `--backend`, `APO_API_KEY` / saved login credentials, `--project` / saved active project.
+Standard apo configuration also applies, `APO_BACKEND_URL` / `--backend`, `APO_API_KEY` / saved login credentials, `--project` / saved active project.
 
 ## Example
 
@@ -108,7 +108,7 @@ apo traces import langfuse <id> --json
 }
 ```
 
-Wait for source ingestion before giving up — the right flag for a CI/e2e loop that runs a task and then imports its trace:
+Wait for source ingestion before giving up, the right flag for a CI/e2e loop that runs a task and then imports its trace:
 
 ```bash
 apo traces import langfuse <id> --wait 120
@@ -127,19 +127,19 @@ apo traces import langfuse <id> \
 | Code | Meaning |
 |---|---|
 | `0` | Every source observation was accepted and the projected Trace became readable before the visibility deadline. |
-| `75` | The source trace returned no observations yet — Langfuse Cloud ingestion typically lags ~30-90s after a run ends. Retryable: re-run, or pass `--wait <seconds>` to poll the source in-process. No apo write was attempted. |
+| `75` | The source trace returned no observations yet, Langfuse Cloud ingestion typically lags ~30-90s after a run ends. Retryable: re-run, or pass `--wait <seconds>` to poll the source in-process. No apo write was attempted. |
 | `2` | Configuration, Langfuse hard read error (auth / 404 / 5xx), conversion, apo ingestion, partial OTLP rejection, or projection visibility failure. |
 
-The command never returns `1`. Exit `75` mirrors `sysexits.h` `EX_TEMPFAIL` so callers can distinguish "not ingested yet" from a real failure without parsing stderr — loop on `75`, surface `2`. Partial success prints accepted/rejected counts, the mapped trace ID, and OTLP batch IDs — re-running is safe.
+The command never returns `1`. Exit `75` mirrors `sysexits.h` `EX_TEMPFAIL` so callers can distinguish "not ingested yet" from a real failure without parsing stderr, loop on `75`, surface `2`. Partial success prints accepted/rejected counts, the mapped trace ID, and OTLP batch IDs, re-running is safe.
 
 ## Notes
 
 - Apo stores the mapped source Trace in full as private Project data. Remove or
   suppress sensitive content at the source before importing it.
 - Imported traces carry the root tags `imported` and `source:langfuse` plus any tags from the Langfuse trace itself, so they are filterable in the dashboard alongside native runs.
-- Task checks cannot be run against imported traces in this release — that requires the **Task Evaluation** model, which is a separate spec. The connector does not synthesize Task Runs, verdicts, Scores, or deliverables.
+- Task checks cannot be run against imported traces in this release, that requires the **Task Evaluation** model, which is a separate spec. The connector does not synthesize Task Runs, verdicts, Scores, or deliverables.
 
 ## See also
 
-- [Ecosystem: Import a Langfuse trace](/ecosystem/langfuse-import/) — when to use the connector, identity mapping, troubleshooting.
-- [`apo traces show`](/cli/traces-show/) — inspect the imported trace.
+- [Ecosystem: Import a Langfuse trace](/ecosystem/langfuse-import/): when to use the connector, identity mapping, troubleshooting.
+- [`apo traces show`](/cli/traces-show/): inspect the imported trace.

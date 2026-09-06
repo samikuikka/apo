@@ -67,7 +67,7 @@ function h(
 // --- Signal sphere: the canonical static asset, rendered by resvg ---
 
 /**
- * Renders the Signal Sphere through the project's own renderer — the same
+ * Renders the Signal Sphere through the project's own renderer, the same
  * `renderSignalSphereSvg(buildSignalSphereScene())` that produces the committed
  * `signal-sphere.svg` brand asset (see apps/dashboard/public/brand/README.md).
  * No hand-rolled SVG: the OG card shows the exact canonical logo.
@@ -125,7 +125,7 @@ export const GET: APIRoute = async () => {
 				color: COLORS.white,
 			},
 		},
-		// Soft accent glow behind the sphere — adds depth on pure black.
+		// Soft accent glow behind the sphere, adds depth on pure black.
 		h("div", {
 			style: {
 				display: "flex",
@@ -139,7 +139,7 @@ export const GET: APIRoute = async () => {
 					"radial-gradient(circle, rgba(74,222,128,0.20) 0%, rgba(74,222,128,0) 62%)",
 			},
 		}),
-		// Left column — badge, wordmark, rule, tagline, sub, URL.
+		// Left column, badge, wordmark, rule, tagline, sub, URL.
 		h(
 			"div",
 			{
@@ -238,7 +238,7 @@ export const GET: APIRoute = async () => {
 				SITE_URL,
 			),
 		),
-		// Right column — signal sphere.
+		// Right column, signal sphere.
 		h(
 			"div",
 			{

@@ -80,12 +80,12 @@ Never run two backend processes with `SCHEDULER_ENABLED=true` against the same d
 
 ## Upgrades and migrations
 
-The backend applies database migrations itself on startup — there is no separate migration command to run. On upgrade, pull the new images and restart; the backend boots once migrations finish.
+The backend applies database migrations itself on startup, there is no separate migration command to run. On upgrade, pull the new images and restart; the backend boots once migrations finish.
 
 Two things to know when upgrading an older installation:
 
 - **The first boot after upgrading may take longer.** Migrations that backfill data (for example, the deliverables migration that unpacks legacy JSON blobs into rows) run to completion before the server starts serving. Keep the container's healthcheck grace period generous around upgrades.
-- **A failed migration is fatal by design.** If a backfill cannot complete, the backend refuses to start rather than stamping a half-applied schema and losing evidence. Fix the reported cause (usually a full disk or an unreachable database) and start again — nothing is marked applied until it succeeds.
+- **A failed migration is fatal by design.** If a backfill cannot complete, the backend refuses to start rather than stamping a half-applied schema and losing evidence. Fix the reported cause (usually a full disk or an unreachable database) and start again, nothing is marked applied until it succeeds.
 
 Any external tooling that read the legacy `agent_task_runs.deliverables_json` / `checks_json` columns directly must move to their canonical stores: the deliverables manifest endpoint ([`apo runs deliverable`](/cli/runs-deliverable/)) and the check reports API. The legacy columns were dropped in schema v28.
 
@@ -125,12 +125,12 @@ docker compose up -d backend
 ```
 
 - `smtp://…` works with **any** SMTP provider (Resend, Brevo, Mailgun, Gmail, …).
-- `ses://us-east-1` uses **AWS SES** via boto3, which is installed when running from source with the `s3` extra. The Docker image ships without boto3 — in Docker, use SES's SMTP interface with an `smtp://…` URL instead.
+- `ses://us-east-1` uses **AWS SES** via boto3, which is installed when running from source with the `s3` extra. The Docker image ships without boto3, in Docker, use SES's SMTP interface with an `smtp://…` URL instead.
 - Port `465` = implicit TLS, `587` = STARTTLS (auto-detected).
 
 ## Cost-aware defaults
 
-apo never forces an expensive model. Its only built-in fallback is a deliberately cheap one (`google/gemini-2.5-flash` in the packaged task runtime; local `apo task run` / `apo connect` runs judge with the model you configured via `OPENROUTER_MODEL` or `OPENAI_MODEL`), and stronger models are always an opt-in — by env var, by `runTask({ judge })`, or per `t.judge(...)` call. You will never see an unexpected charge because apo silently swapped your judge onto a frontier model.
+apo never forces an expensive model. Its only built-in fallback is a deliberately cheap one (`google/gemini-2.5-flash` in the packaged task runtime; local `apo task run` / `apo connect` runs judge with the model you configured via `OPENROUTER_MODEL` or `OPENAI_MODEL`), and stronger models are always an opt-in, by env var, by `runTask({ judge })`, or per `t.judge(...)` call. You will never see an unexpected charge because apo silently swapped your judge onto a frontier model.
 
 Alpha defaults are intentionally cheap across the rest of the stack too:
 

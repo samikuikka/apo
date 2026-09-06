@@ -14,7 +14,7 @@ List task runs from the backend. Filter by task, status, model, or effort.
     { text: "Run ID                       Task             Batch    Status   Result  Generations  Execution             Cost      Started" },
     { text: "───────────────────────────  ───────────────  ───────  ───────  ──────  ───────────  ────────────────────  ────────  ─────────────────────" },
     { text: "run_de89cab0f1e2d3a4b5c6d7e8  extract-parties  bch_7c0  failed   FAIL    -            gpt-5.1 · high        $0.0034   7/4/2026, 5:12 PM" },
-    { text: "run_c3d4e5f6a7b8c9d0e1f2a3b4  code-review      bch_9e2  passed   PASS    -            claude-haiku-4.5 · —  $0.0091   7/4/2026, 4:03 PM" },
+    { text: "run_c3d4e5f6a7b8c9d0e1f2a3b4  code-review      bch_9e2  passed   PASS    -            claude-haiku-4.5 ·,  $0.0091   7/4/2026, 4:03 PM" },
     { text: "run_a7b8c9d0e1f2a3b4c5d6e7f8  answer-from-spec bch_441  error    -       17/22 error  gpt-5.1 · high        $0.0028 partial 7/4/2026, 2:45 PM" },
     { text: "" },
     { text: "3 runs", tone: "default" },
@@ -55,6 +55,6 @@ apo runs list [--task <id>] [--status <s>] [--model <m>] [--effort <e>] [--limit
 
 ## See also
 
-- [`apo runs show`](/cli/runs-show/) — drill into one run's checks and failures.
-- [`apo task run`](/cli/task-run/) — produce a new run.
-- [CLI overview](/cli/) — the full command surface.
+- [`apo runs show`](/cli/runs-show/): drill into one run's checks and failures.
+- [`apo task run`](/cli/task-run/): produce a new run.
+- [CLI overview](/cli/): the full command surface.

@@ -6,7 +6,7 @@ description: "Run a task and get a verdict. The load-bearing command."
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-`apo task run` executes a task — your real agent, against real inputs, producing a binary verdict. It's the command at the center of [the engineering loop](/guides/loop-engineering/).
+`apo task run` executes a task, your real agent, against real inputs, producing a binary verdict. It's the command at the center of [the engineering loop](/guides/loop-engineering/).
 
 <TerminalDemo
   command="apo task run extract-parties"
@@ -39,11 +39,11 @@ apo task run <task-id | path> [--no-record]
 
 Runs a task. The argument is a **task id** (the folder name) or a filesystem path to the task folder. apo loads the task, drives the adapter through its lifecycle, collects deliverables, runs every `test(...)`, and reports the verdict.
 
-The task id is **not** a run id — a run id is what this command *outputs* (the `Run:` line at the bottom). A trace id is a separate field on the run, printed by [`apo runs show`](/cli/runs-show/).
+The task id is **not** a run id, a run id is what this command *outputs* (the `Run:` line at the bottom). A trace id is a separate field on the run, printed by [`apo runs show`](/cli/runs-show/).
 
 ### Nested task trees
 
-Tasks grouped into subfolders get a **folder-scoped id**: the declared name prefixed by its folder path relative to the task root. A task at `chat/cost-inquiry/cost-inquiry.eval.ts` that declares `task("cost-inquiry")` has id **`chat/cost-inquiry`** — and that's the id `apo task list` shows and the backend inventory keys on.
+Tasks grouped into subfolders get a **folder-scoped id**: the declared name prefixed by its folder path relative to the task root. A task at `chat/cost-inquiry/cost-inquiry.eval.ts` that declares `task("cost-inquiry")` has id **`chat/cost-inquiry`**: and that's the id `apo task list` shows and the backend inventory keys on.
 
 ```bash
 # Folder-scoped id (unambiguous)
@@ -67,12 +67,12 @@ The folder scoping is why two families can each define `task("cost-inquiry")` wi
 | `--no-record` | off | Run on this machine without creating a backend Run. |
 
 :::note[Targeting flags are gone]
-`apo task run` always executes on your machine (caller execution) — there is no remote dispatch to target. `--remote`, `--local`, and `--executor` all exit `2` as unknown options. For persistent execution owned by your machine, use [`apo connect`](/cli/connect/).
+`apo task run` always executes on your machine (caller execution): there is no remote dispatch to target. `--remote`, `--local`, and `--executor` all exit `2` as unknown options. For persistent execution owned by your machine, use [`apo connect`](/cli/connect/).
 :::
 
 ## Output
 
-The result is the verdict and the per-check breakdown. The verdict is `PASS` (green) or `FAIL` (red) — the AND of all tests. Each check shows its result; failing checks expand to every failing assertion with its source location and a `− Expected` / `+ Received` diff:
+The result is the verdict and the per-check breakdown. The verdict is `PASS` (green) or `FAIL` (red): the AND of all tests. Each check shows its result; failing checks expand to every failing assertion with its source location and a `− Expected` / `+ Received` diff:
 
 <TerminalOutput
   lines={[
@@ -89,15 +89,15 @@ The result is the verdict and the per-check breakdown. The verdict is `PASS` (gr
   ]}
 />
 
-On a recorded run, the trailing `Run:` / `Inspect:` lines hand you the exact run identity — use the printed command for the full record (batch, cost, tokens, trace id, timestamps) and [`apo traces show`](/cli/traces-show/) for the call tree. With `--no-record` there is no run id, so the output ends after the checks.
+On a recorded run, the trailing `Run:` / `Inspect:` lines hand you the exact run identity, use the printed command for the full record (batch, cost, tokens, trace id, timestamps) and [`apo traces show`](/cli/traces-show/) for the call tree. With `--no-record` there is no run id, so the output ends after the checks.
 
 :::caution[The printed verdict can differ from the recorded one]
-If most of the run's model generations ended in error, apo records **no verdict** — the run lands with status `error` and no PASS/FAIL — even though this command printed one from its local checks. See [Verdict validity](/concepts/tests/#verdict-validity).
+If most of the run's model generations ended in error, apo records **no verdict** (the run lands with status `error` and no PASS/FAIL) even though this command printed one from its local checks. See [Verdict validity](/concepts/tests/#verdict-validity).
 :::
 
 ## Exit codes
 
-A failing run exits non-zero — so any script gating on this command catches failures either way:
+A failing run exits non-zero, so any script gating on this command catches failures either way:
 
 | Exit code | Meaning |
 |---|---|
@@ -105,12 +105,12 @@ A failing run exits non-zero — so any script gating on this command catches fa
 | `1` | The run completed but one or more tests failed. |
 | `2` | The run errored (adapter crashed, config missing, backend unreachable, etc.). |
 
-The `0`/`1`/`2` mapping is always strict — no flag changes it — which is what makes the command safe to gate a pipeline on.
+The `0`/`1`/`2` mapping is always strict (no flag changes it) which is what makes the command safe to gate a pipeline on.
 
 ## How the Task runs
 
 `apo task run` always executes on your local machine through caller execution.
-The Task runs against your current source — the server never receives source
+The Task runs against your current source, the server never receives source
 code, paths, or credentials. Only the result, trace, and deliverables are
 recorded.
 
@@ -142,7 +142,7 @@ For persistent execution (dashboard and scheduled runs), use
 apo task run extract-parties
 
 # Run from CI and fail the pipeline on a failing test
-# (strict exit codes are the default — no special mode needed)
+# (strict exit codes are the default: no special mode needed)
 apo task run extract-parties
 
 # Run a task by path
@@ -154,8 +154,8 @@ apo task run scratch-check --no-record
 
 ## See also
 
-- [`apo connect`](/cli/connect/) — persistent executor for dashboard/schedule runs
-- [`apo task publish`](/cli/task-publish/) — publish your Task catalog
-- [`apo runs show`](/cli/runs-show/) — read the full breakdown of a run.
-- [`apo traces show`](/cli/traces-show/) — debug a failure through the trace.
-- [Loop engineering](/guides/loop-engineering/) — how a coding agent uses this command to close the loop.
+- [`apo connect`](/cli/connect/): persistent executor for dashboard/schedule runs
+- [`apo task publish`](/cli/task-publish/): publish your Task catalog
+- [`apo runs show`](/cli/runs-show/): read the full breakdown of a run.
+- [`apo traces show`](/cli/traces-show/): debug a failure through the trace.
+- [Loop engineering](/guides/loop-engineering/): how a coding agent uses this command to close the loop.

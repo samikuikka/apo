@@ -1,13 +1,13 @@
 ---
 title: Running tasks
-description: "runTask, loadTask, discoverAgentTaskDirs, runTaskDir — execute tasks from code."
+description: "runTask, loadTask, discoverAgentTaskDirs, runTaskDir, execute tasks from code."
 ---
 
 The CLI isn't the only way to run a task. The SDK exposes the same runner the CLI uses, so you can execute tasks from code: custom harnesses, embedding in your own tooling, programmatic test loops.
 
 ## `runTask(taskDir, options?)`
 
-Run a task from its directory through the full lifecycle (adapter → turns → tests → result). `runTask` loads the task for you — pass the folder path, not a loaded task object.
+Run a task from its directory through the full lifecycle (adapter → turns → tests → result). `runTask` loads the task for you, pass the folder path, not a loaded task object.
 
 ```typescript
 import { runTask } from "@apo-ai/sdk/agent-task";
@@ -50,7 +50,7 @@ type RunTaskOptions = {
 
 ## `loadTask(dir)`
 
-Load a `.eval.ts` task definition from a folder path without running it. Returns a `LoadedTask` (the task config + the adapter object) — useful when you want to inspect the definition before running.
+Load a `.eval.ts` task definition from a folder path without running it. Returns a `LoadedTask` (the task config + the adapter object): useful when you want to inspect the definition before running.
 
 ```typescript
 import { loadTask } from "@apo-ai/sdk/agent-task";
@@ -77,7 +77,7 @@ for (const dir of dirs) {
 
 ## `runTaskDir(dir)`
 
-The thinnest wrapper: load + run in one call. The judge model is resolved from environment variables (`OPENROUTER_MODEL` / `OPENAI_MODEL`), not from options — this is the entry point an Executor subprocess uses.
+The thinnest wrapper: load + run in one call. The judge model is resolved from environment variables (`OPENROUTER_MODEL` / `OPENAI_MODEL`), not from options, this is the entry point an Executor subprocess uses.
 
 ```typescript
 import { runTaskDir } from "@apo-ai/sdk/agent-task";
@@ -110,6 +110,6 @@ console.log(summary.pass ? "✓" : "✗");
 
 ## See also
 
-- [Task API](/reference/task/) — the `task()`, `test()`, `turn()` calls that define what to run.
-- [Assertions API](/reference/assertions/) — what the verdict is computed from.
-- [Loop engineering](/guides/loop-engineering/) — using the CLI runner in an agent-driven TDD loop.
+- [Task API](/reference/task/): the `task()`, `test()`, `turn()` calls that define what to run.
+- [Assertions API](/reference/assertions/): what the verdict is computed from.
+- [Loop engineering](/guides/loop-engineering/): using the CLI runner in an agent-driven TDD loop.

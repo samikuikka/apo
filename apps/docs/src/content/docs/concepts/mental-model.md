@@ -73,10 +73,10 @@ During a run:
 
 When the run finishes:
 
-- A **result**: pass, fail — or, when the execution itself didn't hold together (most model generations errored), an **error with no verdict**. If any test failed, the run failed. Alongside the verdict is a **breakdown** showing each test, what it expected, and what it got.
-- A **trace** is the full runtime record of that one run: the call tree, the messages, the token counts. One run owns at most one trace — never two competing ones.
+- A **result**: pass, fail, or, when the execution itself didn't hold together (most model generations errored), an **error with no verdict**. If any test failed, the run failed. Alongside the verdict is a **breakdown** showing each test, what it expected, and what it got.
+- A **trace** is the full runtime record of that one run: the call tree, the messages, the token counts. One run owns at most one trace, never two competing ones.
 
-If it failed, the breakdown tells you *which test* broke, and the trace tells you *why*: what the agent did that didn't meet the standard. If it errored, the breakdown is still there as diagnostic evidence — see [Verdict validity](/concepts/tests/#verdict-validity).
+If it failed, the breakdown tells you *which test* broke, and the trace tells you *why*: what the agent did that didn't meet the standard. If it errored, the breakdown is still there as diagnostic evidence, see [Verdict validity](/concepts/tests/#verdict-validity).
 
 ## Reference
 
@@ -87,7 +87,7 @@ If it failed, the breakdown tells you *which test* broke, and the trace tells yo
 | **Batch** | The container for one or more task runs. Always exists. |
 | **Task run** | One execution of one task. Produces a result and a trace. |
 | **Adapter** | Your code. Drives your real agent; apo calls it. |
-| **Result** | Pass, fail, or an error with no verdict — with a per-test breakdown. |
+| **Result** | Pass, fail, or an error with no verdict, with a per-test breakdown. |
 | **Trace** | The runtime record of one run. At most one per run, no exceptions. |
 
 ## Next
