@@ -313,6 +313,9 @@ def _authenticate_cookie(token: str) -> AuthContext | None:
     if payload is None:
         return None
 
+    if not _cookie_session_is_current(payload):
+        return None
+
     user_id = _extract_user_id(payload)
     if not user_id:
         return None
@@ -334,6 +337,47 @@ def _authenticate_cookie(token: str) -> AuthContext | None:
         }
 
 
+# Server-side cap on session-cookie age, independent of the expiry the
+# frontend minted. Auth.js re-issues rolling cookies for active users, so
+# this only retires sessions that have gone unused — its real job is to
+# bound the lifetime of a *stolen* cookie, which no client-side expiry can
+# touch (a replayed raw value skips both the browser's Max-Age and the
+# Auth.js runtime check).
+_AUTH_SESSION_MAX_AGE_ENV = "AUTH_SESSION_MAX_AGE_SECONDS"
+_AUTH_SESSION_MAX_AGE_DEFAULT_SECONDS = 14 * 24 * 60 * 60
+
+
+def _auth_session_max_age_seconds() -> int:
+    raw = os.environ.get(_AUTH_SESSION_MAX_AGE_ENV, "").strip()
+    if not raw:
+        return _AUTH_SESSION_MAX_AGE_DEFAULT_SECONDS
+    try:
+        value = int(raw)
+    except ValueError:
+        return _AUTH_SESSION_MAX_AGE_DEFAULT_SECONDS
+    return value if value > 0 else _AUTH_SESSION_MAX_AGE_DEFAULT_SECONDS
+
+
+def _cookie_session_is_current(payload: dict[str, object]) -> bool:
+    """Enforce the cookie's own ``exp`` plus the server-side age cap.
+
+    The backend is the only place a session expiry can actually be
+    enforced: the browser and Auth.js merely stop *using* an expired
+    cookie. A token without ``exp`` cannot be bounded — reject it. ``iat``
+    is optional for the cap (``exp`` already bounds such tokens).
+    """
+    now = datetime.now(timezone.utc)
+    exp = _extract_token_time(payload, "exp")
+    if exp is None or exp <= now:
+        return False
+
+    iat = _extract_token_time(payload, "iat")
+    if iat is not None:
+        if (now - iat).total_seconds() > _auth_session_max_age_seconds():
+            return False
+    return True
+
+
 def _extract_user_id(payload: dict[str, object]) -> str | None:
     sub = payload.get("sub")
     if isinstance(sub, str) and sub:
@@ -347,19 +391,26 @@ def _extract_user_id(payload: dict[str, object]) -> str | None:
 
 
 def _extract_token_iat(payload: dict[str, object]) -> datetime | None:
-    raw_iat = payload.get("iat")
-    if raw_iat is None:
-        logger.warning("Token payload missing 'iat' field; skipping token_invalid_before check")
+    return _extract_token_time(payload, "iat")
+
+
+def _extract_token_time(payload: dict[str, object], field: str) -> datetime | None:
+    raw = payload.get(field)
+    if raw is None:
+        if field == "iat":
+            logger.warning(
+                "Token payload missing 'iat' field; skipping token_invalid_before check"
+            )
         return None
-    if isinstance(raw_iat, (int, float)):
-        return datetime.fromtimestamp(raw_iat, tz=timezone.utc)
-    if isinstance(raw_iat, str):
+    if isinstance(raw, (int, float)):
+        return datetime.fromtimestamp(raw, tz=timezone.utc)
+    if isinstance(raw, str):
         try:
-            return datetime.fromtimestamp(float(raw_iat), tz=timezone.utc)
+            return datetime.fromtimestamp(float(raw), tz=timezone.utc)
         except ValueError:
-            logger.warning("Token payload has unparseable 'iat' value: %s", raw_iat)
+            logger.warning("Token payload has unparseable %r value: %s", field, raw)
             return None
-    logger.warning("Token payload has unexpected 'iat' type: %s", type(raw_iat).__name__)
+    logger.warning("Token payload has unexpected %r type: %s", field, type(raw).__name__)
     return None
 
 

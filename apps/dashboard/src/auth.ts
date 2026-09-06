@@ -66,7 +66,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   secret: authSecret,
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    // Keep the minted cookie lifetime aligned with the backend's session
+    // age cap (AUTH_SESSION_MAX_AGE_SECONDS, default 14 days) — the backend
+    // rejects cookies older than that no matter what exp we minted, so a
+    // longer maxAge here would only produce sessions that fail mid-flight.
+    maxAge: 60 * 60 * 24 * 14,
+  },
   pages: {
     signIn: "/login",
     error: "/login",
