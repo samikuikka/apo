@@ -344,10 +344,10 @@ const CANONICAL = new URL("/", Astro.site).href;
 		color: var(--sl-color-white);
 	}
 
-	/* Gliffs sit at the card bottom; each represents the category's
-	   starting object — assertions, traces, the loop. */
+	/* Gliffs sit right under the question; the names footer pins to the
+	   card bottom so stretch-height leaves its space above the footnote,
+	   not as a hole between question and gliff. */
 	.cat__gliff {
-		margin-top: auto;
 		display: flex;
 		flex-direction: column;
 		gap: 0.3rem;
@@ -410,7 +410,6 @@ const CANONICAL = new URL("/", Astro.site).href;
 	   drawn as a glyph. Mirrors LoopEngineeringDemo's lane (earlier run dim,
 	   final run bright, verdict colors as state). */
 	.cat__term {
-		margin-top: auto;
 		display: flex;
 		flex-direction: column;
 		gap: 0.28rem;
@@ -470,8 +469,8 @@ const CANONICAL = new URL("/", Astro.site).href;
 	}
 
 	.cat__names {
-		margin-top: 0.75rem;
-		padding-top: 0.55rem;
+		margin-top: auto;
+		padding-top: 0.75rem;
 		border-top: 1px solid var(--sl-color-gray-6);
 		font-size: 0.7rem;
 		color: var(--sl-color-gray-4);
