@@ -115,7 +115,7 @@ test.describe("Hosted alpha adopter journey @hosted-alpha", () => {
     await page.getByRole("button", { name: "Create account and Project" }).click();
 
     // Authenticated redirect to the new Project's task list.
-    await expect(page).toHaveURL(/\/project\/([^/]+)\/tasks\?welcome=1$/);
+    await expect(page).toHaveURL(/\/project\/([^/]+)\/tasks$/);
     const projectId = new URL(page.url()).pathname.split("/")[2];
 
     // The first-run panel carries everything an adopter needs.
