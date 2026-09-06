@@ -186,30 +186,20 @@ sys.exit(0 if ids <= {'demo'} else 1)
   fi
 fi
 
-# --- Direct routing: Caddy must dial the backend for /backend-proxy/* ---
-# When the frontend hop proxies this prefix, responses carry the Next.js
-# fingerprint (pragma: no-cache with appended cache-control) — the stall
-# class behind the post-#174 routing change. Absent pragma on a 200 means
-# Caddy forwarded straight to uvicorn.
-fetch "$APP_URL" GET /backend-proxy/v1/projects
-if expect_status "backend-proxy direct routing (post-#174)" 200; then
-  if echo "$HEADERS" | grep -qi '^pragma: *no-cache'; then
-    echo "FAIL: /backend-proxy/v1/projects carries the Next-hop fingerprint (pragma: no-cache) — Caddy is routing through the frontend, not the backend" >&2
-    FAIL=$((FAIL + 1))
-  else
-    PASS=$((PASS + 1))
-  fi
-fi
-
-# --- SSE promptness (warning only): headers must arrive, body may stay ---
-# silent — the demo has no pending batches. A header-less 2 s window is the
-# measured stall symptom of SSE behind the frontend rewrite.
-sse_headers="$(curl -sS -N --max-time 2 -D - -o /dev/null \
+# --- Direct routing: SSE headers must arrive promptly on /backend-proxy ---
+# The post-#174 Caddyfile routes /backend-proxy/* straight to the backend
+# with no encode block; through the frontend rewrite instead, the SSE feed
+# stalls (measured: zero bytes including headers for 6 s). Prompt
+# text/event-stream headers are the behavioral proof of direct routing —
+# header fingerprints are NOT (the backend itself sets pragma: no-cache on
+# authenticated routes, so pragma appears on both paths).
+sse_headers="$(curl -sS -N --max-time 3 -D - -o /dev/null \
   "$APP_URL/backend-proxy/v1/events?project=demo" 2>/dev/null || true)"
 if echo "$sse_headers" | grep -qi '^content-type: *text/event-stream'; then
   PASS=$((PASS + 1))
 else
-  echo "WARN: SSE headers not observed within 2 s on /backend-proxy/v1/events?project=demo (stall symptom — inspect routing)" >&2
+  echo "FAIL: SSE headers not observed within 3 s on /backend-proxy/v1/events?project=demo — the feed is stalling behind the frontend hop instead of routing straight to the backend" >&2
+  FAIL=$((FAIL + 1))
 fi
 
 # --- Hosted docs: /start.md and /hosted-alpha/ must be live (not stale) ---
