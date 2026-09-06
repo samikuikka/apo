@@ -318,7 +318,11 @@ const CANONICAL = new URL("/", Astro.site).href;
 		background: var(--sl-color-accent-low, #0a1a0e);
 	}
 
+	/* Auto margins on the first and last children split the stretch space
+	   evenly, so the content group (label + question + gliff) sits
+	   vertically centered and the names stay a bottom footer. */
 	.cat__kind {
+		margin-top: auto;
 		font-family: var(--sl-font-mono, ui-monospace, monospace);
 		font-size: 0.65rem;
 		font-weight: 600;
