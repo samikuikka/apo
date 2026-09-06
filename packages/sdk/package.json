@@ -1,6 +1,6 @@
 {
   "name": "@apo-ai/sdk",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "TypeScript SDK for testing and observing AI agents with Apo",
   "keywords": [
     "ai-agents",
