@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { ArrowRight, Loader2, MailWarning } from "lucide-react"
 import AuthShell from "@/components/auth/auth-shell"
+import { HOSTED_ALPHA_POLICY_URL } from "@/lib/first-run"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -266,7 +267,17 @@ function LoginCredentialsForm({
         ) : (
           hasUsers && (
             <p className="text-center text-xs text-muted-foreground">
-              Accounts on this APO installation are invitation-only.
+              Accounts on this APO installation are invitation-only. To
+              request access, ask this installation&apos;s administrator —{" "}
+              <a
+                href={HOSTED_ALPHA_POLICY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-foreground underline underline-offset-4 transition-opacity hover:opacity-80"
+              >
+                how access works
+              </a>
+              .
             </p>
           )
         )}

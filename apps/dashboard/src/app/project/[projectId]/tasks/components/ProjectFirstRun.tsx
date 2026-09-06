@@ -57,7 +57,7 @@ export function ProjectFirstRun({ setup }: { setup: ProjectFirstRunSetup }) {
             label="Install CLI"
           />
           <p className="text-xs text-muted-foreground">
-            Requires Node 22 or newer.
+            Requires Node.js ≥ 20.
           </p>
         </li>
 

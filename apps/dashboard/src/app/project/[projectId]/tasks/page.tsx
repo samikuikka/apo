@@ -73,7 +73,7 @@ export default async function AgentTasksPage({
 
   // The full first-run journey shows only for a genuinely virgin,
   // non-demo Project: nothing published, nothing recorded, no load error.
-  // `welcome=1` may highlight it but durable emptiness is the real gate.
+  // Durable emptiness (no recorded runs yet) is the real gate.
   let firstRunSetup: ProjectFirstRunSetup | null = null;
   if (
     !isDemo &&

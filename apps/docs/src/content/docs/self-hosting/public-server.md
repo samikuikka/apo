@@ -61,6 +61,42 @@ caddy      public ingress on 80/tcp, 443/tcp, and 443/udp
 
 Caddy obtains and renews the certificate automatically. Its certificate state is persisted in the `caddy_data` volume.
 
+### Upgrades: recreate caddy when the Caddyfile changed
+
+`up -d --build` recreates a container only when its image or Compose config
+changed — and a Caddyfile *content* change is neither. The Caddyfile is
+bind-mounted as a single file, so a checkout update replaces it by rename
+(new inode) while the running container keeps reading the old one. The
+result is silent drift: every Caddyfile change you *think* you deployed is
+still not live.
+
+After any upgrade that touched `deploy/self-host/Caddyfile`, recreate caddy
+explicitly (expect a seconds-long connection-reset window):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --force-recreate caddy
+```
+
+```text
+Container apo-caddy-1  Recreated
+Container apo-caddy-1  Started
+```
+
+Then prove routing took the new config — a direct backend answer carries no
+`pragma: no-cache` header (that fingerprint means the request still hops
+through the frontend):
+
+```bash
+curl -sS -D - -o /dev/null https://apo.example.com/backend-proxy/v1/projects | grep -i pragma
+# no output = direct routing is live
+```
+
+:::caution[One-time drift repair]
+If caddy has not been recreated since a Caddyfile change, `caddy reload`
+cannot fix it either — reload re-reads the still-mounted old inode. Only
+`--force-recreate caddy` re-resolves the bind mount.
+:::
+
 ## 3. Prove the public route
 
 Run the smoke probe from a different machine or from the sandbox that needs to send traces:

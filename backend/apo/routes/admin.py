@@ -192,8 +192,21 @@ async def get_retention_info(
     )
     from ..services.trace_ingestion_queue import queue_depth_report
 
+    from ..models.db import MaintenanceStateDB
+    state = session.get(MaintenanceStateDB, 1)
+
     return {
         "status": "success",
+        "maintenance": (
+            {
+                "last_started_at": state.last_started_at,
+                "last_finished_at": state.last_finished_at,
+                "duration_ms": state.duration_ms,
+                "summary": state.summary,
+            }
+            if state is not None and state.last_finished_at is not None
+            else None
+        ),
         "retention_days": RETENTION_DAYS,
         "evidence_retention_days": evidence_retention_days(),
         "ingest_payload_retention_days": ingest_payload_retention_days(),

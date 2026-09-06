@@ -42,6 +42,12 @@ describe("login page admission copy", () => {
       .queryAllByRole("link")
       .filter((a) => a.getAttribute("href") === "/setup");
     expect(setupLinks).toEqual([]);
+    // The invitation-only wall points uninvited visitors at the docs:
+    // how access works and who to ask (alpha policy: admission by request).
+    const accessLink = screen.getByRole("link", { name: /how access works/i });
+    expect(accessLink.getAttribute("href")).toBe(
+      "https://docs.test-apo.online/alpha-policy/",
+    );
   });
 
   it("renders neither copy when the backend is unreachable", () => {

@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
@@ -45,7 +46,7 @@ from fastapi import HTTPException
 
 from ..db import DATA_DIR, SQLITE_FILE_NAME, engine, is_sqlite
 from ..db_helpers import as_column, table_exists
-from ..models.db import AgentTaskDeliverableDB
+from ..models.db import AgentTaskDeliverableDB, MaintenanceStateDB
 from .artifact_stores.registry import artifact_limits, get_store
 
 logger = logging.getLogger(__name__)
@@ -1175,6 +1176,35 @@ def vacuum_sqlite() -> dict[str, object]:
     return result
 
 
+def _run_and_record_maintenance_pass() -> None:
+    """One maintenance pass, logged and persisted.
+
+    The pass's summary used to be discarded — an operator could not tell
+    whether the loop ever ran. It now lands in the log (INFO, visible via
+    the apo logger level set at app construction) and in the one-row
+    maintenance_state table surfaced by GET /v1/admin/retention.
+    """
+    started_at = datetime.now(timezone.utc)
+    began = time.monotonic()
+    summary = run_maintenance_cleanup()
+    duration_ms = int((time.monotonic() - began) * 1000)
+    logger.info("Maintenance pass complete in %d ms: %s", duration_ms, summary)
+    try:
+        with Session(engine) as session:
+            row = session.get(MaintenanceStateDB, 1)
+            if row is None:
+                row = MaintenanceStateDB(id=1)
+                session.add(row)
+            row.last_started_at = started_at
+            row.last_finished_at = datetime.now(timezone.utc)
+            row.duration_ms = duration_ms
+            row.summary = summary
+            session.commit()
+    except Exception:
+        # Bookkeeping must never kill the hygiene loop.
+        logger.exception("Failed to persist maintenance pass state")
+
+
 def run_maintenance_cleanup() -> dict[str, int]:
     """Run the daily maintenance pass; retention purge only if configured.
 
@@ -1386,12 +1416,12 @@ def start_retention_loop() -> None:
 
     def _loop() -> None:
         try:
-            _ = run_maintenance_cleanup()
+            _run_and_record_maintenance_pass()
         except Exception:
             logger.exception("Initial maintenance cleanup failed")
         while not _retention_stop.wait(_RETENTION_INTERVAL_SECONDS):
             try:
-                _ = run_maintenance_cleanup()
+                _run_and_record_maintenance_pass()
             except Exception:
                 logger.exception("Maintenance cleanup failed")
 

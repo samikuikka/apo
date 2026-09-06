@@ -1092,6 +1092,25 @@ def _migrate_to_v42() -> None:
         )
 
 
+def _migrate_to_v43() -> None:
+    """Version 43: the one-row maintenance_state table.
+
+    Persists the daily maintenance loop's last completed pass (started /
+    finished / duration / summary counters) so operators can see the loop
+    is alive via ``GET /v1/admin/retention``. New DBs get the table from
+    ``create_all``; existing DBs create it here, idempotently.
+    """
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS maintenance_state ("
+            " id INTEGER PRIMARY KEY,"
+            " last_started_at TIMESTAMP,"
+            " last_finished_at TIMESTAMP,"
+            " duration_ms INTEGER,"
+            " summary JSON)"
+        )
+
+
 def _migrate_span_facet_indexes(conn: Connection) -> None:
     """Covering facet indexes + a prunable span-time window.
 
@@ -2568,7 +2587,7 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 42
+LATEST_SCHEMA_VERSION = 43
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -2613,6 +2632,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     40: _migrate_to_v40,
     41: _migrate_to_v41,
     42: _migrate_to_v42,
+    43: _migrate_to_v43,
 }
 
 

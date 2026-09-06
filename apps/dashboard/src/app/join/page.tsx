@@ -182,7 +182,7 @@ function JoinForm() {
         email: view.preview.email ?? "",
         password,
         redirect: false,
-        redirectTo: `/project/${result.project_id}/tasks?welcome=1`,
+        redirectTo: `/project/${result.project_id}/tasks`,
       })
       if (signInResult?.error) {
         dispatch({
@@ -193,7 +193,7 @@ function JoinForm() {
         return
       }
       dispatch({ type: "ACCEPTED", projectId: result.project_id })
-      router.push(`/project/${result.project_id}/tasks?welcome=1`)
+      router.push(`/project/${result.project_id}/tasks`)
     } catch (err) {
       dispatch({
         type: "SUBMIT_ERROR",
@@ -212,7 +212,7 @@ function JoinForm() {
         projectName.trim(),
       )
       dispatch({ type: "ACCEPTED", projectId: result.project_id })
-      router.push(`/project/${result.project_id}/tasks?welcome=1`)
+      router.push(`/project/${result.project_id}/tasks`)
     } catch (err) {
       dispatch({
         type: "SUBMIT_ERROR",
@@ -280,7 +280,7 @@ function JoinForm() {
           <p className="mt-2 text-xs text-muted-foreground">
             Redirecting you to your Project…
           </p>
-          <Link href={`/project/${view.projectId}/tasks?welcome=1`}>
+          <Link href={`/project/${view.projectId}/tasks`}>
             <Button type="button" className="mt-5 h-10 w-full">
               Go to your Project
               <ArrowRight className="size-4" />

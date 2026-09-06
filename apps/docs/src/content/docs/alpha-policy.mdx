@@ -1,0 +1,64 @@
+---
+title: Alpha Policy
+description: The operating rules of a hosted alpha installation — admission, fair use, retention, and what is deliberately not promised.
+---
+
+**What you can expect from a hosted apo alpha, stated plainly.** This page is the contract between an invited team and the installation's operator. It is deliberately short: every rule here is a decision that was made, not a default nobody chose.
+
+:::note
+Looking for how to get an account? Admission is by request — ask the installation's administrator, then start with [Hosted Alpha](/hosted-alpha/). This page explains the rules, not the journey.
+:::
+
+## Admission
+
+| Rule | Detail |
+|---|---|
+| Invitation-only | Every account starts from an invitation link issued by the administrator. There is no public signup — by design, not oversight. |
+| No team-count cap for the alpha | The operator admits teams at their own pace; capacity is watched, not metered per team. |
+| Self-hosting is the overflow path | If your workload outgrows the shared installation, apo is self-hostable in minutes — see the [Quickstart](/quickstart/). Your tasks and runs travel: execution happens on your machine either way. |
+
+## Fair use
+
+Evaluation use is **free** — apo bills nothing, and all model and judge spend is caller-side: your agent runs on *your* machine with *your* provider keys. The installation holds no model credentials and pays for no tokens.
+
+What the shared infrastructure asks in return:
+
+- **Coordinate heavy patterns with the administrator** before running them — very large exports, extreme run volumes, or sustained ingest bursts. The capacity safety valves (ingest admission, read throttling, request-size caps) are on and will slow an abusive pattern rather than let it degrade other teams.
+- **Your Project is yours alone.** Project boundaries are enforced per request — no other team, and not even the operator's own projects, can read yours.
+- **Bring-your-own-keys means bring-your-own-costs.** Nothing you run bills the installation.
+
+## Retention
+
+Retention is two-tier, and the tier is the point:
+
+| Tier | What it holds | Kept |
+|---|---|---|
+| **Verdicts** | Run status, pass/fail, check counts, costs, corrections — the regression timeline | **Forever** |
+| **Evidence** | Transcripts, traces, check reports, deliverables, attempt diagnostics | **Expires on a window** (90 days on this installation) |
+
+When a run's evidence expires, its verdict remains and stays meaningful — you always know *what* passed and when, even after the *why* (full evidence) has aged out.
+
+:::tip[Keep what you must]
+Bookmark a run in the dashboard and its evidence is retained past the window — pin the runs whose traces you will want in six months, and export anything you want to own permanently.
+:::
+
+## Backups: there are none
+
+:::danger[The server can lose everything]
+This installation runs **without a backup layer** — an operator-accepted risk for the alpha, stated bluntly because it is the one rule that can hurt you. A disk failure, a bad upgrade, or an operator error can destroy all recorded runs on the server, with no restore. **Keep your own exports of anything you cannot afford to lose.** Your task definitions and your agent code live on your machines and are never at risk; only the recorded evidence on the server is.
+:::
+
+The mitigating fact, and the reason this is survivable: everything irreplaceable about *your work* — tasks, adapters, agent source, provider keys — lives on your side. The server holds recorded evidence of runs you can, in the worst case, re-run.
+
+## Access and support
+
+- **Access requests**: ask the installation's administrator directly. There is no request queue or form — admission is a conversation, and the login page points here so nobody dead-ends.
+- **Support is best-effort** during the alpha: the operator runs this installation alongside a day job. Expect honest triage, not an SLA. Self-hosted installs get the same answer plus the [self-hosting docs](/self-hosting/).
+
+## Why these rules and not others
+
+Each rule above was chosen against an alternative that looked friendlier but wasn't:
+
+- **No public signup** because a shared single-node alpha with anonymous write access is a liability with no upside — the [demo workspace](/hosted-alpha/) already shows apo to anonymous visitors, read-only.
+- **Evidence expiry rather than keep-everything** because unbounded growth on one disk is how shared installations die quietly; verdicts-forever keeps the timeline complete while the heavy evidence ages out.
+- **No backups rather than pretend ones** because a half-tested backup is worse than an honestly stated absence — an operator who cannot yet prove a restore does not claim one.
