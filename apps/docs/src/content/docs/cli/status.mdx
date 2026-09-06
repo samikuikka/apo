@@ -1,11 +1,11 @@
 ---
 title: "apo status"
-description: "Print the effective configuration — login, backend, project, task root — resolved exactly as commands resolve it."
+description: "Print the effective configuration (login, backend, project, task root) resolved exactly as commands resolve it."
 ---
 
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 
-`apo status` answers "what will my commands actually talk to?" After [`apo login`](/cli/auth/), the whole context — backend, account, project, task root — lives in `~/.apo/credentials`, with one remembered login per backend in `~/.apo/logins/`. This command surfaces the active context, lists the remembered logins you can switch to, checks that the backend answers, and warns when the task root doesn't exist.
+`apo status` answers "what will my commands actually talk to?" After [`apo login`](/cli/auth/), the whole context (backend, account, project, task root) lives in `~/.apo/credentials`, with one remembered login per backend in `~/.apo/logins/`. This command surfaces the active context, lists the remembered logins you can switch to, checks that the backend answers, and warns when the task root doesn't exist.
 
 <TerminalDemo
   command="apo status"
@@ -31,14 +31,14 @@ No options beyond the globals. Resolution order matches every other command: fla
 
 ## When to run it
 
-- **After `apo login` from a new machine or clone** — confirm the captured task root points where your tasks actually live; it is the universe `task list` and `task run` share.
-- **When runs land in the wrong backend or project** — the printed Backend and Project are what every command will use; the Saved line shows the remembered logins one `apo login --backend <url>` away.
-- **When the backend "disappears"** — the reachability marker distinguishes a wrong backend from a down server.
+- **After `apo login` from a new machine or clone**: confirm the captured task root points where your tasks actually live; it is the universe `task list` and `task run` share.
+- **When runs land in the wrong backend or project**: the printed Backend and Project are what every command will use; the Saved line shows the remembered logins one `apo login --backend <url>` away.
+- **When the backend "disappears"**: the reachability marker distinguishes a wrong backend from a down server.
 
-The task-root line prints a warning when the directory doesn't exist — that state means `apo task run` has nothing to resolve against.
+The task-root line prints a warning when the directory doesn't exist, that state means `apo task run` has nothing to resolve against.
 
 ## See also
 
-- [`apo login`](/cli/auth/) — writes the credentials this command reads.
-- [`apo task list`](/cli/task-list/) — the command whose source line (`backend catalog` vs `scanned <path>`) this explains.
-- [CLI overview](/cli/) — the full command surface.
+- [`apo login`](/cli/auth/): writes the credentials this command reads.
+- [`apo task list`](/cli/task-list/): the command whose source line (`backend catalog` vs `scanned <path>`) this explains.
+- [CLI overview](/cli/): the full command surface.

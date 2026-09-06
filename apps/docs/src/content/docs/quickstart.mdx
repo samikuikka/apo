@@ -8,7 +8,7 @@ import TerminalDemo from '../../components/demos/TerminalDemo.astro';
 **Zero to an executable definition of done.** Publish a Task, connect your machine, run the real agent from the dashboard or CLI, and read the pass/fail breakdown and evidence.
 
 :::note[Two entry paths]
-- **Invited to an existing hosted apo?** You don't need this page — go to [Hosted Alpha](/hosted-alpha/).
+- **Invited to an existing hosted apo?** You don't need this page, go to [Hosted Alpha](/hosted-alpha/).
 - **Running your own apo server?** Continue here.
 :::
 
@@ -55,13 +55,13 @@ npm install -g @apo-ai/cli
 
 ## 3. Publish your Task catalog
 
-Tasks live in your code — authored in TypeScript using the [`@apo-ai/sdk`](https://www.npmjs.com/package/@apo-ai/sdk) package. Install it in your application's repository first:
+Tasks live in your code, authored in TypeScript using the [`@apo-ai/sdk`](https://www.npmjs.com/package/@apo-ai/sdk) package. Install it in your application's repository first:
 
 ```bash
 npm install @apo-ai/sdk
 ```
 
-New to apo? The canonical example is a real Vercel AI SDK agent that extracts data from an invoice. See [`START-HERE.md`](https://github.com/samikuikka/apo/blob/main/apps/example-service/e2e/agent-task-demo/START-HERE.md) for the four-file map (real agent, adapter, task, inputs). Or just look at a live workspace first — open `/demo` on any Apo install (browsable without an account, pre-loaded with captured runs, checks, judges, and traces).
+New to apo? The canonical example is a real Vercel AI SDK agent that extracts data from an invoice. See [`START-HERE.md`](https://github.com/samikuikka/apo/blob/main/apps/example-service/e2e/agent-task-demo/START-HERE.md) for the four-file map (real agent, adapter, task, inputs). Or just look at a live workspace first, any Apo install's [demo](/demo) is browsable without an account, pre-loaded with captured runs, checks, judges, and traces.
 
 See [Define a Task](/guides/define-a-task/) for the authoring flow. Once defined, publish their metadata so the dashboard and `apo connect` can see them:
 
@@ -74,7 +74,7 @@ See [Define a Task](/guides/define-a-task/) for the authoring flow. Once defined
   ]}
 />
 
-This sends Task IDs, display names, adapter names, check flags, and each Task's canonical `*.eval.ts` definition — no fixtures, application source, credentials, or environment values.
+This sends Task IDs, display names, adapter names, check flags, and each Task's canonical `*.eval.ts` definition, no fixtures, application source, credentials, or environment values.
 
 ## 4. Run a Task from the CLI
 
@@ -96,11 +96,11 @@ For a one-shot run in your local workspace:
   ]}
 />
 
-The Task runs locally against your current source. The result, trace, and checks are recorded to the server — the printed `Inspect:` command opens the full record.
+The Task runs locally against your current source. The result, trace, and checks are recorded to the server, the printed `Inspect:` command opens the full record.
 
 ## 5. Connect for dashboard runs
 
-For persistent execution — so the dashboard and Schedules can dispatch work to your machine:
+For persistent execution, so the dashboard and Schedules can dispatch work to your machine:
 
 <TerminalDemo
   command="apo connect --dir ./my-tasks"
@@ -117,7 +117,7 @@ Now any Run created from the dashboard Tasks page or a Schedule is claimed and e
 
 Open `http://localhost:3000`, go to **Tasks**, select one or more Tasks, and click **Run**. The Run is queued, claimed by your connected machine, and executed locally.
 
-The result is binary — pass or fail. Click any Run to see the full breakdown: which tests passed, which failed, and the trace showing every call the agent made.
+The result is binary, pass or fail. Click any Run to see the full breakdown: which tests passed, which failed, and the trace showing every call the agent made.
 
 ## The workflow
 
@@ -133,9 +133,9 @@ At no point does the server receive your source code, repository credentials, or
 
 ## Next
 
-- [apo connect](/cli/connect/) — the persistent executor
-- [apo task publish](/cli/task-publish/) — catalog publication
-- [apo task run](/cli/task-run/) — one-shot CLI execution
-- [Tasks](/concepts/tasks/) — how Tasks are structured
-- [Tests](/concepts/tests/) — code assertions and LLM judges
-- [Close the loop](/guides/loop-engineering/) — let a coding agent use the result to drive the next change
+- [apo connect](/cli/connect/): the persistent executor
+- [apo task publish](/cli/task-publish/): catalog publication
+- [apo task run](/cli/task-run/): one-shot CLI execution
+- [Tasks](/concepts/tasks/): how Tasks are structured
+- [Tests](/concepts/tests/): code assertions and LLM judges
+- [Close the loop](/guides/loop-engineering/): let a coding agent use the result to drive the next change

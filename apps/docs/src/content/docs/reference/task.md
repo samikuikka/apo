@@ -1,6 +1,6 @@
 ---
 title: Task API
-description: "task(), turn(), test(), describe() — the calls that make up a .eval.ts file. Signatures, fields, and examples."
+description: "task(), turn(), test(), describe(): the calls that make up a .eval.ts file. Signatures, fields, and examples."
 ---
 
 The calls that make up a `.eval.ts` file: `task()`, `turn()`, `test()`, and `describe()`. Together they define *what* to run, *what the agent sees* each turn, and *what good means*. For the folder convention and writing flow, see [Tasks](/concepts/tasks/) and [Define a Task](/guides/define-a-task/).
@@ -52,7 +52,7 @@ The deliverable types in `test(...)` callbacks are inferred from the adapter's `
 - **Type:** `TypedAdapterDefinition`
 - **Required:** yes
 
-The adapter that drives your agent. Must implement the lifecycle contract — see [Adapter API](/reference/adapter/).
+The adapter that drives your agent. Must implement the lifecycle contract, see [Adapter API](/reference/adapter/).
 
 ### `deliverables`
 
@@ -122,7 +122,7 @@ test("used-source-document", (t) => {
   t.calledTool("read_file", { input: { path: "contract.pdf" } });
 });
 
-// Judged (async — must await t.judge)
+// Judged (async: must await t.judge)
 test("parties-are-complete", async (t, { deliverables }) => {
   await t.judge(deliverables.parties, "PASS when every party is captured.");
 });
@@ -165,7 +165,7 @@ The second argument to the test callback:
 
 ## See also
 
-- [Tasks](/concepts/tasks/) — the folder convention and how the three calls fit together.
-- [Assertions API](/reference/assertions/) — the full `t.*` and matcher reference.
-- [Adapter API](/reference/adapter/) — what the `adapter` field must implement.
-- [Define a Task](/guides/define-a-task/) — the writing flow, end to end.
+- [Tasks](/concepts/tasks/): the folder convention and how the three calls fit together.
+- [Assertions API](/reference/assertions/): the full `t.*` and matcher reference.
+- [Adapter API](/reference/adapter/): what the `adapter` field must implement.
+- [Define a Task](/guides/define-a-task/): the writing flow, end to end.

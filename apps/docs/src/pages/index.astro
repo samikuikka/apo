@@ -1,6 +1,6 @@
 ---
 /**
- * Landing page — the standalone full-width product page at `/`.
+ * Landing page, the standalone full-width product page at `/`.
  *
  * Bypasses Starlight's docs layout entirely (no sidebar, no docs header tabs):
  * a centered hero, full-width sections, and the same dark/monochrome token
@@ -9,7 +9,7 @@
  *
  * Structure mirrors flue's landing page (hero → CTA → demo → features → footer)
  * rendered in apo's dark/sharp-cornered identity. Animations are CSS keyframes
- * + IntersectionObserver reveals — the established docs idiom, no framer-motion.
+ * + IntersectionObserver reveals, the established docs idiom, no framer-motion.
  */
 import "../styles/custom.css";
 import { SignalSphereIsland } from "../components/brand/SignalSphereIsland.tsx";
@@ -23,11 +23,11 @@ const COPY_PROMPT_TEXT =
 	`Read ${Astro.site}start.md then help me set up apo and run my first task.`;
 
 // Open Graph / Twitter card metadata. The preview image is generated at build
-// time by src/pages/og-landing.png.ts — see that file for the design. Keep these
+// time by src/pages/og-landing.png.ts, see that file for the design. Keep these
 // in sync with the <title>/<meta description> below (single source via consts).
-const PAGE_TITLE = "apo — Capability testing for agent harnesses";
+const PAGE_TITLE = "apo, Capability testing for agent harnesses";
 const PAGE_DESCRIPTION =
-	"Executable capability specifications for agent harnesses. Define what your agent must be capable of, run the real system, verify the outcome — and engineer the harness until it passes.";
+	"Executable capability specifications for agent harnesses. Define what your agent must be capable of, run the real system, verify the outcome, and engineer the harness until it passes.";
 const OG_IMAGE = new URL("/og-landing.png", Astro.site).href;
 const CANONICAL = new URL("/", Astro.site).href;
 ---
@@ -47,7 +47,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
 			rel="stylesheet"
 		/>
-		{/* Open Graph — what Facebook, LinkedIn, Slack, etc. render. */}
+		{/* Open Graph, what Facebook, LinkedIn, Slack, etc. render. */}
 		<meta property="og:type" content="website" />
 		<meta property="og:site_name" content="apo" />
 		<meta property="og:title" content={PAGE_TITLE} />
@@ -56,13 +56,13 @@ const CANONICAL = new URL("/", Astro.site).href;
 		<meta property="og:image" content={OG_IMAGE} />
 		<meta property="og:image:width" content="1200" />
 		<meta property="og:image:height" content="630" />
-		<meta property="og:image:alt" content="apo — capability testing for agent harnesses" />
-		{/* Twitter / X — summary_large_image gives the big banner card. */}
+		<meta property="og:image:alt" content="apo, capability testing for agent harnesses" />
+		{/* Twitter / X, summary_large_image gives the big banner card. */}
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:title" content={PAGE_TITLE} />
 		<meta name="twitter:description" content={PAGE_DESCRIPTION} />
 		<meta name="twitter:image" content={OG_IMAGE} />
-		{/* Structured data for search engines — what the product is and where
+		{/* Structured data for search engines, what the product is and where
 		    it lives (repo, npm packages, docs). */}
 		<script
 			type="application/ld+json"
@@ -91,11 +91,11 @@ const CANONICAL = new URL("/", Astro.site).href;
 		/>
 	</head>
 	<body>
-		<!-- Nav — matches the docs header: brand mark + wordmark, section tabs,
+		<!-- Nav, matches the docs header: brand mark + wordmark, section tabs,
 		     GitHub icon. Same structure/styling so / and /overview/ feel seamless. -->
 		<nav class="landing-nav" aria-label="Primary">
 			<div class="landing-nav__left">
-				<a class="landing-nav__brand" href="/" aria-label="apo — home">
+				<a class="landing-nav__brand" href="/" aria-label="apo, home">
 					<img
 						class="landing-nav__mark"
 						src="/brand/signal-sphere-small.svg"
@@ -134,7 +134,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 		</nav>
 
 		<main>
-			<!-- Hero — title + animated sphere side by side. -->
+			<!-- Hero, title + animated sphere side by side. -->
 			<section class="landing-section landing-section--hero">
 				<div class="landing-container landing-hero">
 					<div class="landing-hero__text">
@@ -169,7 +169,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 				</div>
 			</section>
 
-			<!-- Where apo fits — three categories, three different questions. -->
+			<!-- Where apo fits, three categories, three different questions. -->
 			<section class="landing-section landing-section--bordered" data-landing-cats>
 				<div class="landing-container">
 					<h2 class="landing-section__heading">Where apo fits</h2>
@@ -247,7 +247,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 
 		<footer class="landing-footer">
 			<div class="landing-container landing-footer__inner">
-				<span>apo — executable capability specifications for agent harnesses.</span>
+				<span>apo, executable capability specifications for agent harnesses.</span>
 				<span class="landing-footer__links">
 					<a href="/overview/">Docs</a>
 					<a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -288,7 +288,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 		white-space: nowrap;
 	}
 
-	/* Category cards — three terse cards, one question each. */
+	/* Category cards, three terse cards, one question each. */
 	.landing-cats {
 		display: grid;
 		gap: 1rem;
@@ -376,7 +376,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 		transform: translateX(0);
 	}
 
-	/* Verdict marks are state — the sanctioned accent use. */
+	/* Verdict marks are state, the sanctioned accent use. */
 	.cat__ok {
 		color: var(--sl-color-accent);
 		font-weight: 700;
@@ -411,7 +411,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 		background: var(--sl-color-gray-5);
 	}
 
-	/* apo's loop — the loop-engineering terminal, miniaturized: run → fail →
+	/* apo's loop, the loop-engineering terminal, miniaturized: run → fail →
 	   improve → run again → pass. The loop is narrated as convergence, not
 	   drawn as a glyph. Mirrors LoopEngineeringDemo's lane (earlier run dim,
 	   final run bright, verdict colors as state). */
@@ -499,7 +499,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 		color: var(--sl-color-accent-high, #4ade80);
 	}
 
-	/* Staggered reveal — same idiom as the features bento. */
+	/* Staggered reveal, same idiom as the features bento. */
 	.cat {
 		opacity: 0;
 		transform: translateY(6px);

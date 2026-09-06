@@ -1,12 +1,12 @@
 ---
 title: "apo runs delete"
-description: "Permanently delete runs whose results are garbage — harness failures, wrong environment, dead dependencies."
+description: "Permanently delete runs whose results are garbage, harness failures, wrong environment, dead dependencies."
 ---
 
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-Sometimes the run is garbage, not the agent. The database was down, the environment pointed at staging, a dependency timed out — the harness failed, not the implementation under test. `apo runs delete` removes such runs permanently so lists, stats, and comparisons reflect real signal instead of infrastructure noise.
+Sometimes the run is garbage, not the agent. The database was down, the environment pointed at staging, a dependency timed out, the harness failed, not the implementation under test. `apo runs delete` removes such runs permanently so lists, stats, and comparisons reflect real signal instead of infrastructure noise.
 
 <TerminalDemo
   command="apo runs delete run_de89cab0 --yes"
@@ -30,7 +30,7 @@ apo runs delete <run-id>... --yes
 
 Takes one or more **run ids** (unique prefix or `last` works, like [`apo runs show`](/cli/runs-show/)). All ids are resolved before anything is deleted, so a typo in the third id never takes down the first two. Runs are then deleted sequentially; the command stops at the first failure.
 
-`--yes` is **required**. Without it the command prints what *would* be deleted and exits with code `2` — no request is sent. This is the confirmation, deliberately non-interactive: the command never prompts, so it is safe for agents and CI.
+`--yes` is **required**. Without it the command prints what *would* be deleted and exits with code `2`, no request is sent. This is the confirmation, deliberately non-interactive: the command never prompts, so it is safe for agents and CI.
 
 ```bash
 apo runs delete run_de89cab0
@@ -44,7 +44,7 @@ Deleting a run keeps the batch honest: the batch's counters are recomputed from 
 ## Requirements
 
 - **Project admin.** Deletion is destructive history rewrite; a member-role caller is refused. The same gate applies in the dashboard.
-- **Terminal or cancelled runs only.** A `running`/`pending` run is refused with exit `2` — cancel it first (`apo batch show` links the batch; the dashboard has per-batch cancel).
+- **Terminal or cancelled runs only.** A `running`/`pending` run is refused with exit `2`, cancel it first (`apo batch show` links the batch; the dashboard has per-batch cancel).
 - The demo workspace is read-only; its runs cannot be deleted.
 
 ## Exit codes
@@ -52,7 +52,7 @@ Deleting a run keeps the batch honest: the batch's counters are recomputed from 
 | Code | Meaning |
 |---|---|
 | `0` | All requested runs deleted. |
-| `2` | Missing `--yes`, usage error, or API failure — unknown run, still-active run, missing admin role, artifact-store cleanup failure (retryable; the run is kept). |
+| `2` | Missing `--yes`, usage error, or API failure, unknown run, still-active run, missing admin role, artifact-store cleanup failure (retryable; the run is kept). |
 
 ## Examples
 
@@ -63,7 +63,7 @@ apo runs delete de89cab --yes
 # The latest run (e.g. a smoke test that hit a dead dependency)
 apo runs delete last --yes
 
-# Several at once — all resolved before anything goes
+# Several at once: all resolved before anything goes
 apo runs delete run_aa1100 run_bb2200 run_cc3300 --yes
 ```
 
@@ -81,7 +81,7 @@ One line per deleted run plus a summary. `--json` prints the per-run deletion co
 
 ## See also
 
-- [`apo batch delete`](/cli/batch/) — delete a whole poisoned batch in one action.
-- [`apo runs correct`](/cli/runs-correct/) — when the *evidence* is fine but a test's verdict is wrong, correct it instead of deleting.
-- [`apo runs list`](/cli/runs-list/) — find the run ids and prefixes to delete.
-- [Run and debug](/guides/run-and-debug/) — deciding between fixing the agent, correcting history, or deleting a garbage run.
+- [`apo batch delete`](/cli/batch/): delete a whole poisoned batch in one action.
+- [`apo runs correct`](/cli/runs-correct/): when the *evidence* is fine but a test's verdict is wrong, correct it instead of deleting.
+- [`apo runs list`](/cli/runs-list/): find the run ids and prefixes to delete.
+- [Run and debug](/guides/run-and-debug/): deciding between fixing the agent, correcting history, or deleting a garbage run.

@@ -1,5 +1,5 @@
 /**
- * start.md — the agent-readable setup prompt for apo.
+ * start.md, the agent-readable setup prompt for apo.
  *
  * Served at the configured site origin (import.meta.env.SITE) + /start.md as
  * text/markdown. The "Copy Prompt" button on the landing page copies a
@@ -7,14 +7,14 @@
  * fetches it, gets a complete guide,
  * and helps the user set up apo end-to-end.
  *
- * The prompt is intentionally self-contained — it embeds the *why* behind
+ * The prompt is intentionally self-contained, it embeds the *why* behind
  * adapters, tracing, and self-hosting, not just the *what*. This lets the
  * agent guide the user through real decisions and troubleshoot without
  * fetching every docs page first. Deeper docs are linked inline for when
  * the agent needs API reference or advanced patterns.
  *
  * Every docs page has a `.md` version (e.g. /concepts/adapters.md).
- * Fetch those instead of the HTML — cleaner, smaller, no chrome.
+ * Fetch those instead of the HTML, cleaner, smaller, no chrome.
  */
 import type { APIRoute } from 'astro';
 
@@ -22,7 +22,7 @@ const ORIGIN = import.meta.env.SITE;
 
 const START_INSTRUCTIONS = `# Skill: Set up apo and run a first end-to-end test
 
-You are helping the user set up **apo** — a testing and engineering system
+You are helping the user set up **apo**: a testing and engineering system
 for agent harnesses. Your goal: give one real agent task an executable
 definition of done, then get a pass/fail result with evidence.
 
@@ -38,17 +38,17 @@ improve a failed verdict. Transport or finalization work may retry without
 creating a new Task Run.
 
 What apo is **not**: not another eval framework, not a prompt-scoring tool,
-and not an observability platform. It doesn't grade the chat conversation — it
+and not an observability platform. It doesn't grade the chat conversation, it
 judges the **deliverable** (the artifact, file, or structured output the agent
 produced).
 
 ## How apo works (the 30-second mental model)
 
-1. **You write an adapter** — a small TypeScript module that calls your real
+1. **You write an adapter**: a small TypeScript module that calls your real
    agent. apo doesn't know how to run your agent; the adapter is the bridge.
-   This is the load-bearing piece — without it, nothing runs.
+   This is the load-bearing piece, without it, nothing runs.
 
-2. **You define a task** — a folder with one \`.eval.ts\` file containing
+2. **You define a task**: a folder with one \`.eval.ts\` file containing
    \`task()\`, \`turn()\`, and \`test()\` calls. The task says: "run my agent
    against this input, then check these things about what it produced."
 
@@ -65,7 +65,7 @@ produced).
    can't.
 
 5. **Every completed evaluation gets a binary verdict (pass/fail) plus a
-   trace.** The trace is the full runtime record — call tree, tokens, messages.
+   trace.** The trace is the full runtime record, call tree, tokens, messages.
    When evaluation cannot complete, apo surfaces an execution error instead.
 
 > **Deeper docs:** ${ORIGIN}/overview.md (what apo is),
@@ -82,13 +82,13 @@ and confirm with the user.
 
 1. **Do they have a running agent?** An agent = LLM + tools + the code that
    wires them. If they don't have one yet, help them build the smallest useful
-   agent first — apo can't test what doesn't exist.
+   agent first, apo can't test what doesn't exist.
 
 2. **What stack?** This determines how the adapter calls the agent and how
    tracing is set up:
    - **Vercel AI SDK** (\`ai\` package + \`@ai-sdk/openai\` or
      \`@ai-sdk/anthropic\`) → the adapter calls \`generateText()\` /
-     \`streamText()\`. Tracing is **automatic** — one \`registerApoTracing()\`
+     \`streamText()\`. Tracing is **automatic**: one \`registerApoTracing()\`
      call at startup + \`experimental_telemetry: { isEnabled: true }\` on the
      call. Zero span code. **This is the recommended path.**
    - **OpenAI Agents SDK / Claude Agent SDK** → these emit OTel natively. Use
@@ -104,11 +104,11 @@ and confirm with the user.
      logged as message arrays and can't re-run through an adapter, use flow
      normalizers (\`fromOpenAIMessages\`, \`fromAnthropicMessages\`,
      \`fromAISDK\`) to convert them. See
-     ${ORIGIN}/reference/flow-normalizers.md. This is a secondary path — the
+     ${ORIGIN}/reference/flow-normalizers.md. This is a secondary path, the
      primary path is always the adapter if the agent can run live.
 
 3. **What should the first task test?** Pick the simplest behavior the user
-   cares about — one the agent already mostly does right. A good first task:
+   cares about, one the agent already mostly does right. A good first task:
    one input file, one turn, two tests (one code assertion, one judge). Don't
    start with a complex multi-turn workflow.
 
@@ -126,7 +126,7 @@ is for the first person setting up a new server.
 ### Path A: Connect to an existing server (most teams)
 
 Invited to a hosted apo? Your Project's Tasks page shows the exact
-\`apo login --backend <url> --project <id>\` command to copy — see the
+\`apo login --backend <url> --project <id>\` command to copy, see the
 [Hosted Alpha guide](${ORIGIN}/hosted-alpha.md). Everyone else:
 
 Install the CLI from npm:
@@ -135,7 +135,7 @@ Install the CLI from npm:
 npm install -g @apo-ai/cli
 \`\`\`
 
-Point it at your team's apo server (the backend URL — ask your team lead or
+Point it at your team's apo server (the backend URL, ask your team lead or
 check your deployment docs):
 
 \`\`\`bash
@@ -170,7 +170,7 @@ scripts/self-host init --profile local
 scripts/self-host up --build
 \`\`\`
 
-**Wait for readiness** — the healthcheck confirms the database, task cache, and
+**Wait for readiness**: the healthcheck confirms the database, task cache, and
 auth are ready:
 
 \`\`\`bash
@@ -183,7 +183,7 @@ curl -fsS http://localhost:8000/health/ready | jq
 2. Create the first admin account (email + password)
 3. Install the CLI: \`npm install -g @apo-ai/cli\`
 4. Authenticate: \`apo login\` (defaults to \`http://localhost:8000\`)
-5. Confirm: \`apo project list\` — should show the default project
+5. Confirm: \`apo project list\`, should show the default project
 
 > **Deeper docs:** ${ORIGIN}/self-hosting/topology.md (architecture),
 > ${ORIGIN}/self-hosting/configuration.md (env vars, ports).
@@ -193,7 +193,7 @@ curl -fsS http://localhost:8000/health/ready | jq
 ## Step 3: Write the adapter
 
 This is the load-bearing step. **apo ships no built-in adapters.** The adapter
-is the only place real code runs during a task — it's the bridge between apo's
+is the only place real code runs during a task, it's the bridge between apo's
 lifecycle and the user's actual agent.
 
 **Install the SDK in the user's project** (where the adapter and .eval.ts files
@@ -210,7 +210,7 @@ might be an OpenAI call, an Anthropic call, a Vercel AI SDK streamText, or a
 custom HTTP service. The adapter is a shim that calls your existing code as-is.
 You don't change your agent to fit apo; the adapter adapts to your system.
 
-**Canonical example:** apo's repo contains one complete, checked example — a
+**Canonical example:** apo's repo contains one complete, checked example, a
 real Vercel AI SDK agent wired through an adapter to a \`data-extraction\` task.
 Inspect and adapt these files rather than writing from scratch:
 - Real agent: \`apps/example-service/app/lib/agent/service.ts\`
@@ -221,15 +221,15 @@ Inspect and adapt these files rather than writing from scratch:
 **The lifecycle the adapter implements:**
 
 \`\`\`
-initialize(ctx)          optional — load task inputs, set up state
+initialize(ctx)          optional, load task inputs, set up state
   ↓
-startSession(ctx)        required — return an object with sendUserTurn
+startSession(ctx)        required, return an object with sendUserTurn
   ↓
-sendUserTurn(turn)       apo calls this once per turn — YOUR REAL AGENT CALL GOES HERE
+sendUserTurn(turn)       apo calls this once per turn, YOUR REAL AGENT CALL GOES HERE
   ↓                       (the turn() fn in the .eval.ts decides when to stop)
-collectDeliverables(ctx) required — shape the accumulated state into structured output
+collectDeliverables(ctx) required, shape the accumulated state into structured output
   ↓
-cleanup(ctx)             optional — tear down
+cleanup(ctx)             optional, tear down
 \`\`\`
 
 **Minimal adapter (Vercel AI SDK example):**
@@ -243,7 +243,7 @@ import { z } from "zod";
 
 // Register the OTel processor once at module load. After this, any
 // generateText call with experimental_telemetry enabled is traced
-// automatically — spans, tokens, cost, tool calls. Zero span code.
+// automatically, spans, tokens, cost, tool calls. Zero span code.
 await registerApoTracing();
 
 const client = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -268,7 +268,7 @@ export const myAdapter = defineAdapter({
     const state = ctx.state;
     return {
       // apo calls this once per turn. INSIDE HERE you call your real agent.
-      // The Vercel AI SDK emits gen_ai.* OTel spans natively — model name,
+      // The Vercel AI SDK emits gen_ai.* OTel spans natively, model name,
       // token usage, tool calls are all captured automatically.
       async sendUserTurn(turn, { trace, parentSpanId, turnNumber }) {
         const userMessage = String(turn);
@@ -359,7 +359,7 @@ task("my-task", {
 });
 
 // turn() decides what the agent sees each turn.
-// Returning null ends the turn loop — always include this or it loops forever.
+// Returning null ends the turn loop, always include this or it loops forever.
 turn(async ({ files, transcript }) => {
   if (transcript.length > 0) return null;  // one turn only
   return await files.read("input.txt");
@@ -384,14 +384,14 @@ test("answer-is-accurate", async (t, { deliverables }) => {
 \`\`\`
 
 **The test vocabulary:**
-- \`t.calledTool(name, opts?)\` — asserts a tool was called (reads the trace)
-- \`t.noFailedActions()\` — asserts no tool or subagent errored (anti-flail)
-- \`t.maxToolCalls(n)\` — asserts at most N tool calls (anti-flail)
-- \`t.toolOrder([names])\` — asserts tools appeared in this order
-- \`t.check(value, matcher)\` — asserts on a deliverable value. **Requires a
-  Matcher** — use \`satisfies(fn, label)\`, \`includes(needle)\`,
+- \`t.calledTool(name, opts?)\`, asserts a tool was called (reads the trace)
+- \`t.noFailedActions()\`, asserts no tool or subagent errored (anti-flail)
+- \`t.maxToolCalls(n)\`, asserts at most N tool calls (anti-flail)
+- \`t.toolOrder([names])\`, asserts tools appeared in this order
+- \`t.check(value, matcher)\`, asserts on a deliverable value. **Requires a
+  Matcher**: use \`satisfies(fn, label)\`, \`includes(needle)\`,
   \`equals(expected)\`, \`matches(schema)\`, or \`similarity(expected, threshold)\`.
-- \`t.judge(value, instruction)\` — async; hands value to an LLM judge
+- \`t.judge(value, instruction)\`, async; hands value to an LLM judge
 
 > **Deeper docs:**
 > ${ORIGIN}/guides/define-a-task.md (end-to-end recipe),
@@ -420,7 +420,7 @@ apo task run my-task
 apo connect --dir ./my-tasks
 \`\`\`
 
-If evaluation completes, the run produces a **binary verdict** — pass or fail.
+If evaluation completes, the run produces a **binary verdict**: pass or fail.
 An adapter, configuration, or infrastructure failure is reported as an error
 instead. Read the exact result:
 
@@ -445,7 +445,7 @@ If the loop stops without a pass, report the failed tests, trace evidence,
 changes tried, and the next hypothesis to the user. Never weaken the definition
 of done to make the result green.
 
-This loop — run → read failure → trace → fix → re-run — is the core apo
+This loop (run → read failure → trace → fix → re-run) is the core apo
 workflow. A coding agent can drive it without a human watching every run, while
 the confirmed behavioral contract and stopping policy stay fixed.
 
@@ -477,7 +477,7 @@ Restate the final state: task name, adapter name, verdict, and next steps.
 - **Never invent API keys or credentials.** Scaffold \`process.env.X\`
   placeholders and tell the user to provide real values.
 - **Never skip the adapter step.** Without it, tests cannot run. The agent
-  under test is not a fixture — it lives behind the user's adapter.
+  under test is not a fixture, it lives behind the user's adapter.
 - **Never mock the agent.** The whole point of apo is testing the real thing.
   If the user suggests mocking "just to get it working," push back.
 - **Thread the trace.** Without it, trace-based assertions silently fail and

@@ -1,11 +1,11 @@
 ---
 title: Send service traces
-description: Point any OpenTelemetry-instrumented service at apo — no task runs, no apo SDK, just traces.
+description: Point any OpenTelemetry-instrumented service at apo, no task runs, no apo SDK, just traces.
 ---
 
 # Send service traces
 
-apo is an agent-testing tool, but its trace pipeline is not agent-only. Any service that speaks OpenTelemetry can send its traces to apo, and they become first-class citizens: browsable on the Traces page next to agent runs, searchable by their own attributes, and governed by per-key quotas. Nothing about the service side knows apo exists — standard OTLP, standard SDKs, standard auto-instrumentation.
+apo is an agent-testing tool, but its trace pipeline is not agent-only. Any service that speaks OpenTelemetry can send its traces to apo, and they become first-class citizens: browsable on the Traces page next to agent runs, searchable by their own attributes, and governed by per-key quotas. Nothing about the service side knows apo exists, standard OTLP, standard SDKs, standard auto-instrumentation.
 
 This guide wires up a service end to end: a key, an exporter, and what you get back.
 
@@ -13,18 +13,18 @@ This guide wires up a service end to end: a key, an exporter, and what you get b
 
 | Thing | Value | Notes |
 |---|---|---|
-| An apo project | e.g. `billing` | Projects are the tenancy boundary — a key only ever writes to its project. |
+| An apo project | e.g. `billing` | Projects are the tenancy boundary, a key only ever writes to its project. |
 | An API key | scope **ingest** | Settings → API Keys → Create key. The secret is shown once. |
 | The OTLP endpoint | `https://your-apo/api/public/otel/v1/traces` | Shown on the Connect a service card under Settings → API Keys. |
 
-The Connect a service card on the API Keys page renders all of the snippets below with your endpoint filled in — you rarely need this page after the first visit.
+The Connect a service card on the API Keys page renders all of the snippets below with your endpoint filled in, you rarely need this page after the first visit.
 
 ## 1. Point an exporter at apo
 
-apo accepts OTLP/HTTP — JSON, protobuf, and gzip — so every OpenTelemetry SDK works unchanged. Authentication is Basic auth with the key pair:
+apo accepts OTLP/HTTP (JSON, protobuf, and gzip) so every OpenTelemetry SDK works unchanged. Authentication is Basic auth with the key pair:
 
 ```python
-# Python — the same shape in every language
+# Python: the same shape in every language
 import base64
 
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -44,7 +44,7 @@ provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(
 )))
 ```
 
-Set `service.name` once per deployment — it is what the traces list, the service filter, and the facets all key off.
+Set `service.name` once per deployment, it is what the traces list, the service filter, and the facets all key off.
 
 ### You usually don't write spans by hand
 
@@ -62,11 +62,11 @@ FastInstrumentor.instrument_app(app)
 PsycopgInstrumentor().instrument()
 ```
 
-Every runtime has the equivalent (Node `@opentelemetry/auto-instrumentations-node`, Java agent, Go `otelhttp` middleware). If your collector or runtime already emits OTLP, keep reading — the collector path below may be all you need.
+Every runtime has the equivalent (Node `@opentelemetry/auto-instrumentations-node`, Java agent, Go `otelhttp` middleware). If your collector or runtime already emits OTLP, keep reading, the collector path below may be all you need.
 
 ## 2. Or: one config block on an existing collector
 
-If your company already runs an OpenTelemetry Collector, adding apo is an exporter entry — every service already shipping telemetry through the collector starts appearing, with no per-service changes:
+If your company already runs an OpenTelemetry Collector, adding apo is an exporter entry, every service already shipping telemetry through the collector starts appearing, with no per-service changes:
 
 ```yaml
 exporters:
@@ -81,12 +81,12 @@ service:
 ```
 
 :::tip[One key per pipeline stage]
-Give the collector its own key so its usage and quota are visible separately from other senders. Quotas are per key — N keys means N × the cap.
+Give the collector its own key so its usage and quota are visible separately from other senders. Quotas are per key, N keys means N × the cap.
 :::
 
 ## 3. Send a trace and see it
 
-A quick smoke test with curl — a single span in a fresh trace:
+A quick smoke test with curl, a single span in a fresh trace:
 
 ```bash
 curl -u "pk-apo-...:sk-apo-..." \
@@ -110,7 +110,7 @@ curl -u "pk-apo-...:sk-apo-..." \
   }'
 ```
 
-Seconds later the trace is on the project's **Traces** page: `GET /invoices`, 200 ms, service `billing-api`. The Traces page shows agent runs and service traces in one list — for pure service traces, the Task/Model/Usage columns step aside automatically and the Service column takes over.
+Seconds later the trace is on the project's **Traces** page: `GET /invoices`, 200 ms, service `billing-api`. The Traces page shows agent runs and service traces in one list, for pure service traces, the Task/Model/Usage columns step aside automatically and the Service column takes over.
 
 ## 4. Search by the service's own attributes
 
@@ -133,22 +133,22 @@ apo traces list --service billing-api \
   --span-text timeout
 ```
 
-Negations are none-of-trace semantics: `http.status_code neq 500` matches traces where **no** span carried a 500 — the clean requests.
+Negations are none-of-trace semantics: `http.status_code neq 500` matches traces where **no** span carried a 500, the clean requests.
 
 Click a trace for the full waterfall with every OTel attribute preserved, and LLM spans rendered as chat if you send them.
 
 ## 5. Set a quota so a bug can't flood you
 
-The reason to give every sender its own key: each key has a daily span quota and a pause button (Settings → API Keys). A buggy exporter that starts shipping 10,000 spans a second gets a 429 with a readable body — limit, used, reset time — while every other key, and every agent task run, is untouched. The usage bar on the key row goes amber at 80% of quota, red at 100%; the pause button stops one key's ingest with one click (it keeps reading; rotate is the answer for a *compromised* key, pause is for accidents).
+The reason to give every sender its own key: each key has a daily span quota and a pause button (Settings → API Keys). A buggy exporter that starts shipping 10,000 spans a second gets a 429 with a readable body (limit, used, reset time) while every other key, and every agent task run, is untouched. The usage bar on the key row goes amber at 80% of quota, red at 100%; the pause button stops one key's ingest with one click (it keeps reading; rotate is the answer for a *compromised* key, pause is for accidents).
 
-Quotas reset at UTC midnight. Configure the default for new keys with `APO_DEFAULT_DAILY_SPAN_QUOTA` (existing keys are never silently changed — edit per key or bulk-apply in the UI).
+Quotas reset at UTC midnight. Configure the default for new keys with `APO_DEFAULT_DAILY_SPAN_QUOTA` (existing keys are never silently changed, edit per key or bulk-apply in the UI).
 
 :::note[What quotas are for]
-Quotas stop accidents — runaway exporters, retry storms. They are not an adversarial cap: project members can mint keys, and a leaked key is rotated, not quota'd.
+Quotas stop accidents, runaway exporters, retry storms. They are not an adversarial cap: project members can mint keys, and a leaked key is rotated, not quota'd.
 :::
 
 ## What service traces are not
 
-A service trace has no verdict, no checks, no deliverables — that machinery belongs to [task runs](/concepts/runs). A service trace is exactly what your OTel SDK sent: spans, attributes, timing. apo keeps them under the project's evidence-retention window; the search surface, the waterfall, and the quotas apply to them identically.
+A service trace has no verdict, no checks, no deliverables, that machinery belongs to [task runs](/concepts/runs). A service trace is exactly what your OTel SDK sent: spans, attributes, timing. apo keeps them under the project's evidence-retention window; the search surface, the waterfall, and the quotas apply to them identically.
 
-If what you're instrumenting is an LLM application rather than a plain service, use the [framework recipes](/ecosystem/otel-framework-setup) instead — they map OpenAI/Anthropic/LangChain calls onto apo's chat rendering and cost columns.
+If what you're instrumenting is an LLM application rather than a plain service, use the [framework recipes](/ecosystem/otel-framework-setup) instead, they map OpenAI/Anthropic/LangChain calls onto apo's chat rendering and cost columns.

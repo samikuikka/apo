@@ -84,10 +84,10 @@ What to look for:
 
 ## 4. Fix and re-run
 
-Once you've found the cause, the fix depends on **who was wrong** — inspect the evidence first, then branch:
+Once you've found the cause, the fix depends on **who was wrong**: inspect the evidence first, then branch:
 
-- **The agent was wrong** (the trace shows it skipped the document, the deliverable misses the substance): fix the agent — prompt, tools, model — and re-run. The new run gets its own trace, and you can compare against the previous failure to confirm the fix landed.
-- **The test was wrong** (you can demonstrate it against the recorded evidence — the substance is present, the judge read a parenthetical as a requirement): correct the history, then repair the test:
+- **The agent was wrong** (the trace shows it skipped the document, the deliverable misses the substance): fix the agent (prompt, tools, model) and re-run. The new run gets its own trace, and you can compare against the previous failure to confirm the fix landed.
+- **The test was wrong** (you can demonstrate it against the recorded evidence, the substance is present, the judge read a parenthetical as a requirement): correct the history, then repair the test:
 
   ```bash
   # 1. Correct this run's recorded result (evidence stays untouched)
@@ -97,9 +97,9 @@ Once you've found the cause, the fix depends on **who was wrong** — inspect th
   # 2. Repair the test itself so the NEXT run doesn't need the correction
   ```
 
-  Correcting history doesn't fix the future — the next run fails the same way until the instruction or matcher is repaired. See [Manual corrections](/concepts/tests/#manual-corrections).
+  Correcting history doesn't fix the future, the next run fails the same way until the instruction or matcher is repaired. See [Manual corrections](/concepts/tests/#manual-corrections).
 
-The `Trace:` id in the breakdown is that run's one trace — there's never ambiguity about which trace belongs to a run. See [Mental model](/concepts/mental-model/) for the one-trace-per-run rule.
+The `Trace:` id in the breakdown is that run's one trace, there's never ambiguity about which trace belongs to a run. See [Mental model](/concepts/mental-model/) for the one-trace-per-run rule.
 
 ## Batches
 

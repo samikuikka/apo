@@ -1,11 +1,11 @@
 ---
 title: "apo runs judgments"
-description: "List a run's judgments — the original verdict plus every re-judge — and read one judgment's full test evidence."
+description: "List a run's judgments (the original verdict plus every re-judge) and read one judgment's full test evidence."
 ---
 
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-`apo runs judgments` shows the verdict history of a run: the original verdict it ran with, plus every judgment recorded by [`apo runs rejudge`](/cli/runs-rejudge/). The original is always first and always canonical — comparisons start from it, and nothing rewrites it.
+`apo runs judgments` shows the verdict history of a run: the original verdict it ran with, plus every judgment recorded by [`apo runs rejudge`](/cli/runs-rejudge/). The original is always first and always canonical, comparisons start from it, and nothing rewrites it.
 
 ## Synopsis
 
@@ -18,7 +18,7 @@ apo runs judgments <run-id> [judgment-id]
 | Argument | Required | Purpose |
 |---|---|---|
 | `<run-id>` | yes | Run id, unique prefix, or `last`. |
-| `[judgment-id]` | no | One judgment's id — show its full test evidence instead of the summary list. |
+| `[judgment-id]` | no | One judgment's id, show its full test evidence instead of the summary list. |
 
 ## Example
 
@@ -32,17 +32,17 @@ apo runs judgments run_9efafa10f1c3e59647900db5
   lines={[
     { text: "Judgments on run run_9efafa10f1c3e59647900db5:", tone: "bold" },
     { text: "" },
-    { text: "  run_9efafa10f1c3e59647900db5 (original) — 3/3 checks" },
+    { text: "  run_9efafa10f1c3e59647900db5 (original): 3/3 checks" },
     { text: "    Judge: google/gemini-2.5-flash-lite   Created: 8/25/2026, 8:38 AM" },
     { text: "" },
-    { text: "  jdg_71143936fadf4d8f (rejudge) — 3/3 checks · 2 samples · sonnet calibration" },
+    { text: "  jdg_71143936fadf4d8f (rejudge): 3/3 checks · 2 samples · sonnet calibration" },
     { text: "    Judge: anthropic/claude-sonnet-4.5   Created: 8/25/2026, 8:41 AM" },
     { text: "" },
     { text: "Read one judgment's checks: apo runs judgments <run-id> <judgment-id>", tone: "dim" },
   ]}
 />
 
-Read one judgment's full breakdown — same format as `apo runs show`, plus per-test stability when the judgment used `--samples`:
+Read one judgment's full breakdown, same format as `apo runs show`, plus per-test stability when the judgment used `--samples`:
 
 ```bash
 apo runs judgments run_9efafa10f1c3e59647900db5 jdg_71143936fadf4d8f
@@ -50,7 +50,7 @@ apo runs judgments run_9efafa10f1c3e59647900db5 jdg_71143936fadf4d8f
 
 <TerminalOutput
   lines={[
-    { text: "  jdg_71143936fadf4d8f (rejudge) — 2/3 checks · 3 samples · sonnet calibration" },
+    { text: "  jdg_71143936fadf4d8f (rejudge): 2/3 checks · 3 samples · sonnet calibration" },
     { text: "    Judge: anthropic/claude-sonnet-4.5   Created: 8/25/2026, 8:41 AM" },
     { text: "" },
     { text: "  Checks:", tone: "bold" },
@@ -68,11 +68,11 @@ apo runs judgments run_9efafa10f1c3e59647900db5 jdg_71143936fadf4d8f
 
 | Field | Meaning |
 |---|---|
-| Trigger | `original` — the run's own verdict, synthesized from its stored evidence. `rejudge` — recorded by `apo runs rejudge`. |
+| Trigger | `original`, the run's own verdict, synthesized from its stored evidence. `rejudge`, recorded by `apo runs rejudge`. |
 | Judge | The judge model actually used, recovered from stored per-test evidence for the original, from the replay config for rejudges. |
 | Checks | Passed / total tests for that judgment. |
 | Samples | Judgments made with `--samples n` carry a per-test stability table (`2/5` = passed two of five samples). |
-| Revision | Judgments scored against a different definition revision than the run's pinned one say so explicitly — those scores are not comparable to the original verdict. |
+| Revision | Judgments scored against a different definition revision than the run's pinned one say so explicitly, those scores are not comparable to the original verdict. |
 
 Supports the global `--json` flag (the bare judgment array, like `runs list --json`).
 
@@ -85,6 +85,6 @@ Supports the global `--json` flag (the bare judgment array, like `runs list --js
 
 ## See also
 
-- [`apo runs rejudge`](/cli/runs-rejudge/) — record a new judgment against a run's stored deliverables.
-- [`apo runs correct`](/cli/runs-correct/) — record a *human* correction. Judgments stay machine-recorded: correcting a run's test result does not add, change, or promote any judgment listed here — the original entry keeps the counts evaluation emitted.
-- [`apo runs show`](/cli/runs-show/) — the run's canonical verdict; shows how many judgments are on record.
+- [`apo runs rejudge`](/cli/runs-rejudge/): record a new judgment against a run's stored deliverables.
+- [`apo runs correct`](/cli/runs-correct/): record a *human* correction. Judgments stay machine-recorded: correcting a run's test result does not add, change, or promote any judgment listed here, the original entry keeps the counts evaluation emitted.
+- [`apo runs show`](/cli/runs-show/): the run's canonical verdict; shows how many judgments are on record.

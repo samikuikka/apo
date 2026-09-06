@@ -5,7 +5,7 @@ description: Run a persistent Connected Executor for dashboard and scheduled wor
 
 # apo connect
 
-Connect your local workspace as a persistent executor. Dashboard and scheduled runs are delivered to this machine, executed against your current source, and reported back — without uploading source, paths, or credentials to the server.
+Connect your local workspace as a persistent executor. Dashboard and scheduled runs are delivered to this machine, executed against your current source, and reported back, without uploading source, paths, or credentials to the server.
 
 ## Synopsis
 
@@ -19,7 +19,7 @@ apo connect [--dir <path>] [--project <id>] [--name <name>] [--concurrency <n>]
 
 1. Discovers your local Task catalog and verifies it matches the Project's published catalog.
 2. Enrolls as a source-owned Executor (one-time; reuses the stored credential on restart).
-3. Polls for assignments — Tasks queued from the dashboard or a Schedule.
+3. Polls for assignments, Tasks queued from the dashboard or a Schedule.
 4. For each assignment: attests the local source hash, spawns an isolated child process, runs the Task through `runTaskDir`, and submits the result + trace.
 
 The server never receives your source code, repository credentials, environment variables, or file paths. It receives only Task identity, bounded results, and trace telemetry.
@@ -62,7 +62,7 @@ When the dashboard or a Schedule creates a Run, `apo connect` claims it and exec
 ✓ Completed: support/refund (3 active)
 ```
 
-The Run's Trace, Tests, and Deliverables appear in the dashboard as if the server ran it — but the execution happened on your machine, against your current source.
+The Run's Trace, Tests, and Deliverables appear in the dashboard as if the server ran it, but the execution happened on your machine, against your current source.
 
 ## Catalog changes
 
@@ -76,7 +76,7 @@ Publish the updated catalog and the connection resumes automatically. No restart
 
 ## Cancellation
 
-Press `Ctrl+C` once to stop new claims and gracefully cancel active Tasks. Press again to force exit. Lease recovery remains authoritative — an interrupted Task is never silently retried.
+Press `Ctrl+C` once to stop new claims and gracefully cancel active Tasks. Press again to force exit. Lease recovery remains authoritative, an interrupted Task is never silently retried.
 
 ## Flags
 
@@ -89,6 +89,6 @@ Press `Ctrl+C` once to stop new claims and gracefully cancel active Tasks. Press
 
 ## See also
 
-- [apo task publish](/cli/task-publish/) — publish your Task catalog
-- [apo task run](/cli/task-run/) — one-shot recorded execution
-- [Tasks](/concepts/tasks/) — how Tasks are discovered and structured
+- [apo task publish](/cli/task-publish/): publish your Task catalog
+- [apo task run](/cli/task-run/): one-shot recorded execution
+- [Tasks](/concepts/tasks/): how Tasks are discovered and structured

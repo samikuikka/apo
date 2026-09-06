@@ -6,12 +6,12 @@ description: How to point standard OTel instrumentation at apo for OpenAI, Anthr
 # OpenTelemetry framework setup
 
 apo accepts standard OTLP/HTTP traces from any OpenTelemetry-compatible
-instrumentation. No apo-specific SDK is required — just point your existing
+instrumentation. No apo-specific SDK is required, just point your existing
 OTel exporter at apo's OTLP endpoint.
 
 This page covers **LLM framework recipes** (OpenAI, Anthropic, Vercel AI
-SDK, LangChain). For plain-service tracing — any OTel-instrumented
-service or a company collector, no agent runs involved — see
+SDK, LangChain). For plain-service tracing, any OTel-instrumented
+service or a company collector, no agent runs involved, see
 [Send service traces](/guides/send-service-traces); it also covers
 searching by span attributes and per-key ingest quotas.
 
@@ -153,7 +153,7 @@ It requires `takeOwnership: true` so this process-wide responsibility is
 visible at the call site.
 
 The explicit `endpoint` and `headers` in the recipes below are optional.
-`configureApoTelemetry` reads them from env vars when omitted — the same ones
+`configureApoTelemetry` reads them from env vars when omitted, the same ones
 the Python bootstrap uses:
 
 | Env var | Used for |
@@ -165,12 +165,12 @@ the Python bootstrap uses:
 
 So the recipes all collapse to `configureApoTelemetry({ takeOwnership: true })`
 once those vars are set. there is no `NEXT_PUBLIC_APO_PUBLIC_KEY`
-variant — telemetry submission requires both halves of an API-key pair, so
+variant, telemetry submission requires both halves of an API-key pair, so
 the SDK never reads a browser-public value.
 
 ### Vercel AI SDK
 
-For TypeScript, the recommended path is the **Vercel AI SDK** (`ai` + `@ai-sdk/openai` or `@ai-sdk/anthropic`). It emits `gen_ai.*` OTel spans natively when telemetry is enabled — model name, token usage, tool calls are all captured automatically. Your code has zero span boilerplate.
+For TypeScript, the recommended path is the **Vercel AI SDK** (`ai` + `@ai-sdk/openai` or `@ai-sdk/anthropic`). It emits `gen_ai.*` OTel spans natively when telemetry is enabled, model name, token usage, tool calls are all captured automatically. Your code has zero span boilerplate.
 
 Register the OTel processor once at startup, then enable telemetry on each call:
 
@@ -179,12 +179,12 @@ import { generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { registerApoTracing } from "@apo-ai/sdk/agent-task";
 
-// Register once — the task runner's telemetry provider picks this processor up.
+// Register once: the task runner's telemetry provider picks this processor up.
 await registerApoTracing();
 
 const client = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Enable telemetry on the call — the SDK does the rest.
+// Enable telemetry on the call: the SDK does the rest.
 const result = await generateText({
   model: client.chat("gpt-4o"),
   messages: [{ role: "user", content: "Hello!" }],
@@ -220,13 +220,13 @@ with tracer.start_as_current_span("my-operation") as span:
 
 ## What apo normalizes
 
-apo's normalizer classifies every span through a priority chain — the first mapper that recognizes a span wins:
+apo's normalizer classifies every span through a priority chain, the first mapper that recognizes a span wins:
 
-1. **apo override** — an explicit `apo.observation.type` attribute.
-2. **OpenInference** — `openinference.span.kind` (LangChain / Arize Phoenix).
-3. **GenAI standard** — `gen_ai.*` (OpenAI, Anthropic, Vercel AI SDK instrumentation).
-4. **Vercel AI** — `ai.*` (the Vercel AI SDK's own span names).
-5. **Generic fallback** — always `SPAN`.
+1. **apo override**: an explicit `apo.observation.type` attribute.
+2. **OpenInference**: `openinference.span.kind` (LangChain / Arize Phoenix).
+3. **GenAI standard**: `gen_ai.*` (OpenAI, Anthropic, Vercel AI SDK instrumentation).
+4. **Vercel AI**: `ai.*` (the Vercel AI SDK's own span names).
+5. **Generic fallback**: always `SPAN`.
 
 A span carrying attributes from more than one convention is classified by whichever matches first in that order.
 
@@ -236,12 +236,12 @@ A span carrying attributes from more than one convention is classified by whiche
 | OpenInference | `openinference.span.kind` | `LLM`/`CHAT`→GENERATION, `TOOL`→TOOL, `RETRIEVER`→RETRIEVER, `RERANKER`→RETRIEVER, `AGENT`→AGENT, `CHAIN`→CHAIN, `EMBEDDING`→EMBEDDING |
 | GenAI standard | `gen_ai.*` | GENERATION (with model + token usage extracted) |
 | Vercel AI | `ai.*` | GENERATION, TOOL |
-| (fallback) | — | SPAN |
+| (fallback) | - | SPAN |
 
 Valid `apo.observation.type` values: `GENERATION`, `SPAN`, `TOOL`, `CHAIN`, `RETRIEVER`, `EVALUATOR`, `EMBEDDING`, `GUARDRAIL`, `AGENT`.
 
 :::note[Some spans don't appear as calls]
-Each span also carries a **disposition** — `observe`, `transparent`, or `drop`. Only `observe` spans become call rows in a trace. Vercel AI SDK wrappers like `ai.generateText` are `transparent`: they don't get a row, and their children (`ai.generateText.doGenerate`) reparent to the wrapper's parent. That's why a `generateText` span "disappears" but its `doGenerate` child shows up as the GENERATION call.
+Each span also carries a **disposition**: `observe`, `transparent`, or `drop`. Only `observe` spans become call rows in a trace. Vercel AI SDK wrappers like `ai.generateText` are `transparent`: they don't get a row, and their children (`ai.generateText.doGenerate`) reparent to the wrapper's parent. That's why a `generateText` span "disappears" but its `doGenerate` child shows up as the GENERATION call.
 :::
 
 Content capture (prompt/completion text) requires setting these env vars:
@@ -259,6 +259,6 @@ sensitive content at the instrumentation source before exporting it.
 
 ## Searching traces
 
-Filtering by service, operation, span attributes, and free text — plus
-the CLI equivalents — live in one place:
+Filtering by service, operation, span attributes, and free text, plus
+the CLI equivalents, live in one place:
 [Send service traces → Search](/guides/send-service-traces#_4-search-by-the-services-own-attributes).

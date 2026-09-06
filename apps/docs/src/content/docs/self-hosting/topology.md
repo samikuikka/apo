@@ -102,7 +102,7 @@ This is the canonical alpha deploy path. It assumes Docker and Docker Compose on
    docker compose up -d --build
    ```
 
-   Expect `frontend` and `backend` only — there is no server-side executor
+   Expect `frontend` and `backend` only, there is no server-side executor
    service. Task execution is Source-Owned: you run Tasks on your own machine
    with `apo task run` or `apo connect`.
 
@@ -128,6 +128,6 @@ After the first user exists, all further onboarding goes through normal account 
 :::caution[Source-Owned Execution boundary]
 Task code runs on the user's machine, not on the server. `apo task run` and
 `apo connect` execute locally with whatever credentials and network access the
-user has — the server only stores results and traces. Treat Task repositories
+user has, the server only stores results and traces. Treat Task repositories
 as trusted code, since they run in the developer's own environment.
 :::

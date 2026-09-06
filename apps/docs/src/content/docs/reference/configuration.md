@@ -3,7 +3,7 @@ title: Configuration
 description: "Every environment variable across backend, CLI, SDK, and the task runner."
 ---
 
-apo is configured through environment variables — no config files. This page is the complete reference. For operator guidance (databases, scheduler ownership, email, troubleshooting), see [Self-Hosting: Configuration](/self-hosting/configuration/).
+apo is configured through environment variables, no config files. This page is the complete reference. For operator guidance (databases, scheduler ownership, email, troubleshooting), see [Self-Hosting: Configuration](/self-hosting/configuration/).
 
 ## Backend
 
@@ -14,7 +14,7 @@ The backend reads these on start. Set them in `backend/.env` (or your container 
 | Variable | Purpose |
 |---|---|
 | `AUTH_SECRET` | Session signing secret. **Required for any non-dev deploy.** Empty in dev → open-dev mode (auth bypassed). Generate with `openssl rand -hex 32`. Must be ≥16 chars, not a placeholder. |
-| `DATABASE_URL` | Database DSN. When unset, apo uses its persistent SQLite file; this is the supported default for trials and small single-node alpha teams. The optional Compose Postgres profile sets a `postgresql://...` DSN for longer-lived shared installations or heavier concurrent writes — best-effort, as the test suite runs against SQLite. |
+| `DATABASE_URL` | Database DSN. When unset, apo uses its persistent SQLite file; this is the supported default for trials and small single-node alpha teams. The optional Compose Postgres profile sets a `postgresql://...` DSN for longer-lived shared installations or heavier concurrent writes, best-effort, as the test suite runs against SQLite. |
 
 ### LLM (agent-task runs)
 
@@ -25,19 +25,19 @@ credentials are read from the local environment:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENROUTER_API_KEY` | — | OpenRouter API key. Required for LLM-judge checks and adapter LLM calls. |
+| `OPENROUTER_API_KEY` | - | OpenRouter API key. Required for LLM-judge checks and adapter LLM calls. |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter-compatible base URL. |
-| `OPENROUTER_MODEL` | — | Judge model for local runs (`apo task run`, `apo connect`) — the model the local runner reads, with `OPENAI_MODEL` as the alternative. When both are unset, `t.judge` records a setup error instead of guessing. |
-| `AGENT_TASK_OPENROUTER_MODEL` | — | Judge model for the packaged task runtime (backend-spawned runs). Consulted after `AGENT_TASK_JUDGE_MODEL`; the final fallback is `google/gemini-2.5-flash`. Not read by local CLI runs. |
-| `OPENAI_API_KEY` | — | OpenAI API key. Alternative to OpenRouter for local/dev judge calls. |
-| `OPENAI_BASE_URL` | — | OpenAI-compatible base URL. |
-| `OPENAI_MODEL` | — | OpenAI model for local/dev judge calls. Read when `OPENROUTER_MODEL` is unset. |
+| `OPENROUTER_MODEL` |, | Judge model for local runs (`apo task run`, `apo connect`): the model the local runner reads, with `OPENAI_MODEL` as the alternative. When both are unset, `t.judge` records a setup error instead of guessing. |
+| `AGENT_TASK_OPENROUTER_MODEL` | - | Judge model for the packaged task runtime (backend-spawned runs). Consulted after `AGENT_TASK_JUDGE_MODEL`; the final fallback is `google/gemini-2.5-flash`. Not read by local CLI runs. |
+| `OPENAI_API_KEY` | - | OpenAI API key. Alternative to OpenRouter for local/dev judge calls. |
+| `OPENAI_BASE_URL` | - | OpenAI-compatible base URL. |
+| `OPENAI_MODEL` | - | OpenAI model for local/dev judge calls. Read when `OPENROUTER_MODEL` is unset. |
 
 ### Scheduler
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SCHEDULER_ENABLED` | `true` | Set `false` to disable schedule dispatch. Schedules stay visible but don't fire. **Never run two backends with this `true` against the same database** — the scheduler is in-process and single-owner. |
+| `SCHEDULER_ENABLED` | `true` | Set `false` to disable schedule dispatch. Schedules stay visible but don't fire. **Never run two backends with this `true` against the same database**: the scheduler is in-process and single-owner. |
 
 ### Task source
 
@@ -51,7 +51,7 @@ credentials are read from the local environment:
 | Variable | Default | Purpose |
 |---|---|---|
 | `APO_DEPLOYMENT_PROFILE` | (unset → `development`) | One of `development`, `local`, `server`. Release profiles (`local`, `server`) enable production auth behavior; unset/`development` is the only profile where dev conveniences (see `DEV_SIGNIN_ENABLED`) default on. |
-| `APO_PUBLIC_URL` | — | The origin people and agents use to reach this installation (e.g. `https://apo.example.com`). Must be a single origin without a path. The dashboard's first-run onboarding builds its copy-paste `apo login` command from it. |
+| `APO_PUBLIC_URL` | - | The origin people and agents use to reach this installation (e.g. `https://apo.example.com`). Must be a single origin without a path. The dashboard's first-run onboarding builds its copy-paste `apo login` command from it. |
 | `DEV_SIGNIN_ENABLED` | on only when profile is unset/`development` | One-click "Sign in as dev" button that provisions a seeded demo workspace (`dev@apo.local` + the `agent-demo` project). Release profiles must set `true` explicitly to enable it; any other value disables it. |
 | `APO_DEV_PROJECT_ID` | `agent-demo` | Id of the seeded dev workspace project. |
 | `APO_DEV_SEED_MODEL` | `deepseek/deepseek-v4-flash-0731` | Model label used for the seeded demo runs. |
@@ -107,7 +107,7 @@ The tracing SDK reads these environment variables:
 |---|---|
 | `APO_BACKEND_URL` | Backend URL. Also `NEXT_PUBLIC_APO_BACKEND_URL`. |
 | `APO_PROJECT` | Project id. Also `NEXT_PUBLIC_APO_PROJECT`. |
-| `APO_PUBLIC_KEY` | Public identifier (`pk-apo-…`) for HTTP Basic auth. Server-side only — pair with `APO_SECRET_KEY`. |
+| `APO_PUBLIC_KEY` | Public identifier (`pk-apo-…`) for HTTP Basic auth. Server-side only, pair with `APO_SECRET_KEY`. |
 | `APO_SECRET_KEY` | Secret key (`sk-apo-…`) for HTTP Basic auth. Server-side only. |
 | `APO_API_KEY` | Legacy single-key auth (alternative auth). |
 
@@ -143,7 +143,7 @@ source OAuth token, or ArtifactStore credentials.
 
 ## Telemetry ingest limits
 
-Caps on incoming OTLP trace traffic — request sizes, span counts, and
+Caps on incoming OTLP trace traffic, request sizes, span counts, and
 rate limits. These bound how much a single run or a runaway agent can
 push into the store per request/minute; they do not cap total storage
 (see maintenance above for that).
@@ -174,12 +174,12 @@ means unlimited — an invalid value fails startup.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `AUTH_SECRET` | — | Session signing secret (see Backend above). |
+| `AUTH_SECRET` | - | Session signing secret (see Backend above). |
 | `AUTH_SESSION_MAX_AGE_DAYS` | `7` | How long a login session stays valid. |
 | `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `10` | Max login attempts before lockout. |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `300` | Lockout window length. |
 | `AUTH_EMAIL_VERIFICATION_REQUIRED` | `false` | Require email verification before login. |
-| `ADMIN_API_KEY` | — | Admin-level API key for privileged routes. |
+| `ADMIN_API_KEY` | - | Admin-level API key for privileged routes. |
 
 ## Bootstrap, retention, and maintenance
 
@@ -187,19 +187,19 @@ A daily maintenance pass always runs (at startup, then every 24 h): it
 blanks raw OTLP ingest payloads past their replay window, fails artifact
 uploads abandoned past their TTL, and deletes expired credential tokens.
 Retention is **two-tier**: verdicts (run status, pass/fail, check counts,
-costs, corrections — the regression timeline) are never deleted
+costs, corrections, the regression timeline) are never deleted
 automatically, while run *evidence* can expire on a window. Setting
 `APO_EVIDENCE_RETENTION_DAYS` drops the evidence tier (transcripts,
 traces, check reports, rejudge check evidence, deliverables, attempt
-diagnostics) of old runs — bookmarked runs keep everything. Full deletion
+diagnostics) of old runs, bookmarked runs keep everything. Full deletion
 of old runs/traces happens only under `APO_RETENTION_DAYS`, which also
 purges the OTLP spans of what it deletes.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `INIT_USER_EMAIL` | — | First-run admin email (seeds an account on startup). |
-| `INIT_USER_PASSWORD` | — | First-run admin password. |
-| `INIT_USER_NAME` | — | First-run admin display name. |
+| `INIT_USER_EMAIL` | - | First-run admin email (seeds an account on startup). |
+| `INIT_USER_PASSWORD` | - | First-run admin password. |
+| `INIT_USER_NAME` | - | First-run admin display name. |
 | `APO_RETENTION_DAYS` | `0` | Days to keep runs/traces entirely (verdicts and all). `0` disables automatic deletion. |
 | `APO_EVIDENCE_RETENTION_DAYS` | `0` | Default days to keep run *evidence* (transcripts, traces, check reports, deliverables, attempt diagnostics). Verdicts stay forever; bookmarked runs keep their evidence. `0` keeps evidence forever. Per-project overrides live in Settings → Retention (`0` there = keep that project's evidence forever despite a shorter default). |
 | `APO_INGEST_RETENTION_DAYS` | `7` | Backstop window for OTLP ingest payloads of batches that never projected. A successfully projected batch's payload is blanked the moment projection commits (the canonical span store is the source of truth). `0` keeps unprojected payloads forever. |
@@ -209,7 +209,7 @@ purges the OTLP spans of what it deletes.
 | `APO_MAX_DB_PAGES` | `0` | SQLite page cap, applied on every connection. `0` disables the cap. |
 | `APO_PROJECTION_WRITE_MODE` | `slim` | How the trace projection stores call I/O. `slim` keeps full I/O only in canonical spans and writes bounded run-level previews for trace lists. Detail views resolve span-backed I/O from that canonical store. `dual` and `fat` remain temporary rollback modes for upgrades that have not completed the preview backfill. Trace lists never read full call I/O in any mode. |
 | `PROJECT_INVITATION_TTL_HOURS` | `168` | How long project invitations stay valid (7 days). |
-| `APO_READ_RATE_LIMIT_MAX` | `120` | Per-identity cap (per window) on the heavy list endpoints (`GET /v1/runs`, facets, task-run and batch-run lists). Generous by design — dashboard polling stays far below it; a leaking script gets 429s instead of pinning the database. `0` disables. |
+| `APO_READ_RATE_LIMIT_MAX` | `120` | Per-identity cap (per window) on the heavy list endpoints (`GET /v1/runs`, facets, task-run and batch-run lists). Generous by design, dashboard polling stays far below it; a leaking script gets 429s instead of pinning the database. `0` disables. |
 | `APO_READ_RATE_LIMIT_WINDOW_SECONDS` | `60` | The window for the read rate limit above. |
 
 See [Self-Hosting → Data Growth and Retention](/self-hosting/data-growth/)
@@ -219,7 +219,7 @@ for what accumulates, how the tiers work, and recommended settings.
 
 Deliverable metadata lives in the database; large JSON bodies and file
 Artifacts flow through an `ArtifactStore`. The default `local` backend writes
-under the existing persistent `/app/data` volume — no MinIO, Redis, or extra
+under the existing persistent `/app/data` volume, no MinIO, Redis, or extra
 container required. The optional `s3` backend keeps the same server API.
 
 | Variable | Default | Purpose |
@@ -230,19 +230,19 @@ container required. The optional `s3` backend keeps the same server API.
 | `APO_ARTIFACT_MAX_RUN_BYTES` | `524288000` | 500 MiB ready+pending per Task Run. |
 | `APO_ARTIFACT_UPLOAD_TTL_SECONDS` | `86400` | Pending-upload expiry (orphan cleanup). |
 | `APO_ARTIFACT_ORPHAN_GRACE_HOURS` | `48` | The daily pass reaps artifact-store objects no manifest row references (crash orphans). Objects younger than this grace are left alone; `staging/*.part` files are never touched. |
-| `APO_DEFAULT_DAILY_SPAN_QUOTA` | `0` | Default accepted-spans/day quota applied to NEWLY MINTED API keys. `0` = unlimited. Existing keys are untouched — edit per key (Settings → API Keys) or bulk-apply there. Quota is per key (N keys = N × cap) and resets at UTC midnight; over-quota ingest gets 429. |
+| `APO_DEFAULT_DAILY_SPAN_QUOTA` | `0` | Default accepted-spans/day quota applied to NEWLY MINTED API keys. `0` = unlimited. Existing keys are untouched, edit per key (Settings → API Keys) or bulk-apply there. Quota is per key (N keys = N × cap) and resets at UTC midnight; over-quota ingest gets 429. |
 | `APO_USAGE_RETENTION_DAYS` | `400` | Days to keep per-key daily ingest-usage rows. `0` = keep forever. |
-| `APO_S3_BUCKET` | — | Required for S3 writes. |
-| `APO_S3_REGION` | — | Optional; provider default otherwise. |
-| `APO_S3_ENDPOINT_URL` | — | S3-compatible endpoint (R2, MinIO, Backblaze). |
+| `APO_S3_BUCKET` | - | Required for S3 writes. |
+| `APO_S3_REGION` | - | Optional; provider default otherwise. |
+| `APO_S3_ENDPOINT_URL` | - | S3-compatible endpoint (R2, MinIO, Backblaze). |
 | `APO_S3_PREFIX` | `artifacts/` | Private key prefix. |
-| `APO_S3_ACCESS_KEY_ID` | — | Optional; credential chain otherwise. |
-| `APO_S3_SECRET_ACCESS_KEY` | — | Paired with the access key. |
+| `APO_S3_ACCESS_KEY_ID` | - | Optional; credential chain otherwise. |
+| `APO_S3_SECRET_ACCESS_KEY` | - | Paired with the access key. |
 | `APO_S3_FORCE_PATH_STYLE` | `false` | MinIO-like path-style compatibility. |
 
 Readiness (`/health/ready`) fails when the selected write backend is unusable.
 Rows persist `storage_backend` so changing the write backend never reinterprets
-existing rows — an installation must retain configuration for every backend
+existing rows, an installation must retain configuration for every backend
 referenced by live rows.
 
 :::warning
@@ -254,5 +254,5 @@ generation.
 
 ## See also
 
-- [Self-Hosting: Configuration](/self-hosting/configuration/) — operator guidance: databases, scheduler ownership, email setup, troubleshooting, the readiness probe.
-- [CLI overview](/cli/) — the `apo` command surface.
+- [Self-Hosting: Configuration](/self-hosting/configuration/): operator guidance: databases, scheduler ownership, email setup, troubleshooting, the readiness probe.
+- [CLI overview](/cli/): the `apo` command surface.

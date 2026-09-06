@@ -1,13 +1,13 @@
 ---
 title: "apo runs rejudge"
-description: "Re-judge a completed run against its stored deliverables — without re-running the agent."
+description: "Re-judge a completed run against its stored deliverables, without re-running the agent."
 ---
 
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-`apo runs rejudge` replays a completed run's tests against the deliverables the run already produced. The agent is not re-run and nothing is re-billed for execution — the stored deliverables are fetched, the run's pinned task definition is replayed, and the tests evaluate exactly what the agent actually delivered that day.
+`apo runs rejudge` replays a completed run's tests against the deliverables the run already produced. The agent is not re-run and nothing is re-billed for execution, the stored deliverables are fetched, the run's pinned task definition is replayed, and the tests evaluate exactly what the agent actually delivered that day.
 
-This solves a measured problem: on rubric-heavy tasks, roughly one in six judged tests is decided by *which judge was configured*, not by what the agent produced. Re-judging is how you see that variance instead of paying for it — swap the judge model, replay a corrected test revision, or sample for stability against history you already own. The original verdict is never overwritten; each re-judge is recorded as a new judgment next to it.
+This solves a measured problem: on rubric-heavy tasks, roughly one in six judged tests is decided by *which judge was configured*, not by what the agent produced. Re-judging is how you see that variance instead of paying for it, swap the judge model, replay a corrected test revision, or sample for stability against history you already own. The original verdict is never overwritten; each re-judge is recorded as a new judgment next to it.
 
 ## Synopsis
 
@@ -17,11 +17,11 @@ apo runs rejudge <run-id> [--judge-model <m>] [--samples <n>] [--label <text>] [
 
 ## What it does
 
-1. Fetches the run's deliverables and its **pinned task definition revision** — the exact `*.eval.ts` that defined the run's tests, not today's edit of it.
+1. Fetches the run's deliverables and its **pinned task definition revision**: the exact `*.eval.ts` that defined the run's tests, not today's edit of it.
 2. Executes the revision's full test set here, in your CLI, with the deliverables substituted in. The backend never executes task code; it only serves the sources and stores the result.
 3. Records the outcome as a judgment (`trigger: rejudge`) on the run. `apo runs show` keeps showing the original verdict as canonical.
 
-The whole test set replays every time. There is deliberately no way to re-judge only the tests that failed — keeping the draws you like and discarding the rest is a one-directional ratchet toward PASS, and the variance this command exists to measure would silently disappear.
+The whole test set replays every time. There is deliberately no way to re-judge only the tests that failed, keeping the draws you like and discarding the rest is a one-directional ratchet toward PASS, and the variance this command exists to measure would silently disappear.
 
 ## Arguments
 
@@ -36,15 +36,15 @@ The whole test set replays every time. There is deliberately no way to re-judge 
 | `--judge-model <m>` | from env | Judge model for `t.judge` tests (`AGENT_TASK_JUDGE_MODEL`, `OPENROUTER_MODEL`, or `OPENAI_MODEL`). |
 | `--judge-base-url <url>` | from env | OpenAI-compatible base URL for the judge (`OPENROUTER_BASE_URL` or `OPENAI_BASE_URL`). |
 | `--samples <n>` | `1` | Judge the same deliverables n times (1–50) for a per-test stability measure. |
-| `--label <text>` | — | Operator label recorded on the judgment, e.g. `sonnet-4.5 calibration`. |
-| `--definition-revision <id>` | run's pinned | Score against a different revision. The judgment is stamped with it — it can never be misread as "the same eval, better judge". |
+| `--label <text>` | - | Operator label recorded on the judgment, e.g. `sonnet-4.5 calibration`. |
+| `--definition-revision <id>` | run's pinned | Score against a different revision. The judgment is stamped with it, it can never be misread as "the same eval, better judge". |
 | `--task-dir <path>` | auto | Local checkout of the task directory. Enables relative imports and `files/` fixtures in the replayed eval. Auto-derived from `--dir` or the run's task path when they exist. |
-| `--dry-run` | — | Replay but record nothing. The judge calls still happen and still cost money. |
-| `--verbose` | — | Show all assertions including judge prompts and responses. |
-| `--exit-status` | — | Exit non-zero if the re-judged verdict fails (for CI). |
-| `--task <id>` | — | When using `last`, scope to the latest run of this task. |
+| `--dry-run` | - | Replay but record nothing. The judge calls still happen and still cost money. |
+| `--verbose` | - | Show all assertions including judge prompts and responses. |
+| `--exit-status` | - | Exit non-zero if the re-judged verdict fails (for CI). |
+| `--task <id>` | - | When using `last`, scope to the latest run of this task. |
 
-The judge API key comes from `OPENROUTER_API_KEY` or `OPENAI_API_KEY` — it is used locally and never recorded on the judgment (only the model and base URL are).
+The judge API key comes from `OPENROUTER_API_KEY` or `OPENAI_API_KEY`, it is used locally and never recorded on the judgment (only the model and base URL are).
 
 ## Example
 
@@ -79,11 +79,11 @@ apo runs rejudge last --judge-model anthropic/claude-sonnet-4.5 --samples 2 --la
 
 ## What replay can and cannot see
 
-- **Deliverable tests** (`t.check`, `t.judge` on deliverables) replay faithfully — deliverable bodies are persisted and fetched byte-for-byte.
-- **Trajectory tests** (`t.calledTool`, `t.maxTurns`, …) replay against the run's stored trace projection when one exists. Without a trace, they are recorded as **unsupported** — visible in the output, never silently skipped.
+- **Deliverable tests** (`t.check`, `t.judge` on deliverables) replay faithfully, deliverable bodies are persisted and fetched byte-for-byte.
+- **Trajectory tests** (`t.calledTool`, `t.maxTurns`, …) replay against the run's stored trace projection when one exists. Without a trace, they are recorded as **unsupported**: visible in the output, never silently skipped.
 - **Fixture files** (`files/`) resolve from a local checkout of the task (`--task-dir`); without one, file-listing tests fail honestly rather than pretend.
 
-Replay is refused outright when any expected deliverable is missing or not `ready` — incomplete stored evidence must surface as a refusal, not as a low score.
+Replay is refused outright when any expected deliverable is missing or not `ready`, incomplete stored evidence must surface as a refusal, not as a low score.
 
 ## Exit codes
 
@@ -95,6 +95,6 @@ Replay is refused outright when any expected deliverable is missing or not `read
 
 ## See also
 
-- [`apo runs judgments`](/cli/runs-judgments/) — list a run's judgments and read one judgment's full test evidence.
-- [`apo runs deliverable`](/cli/runs-deliverable/) — read the deliverables a re-judge replays against.
-- [Tests](/concepts/tests/) — what replays, and the verdict-validity rules replay inherits.
+- [`apo runs judgments`](/cli/runs-judgments/): list a run's judgments and read one judgment's full test evidence.
+- [`apo runs deliverable`](/cli/runs-deliverable/): read the deliverables a re-judge replays against.
+- [Tests](/concepts/tests/): what replays, and the verdict-validity rules replay inherits.

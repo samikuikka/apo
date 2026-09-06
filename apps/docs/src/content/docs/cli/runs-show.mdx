@@ -6,7 +6,7 @@ description: "Show a run's verdict, checks, and failures."
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-`apo runs show` reads a run's result — the verdict, the per-test breakdown, the cost, and the failure reasons. It's what you (or a coding agent) use after [`apo task run`](/cli/task-run/) to see what happened.
+`apo runs show` reads a run's result, the verdict, the per-test breakdown, the cost, and the failure reasons. It's what you (or a coding agent) use after [`apo task run`](/cli/task-run/) to see what happened.
 
 <TerminalDemo
   command="apo runs show run_de89cab0"
@@ -52,7 +52,7 @@ apo runs show [run-id] [--task <id>] [--verbose] [--exit-status]
 
 Shows a run's details. The argument is a **run id** (the output of `apo task run`), a unique prefix of one, or the literal `last` (the default) for the most recent run.
 
-Large per-check values — typically the deliverable re-sent inside every judged criterion's `received` — are shown as a one-line manifest (e.g. `+ Received: ⟨20,000 chars — apo runs deliverable⟩`) instead of dumped in full. This keeps a failed run readable: the `reasoning` explains the failure, not a wall of deliverable text, and it stops the same deliverable being re-billed per criterion. Read the full content with [`apo runs deliverable`](/cli/runs-deliverable/) — it fetches a deliverable **once**, not per check.
+Large per-check values (typically the deliverable re-sent inside every judged criterion's `received`) are shown as a one-line manifest (e.g. `+ Received: ⟨20,000 chars, apo runs deliverable⟩`) instead of dumped in full. This keeps a failed run readable: the `reasoning` explains the failure, not a wall of deliverable text, and it stops the same deliverable being re-billed per criterion. Read the full content with [`apo runs deliverable`](/cli/runs-deliverable/): it fetches a deliverable **once**, not per check.
 
 ## Options
 
@@ -61,7 +61,7 @@ Large per-check values — typically the deliverable re-sent inside every judged
 | `[run-id]` | `last` | Run id, unique prefix, or `last`. With no arg, resolves the latest run. |
 | `--verbose` | off | Show passing checks too (not just failures) and LLM-judge transcripts. |
 | `--exit-status` | off | Exit `0` only when the run's verdict is PASS; exit `1` for FAIL, for a run that errored, or for a run with **no verdict**. |
-| `--task <id>` | — | When using `last`, scope to the latest run of this task. |
+| `--task <id>` | - | When using `last`, scope to the latest run of this task. |
 
 ## Output
 
@@ -85,9 +85,9 @@ Every field of the run record: identity (`Run`, `Task`, `Path`, `Batch`, `Adapte
   ]}
 />
 
-The second sample is a run with **no verdict**: most of its generations ended in error, so apo refused to turn the checks into a PASS/FAIL signal (see [Verdict validity](/concepts/tests/#verdict-validity)). The `Generations` row only appears when generations errored; `Result` shows `-` because there is no verdict to show. Cost and token totals are marked `partial` — errored generations are excluded from both, and unpriced calls are excluded from cost.
+The second sample is a run with **no verdict**: most of its generations ended in error, so apo refused to turn the checks into a PASS/FAIL signal (see [Verdict validity](/concepts/tests/#verdict-validity)). The `Generations` row only appears when generations errored; `Result` shows `-` because there is no verdict to show. Cost and token totals are marked `partial`, errored generations are excluded from both, and unpriced calls are excluded from cost.
 
-With `--verbose`, passing checks are listed with their matchers, and judged checks include the judge's model, prompt, and response — so you can see exactly what the judge was asked and what it said.
+With `--verbose`, passing checks are listed with their matchers, and judged checks include the judge's model, prompt, and response, so you can see exactly what the judge was asked and what it said.
 
 ## Corrected tests
 
@@ -98,11 +98,11 @@ A test that was [manually corrected](/cli/runs-correct/) shows its **effective**
       recorded FAIL · corrected by sami@company.test: Retention is present; judge missed the table
 ```
 
-The `Checks:` header carries the count (`3/3 passed (0 failed) · 1 corrected`), and `--exit-status` uses the **effective** run verdict — a corrected run that now passes exits `0`.
+The `Checks:` header carries the count (`3/3 passed (0 failed) · 1 corrected`), and `--exit-status` uses the **effective** run verdict, a corrected run that now passes exits `0`.
 
 ## The three ids
 
-`apo runs show` takes a **run id**. This is distinct from the **task id** (`apo task run` takes that) and the **trace id** (a separate field on the run, printed at the bottom of the output — pass it to `apo traces show`).
+`apo runs show` takes a **run id**. This is distinct from the **task id** (`apo task run` takes that) and the **trace id** (a separate field on the run, printed at the bottom of the output, pass it to `apo traces show`).
 
 ## Example
 
@@ -122,8 +122,8 @@ apo runs show last --task extract-parties
 
 ## See also
 
-- [`apo runs deliverable`](/cli/runs-deliverable/) — read a run's deliverables (manifest, or one deliverable's full content).
-- [`apo runs correct`](/cli/runs-correct/) — record a human correction on one recorded test result.
-- [`apo task run`](/cli/task-run/) — produce a run to inspect.
-- [`apo traces show`](/cli/traces-show/) — drill into the call tree when a test fails.
-- [Run and debug](/guides/run-and-debug/) — the manual debugging workflow.
+- [`apo runs deliverable`](/cli/runs-deliverable/): read a run's deliverables (manifest, or one deliverable's full content).
+- [`apo runs correct`](/cli/runs-correct/): record a human correction on one recorded test result.
+- [`apo task run`](/cli/task-run/): produce a run to inspect.
+- [`apo traces show`](/cli/traces-show/): drill into the call tree when a test fails.
+- [Run and debug](/guides/run-and-debug/): the manual debugging workflow.

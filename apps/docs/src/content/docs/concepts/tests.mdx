@@ -42,7 +42,7 @@ If every test passes, the run passes. If any test fails, the run fails. No weigh
 
 A test never throws. It records. One test can make several assertions, and you'll see each in the breakdown. A failing assertion doesn't stop the test; it keeps going and reports everything it found.
 
-That pass/fail only exists when the execution itself was sound. When it wasn't, apo records an error instead of a verdict — see [Verdict validity](#verdict-validity).
+That pass/fail only exists when the execution itself was sound. When it wasn't, apo records an error instead of a verdict, see [Verdict validity](#verdict-validity).
 
 ## What a failure looks like
 
@@ -75,29 +75,29 @@ A judge's model, prompt, and response stay inspectable inside the test that used
 
 ## Verdict validity
 
-A PASS/FAIL verdict claims "the agent ran, and here is what it produced." When the model backend itself failed — rate limits, outages, bad credentials — that claim would be a lie. So apo watches the run's generations, and when **most of them ended in error**, it records **no verdict**:
+A PASS/FAIL verdict claims "the agent ran, and here is what it produced." When the model backend itself failed (rate limits, outages, bad credentials) that claim would be a lie. So apo watches the run's generations, and when **most of them ended in error**, it records **no verdict**:
 
-- The run lands with status `error` and no PASS/FAIL — the dashboard shows **no verdict**, and the CLI shows `Result: -` with a `Generations: 17/22 errored` line.
-- The tests are still computed and stored — as **diagnostic evidence**, not as a control signal. A "PASS" over a run where 17 of 22 model calls died says nothing about your prompt.
+- The run lands with status `error` and no PASS/FAIL, the dashboard shows **no verdict**, and the CLI shows `Result: -` with a `Generations: 17/22 errored` line.
+- The tests are still computed and stored, as **diagnostic evidence**, not as a control signal. A "PASS" over a run where 17 of 22 model calls died says nothing about your prompt.
 - Cost and token totals are marked **partial**: errored generations are excluded (a failed provider call often reports no usage at all, which would otherwise project as a suspiciously cheap run), and unpriced calls are excluded from cost the same way.
 
-A minority of errored generations — the run recovered — keeps its normal PASS/FAIL verdict; the totals are still disclosed as partial. The strict rule is: silence beats a wrong signal.
+A minority of errored generations (the run recovered) keeps its normal PASS/FAIL verdict; the totals are still disclosed as partial. The strict rule is: silence beats a wrong signal.
 
 ## Re-judging a run
 
-A verdict is only meaningful together with the conditions that produced it: the task definition it ran under, and — for judged tests — the judge model that was configured. Change the judge and the *same deliverables* score differently: on rubric-heavy tasks, roughly one in six judged criteria flips with the judge, not the agent. That variance is a property of your eval, and you should be able to see it without re-running the agent.
+A verdict is only meaningful together with the conditions that produced it: the task definition it ran under, and (for judged tests) the judge model that was configured. Change the judge and the *same deliverables* score differently: on rubric-heavy tasks, roughly one in six judged criteria flips with the judge, not the agent. That variance is a property of your eval, and you should be able to see it without re-running the agent.
 
 `apo runs rejudge` replays a completed run's tests against the deliverables the run already stored, under a judge you choose now. Each replay is recorded as a **judgment** on the run:
 
-- The run's original verdict stays first and canonical — `runs show`, the dashboard, and comparisons keep reading it. Judgments accumulate next to it, never over it.
-- Replay scores against the run's **pinned task definition revision** — the exact `*.eval.ts` that ran — so a re-judged score answers "same eval, different judge?". Scoring old deliverables against a *new* rubric is a different question and is stamped as such.
-- The full test set replays every time. Re-judging only the criteria that failed would keep the draws you like and discard the rest — a ratchet toward PASS that destroys exactly the variance you're measuring.
+- The run's original verdict stays first and canonical, `runs show`, the dashboard, and comparisons keep reading it. Judgments accumulate next to it, never over it.
+- Replay scores against the run's **pinned task definition revision** (the exact `*.eval.ts` that ran) so a re-judged score answers "same eval, different judge?". Scoring old deliverables against a *new* rubric is a different question and is stamped as such.
+- The full test set replays every time. Re-judging only the criteria that failed would keep the draws you like and discard the rest, a ratchet toward PASS that destroys exactly the variance you're measuring.
 - Replay refuses runs whose deliverables are incomplete, for the same reason verdict validity suppresses errored runs: a missing deliverable must not dress up as a low score.
 
-Judging the same run several times (`--samples`) turns "this test failed" into "this test fails 2 of 5 times" — which is what you actually need to know before spending agent budget chasing it.
+Judging the same run several times (`--samples`) turns "this test failed" into "this test fails 2 of 5 times", which is what you actually need to know before spending agent budget chasing it.
 
 :::tip
-Before changing your task's judge model, re-judge a handful of historical runs under the new one. If the scores move, your baseline moved — and you'll know it was the judge, not the agents.
+Before changing your task's judge model, re-judge a handful of historical runs under the new one. If the scores move, your baseline moved, and you'll know it was the judge, not the agents.
 :::
 
 ## Manual corrections
@@ -111,11 +111,11 @@ apo runs correct run_de89cab "report-is-complete" --pass \
 
 Three terms keep this honest:
 
-- The **recorded result** is what evaluation emitted — immutable, with its assertions, reasoning, and judge evidence.
+- The **recorded result** is what evaluation emitted, immutable, with its assertions, reasoning, and judge evidence.
 - A **correction** is an append-only human decision (who, when, why) that sets one test's **effective** result to PASS/FAIL, or restores the recorded one.
-- The **effective result** — latest active correction, else the recorded result — is what run verdicts, batch rollups, lists, stats, new comparisons, and `runs show --exit-status` all use.
+- The **effective result** (latest active correction, else the recorded result) is what run verdicts, batch rollups, lists, stats, new comparisons, and `runs show --exit-status` all use.
 
-A correction is not a re-judge: a re-judge produces a new *machine* judgment; a correction records a *human* one about existing evidence. Both leave the original verdict inspectable — `apo runs judgments` still lists the original machine counts verbatim.
+A correction is not a re-judge: a re-judge produces a new *machine* judgment; a correction records a *human* one about existing evidence. Both leave the original verdict inspectable, `apo runs judgments` still lists the original machine counts verbatim.
 
 Correcting history does not fix the future. After correcting, repair the test itself (a better instruction, a `similarity` matcher where wording varies) so the next run doesn't need the correction.
 
@@ -123,6 +123,6 @@ Correcting history does not fix the future. After correcting, repair the test it
 
 - [Tasks](/concepts/tasks/), where `test(...)` sits in the `.eval.ts` file.
 - [Adapters](/concepts/adapters/), where `deliverables` comes from.
-- [`apo runs rejudge`](/cli/runs-rejudge/) — replay a run's tests against its stored deliverables.
-- [`apo runs correct`](/cli/runs-correct/) — record a human correction on a recorded test result.
+- [`apo runs rejudge`](/cli/runs-rejudge/): replay a run's tests against its stored deliverables.
+- [`apo runs correct`](/cli/runs-correct/): record a human correction on a recorded test result.
 - [Run and debug](/guides/run-and-debug/), the workflow from a failing test to the trace.

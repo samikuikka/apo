@@ -21,13 +21,13 @@ The result is useful to both humans and machines. A developer, CI workflow, or c
 
 The agent tooling ecosystem grew from several directions, and most of it sorts into two groups with established winners.
 
-**Testing and eval frameworks** — DeepEval, Promptfoo, and their neighbors — start from a test case plus an evaluator. Their question: *did this execution satisfy the assertion or metric I defined?*
+**Testing and eval frameworks** (DeepEval, Promptfoo, and their neighbors) start from a test case plus an evaluator. Their question: *did this execution satisfy the assertion or metric I defined?*
 
-**Observability and eval platforms** — Arize, Langfuse, Braintrust — start from an execution record: capture traces of what your AI already did, score them, mine datasets from them, monitor what ships. Their question: *how is my system behaving, and did this change make it better?*
+**Observability and eval platforms** (Arize, Langfuse, Braintrust) start from an execution record: capture traces of what your AI already did, score them, mine datasets from them, monitor what ships. Their question: *how is my system behaving, and did this change make it better?*
 
 apo starts from a different object: the **capability specification**.
 
-*What must this harness be capable of doing — under these conditions, within these constraints, leaving behind this result?*
+*What must this harness be capable of doing, under these conditions, within these constraints, leaving behind this result?*
 
 apo makes that statement executable: it loads the task with its fixtures, runs the real harness, collects what the agent produced, and returns a verdict.
 
@@ -37,7 +37,7 @@ apo makes that statement executable: it loads the task with its fixtures, runs t
 | Observability & eval platforms | How is my AI system behaving and changing? |
 | **apo** | **Can this harness reliably do what we require?** |
 
-There is overlap between all three, and that's fine. apo doesn't replace an observability stack: production failures found there become apo regression tests, and existing evaluators can help verify a specification. The distinction is what everything is organized around — in apo, the primary artifact is the executable definition of what your agent system must be capable of doing.
+There is overlap between all three, and that's fine. apo doesn't replace an observability stack: production failures found there become apo regression tests, and existing evaluators can help verify a specification. The distinction is what everything is organized around, in apo, the primary artifact is the executable definition of what your agent system must be capable of doing.
 
 ## The specification is the source of truth
 
@@ -51,7 +51,7 @@ capability specification → run the real harness → PASS / FAIL
    └──────── improve the harness until it passes ─┘
 ```
 
-Production traces can tell you what happened. They cannot define what your system should be. A specification can — and once written, it applies the same standard every run, gates every change, and gives a coding agent a concrete target to work against.
+Production traces can tell you what happened. They cannot define what your system should be. A specification can, and once written, it applies the same standard every run, gates every change, and gives a coding agent a concrete target to work against.
 
 Most of the choices below fall out of taking that specification seriously.
 
@@ -142,7 +142,7 @@ The breakdown tells you *what* failed: which test, what was expected, what came 
 
 apo treats the trace as a first-class surface, not an afterthought bolted onto an eval tool. Each run owns exactly one trace: never two competing ones, never a guessing game about which trace belongs to which run. A failure you can't debug is a failure you can't fix.
 
-But the trace is evidence, not the workflow. It exists because a test failed — pytest can print an enormous stack trace, and nobody calls pytest a stack-trace analytics product. When a run passes, you may never open the trace at all.
+But the trace is evidence, not the workflow. It exists because a test failed, pytest can print an enormous stack trace, and nobody calls pytest a stack-trace analytics product. When a run passes, you may never open the trace at all.
 
 ## Schedules as policy
 
@@ -156,7 +156,7 @@ A task says *what* to evaluate. When it runs is a separate concern, and the righ
 
 **A coding agent can run this whole loop itself.** You write the tests once, encoding your expert judgment, then hand the loop to the agent: it runs the task from the CLI, reads the result, opens the trace, iterates on the codebase, and runs again until the tests pass. Your expertise lives in the tests; the agent applies it without you watching each run.
 
-This loop has a name: **harness engineering**. The thing being optimized is not a prompt — it's the harness itself: model choice, prompts, context construction, tools and their descriptions, orchestration, and code. The test suite is the interface between your domain expertise and the agents improving the system.
+This loop has a name: **harness engineering**. The thing being optimized is not a prompt, it's the harness itself: model choice, prompts, context construction, tools and their descriptions, orchestration, and code. The test suite is the interface between your domain expertise and the agents improving the system.
 
 apo is the harness inside that loop, not the repair agent. It runs one Task Run at a time and reports what happened. The coding agent owns the edits and decides when to start another Task Run.
 

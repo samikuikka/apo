@@ -1,10 +1,10 @@
 /**
- * llms.txt — the agent-discovery index for the apo docs (llmstxt.org format).
+ * llms.txt, the agent-discovery index for the apo docs (llmstxt.org format).
  *
  * AI agents that land on the site (or are pointed here by a user) fetch this
  * file first. It states what apo is in one paragraph, then indexes every docs
  * page. Every link targets the `.md` rendition served by [...slug].md.ts —
- * clean markdown, no navigation chrome — so an agent never has to parse HTML.
+ * clean markdown, no navigation chrome, so an agent never has to parse HTML.
  *
  * Generated from the content collection at build time, so it cannot drift:
  * editing a page's frontmatter title/description updates llms.txt on the next
@@ -19,7 +19,7 @@ import { getCollection } from 'astro:content';
 const ORIGIN = import.meta.env.SITE;
 
 /**
- * Ordered slugs per section — the index an agent should read top to bottom.
+ * Ordered slugs per section, the index an agent should read top to bottom.
  * Keep in sync with the sidebar order in astro.config.mjs.
  */
 const SECTIONS: { heading: string; slugs: string[] }[] = [
@@ -99,11 +99,11 @@ const SECTIONS: { heading: string; slugs: string[] }[] = [
 const INTRO = `# apo
 
 > apo is a testing and engineering system for agent harnesses. You define what
-> your agent must be capable of — tasks, constraints, deliverables — and apo
+> your agent must be capable of (tasks, constraints, deliverables) and apo
 > makes that specification executable: it runs your real agent through an
 > adapter, asserts on the deliverable it produced and the trace of what it did
-> (code assertions and LLM judges), and returns a binary verdict — pass or
-> fail — with the full evidence. Not another eval framework, not a
+> (code assertions and LLM judges), and returns a binary verdict, pass or
+> fail, with the full evidence. Not another eval framework, not a
 > prompt-scoring tool, not an observability platform.
 
 Usage: install the CLI from npm (\`npm install -g @apo-ai/cli\`), the SDK for
@@ -112,14 +112,14 @@ tasks (\`npm install @apo-ai/sdk\`), or self-host the server from source
 the same path without the \`.md\` suffix.
 
 - [Set up apo (complete agent skill)](${ORIGIN}/start.md): a self-contained
-  guide for coding agents — discovery, adapter, first task, first run, debug
+  guide for coding agents, discovery, adapter, first task, first run, debug
   loop. Start here if you are an agent helping a user adopt apo.
 - [GitHub repository](https://github.com/samikuikka/apo): source, example
   service, self-hosting scripts.
 - [npm: @apo-ai/sdk](https://www.npmjs.com/package/@apo-ai/sdk): task,
   adapter, assertions, and tracing APIs.
 - [npm: @apo-ai/cli](https://www.npmjs.com/package/@apo-ai/cli): the \`apo\`
-  command — task publish/run, runs, traces, connect.
+  command, task publish/run, runs, traces, connect.
 `;
 
 /** Map of slug → title/description, built from the docs collection. */
@@ -161,7 +161,7 @@ async function buildLlmsTxt(): Promise<string> {
 	});
 
 	// Anything not in a section list (e.g. a page added before sidebar wiring)
-	// still belongs in the index — append it alphabetically rather than dropping it.
+	// still belongs in the index, append it alphabetically rather than dropping it.
 	const extras = [...pages.keys()]
 		.filter((slug) => !listed.has(slug))
 		.sort()

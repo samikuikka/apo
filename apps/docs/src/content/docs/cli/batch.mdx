@@ -1,6 +1,6 @@
 ---
 title: "apo batch"
-description: "List and watch batch runs — many tasks run together — and permanently delete poisoned ones."
+description: "List and watch batch runs (many tasks run together) and permanently delete poisoned ones."
 ---
 
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
@@ -37,7 +37,7 @@ A batch run executes multiple tasks in one operation and reports the aggregate r
 />
 ## `apo batch show`
 
-Show a batch run's details — aggregate counts, per-task results, costs, and trace ids.
+Show a batch run's details, aggregate counts, per-task results, costs, and trace ids.
 
 ### Synopsis
 
@@ -103,11 +103,11 @@ apo batch list [--status <s>]
   ]}
 />
 
-A batch's `Cost` is the sum over its task runs; when any run had unpriced model calls, the total is suffixed `partial` — the same rule as [`apo runs list`](/cli/runs-list/), so an incomplete total never reads as a cheap one.
+A batch's `Cost` is the sum over its task runs; when any run had unpriced model calls, the total is suffixed `partial`, the same rule as [`apo runs list`](/cli/runs-list/), so an incomplete total never reads as a cheap one.
 
 ## `apo batch delete`
 
-Permanently delete a batch run and every task run it owns. For batches that went wrong end to end — infrastructure failure, wrong environment — where deleting run-by-run would be tedious.
+Permanently delete a batch run and every task run it owns. For batches that went wrong end to end (infrastructure failure, wrong environment) where deleting run-by-run would be tedious.
 
 ### Synopsis
 
@@ -123,7 +123,7 @@ apo batch delete <batch-id> --yes
 | `--yes` | (required) | Confirms the irreversible delete. Without it, the command prints what would go and exits `2`. |
 
 :::danger[Irreversible]
-Deletes the batch, all its task runs (checks, judgments, corrections, deliverables — rows and stored objects — attempts, and traces), and its task revision bundles. There is no undo. Terminal batches only — cancel a live batch first. Requires project admin. Never prompts, so it is safe for agents and CI.
+Deletes the batch, all its task runs (checks, judgments, corrections, deliverables, rows and stored objects, attempts, and traces), and its task revision bundles. There is no undo. Terminal batches only, cancel a live batch first. Requires project admin. Never prompts, so it is safe for agents and CI.
 :::
 
 ### Output
@@ -136,6 +136,6 @@ Deletes the batch, all its task runs (checks, judgments, corrections, deliverabl
 
 ## See also
 
-- [`apo runs delete`](/cli/runs-delete/) — delete individual task runs; the batch stays with recomputed rollups.
-- [`apo task run`](/cli/task-run/) — run a single task.
-- [CLI overview](/cli/) — the full command surface.
+- [`apo runs delete`](/cli/runs-delete/): delete individual task runs; the batch stays with recomputed rollups.
+- [`apo task run`](/cli/task-run/): run a single task.
+- [CLI overview](/cli/): the full command surface.

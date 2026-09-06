@@ -3,10 +3,10 @@ title: Hosted Alpha
 description: Invited to a hosted apo? Get from your invitation to a recorded agent run.
 ---
 
-**From invitation to recorded evidence.** You were invited to an apo installation that someone else operates. You never self-host anything, you never touch their data, and your agent runs on *your* machine — apo only records what happened and why it passed or failed.
+**From invitation to recorded evidence.** You were invited to an apo installation that someone else operates. You never self-host anything, you never touch their data, and your agent runs on *your* machine, apo only records what happened and why it passed or failed.
 
 :::note
-This page begins after you receive an invitation link. Don't have one? Accounts on a hosted apo are invitation-only by design — ask the installation's administrator; the [alpha policy](/alpha-policy/) says how access works. If you're the one operating the server, start with the [Quickstart](/quickstart/) instead.
+This page begins after you receive an invitation link. Don't have one? Accounts on a hosted apo are invitation-only by design, ask the installation's administrator. If you're the one operating the server, start with the [Quickstart](/quickstart/) instead.
 :::
 
 ## 1. Accept the invitation
@@ -24,7 +24,7 @@ Project name    [ My evaluations ]
            [ Create account and Project ]
 ```
 
-Submitting creates **your own Project** — a private workspace for your tasks, runs, and evaluations. You are its only owner. The person who invited you cannot see inside it, and you cannot see theirs. Acceptance is one atomic action: it either fully works or nothing was created.
+Submitting creates **your own Project**: a private workspace for your tasks, runs, and evaluations. You are its only owner. The person who invited you cannot see inside it, and you cannot see theirs. Acceptance is one atomic action: it either fully works or nothing was created.
 
 ## 2. Install the CLI
 
@@ -32,11 +32,11 @@ Submitting creates **your own Project** — a private workspace for your tasks, 
 npm install -g @apo-ai/cli
 ```
 
-Node.js ≥ 20. The CLI is the only thing that runs your agent — the hosted server never executes your code.
+Node 22 or newer. The CLI is the only thing that runs your agent, the hosted server never executes your code.
 
 ## 3. Connect this Project
 
-Your Project's Tasks page shows an exact login command — copy it from there, because it already contains the installation's real URL and your exact Project ID:
+Your Project's Tasks page shows an exact login command, copy it from there, because it already contains the installation's real URL and your exact Project ID:
 
 ```bash
 apo login --backend https://your-apo.example --project abc123def456
@@ -56,14 +56,14 @@ The CLI stores a Project-scoped API key on your machine (`~/.apo/credentials`). 
 
 ## 4. Choose a Task source
 
-Two supported paths, same destination — one recorded run:
+Two supported paths, same destination, one recorded run:
 
 | Path | Use it when |
 |---|---|
-| **Your own repository** — install `@apo-ai/sdk`, define a Task (`<task-id>.eval.ts`) next to the code it evaluates | You have an agent and want evaluation in your repo. See [Define a Task](/guides/define-a-task/). |
-| **The maintained example** — a ready task tree with fixtures | You want to see a full recorded run before wiring your own agent. See [START-HERE.md](https://github.com/samikuikka/apo/tree/main/apps/example-service/e2e/agent-task-demo). |
+| **Your own repository**: install `@apo-ai/sdk`, define a Task (`<task-id>.eval.ts`) next to the code it evaluates | You have an agent and want evaluation in your repo. See [Define a Task](/guides/define-a-task/). |
+| **The maintained example**: a ready task tree with fixtures | You want to see a full recorded run before wiring your own agent. See [START-HERE.md](https://github.com/samikuikka/apo/tree/main/apps/example-service/e2e/agent-task-demo). |
 
-Your model-provider credentials stay on your machine either way. Publishing a Task sends metadata — name, adapter, checks — never your source code, fixtures, or secrets.
+Your model-provider credentials stay on your machine either way. Publishing a Task sends metadata (name, adapter, checks) never your source code, fixtures, or secrets.
 
 ## 5. Publish and run
 
@@ -93,7 +93,7 @@ Inspect: apo runs show run_9f2c7d81e4b90f6a2c3d4e5f6a7b8c9d
 A **FAIL is a successful onboarding.** apo recorded a trustworthy verdict and the evidence to debug it. The only bad outcome is no recorded run at all.
 :::
 
-The `Run:` line is the run's exact identity — every later command takes it. For the full record (status, cost, tokens, trace, deliverables), run the printed `Inspect:` command; when the command finishes, open **Runs** in the dashboard for the verdict, per-check breakdown, trace, and deliverables — all pinned to the same run ID.
+The `Run:` line is the run's exact identity, every later command takes it. For the full record (status, cost, tokens, trace, deliverables), run the printed `Inspect:` command; when the command finishes, open **Runs** in the dashboard for the verdict, per-check breakdown, trace, and deliverables, all pinned to the same run ID.
 
 ## What you got
 

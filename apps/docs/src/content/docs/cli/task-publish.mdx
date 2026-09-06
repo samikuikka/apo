@@ -22,7 +22,7 @@ The dashboard's Tasks page, Schedules, and `apo connect` all need to know which 
 - Adapter names
 - Whether each Task has checks
 - Tags
-- The canonical Task Definition — the normalized `*.eval.ts` text (capped at 1 MB), so the dashboard can show the exact source that produced stored evidence
+- The canonical Task Definition, the normalized `*.eval.ts` text (capped at 1 MB), so the dashboard can show the exact source that produced stored evidence
 
 No fixtures (`files/`), application source, repository credentials, or environment values are sent.
 
@@ -56,7 +56,7 @@ Re-publish whenever you:
 
 ## The catalog digest
 
-The server computes a canonical SHA-256 digest over the normalized catalog (sorted by Task ID, canonical JSON). `apo connect` computes the same digest locally and sends it with each heartbeat and claim. If the digests differ, claiming is paused — this prevents executing a Task that has changed since publication.
+The server computes a canonical SHA-256 digest over the normalized catalog (sorted by Task ID, canonical JSON). `apo connect` computes the same digest locally and sends it with each heartbeat and claim. If the digests differ, claiming is paused, this prevents executing a Task that has changed since publication.
 
 ## Flags
 
@@ -70,6 +70,6 @@ The server computes a canonical SHA-256 digest over the normalized catalog (sort
 
 ## See also
 
-- [apo connect](/cli/connect/) — the persistent executor that consumes the catalog
-- [Tasks](/concepts/tasks/) — how Tasks are discovered and structured
-- [Quickstart](/quickstart/) — the full publish → connect → run workflow
+- [apo connect](/cli/connect/): the persistent executor that consumes the catalog
+- [Tasks](/concepts/tasks/): how Tasks are discovered and structured
+- [Quickstart](/quickstart/): the full publish → connect → run workflow
