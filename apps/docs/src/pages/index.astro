@@ -200,16 +200,15 @@ const CANONICAL = new URL("/", Astro.site).href;
 							<span class="cat__kind">apo</span>
 							<h3 class="cat__q">Can it do the job?</h3>
 							<div class="cat__loop" aria-hidden="true">
-								<svg class="cat__loop-svg" viewBox="0 0 200 64" preserveAspectRatio="xMidYMid meet">
-									<path class="loop__fwd" d="M14 20 H186" />
-									<path class="loop__head" d="M179 14 L188 20 L179 26" />
-									<path class="loop__back" d="M186 28 V48 H14 V28" />
-									<path class="loop__head loop__head--dim" d="M7 34 L14 28 L21 34" />
+								<svg class="loop__ring" viewBox="0 0 36 36">
+									<circle class="loop__track" cx="18" cy="18" r="12" />
+									<path class="loop__arc" d="M21.1 6.4 A12 12 0 1 1 11.1 8.2" />
+									<circle class="loop__dot" cx="11.1" cy="8.2" r="2.6" />
 								</svg>
-								<span class="loop__node" style="left: 14%">spec</span>
-								<span class="loop__node" style="left: 47%">run</span>
-								<span class="loop__node loop__node--pass" style="left: 80%">PASS</span>
-								<span class="loop__return-label">improve the harness</span>
+								<div class="loop__text">
+									<span class="loop__line">spec → run → <span class="loop__pass">PASS</span></span>
+									<span class="loop__return">↺ improve the harness</span>
+								</div>
 							</div>
 							<span class="cat__names">capability specifications</span>
 						</article>
@@ -400,101 +399,86 @@ const CANONICAL = new URL("/", Astro.site).href;
 		background: var(--sl-color-gray-5);
 	}
 
-	/* apo's loop — spec → run → PASS, returning to improve the harness. */
+	/* apo's loop — a rotating cycle ring beside the legible pipeline text.
+	   The rotation is the loop; the text is the content. */
 	.cat__loop {
-		position: relative;
 		margin-top: auto;
-		width: 100%;
-		max-width: 15rem;
-		aspect-ratio: 200 / 64;
+		display: flex;
+		align-items: center;
+		gap: 0.9rem;
+		padding: 0.35rem 0 0.1rem;
 	}
 
-	.cat__loop-svg {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
+	.loop__ring {
+		width: 2.75rem;
+		height: 2.75rem;
+		flex-shrink: 0;
 		overflow: visible;
 	}
 
-	.loop__fwd,
-	.loop__back {
+	.loop__track {
 		fill: none;
-		stroke-width: 1.2;
-		stroke-dasharray: 3 5;
+		stroke: var(--sl-color-gray-5);
+		stroke-width: 2.5;
 	}
 
-	.loop__fwd {
-		stroke: var(--sl-color-accent);
-		opacity: 0.55;
-	}
-
-	.loop__back {
-		stroke: var(--sl-color-gray-4);
-		opacity: 0.4;
-	}
-
-	.loop__head {
+	.loop__arc {
 		fill: none;
 		stroke: var(--sl-color-accent);
-		stroke-width: 1.2;
-		opacity: 0.7;
+		stroke-width: 2.5;
+		stroke-linecap: round;
 	}
 
-	.loop__head--dim {
-		stroke: var(--sl-color-gray-4);
-		opacity: 0.5;
+	.loop__dot {
+		fill: var(--sl-color-accent);
 	}
 
-	[data-landing-cats][data-visible] .loop__fwd {
-		animation: catDashFlow 1.4s linear infinite;
+	.loop__text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		min-width: 0;
 	}
 
-	[data-landing-cats][data-visible] .loop__back {
-		animation: catDashFlow 2.2s linear infinite;
-	}
-
-	@keyframes catDashFlow {
-		from {
-			stroke-dashoffset: 0;
-		}
-		to {
-			stroke-dashoffset: -16;
-		}
-	}
-
-	.loop__node {
-		position: absolute;
-		top: 31.25%;
-		transform: translate(-50%, -50%);
-		z-index: 2;
+	.loop__line {
 		font-family: var(--sl-font-mono, ui-monospace, monospace);
-		font-size: 0.62rem;
-		padding: 0.12rem 0.4rem;
-		background: var(--sl-color-black);
-		border: 1px solid var(--sl-color-gray-5);
-		color: var(--sl-color-gray-2);
+		font-size: 0.72rem;
+		color: var(--sl-color-gray-1);
 		white-space: nowrap;
 	}
 
-	.loop__node--pass {
+	.loop__pass {
 		color: var(--sl-color-accent);
-		border-color: var(--sl-color-accent);
 		font-weight: 700;
 	}
 
-	.loop__return-label {
-		position: absolute;
-		top: 75%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		z-index: 2;
+	.loop__return {
 		font-family: var(--sl-font-mono, ui-monospace, monospace);
-		font-size: 0.58rem;
+		font-size: 0.62rem;
 		color: var(--sl-color-gray-4);
-		background: var(--sl-color-accent-low, #0a1a0e);
-		padding: 0 0.35rem;
 		white-space: nowrap;
+	}
+
+	/* Text staggers in with the section reveal; the glyph stays static. */
+	.loop__line,
+	.loop__return {
+		opacity: 0;
+		transform: translateX(-4px);
+		transition: opacity 0.3s ease, transform 0.3s ease;
+	}
+
+	.loop__line {
+		transition-delay: 0.4s;
+	}
+
+	.loop__return {
+		transition-delay: 0.6s;
+	}
+
+	[data-landing-cats][data-visible] .loop__line,
+	[data-landing-cats][data-visible] .loop__return {
+		opacity: 1;
+		transform: translateX(0);
 	}
 
 	.cat__names {
@@ -546,9 +530,11 @@ const CANONICAL = new URL("/", Astro.site).href;
 			transition: none !important;
 		}
 
-		.loop__fwd,
-		.loop__back {
-			animation: none !important;
+		.loop__line,
+		.loop__return {
+			opacity: 1 !important;
+			transform: none !important;
+			transition: none !important;
 		}
 	}
 
