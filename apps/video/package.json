@@ -1,0 +1,27 @@
+{
+  "name": "video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remotion studio for apo marketing/educational videos. See README for beat sheets and render commands.",
+  "scripts": {
+    "studio": "remotion studio src/index.ts --port 3220",
+    "compositions": "remotion compositions src/index.ts",
+    "render:loop": "remotion render src/index.ts TheLoop out/the-loop.mp4",
+    "render:deliverable": "remotion render src/index.ts DeliverableNotChat out/deliverable-not-chat.mp4",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/google-fonts": "^4.0.520",
+    "lucide-react": "^0.562.0",
+    "react": "19.2.1",
+    "react-dom": "19.2.1",
+    "remotion": "^4.0.520",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@remotion/cli": "^4.0.520",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "typescript": "^5.9.3"
+  }
+}

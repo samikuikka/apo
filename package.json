@@ -12,7 +12,7 @@
     "prototype:apo-human": "node --experimental-strip-types packages/cli/prototypes/apo-human/main.ts",
     "lint": "oxlint --ignore-pattern=\"**/*.astro\" apps/ packages/",
     "lint:fix": "oxlint --fix --ignore-pattern=\"**/*.astro\" apps/ packages/",
-    "typecheck": "pnpm --filter dashboard --filter @apo-ai/sdk --filter @apo/example-service --filter @apo-ai/cli run typecheck",
+    "typecheck": "pnpm --filter dashboard --filter @apo-ai/sdk --filter @apo/example-service --filter @apo-ai/cli --filter video run typecheck",
     "doctor": "npx react-doctor@latest",
     "test:alpha": "pnpm test:alpha:backend && pnpm test:alpha:ui",
     "test:alpha:ui": "pnpm --filter dashboard exec playwright test --grep @alpha --project=chromium",

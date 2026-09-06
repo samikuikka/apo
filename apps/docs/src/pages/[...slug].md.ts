@@ -1,15 +1,15 @@
 /**
- * [...slug].md.ts — serves raw markdown for every docs page.
+ * [...slug].md.ts, serves raw markdown for every docs page.
  *
  * For each page in the `docs` content collection, this endpoint generates a
  * static `.md` file at build time: `/overview.md`, `/concepts/adapters.md`,
- * `/cli.md`, etc. Agents fetch these instead of the rendered HTML — cleaner
+ * `/cli.md`, etc. Agents fetch these instead of the rendered HTML, cleaner
  * content, no navigation chrome, smaller payload.
  *
- * The body comes from the content collection's `entry.body` field — the raw
+ * The body comes from the content collection's `entry.body` field, the raw
  * source markdown with frontmatter already stripped. For `.mdx` files, import
  * lines are stripped (they're build-time noise for an agent). Component tags
- * (e.g. `<TerminalDemo />`) are left in place — agents tolerate them, and
+ * (e.g. `<TerminalDemo />`) are left in place, agents tolerate them, and
  * stripping JSX with regex risks orphaning surrounding prose.
  *
  * The title from frontmatter is prepended as an H1 so each file is
@@ -25,7 +25,7 @@ import { getCollection } from 'astro:content';
 export const getStaticPaths = (async () => {
 	const docs = await getCollection('docs');
 	return docs.flatMap((entry) => {
-		// Skip drafts and the homepage (entry.id is bare 'index' — collides
+		// Skip drafts and the homepage (entry.id is bare 'index', collides
 		// with root route and the standalone index.astro landing page).
 		if (entry.data.draft === true || entry.id === 'index') return [];
 		const slug = entry.id.replace(/\.(md|mdx)$/, '').replace(/\/index$/, '');

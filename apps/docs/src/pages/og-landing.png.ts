@@ -41,7 +41,7 @@ const COLORS = {
 
 const SITE_URL = "docs.test-apo.online";
 const WORDMARK = "apo";
-const TAGLINE = "Define what your agent must be capable of.";
+const TAGLINE = "Prove your agent works.";
 const SUB =
 	"Executable specifications. Real harness runs. Pass or fail with evidence.";
 
