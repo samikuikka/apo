@@ -5,7 +5,11 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/dashboard/package.json ./apps/dashboard/package.json
 COPY packages/sdk/package.json ./packages/sdk/package.json
 COPY packages/cli/package.json ./packages/cli/package.json
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+# pnpm >=11 may resolve its standalone @pnpm/exe binary from npm, which
+# needs libatomic.so.1 — absent from node slim images.
+RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g pnpm && pnpm install --frozen-lockfile
 
 COPY apps/dashboard/ ./apps/dashboard/
 COPY packages/ ./packages/
