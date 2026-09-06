@@ -318,11 +318,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 		background: var(--sl-color-accent-low, #0a1a0e);
 	}
 
-	/* Auto margins on the first and last children split the stretch space
-	   evenly, so the content group (label + question + gliff) sits
-	   vertically centered and the names stay a bottom footer. */
 	.cat__kind {
-		margin-top: auto;
 		font-family: var(--sl-font-mono, ui-monospace, monospace);
 		font-size: 0.65rem;
 		font-weight: 600;
@@ -348,13 +344,20 @@ const CANONICAL = new URL("/", Astro.site).href;
 		color: var(--sl-color-white);
 	}
 
-	/* Gliffs sit right under the question; the names footer pins to the
-	   card bottom so stretch-height leaves its space above the footnote,
-	   not as a hole between question and gliff. */
+	/* Gliffs are black panels that fill the space between the top-aligned
+	   header (label + question) and the bottom footer (names). apo's panel
+	   is the terminal; the siblings' shorter content centers inside theirs,
+	   so titles align across cards and only the inside differs. */
 	.cat__gliff {
+		flex: 1;
+		min-height: 7rem;
 		display: flex;
 		flex-direction: column;
+		justify-content: center;
 		gap: 0.3rem;
+		padding: 0.55rem 0.65rem;
+		border: 1px solid var(--sl-color-gray-5);
+		background: var(--sl-color-black);
 	}
 
 	.cat__row {
@@ -385,8 +388,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 	}
 
 	.cat__gliff--spans {
-		gap: 0.4rem;
-		padding: 0.4rem 0 0.15rem;
+		gap: 0.5rem;
 	}
 
 	.cat__span {
@@ -414,8 +416,10 @@ const CANONICAL = new URL("/", Astro.site).href;
 	   drawn as a glyph. Mirrors LoopEngineeringDemo's lane (earlier run dim,
 	   final run bright, verdict colors as state). */
 	.cat__term {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
+		justify-content: center;
 		gap: 0.28rem;
 		padding: 0.55rem 0.65rem;
 		border: 1px solid var(--sl-color-gray-5);
