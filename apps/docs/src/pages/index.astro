@@ -199,16 +199,22 @@ const CANONICAL = new URL("/", Astro.site).href;
 						<article class="cat cat--apo" style="--i: 2">
 							<span class="cat__kind">apo</span>
 							<h3 class="cat__q">Can it do the job?</h3>
-							<div class="cat__loop" aria-hidden="true">
-								<svg class="loop__ring" viewBox="0 0 36 36">
-									<circle class="loop__track" cx="18" cy="18" r="12" />
-									<path class="loop__arc" d="M21.1 6.4 A12 12 0 1 1 11.1 8.2" />
-									<circle class="loop__dot" cx="11.1" cy="8.2" r="2.6" />
-								</svg>
-								<div class="loop__text">
-									<span class="loop__line">spec → run → <span class="loop__pass">PASS</span></span>
-									<span class="loop__return">↺ improve the harness</span>
-								</div>
+							<div class="cat__term" aria-hidden="true">
+								<span class="term__line term__line--dim" style="--i: 0">
+									<span class="term__sigil">$</span>apo task run refund
+								</span>
+								<span class="term__line term__line--dim" style="--i: 1">
+									<span class="term__fail">✗ FAIL</span> 0/2
+								</span>
+								<span class="term__note" style="--i: 2">
+									↳ agent improves the harness…
+								</span>
+								<span class="term__line" style="--i: 3">
+									<span class="term__sigil">$</span>apo task run refund
+								</span>
+								<span class="term__line" style="--i: 4">
+									<span class="term__pass">✓ PASS</span> 2/2
+								</span>
 							</div>
 							<span class="cat__names">capability specifications</span>
 						</article>
@@ -399,84 +405,66 @@ const CANONICAL = new URL("/", Astro.site).href;
 		background: var(--sl-color-gray-5);
 	}
 
-	/* apo's loop — a rotating cycle ring beside the legible pipeline text.
-	   The rotation is the loop; the text is the content. */
-	.cat__loop {
+	/* apo's loop — the loop-engineering terminal, miniaturized: run → fail →
+	   improve → run again → pass. The loop is narrated as convergence, not
+	   drawn as a glyph. Mirrors LoopEngineeringDemo's lane (earlier run dim,
+	   final run bright, verdict colors as state). */
+	.cat__term {
 		margin-top: auto;
 		display: flex;
-		align-items: center;
-		gap: 0.9rem;
-		padding: 0.35rem 0 0.1rem;
-	}
-
-	.loop__ring {
-		width: 2.75rem;
-		height: 2.75rem;
-		flex-shrink: 0;
-		overflow: visible;
-	}
-
-	.loop__track {
-		fill: none;
-		stroke: var(--sl-color-gray-5);
-		stroke-width: 2.5;
-	}
-
-	.loop__arc {
-		fill: none;
-		stroke: var(--sl-color-accent);
-		stroke-width: 2.5;
-		stroke-linecap: round;
-	}
-
-	.loop__dot {
-		fill: var(--sl-color-accent);
-	}
-
-	.loop__text {
-		display: flex;
 		flex-direction: column;
-		gap: 0.3rem;
-		min-width: 0;
+		gap: 0.28rem;
+		padding: 0.55rem 0.65rem;
+		border: 1px solid var(--sl-color-gray-5);
+		background: var(--sl-color-black);
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.68rem;
+		line-height: 1.45;
 	}
 
-	.loop__line {
-		font-family: var(--sl-font-mono, ui-monospace, monospace);
-		font-size: 0.72rem;
+	.term__line {
 		color: var(--sl-color-gray-1);
 		white-space: nowrap;
 	}
 
-	.loop__pass {
-		color: var(--sl-color-accent);
-		font-weight: 700;
+	.term__line--dim {
+		color: var(--sl-color-gray-3);
 	}
 
-	.loop__return {
-		font-family: var(--sl-font-mono, ui-monospace, monospace);
-		font-size: 0.62rem;
+	.term__sigil {
+		color: var(--sl-color-accent-high, #86efac);
+		font-weight: 600;
+		margin-right: 0.45rem;
+	}
+
+	.term__fail {
+		color: oklch(0.8 0.16 25);
+		font-weight: 600;
+	}
+
+	.term__pass {
+		color: var(--sl-color-accent);
+		font-weight: 600;
+	}
+
+	.term__note {
 		color: var(--sl-color-gray-4);
+		font-style: italic;
+		padding-left: 0.9rem;
+		border-left: 1px solid var(--sl-color-gray-5);
 		white-space: nowrap;
 	}
 
-	/* Text staggers in with the section reveal; the glyph stays static. */
-	.loop__line,
-	.loop__return {
+	.term__line,
+	.term__note {
 		opacity: 0;
 		transform: translateX(-4px);
 		transition: opacity 0.3s ease, transform 0.3s ease;
+		transition-delay: calc(var(--i, 0) * 160ms + 0.35s);
 	}
 
-	.loop__line {
-		transition-delay: 0.4s;
-	}
-
-	.loop__return {
-		transition-delay: 0.6s;
-	}
-
-	[data-landing-cats][data-visible] .loop__line,
-	[data-landing-cats][data-visible] .loop__return {
+	[data-landing-cats][data-visible] .term__line,
+	[data-landing-cats][data-visible] .term__note {
 		opacity: 1;
 		transform: translateX(0);
 	}
@@ -530,8 +518,8 @@ const CANONICAL = new URL("/", Astro.site).href;
 			transition: none !important;
 		}
 
-		.loop__line,
-		.loop__return {
+		.term__line,
+		.term__note {
 			opacity: 1 !important;
 			transform: none !important;
 			transition: none !important;
