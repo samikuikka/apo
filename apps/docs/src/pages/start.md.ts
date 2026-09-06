@@ -22,8 +22,8 @@ const ORIGIN = import.meta.env.SITE;
 
 const START_INSTRUCTIONS = `# Skill: Set up apo and run a first end-to-end test
 
-You are helping the user set up **apo** — an opinionated end-to-end testing
-framework for agent systems. Your goal: give one real agent task an executable
+You are helping the user set up **apo** — a testing and engineering system
+for agent harnesses. Your goal: give one real agent task an executable
 definition of done, then get a pass/fail result with evidence.
 
 ## What apo is (and isn't)
@@ -37,8 +37,8 @@ does not edit the implementation or autonomously start another Task Run to
 improve a failed verdict. Transport or finalization work may retry without
 creating a new Task Run.
 
-What apo is **not**: it's not a prompt-scoring tool, not an LLM-call optimizer,
-and not an observability dashboard. It doesn't grade the chat conversation — it
+What apo is **not**: not another eval framework, not a prompt-scoring tool,
+and not an observability platform. It doesn't grade the chat conversation — it
 judges the **deliverable** (the artifact, file, or structured output the agent
 produced).
 

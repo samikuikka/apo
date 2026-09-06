@@ -41,9 +41,9 @@ const COLORS = {
 
 const SITE_URL = "docs.test-apo.online";
 const WORDMARK = "apo";
-const TAGLINE = "Give every agent task a definition of done.";
+const TAGLINE = "Define what your agent must be capable of.";
 const SUB =
-	"End-to-end tests. Real agent runs. Verdicts backed by tests, traces, and deliverables.";
+	"Executable specifications. Real harness runs. Pass or fail with evidence.";
 
 // --- Minimal hyperscript: builds the element-shaped objects satori consumes. ---
 

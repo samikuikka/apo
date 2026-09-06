@@ -5,7 +5,7 @@
 <h1 align="center">Apo</h1>
 
 <p align="center">
-  Give every agent task a definition of done.
+  Define what your agent must be capable of. Prove it on the real system.
 </p>
 
 <p align="center">
@@ -22,26 +22,36 @@
 
 ---
 
-Apo is an opinionated end-to-end testing framework for agent systems. Define the behavior you expect as executable tests, run your **real agent implementation**, and get a **binary verdict** — pass or fail — backed by the test breakdown, trace, and deliverables. Execution problems are surfaced separately as errors.
+Apo is a testing and engineering system for agent harnesses. You define what your agent must be capable of — the situations, the constraints, the deliverables that define done — as **executable capability specifications**: `.eval.ts` tasks run against your **real agent implementation**, returning a **binary verdict** — pass or fail — backed by the test breakdown, trace, and deliverables. Execution problems surface separately as errors.
 
-It is not a prompt-scoring tool, an LLM-call optimizer, or an observability dashboard. It answers a more useful engineering question: **did the agent system actually do what we said it must do?**
+It is not another eval framework, and not an observability platform. Those categories are full, and they start somewhere else:
+
+| | Primary question |
+|---|---|
+| Testing & eval frameworks | Did this execution satisfy my test? |
+| Observability & eval platforms | What did my AI system already do? |
+| **Apo** | **Can this harness reliably do what we require — and can we engineer it until it can?** |
+
+Production failures found in an observability stack become apo regression tests. Coding agents work against the specification until it passes. [Why apo](https://docs.test-apo.online/why-apo/) has the full map.
 
 > **Coding agent?** The docs are machine-readable: fetch [`docs.test-apo.online/llms.txt`](https://docs.test-apo.online/llms.txt) for the full index (every page has a `.md` rendition), or [`docs.test-apo.online/start.md`](https://docs.test-apo.online/start.md) for a complete setup skill.
 
 ## Close the loop
 
 ```text
-expected behavior
+capability specification
        ↓
 run the real agent
        ↓
 PASS / FAIL + tests + trace + deliverables
        ↓
-improve the implementation
+improve the harness until it passes
        ↺
 ```
 
 Apo owns one Task Run and the evidence it produces. A developer, CI workflow, or coding agent reads that evidence, changes the system, and decides whether to start another Task Run. Apo does not edit your agent or autonomously rerun a failed task to improve it.
+
+That loop is **harness engineering**: the suite encodes your domain expertise, and whoever (or whatever) improves the system — model choice, prompts, tools, orchestration, code — works against that specification until it holds.
 
 ## The model
 

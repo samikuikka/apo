@@ -98,11 +98,13 @@ const SECTIONS: { heading: string; slugs: string[] }[] = [
 
 const INTRO = `# apo
 
-> apo is an opinionated end-to-end testing framework for AI agents. It runs
-> your real agent through an adapter, asserts on the deliverable it produced
-> and the trace of what it did (code assertions and LLM judges), and returns a
-> binary verdict — pass or fail — with the full evidence. Not a prompt-scoring
-> tool, not an LLM-call optimizer, not an observability dashboard.
+> apo is a testing and engineering system for agent harnesses. You define what
+> your agent must be capable of — tasks, constraints, deliverables — and apo
+> makes that specification executable: it runs your real agent through an
+> adapter, asserts on the deliverable it produced and the trace of what it did
+> (code assertions and LLM judges), and returns a binary verdict — pass or
+> fail — with the full evidence. Not another eval framework, not a
+> prompt-scoring tool, not an observability platform.
 
 Usage: install the CLI from npm (\`npm install -g @apo-ai/cli\`), the SDK for
 tasks (\`npm install @apo-ai/sdk\`), or self-host the server from source
