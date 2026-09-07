@@ -225,6 +225,28 @@ const CANONICAL = new URL("/", Astro.site).href;
 				</div>
 			</section>
 
+			<!-- The loop, explained in fifty seconds. Plays muted when scrolled
+			     into view, pauses off-screen; reduced-motion keeps it still with
+			     controls. Same onVisible idiom as the sections above. -->
+			<section class="landing-section landing-section--bordered">
+				<div class="landing-container">
+					<h2 class="landing-section__heading">The loop, in fifty seconds.</h2>
+					<p class="landing-section__sub">
+						Define what your agent must be capable of, then run the loop until it holds.
+					</p>
+					<video
+						class="landing-video"
+						src="/video/the-loop.mp4"
+						poster="/video/the-loop-poster.png"
+						muted
+						loop
+						playsinline
+						preload="none"
+						data-landing-video
+					></video>
+				</div>
+			</section>
+
 			<!-- The product -->
 			<section class="landing-section landing-section--bordered">
 				<div class="landing-container">
@@ -266,6 +288,26 @@ const CANONICAL = new URL("/", Astro.site).href;
 				onVisible(cats, (state) => {
 					cats.toggleAttribute("data-visible", state === "visible");
 				});
+			}
+
+			// The loop video: muted ambient playback while on screen, still and
+			// controllable under reduced motion.
+			const video = document.querySelector<HTMLVideoElement>("[data-landing-video]");
+			if (video) {
+				if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+					video.controls = true;
+				} else {
+					onVisible(video, (state) => {
+						if (state === "visible") {
+							void video.play().catch(() => {
+								// Autoplay was refused; fall back to manual controls.
+								video.controls = true;
+							});
+						} else {
+							video.pause();
+						}
+					});
+				}
 			}
 		</script>
 	</body>
@@ -497,6 +539,15 @@ const CANONICAL = new URL("/", Astro.site).href;
 
 	.landing-cats__foot a {
 		color: var(--sl-color-accent-high, #4ade80);
+	}
+
+	.landing-video {
+		display: block;
+		width: 100%;
+		max-width: 960px;
+		margin: 0 auto;
+		background: var(--sl-color-black);
+		border: 1px solid var(--sl-color-gray-5);
 	}
 
 	/* Staggered reveal, same idiom as the features bento. */
