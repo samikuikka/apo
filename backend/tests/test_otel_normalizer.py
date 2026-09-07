@@ -213,21 +213,6 @@ class TestTokenUsage:
         assert result.token_usage["prompt"] == 39_800
         assert result.token_usage["completion"] == 416
 
-    def test_langfuse_usage_details_sum_matches_importer(self):
-        """Langfuse SDK spans: prompt is the input-family sum — the same rule
-        the Langfuse trace importer applies (issue #43)."""
-        span = _make_span(
-            attributes={
-                "langfuse.observation.usage_details": json.dumps(
-                    {"input": 2, "input_cache_read": 33_381, "input_cache_creation": 100, "output": 50}
-                ),
-            }
-        )
-        result = normalize_span(span)
-        assert result.token_usage["prompt"] == 33_483
-        assert result.token_usage["completion"] == 50
-
-
 class TestInputOutputContent:
     """Content extraction and normalization (gen_ai.input.messages etc.)."""
 
@@ -315,7 +300,7 @@ class TestInputOutputContent:
     def test_full_prompt_kept_in_generation_input(self):
         """A generation's input is the complete prompt, verbatim — system,
         user, prior assistant tool-calls, and tool results. The accumulated
-        history is kept (GenAI/OTel + Langfuse convention); the dashboard
+        history is kept (GenAI/OTel convention); the dashboard
         renders it as a delta by default rather than stripping it here, so the
         full prompt remains available for debugging "what did the model see".
         """

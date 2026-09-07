@@ -142,8 +142,8 @@ class TraceProjector:
         # Issue #41: re-aggregate the linked Task Run's cost/tokens whenever a
         # span lands for a trace linked to a Task Run. The task runner's single
         # finalize-time aggregation runs against whatever calls existed then;
-        # imported traces (e.g. ``traces import langfuse``) deliver costed spans
-        # after finalize, so the totals would otherwise stay null forever.
+        # costed spans can land after finalize (late OTLP batches, exporter
+        # retries), so the totals would otherwise stay null forever.
         _refresh_task_run_total(session, span.trace_id, span.project_id)
 
         session.flush()
@@ -212,7 +212,9 @@ class TraceProjector:
             if tags_value is None:
                 tags_value = attrs.get("apo.run.tags")
             if tags_value is None:
-                # Langfuse SDK senders carry trace tags in their own namespace.
+                # Spans stored by the retired Langfuse compatibility path carry
+                # trace tags in that vendor's namespace; keep reading them so
+                # historical traces keep their tags.
                 tags_value = attrs.get("langfuse.trace.tags")
             if tags_value:
                 try:
@@ -244,9 +246,10 @@ class TraceProjector:
                 run.run_metadata = merged
             # Run-level scalar fields. Each follows a convention-priority
             # chain so standard senders populate them too, not just apo's
-            # private apo.run.* namespace: a Langfuse SDK emits
-            # langfuse.trace.*, an OTel GenAI sender gen_ai.conversation.id,
-            # a vanilla OTel SDK session.id / user.id (issue #189).
+            # private apo.run.* namespace: an OTel GenAI sender emits
+            # gen_ai.conversation.id, a vanilla OTel SDK session.id / user.id
+            # (issue #189). The langfuse.* entries keep serving spans stored
+            # by the retired Langfuse compatibility path.
             session_id = _first_str(
                 attrs,
                 "apo.run.session_id",

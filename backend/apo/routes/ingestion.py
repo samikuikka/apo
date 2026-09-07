@@ -50,7 +50,7 @@ async def batch_ingestion(
     _: object = Depends(require_api_key_scope("full", "ingest")),
 ):
     """
-    Langfuse-style batch ingestion endpoint.
+    Batch ingestion endpoint.
 
     Processes multiple events efficiently in a single request:
     - run-create: Create or update a run
@@ -143,8 +143,8 @@ def authorized_ingestion_project(
 
     - API key / service / Attempt token: exactly the credential's bound
       Project. A body Project that disagrees is rejected; an absent body
-      Project defaults to the binding (so Langfuse SDK events, which carry
-      no Project field, land in the key's Project).
+      Project defaults to the binding (so events that carry no Project
+      field land in the key's Project).
     - Session: the declared Project (or ``default``) must be authorized at
       member role — development-profile open behavior is preserved by
       ``authorize_project_request``.

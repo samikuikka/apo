@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import anthropic, bedrock, generic, gemini, langfuse, openai
+from . import anthropic, bedrock, generic, gemini, openai
 from ._shared import get_json_dict, get_str
 
 # model-name prefix -> provider (OpenRouter-style "anthropic/...", "openai/...").
@@ -114,12 +114,6 @@ def normalize_usage(
     input/output so the families don't double-count. Unknown keys are kept
     verbatim (store-but-unpriced). Returns ``{}`` when no usage is present.
     """
-    # The Langfuse SDK reports usage as an already-normalized per-dimension map
-    # and emits no gen_ai.usage.* keys, so it is resolved ahead of provider
-    # detection — no provider module would find anything to read.
-    if langfuse.has_usage_details(attrs):
-        return langfuse.normalize(attrs)
-
     detected = provider or detect_provider(attrs, model_name)
     if detected == "openai":
         return openai.normalize(attrs)

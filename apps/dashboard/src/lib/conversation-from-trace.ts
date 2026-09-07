@@ -25,10 +25,11 @@
  * Messages are already normalized to OpenAI shape by the backend
  * (`normalize_genai_message` in `otel_normalization/_shared.py`).
  *
- * **Imported traces fallback (issue #47):** traces imported via
- * `traces import langfuse` carry provider-native content blocks (e.g.
- * Anthropic `[{type:"text", text:…}]`) under `input`/`output`, not OpenAI
- * `messages` arrays. When the primary path finds no messages, the fallback
+ * **Provider-native I/O fallback (issue #47):** traces whose calls carry
+ * provider-native content blocks (e.g. Anthropic `[{type:"text", text:…}]`)
+ * under `input`/`output`, not OpenAI `messages` arrays — the shape historical
+ * Langfuse imports landed and any generic OTLP producer can emit. When the
+ * primary path finds no messages, the fallback
  * walks the ordered call sequence and reconstructs the conversation by
  * extracting text from each call's raw I/O.
  */

@@ -37,7 +37,6 @@ The core loop: run a task, read its verdict, open its trace when something fails
 | [`apo runs export`](/cli/runs-export/) | Dump a run as a self-contained JSON bundle, the backup before evidence expires or a run is deleted. |
 | [`apo traces list`](/cli/traces-list/) | List recent traces. |
 | [`apo traces show`](/cli/traces-show/) | Show a trace's call tree, timing, tokens, cost. |
-| [`apo traces import langfuse`](/cli/traces-import-langfuse/) | Import one Langfuse-captured trace into apo. |
 
 ## Batch runs
 

@@ -266,7 +266,7 @@ class TestEnforcementRealAuth:
         assert quota_block["limit"] == 3 and quota_block["used"] == 2
         assert "reset_at" in quota_block
 
-        # Legacy + langfuse routes also enforce pause.
+        # The legacy route also enforces pause.
         _set(ingest_paused=True, daily_span_quota=None)
         legacy = client.post(
             "/api/v1/ingestion",
@@ -283,10 +283,6 @@ class TestEnforcementRealAuth:
             },
         )
         assert legacy.status_code == 403
-        langfuse = client.post(
-            "/api/public/ingestion", headers=headers, json={"batch": [], "metadata": {}}
-        )
-        assert langfuse.status_code == 403
 
 
 # ---------------------------------------------------------------------------

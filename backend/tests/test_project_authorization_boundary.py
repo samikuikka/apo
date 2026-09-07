@@ -1332,15 +1332,6 @@ _ROUTE_MODULE_AUDIT: dict[str, tuple[str, list[tuple[str, str]]]] = {
             )
         ],
     ),
-    "langfuse_public": (
-        "project",
-        [
-            (
-                "tests/test_ingestion_project_boundary.py",
-                "test_traces_list_is_credential_scoped",
-            )
-        ],
-    ),
     "models": (
         "project",
         [("tests/test_project_authorization_boundary.py", "test_model_replace_cannot_move_row_to_other_project")],

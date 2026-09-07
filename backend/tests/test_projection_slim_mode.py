@@ -5,8 +5,8 @@
 Covers preview refresh rules (class priority, same-source refresh, dangling
 source), golden detail equality across fat and slim modes for the same trace,
 preview-only list rendering, the slim-mode detail reroutes (detail, export,
-Langfuse compat, task-run snapshot), the span-less detail fallback, and the
-preview backfill job.
+task-run snapshot), the span-less detail fallback, and the preview backfill
+job.
 """
 
 import json

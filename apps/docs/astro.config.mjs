@@ -130,7 +130,6 @@ export default defineConfig({
 					items: [
 						{ label: 'traces list', slug: 'cli/traces-list' },
 						{ label: 'traces show', slug: 'cli/traces-show' },
-						{ label: 'traces import langfuse', slug: 'cli/traces-import-langfuse' },
 					],
 				},
 					{
@@ -147,7 +146,6 @@ export default defineConfig({
 				items: [
 					{ label: 'Overview', slug: 'ecosystem' },
 					{ label: 'OTLP framework setup', slug: 'ecosystem/otel-framework-setup' },
-					{ label: 'Import a Langfuse trace', slug: 'ecosystem/langfuse-import' },
 				],
 			},
 			],

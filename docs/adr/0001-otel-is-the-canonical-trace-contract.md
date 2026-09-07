@@ -2,8 +2,11 @@
 
 **Status: Proposed.** apo will accept OpenTelemetry Protocol trace exports as
 its canonical external tracing input, preserve canonical spans before deriving
-product-specific Trace Projections, and keep Langfuse and legacy apo event
-formats only as compatibility adapters. This separates vendor instrumentation
+product-specific Trace Projections, and keep the legacy apo event format only
+as a compatibility adapter. Langfuse compatibility (the source connector, the
+Langfuse-shaped public API, and `langfuse.*` normalization) was later removed
+once direct OTLP ingestion covered it; a Telemetry Producer now sends OTLP
+directly to one reachable apo installation. This separates vendor instrumentation
 from apo's product model, lets OpenAI, Anthropic, Vercel AI, LangChain, and
 future agent stacks use their normal OpenTelemetry paths, and makes semantic
 normalization replayable as conventions evolve.
@@ -30,3 +33,5 @@ normalization replayable as conventions evolve.
 - Scores remain a separate domain signal. The current `apo.score` sentinel-span
   convention is transitional and will be retired after a native score API path
   is available.
+- Traces already stored through the removed Langfuse paths remain readable
+  canonical data; removing an ingress path never deletes stored traces.

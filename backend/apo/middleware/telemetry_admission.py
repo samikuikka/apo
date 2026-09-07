@@ -36,11 +36,9 @@ UnitSource = Literal["spans", "batch", "single", "bulk_scores"]
 _PROTECTED_ROUTES: tuple[tuple[str, re.Pattern[str], UnitSource], ...] = (
     ("POST", re.compile(r"^/api/public/otel/v1/traces$"), "spans"),
     ("POST", re.compile(r"^/api/v1/ingestion$"), "batch"),
-    ("POST", re.compile(r"^/api/public/ingestion$"), "batch"),
     ("POST", re.compile(r"^/api/v1/traces/[^/]+/scores$"), "single"),
     ("POST", re.compile(r"^/api/v1/observations/[^/]+/scores$"), "single"),
     ("POST", re.compile(r"^/api/v1/scores/bulk$"), "bulk_scores"),
-    ("POST", re.compile(r"^/api/public/scores$"), "single"),
 )
 
 

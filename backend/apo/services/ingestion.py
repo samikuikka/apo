@@ -2,7 +2,7 @@
 Shared ingestion processing service.
 
 Contains the core processing logic for creating/updating runs, calls,
-and scores. Used by all ingestion routes (batch, Langfuse, OTel).
+and scores. Used by all ingestion routes (batch, OTel).
 
 ``process_call_create`` / ``process_call_update`` are the LEGACY direct
 writers: no route funnels through them anymore (routes use
@@ -36,7 +36,6 @@ from ..services.pricing.apply import apply_cost_to_call
 from ..services.scoring import (
     create_observation_score,
     create_trace_score,
-    record_score,
 )
 from ..services.trace_broadcaster import get_trace_broadcaster
 
@@ -421,56 +420,3 @@ async def process_score_create(
             config_id=config_id,
             comment=comment,
         )
-
-
-async def process_langfuse_score_create(
-    body: dict[str, object], session: Session, project: str = "default"
-) -> None:
-    """Process a score-create event from Langfuse SDK (camelCase fields).
-
-    ``project`` comes from the route's authenticated API key, never from the
-    body, so a caller cannot score another project's trace.
-    """
-    trace_id = _get_optional_str(body, "traceId")
-    observation_id = _get_optional_str(body, "observationId")
-
-    if trace_id:
-        run = session.exec(
-            select(RunDB).where(RunDB.id == trace_id, RunDB.project == project)
-        ).first()
-        if not run:
-            raise ValueError(f"Trace not found: {trace_id}")
-        target: tuple[str, str] = ("trace", trace_id)
-    elif observation_id:
-        call = session.exec(
-            select(LoggedCallDB).where(
-                LoggedCallDB.id == observation_id, LoggedCallDB.project == project
-            )
-        ).first()
-        if not call:
-            raise ValueError(f"Observation not found: {observation_id}")
-        target = ("observation", observation_id)
-    else:
-        raise ValueError("score-create requires traceId or observationId")
-
-    value_raw = body.get("value")
-    if isinstance(value_raw, (int, float)):
-        value: float | str | bool | None = float(value_raw)
-    elif isinstance(value_raw, bool):
-        value = value_raw
-    elif isinstance(value_raw, str):
-        value = value_raw
-    else:
-        value = value_raw if value_raw is None else float(str(value_raw))
-
-    _ = record_score(
-        session=session,
-        target=target,
-        name=_get_str(body, "name", "unnamed"),
-        value=value,
-        data_type=_get_str(body, "dataType", "NUMERIC"),
-        source=_get_str(body, "source", "API"),
-        config_id=_get_optional_int(body, "configId"),
-        comment=_get_optional_str(body, "comment"),
-        project=project,
-    )

@@ -351,11 +351,9 @@ class TestProtectedRouteRegistry:
         protected = [
             ("POST", "/api/public/otel/v1/traces"),
             ("POST", "/api/v1/ingestion"),
-            ("POST", "/api/public/ingestion"),
             ("POST", "/api/v1/traces/abc123/scores"),
             ("POST", "/api/v1/observations/obs-1/scores"),
             ("POST", "/api/v1/scores/bulk"),
-            ("POST", "/api/public/scores"),
         ]
         for method, path in protected:
             assert is_protected_telemetry_route(method, path), f"{method} {path} should be protected"
@@ -370,6 +368,8 @@ class TestProtectedRouteRegistry:
             ("GET", "/api/v1/ingestion"),
             ("POST", "/api/v1/scores"),
             ("POST", "/api/v1/ingestion/extra"),
+            ("POST", "/api/public/ingestion"),
+            ("POST", "/api/public/scores"),
             ("GET", "/api/v1/runs"),
             ("POST", "/api/v1/agent-task-runs"),
         ]
