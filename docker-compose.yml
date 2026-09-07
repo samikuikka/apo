@@ -86,6 +86,12 @@ services:
       # Hard ceiling on DB file size in 4 KiB pages (0 = unlimited).
       # e.g. 262144 pages ~= 1 GiB. Writes fail once the cap is hit.
       - APO_MAX_DB_PAGES=${APO_MAX_DB_PAGES:-0}
+      # Two-tier retention: evidence tier window (verdicts are kept forever;
+      # 0 keeps evidence forever too). Per-project overrides live in the app.
+      - APO_EVIDENCE_RETENTION_DAYS=${APO_EVIDENCE_RETENTION_DAYS:-0}
+      # Per-key daily span quota default (0 = no quota). Per-key overrides
+      # live in the app; see the ingest-guardrails docs.
+      - APO_DEFAULT_DAILY_SPAN_QUOTA=${APO_DEFAULT_DAILY_SPAN_QUOTA:-0}
       # --- Email delivery (optional) ---
       # Unset EMAIL_TRANSPORT_URL keeps the log-only fallback: invitations
       # become copy-link and password-reset links go to the backend logs.
