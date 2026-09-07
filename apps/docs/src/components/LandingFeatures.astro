@@ -178,16 +178,20 @@
 		margin: 0 0 1.5rem;
 	}
 
-	/* ── Grid: 6-col desktop, 2-col tablet, 1-col mobile. ───────────── */
+	/* ── Grid: 6-col desktop, 2-col tablet, 1-col mobile. ─────────────
+	   minmax(0, 1fr) everywhere: plain 1fr is minmax(auto, 1fr), whose
+	   content-based minimum lets the anchor card's unbreakable .eval.ts
+	   lines widen the track past a phone viewport instead of scrolling
+	   inside .spec__code. */
 	.bento__grid {
 		display: grid;
 		gap: 1rem;
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 	}
 
 	@media (min-width: 40rem) {
 		.bento__grid {
-			grid-template-columns: repeat(2, 1fr);
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 		.cell--anchor {
 			grid-column: 1 / -1;
@@ -196,7 +200,7 @@
 
 	@media (min-width: 64rem) {
 		.bento__grid {
-			grid-template-columns: repeat(6, 1fr);
+			grid-template-columns: repeat(6, minmax(0, 1fr));
 			grid-auto-flow: dense;
 		}
 		.cell--anchor {
@@ -212,6 +216,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+		min-width: 0;
 		background: var(--sl-color-gray-6);
 		border: 1px solid var(--sl-color-gray-5);
 		padding: 1.25rem;
