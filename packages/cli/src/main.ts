@@ -376,29 +376,6 @@ const commands: Record<string, CommandEntry> = {
     ],
     note: "Accepts trace-id prefixes. Requires backend auth. Supports --json. Header shows the projection's evidence capabilities; --verbose adds each call's resolved observation_type and raw OTLP span attributes.",
   },
-  "traces import langfuse": {
-    handler: loadCommand("traces-import-langfuse"),
-    help: "Import a Langfuse trace into apo via the OTLP receiver",
-    args: [
-      ["<trace-id>", "Langfuse source trace id"],
-    ],
-    options: [
-      ["--langfuse-host <url>", "Override LANGFUSE_HOST"],
-      ["--max-observations <count>", "Safety ceiling (default 10000, range 1..50000)"],
-      ["--wait <seconds>", "Poll the source until the trace looks fully ingested (quiet observation count + no dangling parent links), not just the first span"],
-      ["--settle <seconds>", "Quiet period the observation count must hold before the trace counts as ingested (default 15; only with --wait)"],
-      ["--trace-id <apo-trace-id>", "Emit spans under this trace id instead of the namespaced hash (merge into an existing run trace; 32-hex W3C)"],
-      ["--parent-span-id <span-id>", "The span in the target trace the imported subtree hangs under (16-hex W3C); lets the completeness check tell an expected external parent from an un-ingested one"],
-      ["--json", "Machine-readable LangfuseImportResult JSON"],
-    ],
-    examples: [
-      "apo traces import langfuse 8f38c27a2c4b4bafb87a78e3a3d62b90",
-      "apo traces import langfuse <id> --langfuse-host https://us.langfuse.com",
-      "apo traces import langfuse <id> --wait 120",
-      "apo traces import langfuse <run-trace-id> --trace-id <run-trace-id>",
-    ],
-    note: "Credentials are environment-only: LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY (required) and LANGFUSE_HOST (optional). Keys never leave the CLI process. Re-running is safe and idempotent. Exit codes: 0 = imported and visible; 75 = source trace not ready (retryable); 2 = hard error. See the docs page for --wait/--settle ingestion gating and merge mode (--trace-id, --parent-span-id).",
-  },
   "batch list": {
     handler: loadCommand("batch-list"),
     help: "List batch runs from backend",

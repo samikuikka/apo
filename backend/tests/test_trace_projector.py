@@ -399,10 +399,10 @@ class TestTraceProjectorIdempotency:
             assert len(calls) == 1
 
     def test_reimport_with_different_trace_id_does_not_duplicate(self):
-        """Issue #104: a langfuse re-import lands the same observation under a
-        different ``trace_id`` (e.g. ``--trace-id`` override, or a different
-        source host). The span_id is the deterministic identity, so the
-        projector must upsert the existing call — not append a second copy."""
+        """Issue #104: re-ingesting the same observation under a different
+        ``trace_id`` (e.g. a ``trace_id`` override from the sender) must not
+        duplicate it. The span_id is the deterministic identity, so the
+        projector upserts the existing call — not append a second copy."""
         original = _make_canonical_span(
             trace_id="trace-original",
             span_id="span-reimport-01",
@@ -480,9 +480,9 @@ class TestTraceProjectorTaskRunCostRefresh:
     """Issue #41: projecting costed spans into a trace linked to a finalized
     Task Run must refresh the run's total_cost/total_tokens.
 
-    The task runner aggregates cost exactly once, at finalize. For imported
-    traces (e.g. ``traces import langfuse``), costed spans land AFTER finalize,
-    so the projector must re-aggregate when it upserts calls for a trace whose
+    The task runner aggregates cost exactly once, at finalize. Costed spans
+    can land AFTER finalize (late OTLP batches, exporter retries), so the
+    projector must re-aggregate when it upserts calls for a trace whose
     ``RunDB.task_run_id`` is set.
     """
 

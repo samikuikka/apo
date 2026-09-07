@@ -86,13 +86,12 @@ const SECTIONS: { heading: string; slugs: string[] }[] = [
 			'cli/runs-judgments',
 			'cli/traces-list',
 			'cli/traces-show',
-			'cli/traces-import-langfuse',
 			'cli/batch',
 		],
 	},
 	{
 		heading: 'Ecosystem',
-		slugs: ['ecosystem', 'ecosystem/otel-framework-setup', 'ecosystem/langfuse-import'],
+		slugs: ['ecosystem', 'ecosystem/otel-framework-setup'],
 	},
 ];
 

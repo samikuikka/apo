@@ -34,7 +34,6 @@ from .routes import (
     models,
     scores,
     otlp_traces,
-    langfuse_public,
     run_events,
     webhooks,
     comments,
@@ -207,7 +206,6 @@ def create_app() -> FastAPI:
     app.include_router(models.router)
     app.include_router(scores.router)
     app.include_router(otlp_traces.router)
-    app.include_router(langfuse_public.router)
     app.include_router(run_events.router)
     app.include_router(webhooks.router)
     app.include_router(comments.router)

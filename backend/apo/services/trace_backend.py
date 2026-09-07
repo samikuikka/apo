@@ -8,8 +8,8 @@ returns a :class:`TraceBackend`.
 
 Today only :class:`NativeTraceBackend` exists: it reads from Apo's own
 ``runs``/``logged_calls`` tables. The interface is the slot a future
-external backend (e.g. one that fetches traces from a user's Langfuse
-instance at completion and stores them locally) plugs into, without the
+external backend (e.g. one that fetches traces from an external source
+at completion and stores them locally) plugs into, without the
 task runner or the trace UI needing to know which backend is active.
 """
 
@@ -295,7 +295,7 @@ def get_trace_backend(project: str | None = None) -> TraceBackend:
     """Return the active trace backend for a project.
 
     Currently only the native backend exists. A future external backend
-    (e.g. a per-project Langfuse connector) is selected here — the task runner
-    and trace UI never branch on the source themselves.
+    (e.g. a per-project external trace source) is selected here — the task
+    runner and trace UI never branch on the source themselves.
     """
     return _NATIVE
