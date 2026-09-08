@@ -198,6 +198,45 @@ def test_v2_failure_finalizes_attempt(isolated_engine):
         app.dependency_overrides.clear()
 
 
+def test_v2_result_invalid_persists_execution_error_not_verdict(isolated_engine):
+    """Issue #249: a size-rejected result records as an execution error.
+
+    ``failure_kind="result_invalid"`` with a ``result_too_large:`` message must
+    leave the Task Run as ``error`` with no verdict and the diagnostic stored
+    verbatim — never a failed capability test, and the run stays inspectable.
+    """
+    engine = isolated_engine
+    _, attempt_id, jwt = _seed_leased_attempt(engine)
+    client = _client(engine)
+    diagnostic = (
+        "result_too_large: total_bytes=11234567 limit_bytes=10485760 "
+        "largest_fields=transcript=9000000, checks=2000000, deliverables=100000"
+    )
+    try:
+        resp = client.post(
+            f"/v1/executor-protocol/v2/attempts/{attempt_id}/failure",
+            headers={"Authorization": f"Bearer {jwt}"},
+            json={
+                "completion_id": "comp-rl",
+                "failure_kind": "result_invalid",
+                "error_message": diagnostic,
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        with Session(engine) as s:
+            att = s.get(TaskExecutionAttemptDB, attempt_id)
+            assert att is not None
+            assert att.status == "failed"
+            assert att.failure_kind == "result_invalid"
+            run = s.get(AgentTaskRunDB, att.task_run_id)
+            assert run is not None
+            assert run.status == "error"
+            assert run.pass_result is None
+            assert run.error_message == diagnostic
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_v2_result_rejects_wrong_attempt_token(isolated_engine):
     engine = isolated_engine
     _seed_leased_attempt(engine)
@@ -372,3 +411,92 @@ def test_claim_respects_sequential_batch_order(isolated_engine):
         second = claim_next_source_owned_attempt(s, executor=ex)  # pyright: ignore[reportArgumentType]
     assert first is not None and first.attempt.id == "seq0"
     assert second is None
+
+
+# ---------------------------------------------------------------------------
+# assignment advertisement — the negotiated result-size contract (issue #249)
+# ---------------------------------------------------------------------------
+
+
+def _seed_credential_executor(engine, pool_id: str, *, raw: str, user_id: str) -> str:
+    """Seed an online v2 executor with a known raw credential."""
+    from apo.services.executor_auth import hash_credential
+
+    with Session(engine) as s:
+        ex = ExecutorDB(
+            id="ex_adv",
+            scope_kind="pool",
+            project="p1",
+            executor_pool_id=pool_id,
+            name="adv",
+            enabled=True,
+            credential_prefix=raw[:16],
+            credential_hash=hash_credential(raw),
+            protocol_version=2,
+            executor_version="0.1.0",
+            enrolled_by_user_id=user_id,
+            driver_kinds_json=["source-owned-ts"],
+            capabilities_json={"assignment_kinds": ["source_owned"]},
+            max_concurrency=4,
+            last_seen_at=datetime.now(timezone.utc),
+        )
+        s.add(ex); s.commit()
+        return ex.id
+
+
+def _publish_catalog(engine, digest: str) -> None:
+    from apo.models.db import ProjectTaskSourceDB
+
+    with Session(engine) as s:
+        s.add(ProjectTaskSourceDB(
+            project="p1", source_type="published", status="ready",
+            source_ref=None, catalog_digest=digest,
+        ))
+        s.commit()
+
+
+def test_claims_advertise_configured_result_cap(isolated_engine, monkeypatch):
+    """Issue #249: the assignment's result_max_bytes is the configured cap the
+    request-size middleware enforces on /result — not a hardcoded literal."""
+    engine = isolated_engine
+    uid = _seed_project_owner(engine)
+    pool_id = _source_pool(engine)
+    _seed_credential_executor(engine, pool_id, raw="apo_ex_advertisement_credential", user_id=uid)
+    _publish_catalog(engine, "sha256:matched")
+    _queue_source_owned_attempt(engine, attempt_id="adv0", pool_id=pool_id, target_user_id=uid, run_id="radv")
+
+    monkeypatch.setenv("APO_RESULT_MAX_BODY_BYTES", "2048")
+    client = _client(engine)
+    try:
+        resp = client.post(
+            "/v1/executor-protocol/v2/claims",
+            headers={"Authorization": "Bearer apo_ex_advertisement_credential"},
+            json={"catalog_digest": "sha256:matched", "available_slots": 1},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["result_max_bytes"] == 2048
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_claims_advertise_default_result_cap(isolated_engine, monkeypatch):
+    """Unset env → the shipped 10 MiB default, matching the middleware."""
+    engine = isolated_engine
+    uid = _seed_project_owner(engine)
+    pool_id = _source_pool(engine)
+    _seed_credential_executor(engine, pool_id, raw="apo_ex_advertisement_credential", user_id=uid)
+    _publish_catalog(engine, "sha256:matched")
+    _queue_source_owned_attempt(engine, attempt_id="adv1", pool_id=pool_id, target_user_id=uid, run_id="radv1")
+
+    monkeypatch.delenv("APO_RESULT_MAX_BODY_BYTES", raising=False)
+    client = _client(engine)
+    try:
+        resp = client.post(
+            "/v1/executor-protocol/v2/claims",
+            headers={"Authorization": "Bearer apo_ex_advertisement_credential"},
+            json={"catalog_digest": "sha256:matched", "available_slots": 1},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["result_max_bytes"] == 10_485_760
+    finally:
+        app.dependency_overrides.clear()

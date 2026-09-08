@@ -7,6 +7,7 @@
  */
 
 import type { StoredExecutorState } from "./executor-state.ts";
+import { ResultSubmissionHttpError, boundedResponseDetail } from "./result-submission.ts";
 
 export interface EnrollResponse {
   executor_id: string;
@@ -309,6 +310,8 @@ export async function submitResult(opts: {
   attemptJwt: string;
   attemptId: string;
   result: Record<string, unknown>;
+  /** Pre-serialized body — send exactly the bytes that were measured. */
+  serializedResult?: string;
 }): Promise<void> {
   const resp = await fetch(`${v2Base(opts.backendUrl)}/attempts/${opts.attemptId}/result`, {
     method: "POST",
@@ -317,11 +320,13 @@ export async function submitResult(opts: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${opts.attemptJwt}`,
     },
-    body: JSON.stringify(opts.result),
+    body: opts.serializedResult ?? JSON.stringify(opts.result),
   });
 
   if (!resp.ok) {
-    throw new Error(`Result submission failed: ${resp.status}`);
+    // Typed so the connector can tell a definite 413 rejection from an
+    // ambiguous transport failure (issue #249).
+    throw new ResultSubmissionHttpError(resp.status, await boundedResponseDetail(resp));
   }
 }
 

@@ -137,4 +137,85 @@ describe("compactChecksForSubmission (issue #175)", () => {
       kind: "truncated",
     });
   });
+
+  // Issue #249 reported 76/79-test tasks failing with HTTP 413 on versions
+  // that predate compaction: every test judged the same large subject, so
+  // the body carried N copies of it. These fixtures pin that the exact
+  // reported shapes stay far under the 10 MiB result cap after compaction —
+  // with tests, verdicts, and structure intact.
+  it.each([76, 79])(
+    "keeps a %i-test shared-subject result under the 10 MiB cap (issue #249 shape)",
+    (count) => {
+      const doc = "D".repeat(600 * 1024);
+      const checks = Array.from({ length: count }, (_, i) => ({
+        id: `criterion-${i}`,
+        pass: true,
+        reasoning: "ok",
+        assertions: [
+          {
+            id: "judge",
+            pass: true,
+            reasoning: "ok",
+            received: doc,
+            evaluator_type: "llm" as const,
+            judge: {
+              model: "gpt-5",
+              prompt: { system: "You are a judge.", user: doc.slice(0, 2000) },
+              response: `PASS because reasons ${i}`,
+            },
+          },
+        ],
+      }));
+
+      const rawBytes = canonicalBytes(checks).length;
+      expect(rawBytes).toBeGreaterThan(40 * 1024 * 1024); // the reported blow-up shape
+      const { checks: compacted, truncatedValues } = compactChecksForSubmission(checks);
+
+      expect(truncatedValues).toBe(count);
+      expect(compacted).toHaveLength(count);
+      // Every test survives with a marker; none is dropped or truncated away.
+      for (const check of compacted) {
+        const received = check.assertions![0].received as Record<string, unknown>;
+        expect(received.kind).toBe("truncated");
+        expect(received.size_bytes).toBe(canonicalBytes(doc).length);
+      }
+      // Judge sub-threshold segments ride along untouched.
+      const first = compacted[0].assertions![0].judge!;
+      expect(first.prompt!.user).toBe(doc.slice(0, 2000));
+      // The whole compacted result body fits under the backend's 10 MiB cap.
+      expect(canonicalBytes(compacted).length).toBeLessThan(10_485_760);
+    },
+  );
+
+  it("leaves sub-threshold judge segments inline even at high test counts", () => {
+    // 79 tests × (system+response 15 KiB each + small unique received): every
+    // field is below its limit, so compaction must not touch anything — and
+    // the shape still fits under the cap uncompacted.
+    const checks = Array.from({ length: 79 }, (_, i) => ({
+      id: `criterion-${i}`,
+      pass: true,
+      reasoning: "ok",
+      assertions: [
+        {
+          id: "judge",
+          pass: true,
+          reasoning: "ok",
+          received: `sub-${i}-`.repeat(64),
+          evaluator_type: "llm" as const,
+          judge: {
+            prompt: { system: "S".repeat(15_000), user: `U${i}-`.repeat(64) },
+            response: "R".repeat(15_000),
+          },
+        },
+      ],
+    }));
+
+    const { checks: compacted, truncatedValues, truncatedSegments } =
+      compactChecksForSubmission(checks);
+
+    expect(truncatedValues).toBe(0);
+    expect(truncatedSegments).toBe(0);
+    expect(compacted).toEqual(checks);
+    expect(canonicalBytes(compacted).length).toBeLessThan(10_485_760);
+  });
 });

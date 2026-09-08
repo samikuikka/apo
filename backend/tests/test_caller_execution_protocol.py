@@ -181,3 +181,34 @@ def test_caller_create_rejects_oversized_identity(
     body["caller_identity"]["client_version"] = "x" * 300
     r = client.post("/v1/agent-task-batch-runs/caller", json=body)  # type: ignore[attr-defined]
     assert r.status_code == 422
+
+
+def test_caller_create_advertises_default_result_cap(
+    client: object, session: Session, auth_secret: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #249: the create response names the cap the middleware enforces.
+
+    Callers measure their result body against this advertised limit instead of
+    discovering it as an opaque 413. Unset env → the shipped 10 MiB default.
+    """
+    for name in (
+        "APO_RESULT_MAX_BODY_BYTES",
+        "APO_ARTIFACT_UPLOAD_MAX_BODY_BYTES",
+        "APO_WRITE_MAX_BODY_BYTES",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    _seed_project(session)
+    r = client.post("/v1/agent-task-batch-runs/caller", json=_caller_body())  # type: ignore[attr-defined]
+    assert r.status_code == 201, r.text
+    assert r.json()["result_max_bytes"] == 10_485_760
+
+
+def test_caller_create_advertises_configured_result_cap(
+    client: object, session: Session, auth_secret: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-default cap reaches the caller: advertised == enforced (issue #249)."""
+    monkeypatch.setenv("APO_RESULT_MAX_BODY_BYTES", "2048")
+    _seed_project(session)
+    r = client.post("/v1/agent-task-batch-runs/caller", json=_caller_body())  # type: ignore[attr-defined]
+    assert r.status_code == 201, r.text
+    assert r.json()["result_max_bytes"] == 2048

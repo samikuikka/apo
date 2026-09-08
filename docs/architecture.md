@@ -563,6 +563,20 @@ The optimizer-era code has already been removed from source; the historical clea
 
 Canonical OTLP spans remain the replayable source of truth when conventions or projection schemas change.
 
+### Result Recording Size Contract
+
+Task result bodies are a negotiated contract between server and recording clients (issue #249):
+
+1. The server's request-size middleware enforces a per-route byte cap on Attempt `/result` bodies, configured via `APO_RESULT_MAX_BODY_BYTES` (default 10,485,760 = 10 MiB; see `backend/apo/services/request_body_limits.py`). Over-cap bodies are rejected with HTTP 413 before buffering.
+2. The cap is **advertised where the client gets its lease**: `result_max_bytes` in the caller create response (`POST /v1/agent-task-batch-runs/caller`) and in the source-owned assignment (`/v1/executor-protocol/v2/claims`). Both populate it from the same `load_request_body_limits()` configuration the middleware loads, so advertised == enforced.
+3. Clients (`apo task run` and `apo connect`) compact checks (marker-compatible with backend normalization), then serialize the final result once and measure its exact UTF-8 bytes. A body over the advertised limit is **never sent**: the Attempt is finalized through the small `/failure` endpoint with `failure_kind: "result_invalid"` and a bounded `result_too_large:` diagnostic (total bytes, limit, largest top-level field sizes), and the CLI prints the Run id (`apo runs show <run-id>`) on stderr.
+4. Two failure modes stay distinct:
+   - **Definite rejection** — an explicit HTTP 413 from the result request (a intermediary may enforce a smaller cap than advertised). The client finalizes the existing Attempt as an execution error while the lease is live; no "outcome unknown".
+   - **Ambiguous commit** — transport timeout, dropped response, or 5xx may follow a committed result. The client polls the run's authoritative state and never sends a contradictory failure.
+5. A size-rejected run renders as an execution error in its Batch (run `status: "error"`, no pass/fail verdict) — never a failed capability test or a missing comparison member. No new run-state enum exists; `result_too_large:` is an error reason.
+
+Legitimate large evidence (unique long reasoning, full transcripts, large JSON deliverables) that survives compaction can still exceed the cap; that is recorded honestly as the execution error above. Serving it properly requires an upload/reference protocol for result evidence, which is a separate scoped follow-up — not silent truncation.
+
 ## Real-Time Updates with Server-Sent Events (SSE)
 
 The backend pushes real-time updates to the dashboard over Server-Sent Events, eliminating polling. There are two live event streams, both built on the same generic in-memory broadcaster.

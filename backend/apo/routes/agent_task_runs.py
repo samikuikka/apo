@@ -512,6 +512,11 @@ class CallerCreateResponse(BaseModel):
     trace_endpoint: str
     trace_project: str
     trace_required: bool = True
+    # The result-body byte cap the request-size middleware enforces on
+    # /result, advertised so the caller can measure before submitting and
+    # finalize an oversized result as a bounded execution error instead of
+    # dying on a 413 with no inspectable outcome (issue #249).
+    result_max_bytes: int
 
 
 @router.post(
@@ -581,6 +586,10 @@ async def create_caller_batch_run_route(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
     backend_url = os.environ.get("APO_BACKEND_URL", "http://127.0.0.1:8000")
+    # Same configuration source the request-size middleware loads: the
+    # advertised cap is the enforced cap (issue #249).
+    from ..services.request_body_limits import load_request_body_limits
+
     return CallerCreateResponse(
         batch_run_id=result.batch.id,
         task_run_id=result.task_run.id,
@@ -591,6 +600,7 @@ async def create_caller_batch_run_route(
         trace_endpoint=os.environ.get("AGENT_TASK_TRACE_ENDPOINT", backend_url),
         trace_project=request.project,
         trace_required=True,
+        result_max_bytes=load_request_body_limits().result_max_bytes,
     )
 
 

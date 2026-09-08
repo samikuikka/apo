@@ -17,7 +17,14 @@ import {
   submitCallerFailure,
   CallerHeartbeat,
   type CallerResultBody,
+  type CreatedCallerRun,
 } from "../lib/caller-execution.ts";
+import {
+  ResultSubmissionHttpError,
+  formatResultTooLarge,
+  prepareResultSubmission,
+  type ResultBodySize,
+} from "../lib/result-submission.ts";
 
 type LocalRunSummary = {
   taskId: string;
@@ -272,6 +279,9 @@ async function runCallerRecorded(config: Config, resolved: ResolvedTask): Promis
   // path needs the summary to render the verdict it confirmed server-side.
   let summary: LocalRunSummary | null = null;
   let jsonDeliverables: Record<string, unknown> = {};
+  // The measurement of the final serialized body, kept for the definite-413
+  // branch so its diagnostic can name bytes/limit/fields (issue #249).
+  let measuredSize: ResultBodySize | null = null;
   try {
     summary = await runTaskDirImpl(taskDir) as LocalRunSummary;
 
@@ -303,9 +313,19 @@ async function runCallerRecorded(config: Config, resolved: ResolvedTask): Promis
     // document N times ships N tiny markers instead of N copies of the
     // document (43 MB bodies → single-digit MB). Local rendering and --json
     // output above still use the full summary.
-    const checksForSubmission = compactChecksImpl
-      ? compactChecksImpl(summary.checks).checks
-      : summary.checks;
+    let checksForSubmission: unknown;
+    if (compactChecksImpl) {
+      // A compaction failure is a recording error, not a reason to upload
+      // the raw checks: report it instead of attempting a huge body (issue #249).
+      try {
+        checksForSubmission = compactChecksImpl(summary.checks).checks;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`check compaction failed: ${detail}`);
+      }
+    } else {
+      checksForSubmission = summary.checks;
+    }
     const resultBody: CallerResultBody = {
       completion_id: completionId,
       pass_result: summary.pass,
@@ -316,14 +336,45 @@ async function runCallerRecorded(config: Config, resolved: ResolvedTask): Promis
       deliverables: jsonDeliverables,
       run_configuration: summary.runConfiguration ?? null,
     };
-    warnIfResultBodyLarge(resultBody);
-    await submitCallerResult(backendUrl, created.lease, resultBody);
-    // render the result so the CLI shows PASS/FAIL + checks,
-    // just like the local and backend paths it replaced.
-    exitCode = renderRecordedResult(config, summary, jsonDeliverables, created.taskRunId);
+    // Issue #249: the server advertises the exact byte cap its middleware
+    // enforces. Measure the final serialized body once; a known-oversized
+    // result is never sent — it is finalized as a bounded execution error
+    // through the small failure endpoint instead of dying as a 413 with no
+    // inspectable outcome.
+    const prepared = prepareResultSubmission(resultBody, created.resultMaxBytes);
+    measuredSize = prepared.size;
+    if (prepared.overLimit) {
+      let diagnostic = formatResultTooLarge(prepared.size);
+      if (!compactChecksImpl) {
+        diagnostic += " (check compaction unavailable in this SDK — values were not compacted)";
+      }
+      await finalizeResultInvalid(config, created, completionId, diagnostic, heartbeat);
+      console.error(red(`Error: ${diagnostic}`));
+      exitCode = 2;
+    } else {
+      await submitCallerResult(backendUrl, created.lease, resultBody, prepared.serialized);
+      // render the result so the CLI shows PASS/FAIL + checks,
+      // just like the local and backend paths it replaced.
+      exitCode = renderRecordedResult(config, summary, jsonDeliverables, created.taskRunId);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (resultStarted) {
+    if (
+      error instanceof ResultSubmissionHttpError &&
+      error.status === 413 &&
+      resultStarted
+    ) {
+      // An explicit 413 is a definite rejection of this request — the body
+      // never reached finalization (an intermediary may enforce a smaller
+      // cap than the server advertised). Finalize as a bounded execution
+      // error while the lease is live; this is NOT the ambiguous branch.
+      const diagnostic = measuredSize
+        ? `${formatResultTooLarge(measuredSize)} server_rejected_with=413`
+        : `result_too_large: server rejected the result body with HTTP 413`;
+      await finalizeResultInvalid(config, created, completionId, diagnostic, heartbeat);
+      console.error(red(`Error: ${diagnostic}`));
+      exitCode = 2;
+    } else if (resultStarted) {
       // Ambiguous result — the server may have committed before the
       // connection failed. Do NOT send a contradictory failure.
       // Issue #174: the transport giving up on a multi-MB body (ingress
@@ -342,7 +393,10 @@ async function runCallerRecorded(config: Config, resolved: ResolvedTask): Promis
         console.error(dim(`Result recorded: run ${created.taskRunId} is ${verdict}.`));
         exitCode = renderRecordedResult(config, summary, jsonDeliverables, created.taskRunId);
       } else {
-        console.error(red(`Error: result submission outcome unknown: ${message}`));
+        console.error(
+          red(`Error: result submission outcome unknown: ${message}`) + "\n" +
+          dim(`Run ${created.taskRunId} (apo runs show ${created.taskRunId})`),
+        );
         exitCode = 2;
       }
     } else {
@@ -409,27 +463,49 @@ function renderRecordedResult(
 }
 
 /**
- * Issue #175's submission guard: compaction already removes the duplicated
- * judged subjects, so a body this large is transcript/deliverable content the
- * server genuinely stores. Warn (never refuse — refusing loses runs, the
- * lesson of #174) so the case is visible instead of dying as a timeout.
+ * Finalize a definitely-rejected result as a bounded execution error
+ * (issue #249): a small /failure POST with failure_kind "result_invalid" and
+ * a `result_too_large:` diagnostic, while the lease is still live. If the
+ * failure finalization itself cannot be acknowledged, fall back to polling
+ * the run's authoritative state — a committed result is never contradicted.
+ * Every path prints the exact Run identity so the failure stays inspectable.
  */
-const RESULT_BODY_WARN_BYTES = 20 * 1024 * 1024;
-
-/** Exported for tests: the 20 MB submission-size guard (issue #175). */
-export function warnIfResultBodyLarge(body: CallerResultBody): void {
-  let bytes: number;
+async function finalizeResultInvalid(
+  config: Config,
+  created: CreatedCallerRun,
+  completionId: string,
+  diagnostic: string,
+  heartbeat: CallerHeartbeat,
+): Promise<void> {
+  const printRunIdentity = (): void => {
+    console.error(dim(`Run ${created.taskRunId} (apo runs show ${created.taskRunId})`));
+  };
   try {
-    bytes = Buffer.byteLength(JSON.stringify(body));
-  } catch {
-    return;
+    await submitCallerFailure(config.backendUrl, created.lease, {
+      completion_id: completionId,
+      failure_kind: "result_invalid",
+      // Bounded: the backend stores this verbatim; the diagnostic is already
+      // byte counts and field names.
+      error_message: diagnostic.slice(0, 2_000),
+    });
+    printRunIdentity();
+  } catch (reportError) {
+    const reportMessage = reportError instanceof Error ? reportError.message : String(reportError);
+    console.error(red(`Warning: failed to report result rejection to backend: ${reportMessage}`));
+    // Failure finalization conflicted or went unanswered. Poll the
+    // authoritative state before claiming anything: a committed result must
+    // not be overwritten, and an unanswered failure must not be assumed stored.
+    await heartbeat.stop();
+    const verdict = await pollRunVerdict(config, created.taskRunId);
+    if (verdict) {
+      console.error(dim(`Result recorded: run ${created.taskRunId} is ${verdict}.`));
+    } else {
+      console.error(
+        red(`Error: outcome uncertain after result rejection: ${reportMessage}`),
+      );
+      printRunIdentity();
+    }
   }
-  if (bytes <= RESULT_BODY_WARN_BYTES) return;
-  console.error(
-    `Warning: result submission body is ${(bytes / (1024 * 1024)).toFixed(1)} MB (> 20 MB). ` +
-      "Check values are already compacted to markers; the remainder is " +
-      "transcript/deliverable content. Very large bodies risk upload timeouts.",
-  );
 }
 
 /**

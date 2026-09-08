@@ -246,9 +246,13 @@ describe("assignment heartbeat liveness (issue #176)", () => {
 
     await exec!("http://cp", "/ws", { ...assignment }, new AbortController().signal, 10);
 
+    // The beat stream is fire-and-forget: the cancellation warning and abort
+    // can land right after executeAssignment returns.
     const cancelSignal = (lastChildOpts as { cancelSignal?: AbortSignal } | undefined)?.cancelSignal;
-    expect(cancelSignal?.aborted).toBe(true);
-    expect(errors.some((e) => e.toLowerCase().includes("cancel"))).toBe(true);
+    await vi.waitFor(() => expect(cancelSignal?.aborted).toBe(true));
+    await vi.waitFor(() =>
+      expect(errors.some((e) => e.toLowerCase().includes("cancel"))).toBe(true),
+    );
   });
 
   it("warns loudly and aborts when the lease is lost (409)", async () => {
@@ -259,8 +263,8 @@ describe("assignment heartbeat liveness (issue #176)", () => {
     await exec!("http://cp", "/ws", { ...assignment }, new AbortController().signal, 10);
 
     const cancelSignal = (lastChildOpts as { cancelSignal?: AbortSignal } | undefined)?.cancelSignal;
-    expect(cancelSignal?.aborted).toBe(true);
-    expect(errors.some((e) => e.includes("lease lost"))).toBe(true);
+    await vi.waitFor(() => expect(cancelSignal?.aborted).toBe(true));
+    await vi.waitFor(() => expect(errors.some((e) => e.includes("lease lost"))).toBe(true));
   });
 
   it("warns on failed beats instead of swallowing them", async () => {
@@ -270,6 +274,8 @@ describe("assignment heartbeat liveness (issue #176)", () => {
 
     await exec!("http://cp", "/ws", { ...assignment }, new AbortController().signal, 10);
 
-    expect(errors.some((e) => /heartbeat failed \(\d+ in a row\)/.test(e))).toBe(true);
+    await vi.waitFor(() =>
+      expect(errors.some((e) => /heartbeat failed \(\d+ in a row\)/.test(e))).toBe(true),
+    );
   });
 });

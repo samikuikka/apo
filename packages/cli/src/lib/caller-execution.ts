@@ -13,6 +13,11 @@ import { Worker } from "node:worker_threads";
 
 import type { CallerIdentity } from "./git-provenance.ts";
 import type { TaskDefinitionDocument } from "./task-definition.ts";
+import {
+  ResultSubmissionHttpError,
+  boundedResponseDetail,
+  parseAdvertisedResultMaxBytes,
+} from "./result-submission.ts";
 
 export interface CallerTaskDescriptor {
   task_id: string;
@@ -59,6 +64,8 @@ export interface CreatedCallerRun {
   taskRunId: string;
   traceEndpoint: string;
   traceProject: string;
+  /** Advertised result-body cap the server's middleware enforces (issue #249). */
+  resultMaxBytes: number;
 }
 
 export interface CallerResultBody {
@@ -147,6 +154,7 @@ export async function createCallerRun(input: CreateCallerRunInput): Promise<Crea
     attempt_jwt: string;
     trace_endpoint: string;
     trace_project: string;
+    result_max_bytes?: unknown;
   };
   return {
     batchRunId: body.batch_run_id,
@@ -159,6 +167,9 @@ export async function createCallerRun(input: CreateCallerRunInput): Promise<Crea
     },
     traceEndpoint: body.trace_endpoint,
     traceProject: body.trace_project,
+    // Missing on older servers → the documented default; malformed values
+    // are protocol errors, never silently unlimited (issue #249).
+    resultMaxBytes: parseAdvertisedResultMaxBytes(body.result_max_bytes),
   };
 }
 
@@ -211,14 +222,20 @@ export async function submitCallerResult(
   backendUrl: string,
   lease: CallerLease,
   body: CallerResultBody,
+  /** Pre-serialized body from prepareResultSubmission — send the measured bytes. */
+  serializedBody?: string,
 ): Promise<void> {
   const resp = await fetch(attemptUrl(backendUrl, lease, "result"), {
     method: "POST",
     signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
     headers: attemptHeaders(lease),
-    body: JSON.stringify(body),
+    body: serializedBody ?? JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(`/result failed: ${resp.status} ${await safeText(resp)}`);
+  if (!resp.ok) {
+    // Typed so the command layer can tell a definite 413 rejection from an
+    // ambiguous transport failure (issue #249).
+    throw new ResultSubmissionHttpError(resp.status, await boundedResponseDetail(resp));
+  }
 }
 
 export async function submitCallerFailure(

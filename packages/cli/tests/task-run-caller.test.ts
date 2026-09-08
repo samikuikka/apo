@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const _captured: { env?: NodeJS.ProcessEnv } = {};
 let _deliverables: Record<string, unknown> = {};
 let _throwError: string | null = null;
+let _transcript: Record<string, unknown> | null = null;
 
 // Partially mock the SDK: keep the real manifest canonicalizer (used by the
 // caller attestation) but stub runTaskDir so the test needs no importable task.
@@ -18,7 +19,10 @@ vi.mock("@apo-ai/sdk/agent-task", async (importOriginal) => {
     runTaskDir: async () => {
       if (_throwError) throw new Error(_throwError);
       _captured.env = { ...process.env };
-      return { taskId: "t", pass: true, checks: [], adapterName: null, traceRunId: null, deliverables: _deliverables };
+      return {
+        taskId: "t", pass: true, checks: [], adapterName: null, traceRunId: null,
+        deliverables: _deliverables, transcript: _transcript ?? undefined,
+      };
     },
   };
 });
@@ -59,6 +63,7 @@ describe("task run caller-execution dispatch", () => {
     _captured.env = undefined;
     _deliverables = {};
     _throwError = null;
+    _transcript = null;
   });
 
   it("reachable backend posts to the caller create route and submits result", async () => {
@@ -304,6 +309,204 @@ describe("task run caller-execution dispatch", () => {
     expect(code).toBe(2);
     expect(failureBody?.failure_kind).toBe("task_runtime");
     expect(failureBody?.failure_kind).not.toBe("task_process");
+  });
+
+  // Issue #249: the result body is a negotiated size contract. These scenes
+  // pin the caller-path halves — measurement-first rejection, definite 413,
+  // and the ambiguous-transport branch that must NOT become a 413 branch.
+  describe("size-contracted result submission (issue #249)", () => {
+    let failureBody: Record<string, unknown> | undefined;
+    let resultPosted = false;
+    let polledRun = false;
+
+    const install = (opts: {
+      callerResponse?: Record<string, unknown>;
+      resultBehavior?: "ok" | "413-json" | "413-html" | "drop";
+      runStatus?: string;
+    }) => {
+      failureBody = undefined;
+      resultPosted = false;
+      polledRun = false;
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url.includes("/health")) return new Response("ok", { status: 200 });
+        if (url.includes("/agent-task-batch-runs/caller")) {
+          return mockResp({
+            batch_run_id: "b1", task_run_id: "r1", attempt_id: "a1", lease_generation: 1,
+            lease_expires_at: "2026-01-01T00:00:00Z", attempt_jwt: "jwt-1",
+            trace_endpoint: "http://backend.test", trace_project: "proj-test",
+            ...opts.callerResponse,
+          }, 201);
+        }
+        if (url.includes("/attempts/a1/start")) return mockResp({ status: "running" });
+        if (url.includes("/attempts/a1/heartbeat")) return mockResp({ cancel_requested: false });
+        if (url.includes("/attempts/a1/result")) {
+          resultPosted = true;
+          if (opts.resultBehavior === "413-json") {
+            return mockResp({ detail: "Request body exceeds the 10485760 byte limit" }, 413);
+          }
+          if (opts.resultBehavior === "413-html") {
+            return new Response("<html>413 too large</html>", { status: 413, headers: { "Content-Type": "text/html" } });
+          }
+          if (opts.resultBehavior === "drop") throw new Error("connection reset mid-upload");
+          return mockResp({ status: "succeeded" });
+        }
+        if (url.includes("/attempts/a1/failure")) {
+          failureBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          return mockResp({ status: "failed" });
+        }
+        if (url.includes("/agent-task-runs/r1") && !url.includes("artifact")) {
+          polledRun = true;
+          return mockResp({ status: opts.runStatus ?? "error" });
+        }
+        return mockResp({}, 404);
+      });
+    };
+
+    it("parses the advertised result_max_bytes from the caller create response", async () => {
+      install({ callerResponse: { result_max_bytes: 20_000 } });
+      // The default summary is tiny — well under either limit, so this only
+      // exercises parsing; a malformed value is covered in unit tests.
+      const code = await run([
+        taskId, "--dir", testDir, "--backend", "http://backend.test",
+        "--project", "proj-test", "--api-key", "sk-apo-test",
+      ]);
+      expect(code).toBe(0);
+    });
+
+    it("rejects a malformed advertised limit as a protocol error before running", async () => {
+      install({ callerResponse: { result_max_bytes: -5 } });
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const code = await run([
+        taskId, "--dir", testDir, "--backend", "http://backend.test",
+        "--project", "proj-test", "--api-key", "sk-apo-test",
+      ]);
+      expect(code).toBe(2);
+    });
+
+    it("never sends a known-oversized result: bounded /failure with result_too_large", async () => {
+      // Advertise a 1 KiB cap and produce a transcript bigger than it.
+      install({ callerResponse: { result_max_bytes: 1024 } });
+      _transcript = { block: "t".repeat(2048) };
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const code = await run([
+        taskId, "--dir", testDir, "--backend", "http://backend.test",
+        "--project", "proj-test", "--api-key", "sk-apo-test",
+      ]);
+
+      expect(code).toBe(2);
+      expect(resultPosted).toBe(false);
+      expect(failureBody?.failure_kind).toBe("result_invalid");
+      const message = failureBody?.error_message as string;
+      expect(message.startsWith("result_too_large:")).toBe(true);
+      expect(message).toContain("limit_bytes=1024");
+      // Privacy: the diagnostic carries byte counts, never the transcript text.
+      expect(message).not.toContain("tttt");
+    });
+
+    it("treats an explicit 413 as a definite rejection, not an unknown outcome", async () => {
+      install({ resultBehavior: "413-json" });
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const code = await run([
+        taskId, "--dir", testDir, "--backend", "http://backend.test",
+        "--project", "proj-test", "--api-key", "sk-apo-test",
+      ]);
+
+      expect(code).toBe(2);
+      expect(resultPosted).toBe(true);
+      expect(failureBody?.failure_kind).toBe("result_invalid");
+      expect(failureBody?.error_message).toContain("server_rejected_with=413");
+    });
+
+    it("handles an HTML 413 from an intermediary without parsing its message", async () => {
+      install({ resultBehavior: "413-html" });
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const code = await run([
+        taskId, "--dir", testDir, "--backend", "http://backend.test",
+        "--project", "proj-test", "--api-key", "sk-apo-test",
+      ]);
+
+      expect(code).toBe(2);
+      expect(failureBody?.failure_kind).toBe("result_invalid");
+    });
+
+    it("keeps the ambiguous branch for dropped transports and prints the Run identity", async () => {
+      // run status "error" = terminal without our verdict → the poll gives up
+      // immediately and the CLI reports the unknown outcome with identity.
+      install({ resultBehavior: "drop", runStatus: "error" });
+      const errors: string[] = [];
+      const origErr = console.error;
+      console.error = (...args: unknown[]) => errors.push(args.join(" "));
+
+      try {
+        const code = await run([
+          taskId, "--dir", testDir, "--backend", "http://backend.test",
+          "--project", "proj-test", "--api-key", "sk-apo-test",
+        ]);
+        expect(code).toBe(2);
+      } finally {
+        console.error = origErr;
+      }
+
+      // No contradictory failure POST in the ambiguous branch.
+      expect(failureBody).toBeUndefined();
+      expect(polledRun).toBe(true);
+      // The exact Run identity is on stderr for every failed recording.
+      const stderr = errors.join("\n");
+      expect(stderr).toContain("r1");
+      expect(stderr).toContain("apo runs show r1");
+    });
+
+    it("renders the confirmed verdict when the backend committed before the drop", async () => {
+      install({ resultBehavior: "drop", runStatus: "passed" });
+      const code = await run([
+        taskId, "--dir", testDir, "--backend", "http://backend.test",
+        "--project", "proj-test", "--api-key", "sk-apo-test",
+      ]);
+      // Committed result found by polling → normal verdict rendering, exit 0.
+      expect(code).toBe(0);
+      expect(failureBody).toBeUndefined();
+    });
+
+    it("names the missing compaction export when it forces an oversized raw body", async () => {
+      // An SDK without compactChecksForSubmission (the issue #249 reported
+      // pair): uncompacted checks can push the body over the cap, and the
+      // recording error must say compaction was unavailable — not upload raw.
+      install({ callerResponse: { result_max_bytes: 1024 } });
+      vi.doMock("@apo-ai/sdk/agent-task", async (importOriginal) => {
+        const actual = await importOriginal<typeof import("@apo-ai/sdk/agent-task")>();
+        return {
+          ...actual,
+          runTaskDir: async () => ({
+            taskId: "t", pass: true,
+            checks: [{ id: "c", pass: true, reasoning: "r", received: "D".repeat(4096) }],
+            adapterName: null, traceRunId: null, deliverables: {},
+          }),
+          // The reported pair's SDK predates compaction: the export is absent.
+          compactChecksForSubmission: undefined,
+        };
+      });
+      vi.resetModules();
+      const { run: runFresh } = await import("../src/commands/task-run.ts");
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const code = await runFresh([
+        taskId, "--dir", testDir, "--backend", "http://backend.test",
+        "--project", "proj-test", "--api-key", "sk-apo-test",
+      ]);
+
+      expect(code).toBe(2);
+      expect(resultPosted).toBe(false);
+      expect(failureBody?.failure_kind).toBe("result_invalid");
+      const message = failureBody?.error_message as string;
+      expect(message.startsWith("result_too_large:")).toBe(true);
+      expect(message).toContain("check compaction unavailable");
+      vi.doUnmock("@apo-ai/sdk/agent-task");
+      vi.resetModules();
+    });
   });
 });
 

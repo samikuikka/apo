@@ -29,6 +29,12 @@ import {
   type SourceOwnedAssignment,
 } from "../lib/connected-executor.ts";
 import { heartbeatTimeoutMs } from "../lib/caller-execution.ts";
+import {
+  ResultSubmissionHttpError,
+  formatResultTooLarge,
+  parseAdvertisedResultMaxBytes,
+  prepareResultSubmission,
+} from "../lib/result-submission.ts";
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -288,6 +294,18 @@ async function executeAssignment(
     });
   };
 
+  // A malformed advertised limit is a protocol error, never "unlimited"
+  // (issue #249). The assignment cannot be executed without knowing the
+  // contract its result must fit, so record it as a driver failure.
+  let resultMaxBytes: number;
+  try {
+    resultMaxBytes = parseAdvertisedResultMaxBytes(assignment.result_max_bytes);
+  } catch (err) {
+    const message = (err as Error).message;
+    await fail("driver", message);
+    throw new Error(message);
+  }
+
   // 1. Rediscover local catalog and confirm the digest still matches the claim
   //    (the Task must not have changed between claim and execution).
   const tasks = discoverTaskMeta(taskRoot);
@@ -407,41 +425,71 @@ async function executeAssignment(
     // Issue #175: ship only what the server keeps. Oversized
     // received values / judge segments become the backend's truncation
     // markers here, so judging one large document N times doesn't upload N
-    // copies of it. Compaction is an optimization — if the SDK module
-    // somehow fails to load, submit the raw checks rather than fail the run.
+    // copies of it. Compaction failure or a missing export is a recording
+    // error — never a silent fallback to the raw checks (issue #249).
     let checksForSubmission: unknown = summary.checks ?? null;
-    try {
-      const { compactChecksForSubmission } = await import("@apo-ai/sdk/agent-task");
-      if (Array.isArray(checksForSubmission)) {
+    if (Array.isArray(checksForSubmission)) {
+      try {
+        const { compactChecksForSubmission } = await import("@apo-ai/sdk/agent-task");
         checksForSubmission = compactChecksForSubmission(
           checksForSubmission as Parameters<typeof compactChecksForSubmission>[0],
         ).checks;
+      } catch (err) {
+        const message = `check compaction failed: ${(err as Error).message}`;
+        console.error(red(`Warning: run ${assignment.task_run_id} (apo runs show ${assignment.task_run_id}): ${message}`));
+        await fail("result_invalid", message);
+        throw new Error(message);
       }
-    } catch {
-      // fall through with the raw checks
+    }
+    const result: Record<string, unknown> = {
+      completion_id: completionId,
+      pass_result: summary.pass ?? false,
+      adapter_name: summary.adapterName ?? null,
+      checks: checksForSubmission,
+      trace_run_id: summary.traceRunId ?? null,
+      transcript: summary.transcript ?? null,
+      deliverables: summary.deliverables ?? null,
+      run_configuration: summary.runConfiguration ?? null,
+      exit_code: null,
+      stdout_tail: outcome.stdoutTail || null,
+      stderr_tail: outcome.stderrTail || null,
+      error_message: null,
+    };
+    // Issue #249: measure the exact serialized bytes against the advertised
+    // cap. A known-oversized result is never sent — the Attempt is finalized
+    // through the small failure endpoint as a bounded execution error.
+    const prepared = prepareResultSubmission(result, resultMaxBytes);
+    if (prepared.overLimit) {
+      const diagnostic = formatResultTooLarge(prepared.size);
+      console.error(
+        red(`Warning: run ${assignment.task_run_id} (apo runs show ${assignment.task_run_id}): ${diagnostic}`),
+      );
+      await fail("result_invalid", diagnostic.slice(0, 2_000));
+      throw new Error(diagnostic);
     }
     // Once result submission begins, the server may commit before we
-    // see the response. Do not send a contradictory failure on a dropped response.
+    // see the response. Do not send a contradictory failure on a dropped
+    // response — but an explicit 413 is a definite rejection of the
+    // request, and is finalized as an execution error (issue #249).
     finalized = true;
-    await submitResult({
-      backendUrl,
-      attemptJwt: assignment.attempt_jwt,
-      attemptId: assignment.attempt_id,
-      result: {
-        completion_id: completionId,
-        pass_result: summary.pass ?? false,
-        adapter_name: summary.adapterName ?? null,
-        checks: checksForSubmission,
-        trace_run_id: summary.traceRunId ?? null,
-        transcript: summary.transcript ?? null,
-        deliverables: summary.deliverables ?? null,
-        run_configuration: summary.runConfiguration ?? null,
-        exit_code: null,
-        stdout_tail: outcome.stdoutTail || null,
-        stderr_tail: outcome.stderrTail || null,
-        error_message: null,
-      },
-    });
+    try {
+      await submitResult({
+        backendUrl,
+        attemptJwt: assignment.attempt_jwt,
+        attemptId: assignment.attempt_id,
+        result,
+        serializedResult: prepared.serialized,
+      });
+    } catch (err) {
+      if (err instanceof ResultSubmissionHttpError && err.status === 413) {
+        const diagnostic = `${formatResultTooLarge(prepared.size)} server_rejected_with=413`;
+        console.error(
+          red(`Warning: run ${assignment.task_run_id} (apo runs show ${assignment.task_run_id}): ${diagnostic}`),
+        );
+        await fail("result_invalid", diagnostic.slice(0, 2_000));
+      }
+      throw err;
+    }
   } catch (err) {
     // only submit a failure if no finalization has happened.
     if (!finalized) {

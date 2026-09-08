@@ -155,7 +155,7 @@ const commands: Record<string, CommandEntry> = {
       "apo task run ./tasks/my-task",
       "apo task run meeting-summary --no-record",
     ],
-    note: "Always executes on this machine (caller execution). Records the run when backend + project + credential are configured; a configured recording that cannot reach the backend exits 2 — use --no-record to skip recording. Exit codes: 0=pass, 1=fail, 2=error.",
+    note: "Always executes on this machine (caller execution). Records the run when backend + project + credential are configured; a configured recording that cannot reach the backend exits 2 — use --no-record to skip recording. Results over the server's advertised size limit are recorded as execution errors (inspectable via the printed run id). Exit codes: 0=pass, 1=fail, 2=error.",
   },
   "task publish": {
     handler: loadCommand("task-publish"),
@@ -187,7 +187,7 @@ const commands: Record<string, CommandEntry> = {
       "apo connect",
       "apo connect --project acme --concurrency 8",
     ],
-    note: "Runs in the foreground. Discovers tasks locally, publishes nothing, and executes only assignments matching your published Task Catalog. Source files and credentials never leave your machine.",
+    note: "Runs in the foreground. Discovers tasks locally, publishes nothing, and executes only assignments matching your published Task Catalog. Source files and credentials never leave your machine. Results over the assignment's advertised size limit are recorded as execution errors with the run id logged.",
   },
   "runs list": {
     handler: loadCommand("runs-list"),
