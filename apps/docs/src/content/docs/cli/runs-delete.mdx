@@ -23,14 +23,14 @@ Deletion removes the run's checks, judgments, test-result corrections, deliverab
 ## Synopsis
 
 ```bash
-apo runs delete <run-id>... --yes
+apo runs delete <run-id>... --yes [--task <id>]
 ```
 
 ## Description
 
 Takes one or more **run ids** (unique prefix or `last` works, like [`apo runs show`](/cli/runs-show/)). All ids are resolved before anything is deleted, so a typo in the third id never takes down the first two. Runs are then deleted sequentially; the command stops at the first failure.
 
-`--yes` is **required**. Without it the command prints what *would* be deleted and exits with code `2`, no request is sent. This is the confirmation, deliberately non-interactive: the command never prompts, so it is safe for agents and CI.
+`--yes` is **required**. Without it the command prints what *would* be deleted and exits with code `2`, no request is sent. This is the confirmation, deliberately non-interactive: the command never prompts, so it is safe for agents and CI. `--task <id>` filters `last` to the latest run of a specific task.
 
 ```bash
 apo runs delete run_de89cab0

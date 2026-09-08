@@ -1,6 +1,6 @@
 ---
-title: "apo login / logout"
-description: "Authenticate with email and password, save a project-scoped API key, or clear saved credentials."
+title: "apo login / logout / profile"
+description: "Authenticate with email and password, save a project-scoped API key, clear saved credentials, or keep several named logins under short names."
 ---
 
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
@@ -128,6 +128,41 @@ apo logout
 />
 
 If you weren't logged in, prints `Not logged in.`
+
+## `apo profile`
+
+Named connection contexts: save a whole login (backend, API key, project, task root) under a short name, then switch with one word. Where `apo login --backend` switches between backends, profiles switch between accounts, two profiles can share one backend with different accounts and projects.
+
+### Synopsis
+
+```bash
+apo profile [list]           # list saved profiles (the default subcommand)
+apo profile save <name>      # save the active login as a profile
+apo profile use <name>       # switch the active context to a profile
+apo profile remove <name>    # delete a profile (never touches the active credentials)
+```
+
+### Description
+
+- **`save`** snapshots the current active login (backend, API key, project, task root) under `<name>`. Refuses to overwrite an existing profile unless `--force` is passed. With `--from-login <url>` it builds the profile from a remembered login for that backend instead of the active one, so you can profile a login you currently aren't using.
+- **`use`** verifies the profile's key against the backend before switching. On failure the active credentials are left untouched, a broken profile can never log you out.
+- Profiles are stored as `~/.apo/profiles/<name>.json`. `list` also shows the legacy per-backend remembered logins, the same ones `apo login --backend` switches between.
+
+### Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--force` | off | (`save`) Overwrite an existing profile of the same name. |
+| `--from-login <url>` | - | (`save`) Build the profile from the remembered login for this backend instead of the active one. |
+
+### Examples
+
+```bash
+apo profile save prod
+apo profile use prod
+apo profile list
+apo profile remove prod
+```
 
 ## See also
 

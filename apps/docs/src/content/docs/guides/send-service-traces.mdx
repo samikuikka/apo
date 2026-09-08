@@ -149,6 +149,6 @@ Quotas stop accidents, runaway exporters, retry storms. They are not an adversar
 
 ## What service traces are not
 
-A service trace has no verdict, no checks, no deliverables, that machinery belongs to [task runs](/concepts/runs). A service trace is exactly what your OTel SDK sent: spans, attributes, timing. apo keeps them under the project's evidence-retention window; the search surface, the waterfall, and the quotas apply to them identically.
+A service trace has no verdict, no checks, no deliverables, that machinery belongs to [task runs](/concepts/mental-model/). A service trace is exactly what your OTel SDK sent: spans, attributes, timing. apo keeps them under the project's evidence-retention window; the search surface, the waterfall, and the quotas apply to them identically.
 
 If what you're instrumenting is an LLM application rather than a plain service, use the [framework recipes](/ecosystem/otel-framework-setup) instead, they map OpenAI/Anthropic/LangChain calls onto apo's chat rendering and cost columns.

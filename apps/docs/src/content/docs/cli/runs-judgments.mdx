@@ -10,7 +10,7 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 ## Synopsis
 
 ```bash
-apo runs judgments <run-id> [judgment-id]
+apo runs judgments <run-id> [judgment-id] [--task <id>]
 ```
 
 ## Arguments
@@ -19,6 +19,12 @@ apo runs judgments <run-id> [judgment-id]
 |---|---|---|
 | `<run-id>` | yes | Run id, unique prefix, or `last`. |
 | `[judgment-id]` | no | One judgment's id, show its full test evidence instead of the summary list. |
+
+## Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--task <id>` | - | Filter `last` to the latest run of a specific task. |
 
 ## Example
 
