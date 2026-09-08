@@ -78,6 +78,10 @@ PUBLIC_PATHS: tuple[str, ...] = (
     # protocol v2 (source-owned connected executors) uses the same
     # self-authenticating model with its own enrollment token and executor credential.
     "/v1/executor-protocol/v2",
+    # version-neutral result-evidence PUT: the staged part is addressed by
+    # its opaque id, and the handler authenticates the Attempt JWT and
+    # matches it to the part's own attempt (issue #251).
+    "/v1/executor-protocol/result-evidence",
 )
 
 _COOKIE_NAMES = ("authjs.session-token", "__Secure-authjs.session-token")

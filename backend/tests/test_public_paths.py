@@ -79,3 +79,22 @@ class TestBootstrapRoutesArePublicWithRealSecret:
         )
         assert response.status_code in (401, 400, 422)
         assert response.json().get("detail") != "Authentication required"
+
+class TestExecutorProtocolSelfAuthRoutes:
+    """The executor-protocol families authenticate inside their handlers
+    (Attempt JWTs / enrollment credentials), so they must be in
+    PUBLIC_PATHS — including the version-neutral result-evidence PUT
+    (issue #251), which a session-less attempt token must reach."""
+
+    def test_result_evidence_put_reachable_with_real_secret(
+        self, client: TestClient, monkeypatch: MonkeyPatch
+    ) -> None:
+        _enforce_real_auth(monkeypatch)
+
+        # No credential: the handler's own 401 ("missing bearer credential"),
+        # never the middleware's blanket "Authentication required" — which is
+        # exactly the 403/401 gap that broke the live PUT on a real server
+        # while the open-dev test client sailed through.
+        response = client.put("/v1/executor-protocol/result-evidence/rev_missing")
+        assert response.status_code in (401, 403, 404)
+        assert response.json().get("detail") != "Authentication required"
