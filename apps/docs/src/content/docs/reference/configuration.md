@@ -155,6 +155,7 @@ means unlimited — an invalid value fails startup.
 | Variable | Default | Purpose |
 |---|---|---|
 | `APO_RESULT_MAX_BODY_BYTES` | `10485760` | Max task-run `result` submission body (10 MiB). |
+| `APO_RESULT_EVIDENCE_MAX_BODY_BYTES` | `104857600` | Max body for one out-of-band result-evidence part upload (100 MiB). Parts let document-heavy runs record transcripts/deliverables/checks larger than the result envelope. |
 | `APO_ARTIFACT_UPLOAD_MAX_BODY_BYTES` | `104857600` | Max artifact upload body (100 MiB). |
 | `APO_WRITE_MAX_BODY_BYTES` | `10485760` | Max body for other member writes: executor-protocol `result`/`failure` (v1/v2), judgments, comments, and `/v1/runs` POSTs (create, custom-metrics, bulk-export, reproject). |
 
@@ -217,6 +218,9 @@ container required. The optional `s3` backend keeps the same server API.
 | `APO_ARTIFACT_MAX_ITEM_BYTES` | `104857600` | 100 MiB per Artifact. |
 | `APO_ARTIFACT_MAX_RUN_BYTES` | `524288000` | 500 MiB ready+pending per Task Run. |
 | `APO_ARTIFACT_UPLOAD_TTL_SECONDS` | `86400` | Pending-upload expiry (orphan cleanup). |
+| `APO_RESULT_EVIDENCE_MAX_ITEM_BYTES` | `104857600` | 100 MiB per staged result-evidence part (logical bytes). |
+| `APO_RESULT_EVIDENCE_MAX_TOTAL_BYTES` | `536870912` | 512 MiB combined logical evidence per attempt. |
+| `APO_RESULT_EVIDENCE_STALE_TTL_SECONDS` | `86400` | The daily pass reaps result-evidence staging rows (and their objects) older than this — abandoned uploads from attempts that never finalized. |
 | `APO_ARTIFACT_ORPHAN_GRACE_HOURS` | `48` | The daily pass reaps artifact-store objects no manifest row references (crash orphans). Objects younger than this grace are left alone; `staging/*.part` files are never touched. |
 | `APO_DEFAULT_DAILY_SPAN_QUOTA` | `0` | Default accepted-spans/day quota applied to NEWLY MINTED API keys. `0` = unlimited. Existing keys are untouched, edit per key (Settings → API Keys) or bulk-apply there. Quota is per key (N keys = N × cap) and resets at UTC midnight; over-quota ingest gets 429. |
 | `APO_USAGE_RETENTION_DAYS` | `400` | Days to keep per-key daily ingest-usage rows. `0` = keep forever. |
