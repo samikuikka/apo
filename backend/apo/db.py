@@ -1111,6 +1111,41 @@ def _migrate_to_v43() -> None:
         )
 
 
+def _migrate_to_v44() -> None:
+    """Version 44: the ``agent_task_result_evidence`` staging table.
+
+    Issue #251: attempt-scoped result-evidence parts uploaded out of band
+    and referenced by the small ``/result`` finalization. New DBs get the
+    table from ``create_all``; existing DBs create it here, idempotently.
+    Rows are transient (deleted at finalization) — no data backfill.
+    """
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS agent_task_result_evidence ("
+            " id VARCHAR PRIMARY KEY,"
+            " project VARCHAR NOT NULL,"
+            " task_run_id VARCHAR NOT NULL,"
+            " attempt_id VARCHAR NOT NULL,"
+            " slot VARCHAR NOT NULL,"
+            " deliverable_name VARCHAR,"
+            " status VARCHAR NOT NULL,"
+            " storage_backend VARCHAR,"
+            " storage_key VARCHAR,"
+            " content_encoding VARCHAR NOT NULL DEFAULT 'identity',"
+            " size_bytes INTEGER NOT NULL,"
+            " sha256 VARCHAR NOT NULL,"
+            " stored_size_bytes INTEGER,"
+            " created_at DATETIME NOT NULL,"
+            " ready_at DATETIME)"
+        )
+        _create_index_if_not_exists(
+            conn, "ix_result_evidence_attempt", "agent_task_result_evidence", "attempt_id"
+        )
+        _create_index_if_not_exists(
+            conn, "ix_result_evidence_run", "agent_task_result_evidence", "task_run_id"
+        )
+
+
 def _migrate_span_facet_indexes(conn: Connection) -> None:
     """Covering facet indexes + a prunable span-time window.
 
@@ -2587,7 +2622,7 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 43
+LATEST_SCHEMA_VERSION = 44
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -2633,6 +2668,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     41: _migrate_to_v41,
     42: _migrate_to_v42,
     43: _migrate_to_v43,
+    44: _migrate_to_v44,
 }
 
 

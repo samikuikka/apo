@@ -1322,6 +1322,15 @@ _ROUTE_MODULE_AUDIT: dict[str, tuple[str, list[tuple[str, str]]]] = {
     ),
     "executor_protocol": ("capability", []),
     "executor_protocol_v2": ("capability", []),
+    "executor_result_evidence": (
+        "capability",
+        [
+            (
+                "tests/test_result_evidence.py",
+                "test_put_rejects_foreign_attempt_token",
+            )
+        ],
+    ),
     "health": ("public", []),
     "ingestion": (
         "project",

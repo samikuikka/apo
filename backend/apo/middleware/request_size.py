@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 _RESULT_BODY_LIMIT = 10 * 1024 * 1024  # 10 MiB Task result body
 _ARTIFACT_UPLOAD_LIMIT = 100 * 1024 * 1024  # 100 MiB per Artifact upload
 _WRITE_BODY_LIMIT = 10 * 1024 * 1024  # 10 MiB other write bodies
+_RESULT_EVIDENCE_LIMIT = 100 * 1024 * 1024  # 100 MiB per result-evidence part
 
 # the exact canonical public OTLP trace path.
 _OTLP_METHOD = "POST"
@@ -51,16 +52,23 @@ _OTLP_PATH = "/api/public/otel/v1/traces"
 # (method, path prefix, requires suffix). The specific Deliverable
 # routes are declared before any future catch-all. Limits come from
 # RequestBodyLimits; the suffix is an ``endswith`` match, so
-# ``test-result-corrections`` never trips the ``result`` entries.
+# ``test-result-corrections`` never trips the ``result`` entries and
+# ``result-evidence`` intents get the small-body write cap rather than
+# falling through unlimited.
 _LIMITED_PATH_SPECS: tuple[tuple[str, str, str | None], ...] = (
     ("POST", "/v1/agent-task-runs/", "result"),
     ("PUT", "/v1/agent-task-artifact-uploads/", None),
     # Executor submissions and the other member-write bodies share one cap:
     # oversized SDK submissions must die at the boundary, not in memory.
+    ("POST", "/v1/executor-protocol/v1/attempts/", "result-evidence"),
+    ("POST", "/v1/executor-protocol/v2/attempts/", "result-evidence"),
     ("POST", "/v1/executor-protocol/v1/attempts/", "result"),
     ("POST", "/v1/executor-protocol/v1/attempts/", "failure"),
     ("POST", "/v1/executor-protocol/v2/attempts/", "result"),
     ("POST", "/v1/executor-protocol/v2/attempts/", "failure"),
+    # Result-evidence part bytes (issue #251): their own cap, artifact-upload
+    # magnitude, keyed by the version-neutral PUT path.
+    ("PUT", "/v1/executor-protocol/result-evidence/", None),
     ("POST", "/v1/agent-task-runs/", "judgments"),
     ("POST", "/api/v1/comments", None),
     # Prefix match also covers /{run_id}/custom-metrics, /bulk-delete,
@@ -72,12 +80,15 @@ _LimitedPath = tuple[str, str, str | None, int]
 
 
 def _limited_paths(
-    result_limit: int, artifact_limit: int, write_limit: int
+    result_limit: int,
+    artifact_limit: int,
+    write_limit: int,
+    result_evidence_limit: int = _RESULT_EVIDENCE_LIMIT,
 ) -> tuple[_LimitedPath, ...]:
     """Resolve path specs against the active limits.
 
-    ``result``-suffixed entries use the result limit, artifact upload its
-    own, everything else the shared write limit.
+    ``result``-suffixed entries use the result limit, artifact upload and
+    result-evidence PUTs their own, everything else the shared write limit.
     """
     resolved: list[_LimitedPath] = []
     for method, prefix, suffix in _LIMITED_PATH_SPECS:
@@ -85,6 +96,8 @@ def _limited_paths(
             limit = result_limit
         elif prefix == "/v1/agent-task-artifact-uploads/":
             limit = artifact_limit
+        elif prefix == "/v1/executor-protocol/result-evidence/":
+            limit = result_evidence_limit
         else:
             limit = write_limit
         resolved.append((method, prefix, suffix, limit))
@@ -114,6 +127,7 @@ class RequestSizeMiddleware(BaseHTTPMiddleware):
                 body_limits.result_max_bytes,
                 body_limits.artifact_upload_max_bytes,
                 body_limits.write_max_bytes,
+                body_limits.result_evidence_max_bytes,
             )
         else:
             self._limited_paths = _limited_paths(

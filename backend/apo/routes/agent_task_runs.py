@@ -517,6 +517,12 @@ class CallerCreateResponse(BaseModel):
     # finalize an oversized result as a bounded execution error instead of
     # dying on a 413 with no inspectable outcome (issue #249).
     result_max_bytes: int
+    # Out-of-band result evidence (issue #251): advertised so a caller whose
+    # result overflows the cap can stage transcript/deliverable/check parts
+    # and finalize by reference instead of losing the run.
+    result_evidence_supported: bool = True
+    result_evidence_max_item_bytes: int
+    result_evidence_max_total_bytes: int
 
 
 @router.post(
@@ -589,7 +595,9 @@ async def create_caller_batch_run_route(
     # Same configuration source the request-size middleware loads: the
     # advertised cap is the enforced cap (issue #249).
     from ..services.request_body_limits import load_request_body_limits
+    from ..services.result_evidence import result_evidence_limits
 
+    evidence_max_item, evidence_max_total = result_evidence_limits()
     return CallerCreateResponse(
         batch_run_id=result.batch.id,
         task_run_id=result.task_run.id,
@@ -601,6 +609,8 @@ async def create_caller_batch_run_route(
         trace_project=request.project,
         trace_required=True,
         result_max_bytes=load_request_body_limits().result_max_bytes,
+        result_evidence_max_item_bytes=evidence_max_item,
+        result_evidence_max_total_bytes=evidence_max_total,
     )
 
 
