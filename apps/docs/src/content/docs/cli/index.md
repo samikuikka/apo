@@ -56,13 +56,14 @@ Manage which project you're operating against and where its tasks come from.
 |---|---|
 | [`apo project list`](/cli/project/) | List projects you can access. |
 | [`apo project use`](/cli/project/) | Switch the active project. |
-| [`apo project`](/cli/project/) | Create, list, and select projects. |
+| [`apo project create`](/cli/project/) | Create a project. |
 
 ## Authentication
 
 | Command | Purpose |
 |---|---|
 | [`apo login`](/cli/auth/) | Log in, sets the backend, project, and task root every command uses. Remembered per backend; switch with `apo login --backend <url>`. |
+| [`apo profile`](/cli/auth/) | Named connection contexts — save a login (backend, key, project, task root) under a short name and switch with one word. |
 | [`apo logout`](/cli/auth/) | Clear saved credentials. |
 | [`apo status`](/cli/status/) | Print the effective configuration: login, backend, project, task root. |
 

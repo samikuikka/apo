@@ -27,7 +27,7 @@ credentials are read from the local environment:
 |---|---|---|
 | `OPENROUTER_API_KEY` | - | OpenRouter API key. Required for LLM-judge checks and adapter LLM calls. |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter-compatible base URL. |
-| `OPENROUTER_MODEL` |, | Judge model for local runs (`apo task run`, `apo connect`): the model the local runner reads, with `OPENAI_MODEL` as the alternative. When both are unset, `t.judge` records a setup error instead of guessing. |
+| `OPENROUTER_MODEL` | - | Judge model for local runs (`apo task run`, `apo connect`): the model the local runner reads, with `OPENAI_MODEL` as the alternative. When both are unset, `t.judge` records a setup error instead of guessing. |
 | `AGENT_TASK_OPENROUTER_MODEL` | - | Judge model for the packaged task runtime (backend-spawned runs). Consulted after `AGENT_TASK_JUDGE_MODEL`; the final fallback is `google/gemini-2.5-flash`. Not read by local CLI runs. |
 | `OPENAI_API_KEY` | - | OpenAI API key. Alternative to OpenRouter for local/dev judge calls. |
 | `OPENAI_BASE_URL` | - | OpenAI-compatible base URL. |

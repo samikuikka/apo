@@ -23,7 +23,7 @@ List recent traces (observability runs) from the backend. These are the call-tre
 ## Synopsis
 
 ```bash
-apo traces list [--task <id>] [--limit <n>]
+apo traces list [--task <id>] [--limit <n>] [--service <name>] [--operation <name>] [--span-text <text>] [--attr <expr>...]
 ```
 
 ## Options
@@ -32,6 +32,20 @@ apo traces list [--task <id>] [--limit <n>]
 |---|---|---|
 | `--task <id>` | all | Only traces for this task. |
 | `--limit <n>` | 20 | Maximum traces to list (the backend caps a page at 100). |
+| `--service <name>` | all | Filter traces by service (the resource's `service.name`). |
+| `--operation <name>` | all | Filter by root span name (exact match). |
+| `--span-text <text>` | - | Free-text search over span names and attributes. |
+| `--attr <expr>` | - | Span-attribute predicate, repeatable: `key=v`, `key!=v`, `key>v`, `key>=v`, `key<v`, `key<=v`, `key~=v` (contains), `key?` (exists), `'key in a,b'`. |
+
+Predicates are none-of-trace semantics: `http.status_code!=500` matches traces where **no** span carried a 500. See [Send service traces](/guides/send-service-traces/) for the search surface these filters mirror in the dashboard.
+
+## Examples
+
+```bash
+apo traces list --limit 10
+apo traces list --service billing-api --attr http.status_code>=500
+apo traces list --attr customer.tier in enterprise,pro --span-text timeout
+```
 
 ## Output
 

@@ -21,7 +21,7 @@ Sometimes the eval is wrong, not the agent. `apo runs correct` records a human d
 ## Synopsis
 
 ```bash
-apo runs correct <run-id> <test-id> (--pass | --fail | --clear) [--reason <text>]
+apo runs correct <run-id> <test-id> (--pass | --fail | --clear) [--reason <text>] [--task <id>]
 ```
 
 ## Description
@@ -47,6 +47,14 @@ The effective result is what every current surface uses: run and batch verdicts,
 The run must be terminal with a verdict (`passed`/`failed`) and a recorded check report. Running, errored, or no-verdict runs are read-only, apo refuses with exit code `2` rather than guessing.
 
 Corrections need human authority: a browser session member, a full-scope project API key, or open-dev mode. Ingest keys and executor credentials are refused.
+
+## Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--pass` / `--fail` / `--clear` | (one required) | Set the effective result, or restore the recorded one. |
+| `--reason <text>` | - | Why (required for `--pass`/`--fail`, 3–1000 chars; recorded on the correction). |
+| `--task <id>` | - | Filter `last` to the latest run of a specific task. |
 
 ## Exit codes
 
