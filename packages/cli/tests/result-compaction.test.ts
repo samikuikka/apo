@@ -2,13 +2,16 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { SourceOwnedAssignment } from "../src/lib/connected-executor.ts";
 
 /*
- * Result-submission compaction scene test (issue #175).
+ * Result-submission compaction scene test (issue #175) + size-contract
+ * rejection scenes (issue #249).
  *
  * Drives connect.ts::executeAssignment against a mocked Control Plane and a
  * stubbed child spawner whose summary carries judged checks with a large
  * ``received`` — the exact shape that produced 43 MB result bodies. Asserts
  * the /result wire body carries the backend's truncation marker instead of
- * the document copies, and that the 20 MB guard stays silent at sane sizes.
+ * the document copies, and that a body over the assignment's advertised
+ * result_max_bytes is never POSTed to /result — it is finalized through
+ * /failure as a bounded execution error instead.
  */
 
 const fixedDigest = "sha256:matched";
@@ -79,13 +82,14 @@ const assignment: SourceOwnedAssignment = {
   attempt_jwt: "attempt-jwt",
   trace_endpoint: "http://cp/otel",
   trace_required: true,
-  result_max_bytes: 1024,
+  // The server's shipped default (10 MiB): compaction must keep the MSA
+  // shape far under it so /result — not /failure — carries the checks.
+  result_max_bytes: 10_485_760,
   diagnostic_tail_bytes: 100,
   run_metadata: null,
 };
 
 const { __executeAssignmentForTest: exec } = await import("../src/commands/connect.ts");
-const { warnIfResultBodyLarge } = await import("../src/commands/task-run.ts");
 
 /** 65 criteria judged against the same ~600 KB document — the MSA shape. */
 function msaShapedSummary(docBytes: number): Record<string, unknown> {
@@ -183,21 +187,153 @@ describe("result submission compaction", () => {
     expect(checks[0].assertions[0].received).toBe("short value");
   });
 
-  it("warns (never fails) when the serialized result body exceeds 20 MB", async () => {
-    const errors: string[] = [];
-    const original = console.error;
-    console.error = (...args: unknown[]) => errors.push(args.join(" "));
-    try {
-      const big: Record<string, unknown> = { completion_id: "c", checks: null, transcript: { blob: "t".repeat(21 * 1024 * 1024) } };
-      warnIfResultBodyLarge(big as never);
-      const small: Record<string, unknown> = { completion_id: "c", checks: null };
-      warnIfResultBodyLarge(small as never);
-    } finally {
-      console.error = original;
-    }
+  it("never POSTs a known-oversized result: bounded /failure instead (issue #249)", async () => {
+    // A transcript larger than the advertised cap: legitimate large evidence
+    // that compaction cannot shrink. The oversized body must never reach
+    // /result; the Attempt is finalized through the small /failure endpoint.
+    childOutcome = {
+      ok: true,
+      summary: {
+        ...msaShapedSummary(600 * 1024),
+        transcript: { messages: ["x".repeat(256 * 1024), "y".repeat(256 * 1024)] },
+      },
+    };
 
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toContain("21.0 MB");
-    expect(errors[0]).toContain("> 20 MB");
+    await expect(
+      exec!("http://cp", "/ws", { ...assignment, result_max_bytes: 512 * 1024 }, new AbortController().signal),
+    ).rejects.toThrow(/result_too_large:/);
+
+    const resultCalls = fetchCalls.filter((c) => c.url.endsWith("/result"));
+    expect(resultCalls).toHaveLength(0);
+    const failure = fetchCalls.find((c) => c.url.endsWith("/failure"));
+    expect(failure).toBeDefined();
+    expect(failure!.body.failure_kind).toBe("result_invalid");
+    const message = failure!.body.error_message as string;
+    expect(message.startsWith("result_too_large:")).toBe(true);
+    expect(message).toContain(`limit_bytes=${512 * 1024}`);
+    expect(message).toContain("transcript=");
+    // Privacy: the diagnostic carries byte counts, never the subject text.
+    expect(message).not.toContain("xxxx");
+  });
+
+  it("finalizes an explicit 413 from /result as a result_invalid execution error", async () => {
+    // An intermediary (or a server with a smaller cap than advertised)
+    // rejects a body below the cap. The typed status drives the definite-
+    // rejection branch — not the ambiguous one — with no string parsing of
+    // the (possibly HTML) response body.
+    childOutcome = { ok: true, summary: { pass: true, adapterName: "claude-code" } };
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: URL | Request | string, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      fetchCalls.push({ url, body: init?.body ? JSON.parse(init.body as string) : null });
+      if (url.endsWith("/source-attestation")) return jsonResp({ task_revision_id: "rev-1", content_sha256: "x" });
+      if (url.endsWith("/start")) return jsonResp({ attempt_id: "att-1", status: "running", phase: "running" });
+      if (url.endsWith("/heartbeat")) return jsonResp({ cancel_requested: false });
+      if (url.endsWith("/result")) {
+        return new Response("<html>413 Request Entity Too Large</html>", {
+          status: 413,
+          headers: { "Content-Type": "text/html" },
+        });
+      }
+      if (url.endsWith("/failure")) return jsonResp({ ok: true });
+      return jsonResp({});
+    });
+
+    await expect(
+      exec!("http://cp", "/ws", { ...assignment }, new AbortController().signal),
+    ).rejects.toThrow();
+
+    const failure = fetchCalls.find((c) => c.url.endsWith("/failure"));
+    expect(failure).toBeDefined();
+    expect(failure!.body.failure_kind).toBe("result_invalid");
+    expect(failure!.body.error_message).toContain("server_rejected_with=413");
+  });
+
+  it("does not send a contradictory failure when the result transport drops (ambiguous)", async () => {
+    childOutcome = { ok: true, summary: { pass: true, adapterName: "claude-code" } };
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: URL | Request | string, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      fetchCalls.push({ url, body: init?.body ? JSON.parse(init.body as string) : null });
+      if (url.endsWith("/source-attestation")) return jsonResp({ task_revision_id: "rev-1", content_sha256: "x" });
+      if (url.endsWith("/start")) return jsonResp({ attempt_id: "att-1", status: "running", phase: "running" });
+      if (url.endsWith("/heartbeat")) return jsonResp({ cancel_requested: false });
+      if (url.endsWith("/result")) throw new Error("connection reset mid-upload");
+      if (url.endsWith("/failure")) return jsonResp({ ok: true });
+      return jsonResp({});
+    });
+
+    await expect(
+      exec!("http://cp", "/ws", { ...assignment }, new AbortController().signal),
+    ).rejects.toThrow("connection reset mid-upload");
+
+    // Ambiguous: the server may have committed before the drop — no /failure.
+    expect(fetchCalls.some((c) => c.url.endsWith("/failure"))).toBe(false);
+  });
+
+  it("keeps the heartbeat alive through the slow failure finalization of an oversized result", async () => {
+    const events: string[] = [];
+    childOutcome = {
+      ok: true,
+      summary: { ...msaShapedSummary(600 * 1024), transcript: { blob: "t".repeat(1024 * 1024) } },
+    };
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: URL | Request | string, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      fetchCalls.push({ url, body: init?.body ? JSON.parse(init.body as string) : null });
+      if (url.endsWith("/source-attestation")) return jsonResp({ task_revision_id: "rev-1", content_sha256: "x" });
+      if (url.endsWith("/start")) return jsonResp({ attempt_id: "att-1", status: "running", phase: "running" });
+      if (url.endsWith("/heartbeat")) {
+        events.push("heartbeat");
+        return jsonResp({ cancel_requested: false });
+      }
+      if (url.endsWith("/result")) {
+        events.push("result");
+        return jsonResp({ ok: true });
+      }
+      if (url.endsWith("/failure")) {
+        events.push("failure-start");
+        await new Promise((r) => setTimeout(r, 80));
+        events.push("failure-end");
+        return jsonResp({ ok: true });
+      }
+      return jsonResp({});
+    });
+
+    await expect(
+      exec!("http://cp", "/ws", { ...assignment, result_max_bytes: 512 * 1024 }, new AbortController().signal, 20),
+    ).rejects.toThrow();
+    // Beats continue landing while the failure POST is in flight — the last
+    // heartbeat is not before "failure-start", and clearing happens after.
+    expect(events).toContain("failure-start");
+    const lastHeartbeat = events.lastIndexOf("heartbeat");
+    expect(lastHeartbeat).toBeGreaterThan(events.indexOf("failure-start"));
+    expect(events.indexOf("failure-end")).toBeGreaterThan(lastHeartbeat);
+    // No retry of the same known-oversized body.
+    expect(fetchCalls.filter((c) => c.url.endsWith("/result"))).toHaveLength(0);
+  });
+
+  it("reports a missing compaction export as a recording error, never a raw upload", async () => {
+    // An SDK without compactChecksForSubmission (the reported CLI 0.6.0/SDK
+    // 0.5.0 pair, issue #249): the judged checks must not silently ride the
+    // wire uncompacted — the Attempt is finalized as result_invalid.
+    // vi.doMock (not vi.mock — that hoists file-wide and breaks every other
+    // scene in this file): scope the export-less SDK to this test's imports.
+    vi.doMock("@apo-ai/sdk/agent-task", () => ({}));
+    vi.resetModules();
+    const { __executeAssignmentForTest: execFresh } = await import("../src/commands/connect.ts");
+    childOutcome = { ok: true, summary: msaShapedSummary(600 * 1024) };
+
+    await expect(
+      execFresh!("http://cp", "/ws", { ...assignment }, new AbortController().signal),
+    ).rejects.toThrow(/check compaction failed/);
+
+    const failure = fetchCalls.find((c) => c.url.endsWith("/failure"));
+    expect(failure).toBeDefined();
+    expect(failure!.body.failure_kind).toBe("result_invalid");
+    expect(String(failure!.body.error_message)).toContain("check compaction failed");
+    expect(fetchCalls.some((c) => c.url.endsWith("/result"))).toBe(false);
+    vi.doUnmock("@apo-ai/sdk/agent-task");
+    vi.resetModules();
   });
 });

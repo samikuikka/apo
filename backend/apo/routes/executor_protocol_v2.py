@@ -296,6 +296,10 @@ async def claims_v2(
     task_run = session.get(AgentTaskRunDB, attempt.task_run_id)
     batch_run = session.get(AgentTaskBatchRunDB, attempt.batch_run_id)
 
+    # Advertise the same cap the request-size middleware enforces on /result
+    # (issue #249), from the same configuration source — not a literal.
+    from ..services.request_body_limits import load_request_body_limits
+
     return SourceOwnedAssignment(
         attempt_id=attempt.id,
         task_run_id=attempt.task_run_id,
@@ -309,7 +313,7 @@ async def claims_v2(
         lease_expires_at=attempt.lease_expires_at.isoformat() if attempt.lease_expires_at else "",
         attempt_jwt=attempt_jwt,
         trace_endpoint=request.url.scheme + "://" + request.url.netloc + "/api/public/otel/v1/traces",
-        result_max_bytes=10_485_760,
+        result_max_bytes=load_request_body_limits().result_max_bytes,
         diagnostic_tail_bytes=10_000,
         run_metadata=batch_run.run_metadata if batch_run else None,
     )
