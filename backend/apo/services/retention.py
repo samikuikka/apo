@@ -693,6 +693,15 @@ def delete_agent_task_rows(session: Session, run_ids: list[str]) -> int:
         return 0
 
     deleted = 0
+    # Result-evidence staging rows FK both attempts and task_runs — they go
+    # before the attempts they reference (transient rows; objects via the
+    # reaper).
+    if table_exists(session, "agent_task_result_evidence"):
+        deleted += _exec_in(
+            session,
+            "DELETE FROM agent_task_result_evidence WHERE task_run_id IN :ids",
+            {"ids": run_ids},
+        )
     # attempts FK task_runs; remove them first.
     if table_exists(session, "task_execution_attempts"):
         deleted += _exec_in(
@@ -1023,6 +1032,22 @@ async def reap_unreferenced_artifact_objects(session: Session) -> int:
                 ).all(),
             )
         )
+    # Live result-evidence staging objects are referenced by their staging
+    # rows (issue #251); without this the reaper would eat parts older than
+    # the grace window while their attempt was still finalizing.
+    if table_exists(session, "agent_task_result_evidence"):
+        referenced.update(
+            str(row[0])
+            for row in cast(
+                "list[tuple[object, ...]]",
+                session.execute(
+                    text(
+                        "SELECT storage_key FROM agent_task_result_evidence "
+                        "WHERE storage_key IS NOT NULL"
+                    )
+                ).all(),
+            )
+        )
     if table_exists(session, "task_revisions"):
         referenced.update(
             str(row[0])
@@ -1239,6 +1264,10 @@ def run_maintenance_cleanup() -> dict[str, int]:
         summary["failed_uploads"] = asyncio.run(
             cleanup_expired_artifact_uploads(session)
         ).get("failed_uploads", 0)
+        if table_exists(session, "agent_task_result_evidence"):
+            from apo.services.result_evidence import cleanup_stale_result_evidence
+
+            summary["reaped_result_evidence"] = cleanup_stale_result_evidence(session)
         summary["expired_tokens"] = reap_expired_credentials(session)
         usage_days = usage_retention_days()
         if usage_days > 0:

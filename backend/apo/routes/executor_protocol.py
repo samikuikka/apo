@@ -33,6 +33,7 @@ from apo.services.execution_finalization import (
     FinalizationError,
     finalize_attempt_failure,
 )
+from apo.services.result_evidence import ResultEvidenceError
 from apo.services.execution_leases import (
     CurrentAttemptLease,
     LeaseError,
@@ -73,6 +74,9 @@ class ResultRequest(BaseModel):
     error_message: str | None = None
     # the adapter's resolved model/effort for this attempt.
     run_configuration: AgentTaskRunConfiguration | None = None
+    # out-of-band evidence part ids (issue #251); resolved server-side into
+    # the transcript/checks/deliverables they stand in for.
+    evidence_refs: list[str] | None = None
 
 
 class FailureRequest(BaseModel):
@@ -198,6 +202,7 @@ async def attempt_result(
             stdout_tail=body.stdout_tail, stderr_tail=body.stderr_tail,
             error_message=body.error_message,
             run_configuration=body.run_configuration,
+            evidence_refs=body.evidence_refs,
         )
         attempt = await finalize_attempt_with_deliverables(
             session, lease=lease, body=body_obj,
@@ -207,6 +212,10 @@ async def attempt_result(
             return {"attempt_id": attempt_id, "status": "replayed"}
     except CompletionConflict as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail={"kind": "completion_conflict", "msg": str(exc)})
+    except ResultEvidenceError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail={"kind": f"evidence_{exc.kind}", "msg": exc.message}
+        )
     except ValueError as exc:
         msg = str(exc)
         code = status.HTTP_409_CONFLICT if "non-ready" in msg or "already exists" in msg else status.HTTP_400_BAD_REQUEST

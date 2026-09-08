@@ -33,6 +33,7 @@ from ..models.db import (
     TaskExecutionAttemptDB,
     TaskRevisionDB,
 )
+from ..services.result_evidence import ResultEvidenceError
 from ..services.executor_auth import (
     ExecutorCapabilities,
     EnrollmentError,
@@ -142,6 +143,11 @@ class SourceOwnedAssignment(BaseModel):
     trace_required: Literal[True] = True
     result_max_bytes: int
     diagnostic_tail_bytes: int
+    # Out-of-band result evidence (issue #251): advertised so a client that
+    # overflows the inline cap can stage parts instead of losing the run.
+    result_evidence_supported: Literal[True] = True
+    result_evidence_max_item_bytes: int
+    result_evidence_max_total_bytes: int
     run_metadata: dict[str, object] | None = None
 
 
@@ -299,7 +305,9 @@ async def claims_v2(
     # Advertise the same cap the request-size middleware enforces on /result
     # (issue #249), from the same configuration source — not a literal.
     from ..services.request_body_limits import load_request_body_limits
+    from ..services.result_evidence import result_evidence_limits
 
+    max_item, max_total = result_evidence_limits()
     return SourceOwnedAssignment(
         attempt_id=attempt.id,
         task_run_id=attempt.task_run_id,
@@ -315,6 +323,8 @@ async def claims_v2(
         trace_endpoint=request.url.scheme + "://" + request.url.netloc + "/api/public/otel/v1/traces",
         result_max_bytes=load_request_body_limits().result_max_bytes,
         diagnostic_tail_bytes=10_000,
+        result_evidence_max_item_bytes=max_item,
+        result_evidence_max_total_bytes=max_total,
         run_metadata=batch_run.run_metadata if batch_run else None,
     )
 
@@ -476,6 +486,8 @@ class AttemptResultRequest(BaseModel):
     # The agent's resolved model/effort as reported by the adapter. Optional:
     # adapters that do not resolve a configuration omit it.
     run_configuration: AgentTaskRunConfiguration | None = None
+    # out-of-band evidence part ids (issue #251).
+    evidence_refs: list[str] | None = None
 
 
 class AttemptFailureRequest(BaseModel):
@@ -519,6 +531,7 @@ async def attempt_result_v2(
             stderr_tail=body.stderr_tail,
             error_message=body.error_message,
             run_configuration=body.run_configuration,
+            evidence_refs=body.evidence_refs,
         )
         attempt = await finalize_attempt_with_deliverables(
             session, lease=lease, body=body_obj,
@@ -528,6 +541,10 @@ async def attempt_result_v2(
             return {"ok": True, "attempt_id": attempt_id, "status": "replayed"}
     except CompletionConflict as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ResultEvidenceError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail={"kind": f"evidence_{exc.kind}", "msg": exc.message}
+        ) from exc
     except ValueError as exc:
         msg = str(exc)
         code = status.HTTP_409_CONFLICT if "non-ready" in msg or "already exists" in msg else status.HTTP_400_BAD_REQUEST

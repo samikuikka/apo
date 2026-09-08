@@ -52,7 +52,11 @@ async def test_result_finalization_runs_off_the_event_loop(
         return False
 
     def slow_finalize(
-        session: Session, *, lease: CurrentAttemptLease, body: AttemptResultBody
+        session: Session,
+        *,
+        lease: CurrentAttemptLease,
+        body: AttemptResultBody,
+        completion_digest: str | None = None,
     ) -> TaskExecutionAttemptDB:
         time.sleep(SYNC_WORK_SECONDS)  # the heavy finalization write
         calls.append("finalize")

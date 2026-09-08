@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 
 from sqlmodel import Session, select
@@ -86,6 +86,11 @@ class AttemptResultBody:
     error_message: str | None = None
     # adapter-reported model/effort.
     run_configuration: AgentTaskRunConfiguration | None = None
+    # Out-of-band evidence parts (issue #251): ids of attempt-scoped parts
+    # whose resolved bytes stand in for the inline transcript/checks/
+    # deliverables fields. Part of the completion digest, so replays stay
+    # idempotent after the staging rows are deleted.
+    evidence_refs: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -152,11 +157,19 @@ def finalize_attempt_result(
     *,
     lease: CurrentAttemptLease,
     body: AttemptResultBody,
+    completion_digest: str | None = None,
 ) -> TaskExecutionAttemptDB:
     """Apply a bounded result: attempt succeeded, Task Run finalized via the
-    shared finalizer, batch rolled up. Idempotent by (completion_id, digest)."""
+    shared finalizer, batch rolled up. Idempotent by (completion_id, digest).
+
+    ``completion_digest`` overrides the body-derived digest: the
+    evidence-ref path resolves referenced parts into an effective body whose
+    transcript/checks/deliverables differ from the wire request, and the
+    stored digest must match what a replay of the same request hashes —
+    the wire body, not the resolved one.
+    """
     attempt = _require_current(session, lease)
-    digest = _body_digest({"kind": "result", "body": asdict(body)})
+    digest = completion_digest or _body_digest({"kind": "result", "body": asdict(body)})
     if _check_completion_idempotency(
         session,
         attempt=attempt,
@@ -240,6 +253,13 @@ def finalize_attempt_failure(
     )
     session.commit()
     session.refresh(attempt)
+    # A failed attempt never finalizes a result: its staging evidence is
+    # abandoned. Rows go now (sync); orphaned objects are collected by the
+    # maintenance reaper.
+    from apo.services.result_evidence import drop_result_evidence_rows
+
+    drop_result_evidence_rows(session, attempt_id=attempt.id)
+    session.commit()
     _emit_finalization_events(session, attempt)
     return attempt
 
@@ -334,15 +354,15 @@ async def finalize_attempt_with_deliverables(
     body: AttemptResultBody,
     deliverables: dict[str, object] | None,
 ) -> TaskExecutionAttemptDB | None:
-    """Precheck replay, persist JSON deliverables, then finalize the attempt.
+    """Precheck replay, resolve evidence, persist, then finalize the attempt.
 
     Shared by executor protocol v1 and v2 result routes so the
-    precheck → persist → finalize ordering lives in one place.
+    precheck → resolve → persist → finalize ordering lives in one place.
 
     Returns the finalized attempt, or ``None`` for an idempotent replay
     (caller should return its replay response without touching the result).
-    Raises ``CompletionConflict`` / ``ValueError`` / ``LeaseError`` — the
-    caller maps these to HTTP responses.
+    Raises ``CompletionConflict`` / ``ResultEvidenceError`` / ``ValueError``
+    / ``LeaseError`` — the caller maps these to HTTP responses.
     """
     # Issue #174: the body digest and the finalization SQL are seconds of sync
     # work over multi-MB result bodies. Run them off the event loop so one
@@ -353,7 +373,16 @@ async def finalize_attempt_with_deliverables(
     if await asyncio.to_thread(precheck_result_replay, session, lease=lease, body=body):
         return None
 
-    if deliverables:
+    # Issue #251: resolve out-of-band evidence parts into the same inline
+    # fields an ordinary result carries. Refs and inline payloads are
+    # mutually exclusive per slot — a silent merge would make the recorded
+    # run depend on resolution order. (``deliverables`` arrives as its own
+    # wire argument; fold it in before merging referenced parts.)
+    effective = await _resolve_evidence_into_body(
+        session, lease=lease, body=body, wire_deliverables=deliverables
+    )
+
+    if effective.deliverables:
         from apo.models.db import TaskExecutionAttemptDB
         from apo.services.agent_task_deliverables import persist_json_deliverable
         from apo.services.artifact_stores.registry import get_store
@@ -361,7 +390,7 @@ async def finalize_attempt_with_deliverables(
         attempt_row = session.get(TaskExecutionAttemptDB, lease.attempt_id)
         if attempt_row is not None:
             store = get_store(None)
-            for name, value in deliverables.items():
+            for name, value in effective.deliverables.items():
                 await persist_json_deliverable(
                     session,
                     project=attempt_row.project,
@@ -372,7 +401,82 @@ async def finalize_attempt_with_deliverables(
                 )
             session.flush()
 
-    return await asyncio.to_thread(finalize_attempt_result, session, lease=lease, body=body)
+    # The stored completion digest is over the WIRE body (refs, not their
+    # resolved contents) so a replay after staging cleanup hashes identically.
+    wire_digest = _body_digest({"kind": "result", "body": asdict(body)})
+    finalized = await asyncio.to_thread(
+        finalize_attempt_result, session, lease=lease, body=effective, completion_digest=wire_digest
+    )
+    # Staging has served its purpose: the permanent stores now hold the
+    # evidence. Best-effort removal — the TTL sweep collects anything a
+    # crash between finalize and cleanup leaves behind.
+    if body.evidence_refs:
+        from apo.services.result_evidence import delete_result_evidence
+
+        try:
+            await delete_result_evidence(session, attempt_id=lease.attempt_id)
+            session.commit()
+        except Exception:  # noqa: BLE001 - the result is already recorded
+            import logging
+
+            logging.getLogger("apo.services.execution_finalization").warning(
+                "result evidence cleanup after finalization left staging rows for attempt %s",
+                lease.attempt_id,
+                exc_info=True,
+            )
+    return finalized
+
+
+async def _resolve_evidence_into_body(
+    session: Session,
+    *,
+    lease: CurrentAttemptLease,
+    body: AttemptResultBody,
+    wire_deliverables: dict[str, object] | None,
+) -> AttemptResultBody:
+    """Fold referenced evidence parts into the inline result fields.
+
+    No refs → the body plus the wire deliverables, unchanged. With refs,
+    each referenced slot replaces its inline field; an inline value for the
+    same slot is a conflict (the recorded run must not depend on which copy
+    won).
+    """
+    inline_deliverables = wire_deliverables or {}
+    if not body.evidence_refs:
+        if not inline_deliverables:
+            return body
+        return replace(body, deliverables=inline_deliverables)
+
+    from apo.services.artifact_stores.registry import get_store
+    from apo.services.result_evidence import ResultEvidenceError, resolve_result_evidence
+
+    resolved = await resolve_result_evidence(
+        session, store=get_store(None), attempt_id=lease.attempt_id, refs=body.evidence_refs
+    )
+
+    if resolved.transcript is not None and body.transcript is not None:
+        raise ResultEvidenceError(
+            "slot_conflict", "result carries both an inline transcript and a transcript evidence ref"
+        )
+    if resolved.checks is not None and body.checks is not None:
+        raise ResultEvidenceError(
+            "slot_conflict", "result carries both inline checks and a checks evidence ref"
+        )
+    for name in resolved.deliverables:
+        if name in inline_deliverables:
+            raise ResultEvidenceError(
+                "slot_conflict",
+                f"result carries both an inline deliverable and an evidence ref for {name!r}",
+            )
+    merged_deliverables = {**inline_deliverables, **resolved.deliverables}
+
+    return replace(
+        body,
+        transcript=resolved.transcript if resolved.transcript is not None else body.transcript,
+        checks=resolved.checks if resolved.checks is not None else body.checks,
+        deliverables=merged_deliverables or None,
+        evidence_refs=body.evidence_refs,
+    )
 
 
 __all__ = [

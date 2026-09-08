@@ -31,6 +31,7 @@ _TINY_LIMITS = RequestBodyLimits(
     result_max_bytes=16,
     artifact_upload_max_bytes=16,
     write_max_bytes=16,
+    result_evidence_max_bytes=16,
 )
 
 # Every write path the middleware table must cap (method, path).
@@ -41,6 +42,9 @@ _CAPPED_WRITE_PATHS = [
     ("POST", "/v1/executor-protocol/v1/attempts/att-1/failure"),
     ("POST", "/v1/executor-protocol/v2/attempts/att-1/result"),
     ("POST", "/v1/executor-protocol/v2/attempts/att-1/failure"),
+    ("POST", "/v1/executor-protocol/v1/attempts/att-1/result-evidence"),
+    ("POST", "/v1/executor-protocol/v2/attempts/att-1/result-evidence"),
+    ("PUT", "/v1/executor-protocol/result-evidence/rev-1"),
     ("POST", "/v1/agent-task-runs/tr-1/judgments"),
     ("POST", "/api/v1/comments"),
     ("POST", "/api/v1/comments/cm-1/reactions"),
@@ -144,13 +148,15 @@ class TestLoadRequestBodyLimits:
         assert limits.result_max_bytes == 10_485_760
         assert limits.artifact_upload_max_bytes == 104_857_600
         assert limits.write_max_bytes == 10_485_760
+        assert limits.result_evidence_max_bytes == 104_857_600
 
     def test_env_overrides(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("APO_RESULT_MAX_BODY_BYTES", "2048")
         monkeypatch.setenv("APO_ARTIFACT_UPLOAD_MAX_BODY_BYTES", "4096")
         monkeypatch.setenv("APO_WRITE_MAX_BODY_BYTES", "8192")
+        monkeypatch.setenv("APO_RESULT_EVIDENCE_MAX_BODY_BYTES", "16384")
         limits = load_request_body_limits()
-        assert limits == RequestBodyLimits(2048, 4096, 8192)
+        assert limits == RequestBodyLimits(2048, 4096, 8192, 16384)
 
     @pytest.mark.parametrize("raw", ["", "0", "-5", "abc", "1.5"])
     def test_invalid_values_fail_naming_the_variable(

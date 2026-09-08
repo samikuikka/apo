@@ -630,6 +630,43 @@ class AgentTaskDeliverableDB(SQLModel, table=True):
     ready_at: datetime | None = None
 
 
+class AgentTaskResultEvidenceDB(SQLModel, table=True):
+    """One staged result-evidence part owned by an execution Attempt.
+
+    Issue #251: document-heavy runs can hold legitimate transcript /
+    deliverable / check evidence larger than the result envelope. Each part
+    is uploaded through the artifact store while the attempt runs, then
+    referenced by id from the small ``/result`` body. Finalization lands the
+    resolved bytes in the same permanent stores an inline result uses and
+    deletes the staging row and object — this table is a transport, not a
+    second home for evidence.
+    """
+
+    __tablename__: ClassVar[str] = "agent_task_result_evidence"
+    __table_args__: ClassVar[tuple[object, ...]] = (
+        Index("ix_result_evidence_attempt", "attempt_id"),
+        Index("ix_result_evidence_run", "task_run_id"),
+    )
+
+    id: str = Field(primary_key=True, default_factory=lambda: f"rev_{uuid4().hex[:16]}")
+    project: str = Field(index=True)
+    task_run_id: str = Field(foreign_key="agent_task_runs.id")
+    attempt_id: str = Field(foreign_key="task_execution_attempts.id")
+    # "transcript" | "checks" | "deliverable"
+    slot: str
+    deliverable_name: str | None = None
+    status: str  # "pending" | "ready"
+    storage_backend: str | None = None
+    storage_key: str | None = None
+    content_encoding: str = "identity"
+    # Logical payload = the exact bytes the client hashed and PUT.
+    size_bytes: int
+    sha256: str
+    stored_size_bytes: int | None = None
+    created_at: datetime
+    ready_at: datetime | None = None
+
+
 class AgentTaskJudgmentDB(SQLModel, table=True):
     """Issue #159: a recorded re-evaluation of a completed Task Run.
 

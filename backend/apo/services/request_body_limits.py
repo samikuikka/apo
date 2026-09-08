@@ -28,6 +28,7 @@ class RequestBodyLimits:
     result_max_bytes: int
     artifact_upload_max_bytes: int
     write_max_bytes: int
+    result_evidence_max_bytes: int
 
 
 # (env var name, attribute name, default)
@@ -35,6 +36,10 @@ _LIMIT_SPECS: tuple[tuple[str, str, int], ...] = (
     ("APO_RESULT_MAX_BODY_BYTES", "result_max_bytes", 10_485_760),
     ("APO_ARTIFACT_UPLOAD_MAX_BODY_BYTES", "artifact_upload_max_bytes", 104_857_600),
     ("APO_WRITE_MAX_BODY_BYTES", "write_max_bytes", 10_485_760),
+    # Out-of-band result-evidence parts (issue #251): the same magnitude as
+    # artifact uploads — a 25+ MiB transcript must pass, a runaway client
+    # must not. Independent of the inline result cap on purpose.
+    ("APO_RESULT_EVIDENCE_MAX_BODY_BYTES", "result_evidence_max_bytes", 104_857_600),
 )
 
 
