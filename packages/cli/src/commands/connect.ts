@@ -35,6 +35,10 @@ import {
   parseAdvertisedResultMaxBytes,
   prepareResultSubmission,
 } from "../lib/result-submission.ts";
+import {
+  externalizeResultEvidence,
+  parseResultEvidenceSupport,
+} from "../lib/result-evidence.ts";
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -456,10 +460,35 @@ async function executeAssignment(
       error_message: null,
     };
     // Issue #249: measure the exact serialized bytes against the advertised
-    // cap. A known-oversized result is never sent — the Attempt is finalized
+    // cap. A known-oversized result is either staged out of band (issue
+    // #251, when the assignment advertises evidence support) or finalized
     // through the small failure endpoint as a bounded execution error.
     const prepared = prepareResultSubmission(result, resultMaxBytes);
     if (prepared.overLimit) {
+      const evidenceSupport = parseResultEvidenceSupport(assignment);
+      if (evidenceSupport) {
+        const externalized = await externalizeResultEvidence({
+          ctx: {
+            backendUrl,
+            attemptId: assignment.attempt_id,
+            authToken: assignment.attempt_jwt,
+            protocolVersion: 2,
+          },
+          support: evidenceSupport,
+          body: result,
+          limitBytes: resultMaxBytes,
+        });
+        const rePrepared = prepareResultSubmission(externalized.body, resultMaxBytes);
+        finalized = true;
+        await submitResult({
+          backendUrl,
+          attemptJwt: assignment.attempt_jwt,
+          attemptId: assignment.attempt_id,
+          result: externalized.body,
+          serializedResult: rePrepared.serialized,
+        });
+        return;
+      }
       const diagnostic = formatResultTooLarge(prepared.size);
       console.error(
         red(`Warning: run ${assignment.task_run_id} (apo runs show ${assignment.task_run_id}): ${diagnostic}`),

@@ -279,3 +279,111 @@ describe("assignment heartbeat liveness (issue #176)", () => {
     );
   });
 });
+
+describe("assignment large-evidence recording (issue #251)", () => {
+  beforeEach(() => {
+    fetchCalls.length = 0;
+    lastChildOpts = undefined;
+    childOutcome = { ok: true, summary: { pass: true, adapterName: "claude-code", traceRunId: "tr-1" } };
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("stages an oversized transcript out of band and finalizes by reference", async () => {
+    childOutcome = {
+      ok: true,
+      summary: {
+        pass: false,
+        adapterName: "gemini-flash",
+        traceRunId: "tr-7",
+        transcript: { blob: "x".repeat(8192) },
+      },
+    };
+    const putBodies: Buffer[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: URL | Request | string, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/source-attestation")) return jsonResp({ task_revision_id: "rev-a", content_sha256: "x" });
+      if (url.endsWith("/start")) return jsonResp({ attempt_id: "att-1", status: "running", phase: "running" });
+      if (url.endsWith("/heartbeat")) return jsonResp({ cancel_requested: false });
+      if (url.endsWith("/result-evidence") && init?.method === "POST") {
+        fetchCalls.push({ url, body: JSON.parse(init.body as string) });
+        return jsonResp(
+          {
+            id: "rev-1",
+            slot: "transcript",
+            status: "pending",
+            upload_url: "/v1/executor-protocol/result-evidence/rev-1",
+            upload_max_bytes: 104857600,
+          },
+          201,
+        );
+      }
+      if (url.includes("/result-evidence/rev-1")) {
+        putBodies.push(Buffer.from(init?.body as ArrayBufferLike));
+        return jsonResp({ id: "rev-1", status: "ready", slot: "transcript" });
+      }
+      if (url.endsWith("/result")) {
+        fetchCalls.push({ url, body: JSON.parse(init?.body as string) });
+        return jsonResp({ ok: true });
+      }
+      if (url.endsWith("/failure")) {
+        fetchCalls.push({ url, body: JSON.parse(init?.body as string) });
+        return jsonResp({ ok: true });
+      }
+      return jsonResp({});
+    });
+
+    await exec!(
+      "http://cp",
+      "/ws",
+      {
+        ...assignment,
+        result_max_bytes: 2048,
+        result_evidence_supported: true,
+        result_evidence_max_item_bytes: 10 * 1024 * 1024,
+        result_evidence_max_total_bytes: 512 * 1024 * 1024,
+      },
+      new AbortController().signal,
+    );
+
+    const intent = fetchCalls.find((c) => c.url.endsWith("/result-evidence"))!.body as Record<string, unknown>;
+    expect(intent.slot).toBe("transcript");
+    expect(putBodies.length).toBe(1);
+    expect(putBodies[0]!.toString("utf8")).toContain("blob");
+
+    const result = fetchCalls.find((c) => c.url.endsWith("/result"))!.body as Record<string, unknown>;
+    expect(result.evidence_refs).toEqual(["rev-1"]);
+    expect(result.transcript).toBeNull();
+    expect(result.pass_result).toBe(false);
+    expect(JSON.stringify(result).length).toBeLessThan(2048);
+    expect(fetchCalls.find((c) => c.url.endsWith("/failure"))).toBeUndefined();
+  });
+
+  it("keeps the bounded rejection when the assignment has no evidence support", async () => {
+    childOutcome = {
+      ok: true,
+      summary: { pass: true, adapterName: "a", transcript: { blob: "x".repeat(8192) } },
+    };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: URL | Request | string, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/source-attestation")) return jsonResp({ task_revision_id: "rev-a", content_sha256: "x" });
+      if (url.endsWith("/start")) return jsonResp({ attempt_id: "att-1", status: "running", phase: "running" });
+      if (url.endsWith("/heartbeat")) return jsonResp({ cancel_requested: false });
+      if (url.endsWith("/result")) {
+        fetchCalls.push({ url, body: JSON.parse(init?.body as string) });
+        return jsonResp({ ok: true });
+      }
+      if (url.endsWith("/failure")) {
+        fetchCalls.push({ url, body: JSON.parse(init?.body as string) });
+        return jsonResp({ ok: true });
+      }
+      return jsonResp({});
+    });
+
+    await expect(
+      exec!("http://cp", "/ws", { ...assignment, result_max_bytes: 2048 }, new AbortController().signal),
+    ).rejects.toThrow(/result_too_large/);
+    expect(fetchCalls.find((c) => c.url.endsWith("/result"))).toBeUndefined();
+    const failure = fetchCalls.find((c) => c.url.endsWith("/failure"))!.body as Record<string, unknown>;
+    expect(failure.failure_kind).toBe("result_invalid");
+  });
+});

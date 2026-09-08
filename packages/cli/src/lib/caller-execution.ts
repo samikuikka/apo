@@ -18,6 +18,10 @@ import {
   boundedResponseDetail,
   parseAdvertisedResultMaxBytes,
 } from "./result-submission.ts";
+import {
+  parseResultEvidenceSupport,
+  type ResultEvidenceSupport,
+} from "./result-evidence.ts";
 
 export interface CallerTaskDescriptor {
   task_id: string;
@@ -66,6 +70,12 @@ export interface CreatedCallerRun {
   traceProject: string;
   /** Advertised result-body cap the server's middleware enforces (issue #249). */
   resultMaxBytes: number;
+  /**
+   * Advertised out-of-band evidence support (issue #251); null on servers
+   * without the endpoints, where an oversized result keeps the bounded
+   * rejection contract.
+   */
+  evidence: ResultEvidenceSupport | null;
 }
 
 export interface CallerResultBody {
@@ -155,6 +165,9 @@ export async function createCallerRun(input: CreateCallerRunInput): Promise<Crea
     trace_endpoint: string;
     trace_project: string;
     result_max_bytes?: unknown;
+    result_evidence_supported?: unknown;
+    result_evidence_max_item_bytes?: unknown;
+    result_evidence_max_total_bytes?: unknown;
   };
   return {
     batchRunId: body.batch_run_id,
@@ -170,6 +183,9 @@ export async function createCallerRun(input: CreateCallerRunInput): Promise<Crea
     // Missing on older servers → the documented default; malformed values
     // are protocol errors, never silently unlimited (issue #249).
     resultMaxBytes: parseAdvertisedResultMaxBytes(body.result_max_bytes),
+    // Absent on older servers → null (inline-only contract); malformed
+    // advertisement is a protocol error (issue #251).
+    evidence: parseResultEvidenceSupport(body),
   };
 }
 
