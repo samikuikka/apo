@@ -25,6 +25,7 @@ import {
   prepareResultSubmission,
   type ResultBodySize,
 } from "../lib/result-submission.ts";
+import { externalizeResultEvidence } from "../lib/result-evidence.ts";
 
 type LocalRunSummary = {
   taskId: string;
@@ -338,12 +339,40 @@ async function runCallerRecorded(config: Config, resolved: ResolvedTask): Promis
     };
     // Issue #249: the server advertises the exact byte cap its middleware
     // enforces. Measure the final serialized body once; a known-oversized
-    // result is never sent — it is finalized as a bounded execution error
-    // through the small failure endpoint instead of dying as a 413 with no
-    // inspectable outcome.
+    // result is either staged out of band (issue #251, when the server
+    // advertises evidence support) or finalized as a bounded execution
+    // error through the small failure endpoint instead of dying as a 413
+    // with no inspectable outcome.
     const prepared = prepareResultSubmission(resultBody, created.resultMaxBytes);
     measuredSize = prepared.size;
-    if (prepared.overLimit) {
+    if (prepared.overLimit && created.evidence) {
+      // Issue #251: the transcript/deliverables/checks leave the envelope
+      // as verified evidence parts and the result references them by id.
+      // Uploads run inside the heartbeat window this command already
+      // keeps open through submission (issue #176).
+      const externalized = await externalizeResultEvidence({
+        ctx: {
+          backendUrl,
+          attemptId: created.lease.attemptId,
+          authToken: created.lease.token,
+          protocolVersion: 1,
+        },
+        support: created.evidence,
+        body: resultBody as unknown as Record<string, unknown>,
+        limitBytes: created.resultMaxBytes,
+      });
+      const rePrepared = prepareResultSubmission(
+        externalized.body,
+        created.resultMaxBytes,
+      );
+      await submitCallerResult(
+        backendUrl,
+        created.lease,
+        externalized.body as unknown as CallerResultBody,
+        rePrepared.serialized,
+      );
+      exitCode = renderRecordedResult(config, summary, jsonDeliverables, created.taskRunId);
+    } else if (prepared.overLimit) {
       let diagnostic = formatResultTooLarge(prepared.size);
       if (!compactChecksImpl) {
         diagnostic += " (check compaction unavailable in this SDK — values were not compacted)";

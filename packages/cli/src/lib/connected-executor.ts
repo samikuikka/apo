@@ -38,6 +38,10 @@ export interface SourceOwnedAssignment {
   trace_required: true;
   result_max_bytes: number;
   diagnostic_tail_bytes: number;
+  // Out-of-band result evidence (issue #251); absent on older servers.
+  result_evidence_supported?: boolean;
+  result_evidence_max_item_bytes?: number;
+  result_evidence_max_total_bytes?: number;
   run_metadata: Record<string, unknown> | null;
 }
 
