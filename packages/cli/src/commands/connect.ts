@@ -36,6 +36,7 @@ import {
   prepareResultSubmission,
 } from "../lib/result-submission.ts";
 import {
+  ResultEvidenceTooLargeError,
   externalizeResultEvidence,
   parseResultEvidenceSupport,
 } from "../lib/result-evidence.ts";
@@ -467,26 +468,60 @@ async function executeAssignment(
     if (prepared.overLimit) {
       const evidenceSupport = parseResultEvidenceSupport(assignment);
       if (evidenceSupport) {
-        const externalized = await externalizeResultEvidence({
-          ctx: {
-            backendUrl,
-            attemptId: assignment.attempt_id,
-            authToken: assignment.attempt_jwt,
-            protocolVersion: 2,
-          },
-          support: evidenceSupport,
-          body: result,
-          limitBytes: resultMaxBytes,
-        });
+        // The staged path ends in the same terminal POST as the inline
+        // one, so it gets the same 413 treatment: a definite rejection
+        // (e.g. an intermediary enforcing a smaller cap than advertised)
+        // is finalized as a bounded execution error — never left as a
+        // lost run after the Task and all uploads already succeeded.
+        let externalized;
+        try {
+          externalized = await externalizeResultEvidence({
+            ctx: {
+              backendUrl,
+              attemptId: assignment.attempt_id,
+              authToken: assignment.attempt_jwt,
+              protocolVersion: 2,
+            },
+            support: evidenceSupport,
+            body: result,
+            limitBytes: resultMaxBytes,
+          });
+        } catch (err) {
+          if (err instanceof ResultEvidenceTooLargeError) {
+            console.error(
+              red(`Warning: run ${assignment.task_run_id} (apo runs show ${assignment.task_run_id}): ${err.message}`),
+            );
+            await fail("result_invalid", err.message.slice(0, 2_000));
+          }
+          throw err;
+        }
         const rePrepared = prepareResultSubmission(externalized.body, resultMaxBytes);
+        if (rePrepared.overLimit) {
+          // Cannot happen unless the server rejects its own advertisement;
+          // treat as a definite size rejection rather than sending it.
+          const diagnostic = `${formatResultTooLarge(rePrepared.size)} after_evidence_externalization`;
+          await fail("result_invalid", diagnostic.slice(0, 2_000));
+          throw new Error(diagnostic);
+        }
         finalized = true;
-        await submitResult({
-          backendUrl,
-          attemptJwt: assignment.attempt_jwt,
-          attemptId: assignment.attempt_id,
-          result: externalized.body,
-          serializedResult: rePrepared.serialized,
-        });
+        try {
+          await submitResult({
+            backendUrl,
+            attemptJwt: assignment.attempt_jwt,
+            attemptId: assignment.attempt_id,
+            result: externalized.body,
+            serializedResult: rePrepared.serialized,
+          });
+        } catch (err) {
+          if (err instanceof ResultSubmissionHttpError && err.status === 413) {
+            const diagnostic = `${formatResultTooLarge(rePrepared.size)} server_rejected_with=413`;
+            console.error(
+              red(`Warning: run ${assignment.task_run_id} (apo runs show ${assignment.task_run_id}): ${diagnostic}`),
+            );
+            await fail("result_invalid", diagnostic.slice(0, 2_000));
+          }
+          throw err;
+        }
         return;
       }
       const diagnostic = formatResultTooLarge(prepared.size);

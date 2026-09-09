@@ -36,6 +36,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
 from apo.models.db import AgentTaskResultEvidenceDB, TaskExecutionAttemptDB
@@ -49,9 +50,17 @@ SLOTS = frozenset({"transcript", "checks", "deliverable"})
 
 _DEFAULT_MAX_ITEM_BYTES = 100 * 1024 * 1024  # 100 MiB per part
 _DEFAULT_MAX_TOTAL_BYTES = 512 * 1024 * 1024  # 512 MiB logical per attempt
-# How long an unfinalized part may linger before maintenance reaps it.
-# Attempts live hours; this bounds abandoned staging, not live uploads.
+# How long an unfinalized part may linger before maintenance reaps it —
+# measured against the attempt's terminal state, never age alone, because
+# a live attempt may legitimately run for days.
 _DEFAULT_STALE_TTL_SECONDS = 86_400
+# Finalization's own work bounds: one result may reference at most this
+# many parts, and resolution materializes at most this many logical bytes
+# (verified + parsed) before landing them — a bound on the memory one
+# finalization can consume, independent of the staging budget.
+_DEFAULT_RESOLVE_MAX_BYTES = 256 * 1024 * 1024
+_MAX_REFS_PER_RESULT = 1000
+_MAX_PARTS_PER_ATTEMPT = 1000
 
 
 class ResultEvidenceError(Exception):
@@ -89,6 +98,16 @@ def result_evidence_limits() -> tuple[int, int]:
         _positive("APO_RESULT_EVIDENCE_MAX_ITEM_BYTES", _DEFAULT_MAX_ITEM_BYTES),
         _positive("APO_RESULT_EVIDENCE_MAX_TOTAL_BYTES", _DEFAULT_MAX_TOTAL_BYTES),
     )
+
+
+def resolve_max_bytes() -> int:
+    """Per-finalization resolution budget (logical bytes across all refs)."""
+    raw = os.environ.get("APO_RESULT_EVIDENCE_RESOLVE_MAX_BYTES", "")
+    try:
+        value = int(raw) if raw.strip() else _DEFAULT_RESOLVE_MAX_BYTES
+    except ValueError:
+        value = _DEFAULT_RESOLVE_MAX_BYTES
+    return max(value, 1)
 
 
 def stale_evidence_ttl_seconds() -> int:
@@ -158,6 +177,7 @@ async def create_result_evidence_intent(
         )
 
     _reject_total_overflow(session, attempt.id, size_bytes, max_total)
+    _reject_part_count_overflow(session, attempt.id)
 
     row = AgentTaskResultEvidenceDB(
         id=_new_id(),
@@ -166,6 +186,7 @@ async def create_result_evidence_intent(
         attempt_id=attempt.id,
         slot=slot,
         deliverable_name=deliverable_name,
+        slot_key=deliverable_name or "",
         status="pending",
         storage_backend=store.name,
         storage_key=None,
@@ -177,7 +198,23 @@ async def create_result_evidence_intent(
         ready_at=None,
     )
     session.add(row)
-    session.flush()
+    try:
+        session.flush()
+    except IntegrityError:
+        # A concurrent intent won the (attempt, slot_key) race. Re-read:
+        # matching metadata is the idempotent success the loser wants.
+        session.rollback()
+        winner = _find_part(session, attempt.id, slot, deliverable_name)
+        if (
+            winner is not None
+            and winner.size_bytes == size_bytes
+            and winner.sha256 == sha256
+        ):
+            return winner
+        raise ResultEvidenceError(
+            "slot_conflict",
+            "an evidence part for this slot already exists with different metadata",
+        ) from None
     return row
 
 
@@ -192,10 +229,16 @@ async def complete_result_evidence_upload(
 ) -> AgentTaskResultEvidenceDB:
     """Stream part bytes into the store, verify, and mark the row ready.
 
-    The store independently counts and hashes; a mismatch leaves the row
-    pending and raises (route maps to 422). A re-PUT of a ready row is an
-    idempotent success — the freshly written duplicate object is removed.
+    The store independently counts and hashes; a size or digest mismatch
+    leaves the row pending and raises a typed error (route maps to 422).
+    A re-PUT of a ready row is an idempotent success — the freshly
+    written duplicate object is removed.
     """
+    if attempt.status != "running":
+        raise ResultEvidenceError(
+            "attempt_not_running",
+            f"evidence upload requires a running attempt (status={attempt.status!r})",
+        )
     row = session.get(AgentTaskResultEvidenceDB, evidence_id)
     if row is None or row.attempt_id != attempt.id:
         raise ResultEvidenceError("not_found", "evidence part not found for this attempt")
@@ -209,15 +252,32 @@ async def complete_result_evidence_upload(
         )
 
     key = _storage_key()
-    stored = await store.put(
-        key,
-        body_stream,
-        expected_size=row.size_bytes,
-        expected_sha256=row.sha256,
-    )
+    try:
+        stored = await store.put(
+            key,
+            body_stream,
+            expected_size=row.size_bytes,
+            expected_sha256=row.sha256,
+        )
+    except ValueError as exc:
+        # The store's own verification: counted size or computed digest
+        # does not match the declared metadata. Bytes are discarded, the
+        # row stays pending, and a corrected re-PUT may follow.
+        message = str(exc)
+        kind = "size_mismatch" if "size mismatch" in message else "digest_mismatch"
+        raise ResultEvidenceError(kind, message) from exc
 
-    # A concurrent PUT may have promoted the row while bytes streamed.
-    session.refresh(row)
+    # A concurrent PUT or finalization may have changed the row while
+    # bytes streamed. A deleted row (finalized/cleaned) is an opaque miss,
+    # not a 500; a concurrently promoted row is the idempotent success.
+    from sqlalchemy.exc import InvalidRequestError
+
+    try:
+        session.refresh(row)
+    except InvalidRequestError:
+        raise ResultEvidenceError(
+            "not_found", "evidence part was removed while its bytes uploaded"
+        ) from None
     if row.status == "ready":
         try:
             await store.delete(key)
@@ -248,27 +308,40 @@ class ResolvedEvidence:
 async def resolve_result_evidence(
     session: Session,
     *,
-    store: ArtifactStore,
     attempt_id: str,
     refs: list[str],
 ) -> ResolvedEvidence:
     """Resolve ``refs`` into finalization inputs, verifying each part.
 
     Every part must be owned by ``attempt_id`` and ready; bytes are read
-    back through the store and their logical digest re-verified. Raises
-    :class:`ResultEvidenceError` on any violation — finalization must not
-    apply partially-trusted evidence. JSON parsing of multi-MiB parts runs
-    off the event loop so heartbeats stay live during finalization.
+    back through the backend recorded on each row and their logical digest
+    re-verified. Raises :class:`ResultEvidenceError` on any violation —
+    finalization must not apply partially-trusted evidence.
+
+    Finalization's own work is bounded: at most ``_MAX_REFS_PER_RESULT``
+    parts, and at most ``resolve_max_bytes()`` logical bytes verified and
+    parsed in one request — the per-attempt staging budget bounds what may
+    be staged, this bounds what one finalization may materialize in
+    memory. Verification and parsing of multi-MiB parts run off the event
+    loop so heartbeats stay live during finalization.
     """
     import asyncio
 
-    resolved = ResolvedEvidence()
-    seen_parts: set[str] = set()
+    from apo.services.artifact_stores.registry import get_store as _get_store
 
+    if len(refs) > _MAX_REFS_PER_RESULT:
+        raise ResultEvidenceError(
+            "too_many_refs",
+            f"a result may reference at most {_MAX_REFS_PER_RESULT} evidence parts "
+            f"(got {len(refs)})",
+        )
+
+    # Pre-check the resolution budget from row sizes BEFORE reading bytes:
+    # a doomed finalization must not materialize anything.
+    rows_by_ref: dict[str, AgentTaskResultEvidenceDB] = {}
+    budget = resolve_max_bytes()
+    planned = 0
     for ref in refs:
-        if ref in seen_parts:
-            raise ResultEvidenceError("duplicate_ref", f"evidence part {ref} referenced twice")
-        seen_parts.add(ref)
         row = session.get(AgentTaskResultEvidenceDB, ref)
         if row is None or row.attempt_id != attempt_id:
             # Cross-project/run/attempt references are opaque misses.
@@ -281,15 +354,30 @@ async def resolve_result_evidence(
             raise ResultEvidenceError(
                 "not_ready", f"evidence part {ref} has no stored object"
             )
+        if ref in rows_by_ref:
+            raise ResultEvidenceError("duplicate_ref", f"evidence part {ref} referenced twice")
+        rows_by_ref[ref] = row
+        planned += row.size_bytes
+        if planned > budget:
+            raise ResultEvidenceError(
+                "resolve_limit",
+                f"referenced evidence totals {planned} bytes, over the "
+                f"{budget} byte per-finalization resolution limit",
+            )
 
-        raw = b"".join([chunk async for chunk in store.open(row.storage_key)])
-        if len(raw) != row.size_bytes or hashlib.sha256(raw).hexdigest() != row.sha256:
+    resolved = ResolvedEvidence()
+    for ref in refs:
+        row = rows_by_ref[ref]
+        part_store = _get_store(row.storage_backend)
+        assert row.storage_key is not None  # narrowed by the pre-check above
+        raw = b"".join([chunk async for chunk in part_store.open(row.storage_key)])
+        try:
+            value = await asyncio.to_thread(_verify_and_parse, raw, row.size_bytes, row.sha256)
+        except _PartVerificationError as exc:
             raise ResultEvidenceError(
                 "digest_mismatch",
                 f"evidence part {ref} bytes no longer match its declared digest",
-            )
-        try:
-            value = await asyncio.to_thread(_parse_json, raw)
+            ) from exc
         except (ValueError, UnicodeDecodeError) as exc:
             raise ResultEvidenceError(
                 "bad_payload", f"evidence part {ref} is not valid JSON: {exc}"
@@ -389,10 +477,20 @@ def cleanup_stale_result_evidence(session: Session) -> int:
     staging immediately.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=stale_evidence_ttl_seconds())
+    # Age alone must never reap a live attempt's staging: an executor may
+    # legitimately run for days, and losing its parts mid-run makes the
+    # oversized result unwedgeable. Only rows whose attempt is terminal
+    # (or whose attempt row is gone) are eligible, past the TTL.
     rows = list(
         session.exec(
-            select(AgentTaskResultEvidenceDB).where(
-                col(AgentTaskResultEvidenceDB.created_at) < cutoff
+            select(AgentTaskResultEvidenceDB)
+            .where(col(AgentTaskResultEvidenceDB.created_at) < cutoff)
+            .where(
+                col(AgentTaskResultEvidenceDB.attempt_id).notin_(
+                    select(col(TaskExecutionAttemptDB.id)).where(
+                        col(TaskExecutionAttemptDB.status).in_(("queued", "leased", "running"))
+                    )
+                )
             )
         ).all()
     )
@@ -402,7 +500,18 @@ def cleanup_stale_result_evidence(session: Session) -> int:
     return len(rows)
 
 
-def _parse_json(raw: bytes) -> object:
+class _PartVerificationError(Exception):
+    """Internal: stored bytes no longer match the row's declared digest."""
+
+
+def _verify_and_parse(raw: bytes, size_bytes: int, sha256: str) -> object:
+    """Verify stored bytes against the declared size+digest, then parse.
+
+    Runs off the event loop: hashing and JSON-decoding a multi-MiB part
+    are the expensive steps and must not stall heartbeats.
+    """
+    if len(raw) != size_bytes or hashlib.sha256(raw).hexdigest() != sha256:
+        raise _PartVerificationError(size_bytes, sha256)
     return json.loads(raw.decode("utf-8"))
 
 
@@ -421,6 +530,19 @@ def _find_part(
     else:
         query = query.where(col(AgentTaskResultEvidenceDB.deliverable_name) == deliverable_name)
     return session.exec(query).first()
+
+
+def _reject_part_count_overflow(session: Session, attempt_id: str) -> None:
+    rows = session.exec(
+        select(col(AgentTaskResultEvidenceDB.id)).where(
+            col(AgentTaskResultEvidenceDB.attempt_id) == attempt_id
+        )
+    ).all()
+    if len(rows) >= _MAX_PARTS_PER_ATTEMPT:
+        raise ResultEvidenceError(
+            "too_many_parts",
+            f"too many evidence parts for one attempt ({_MAX_PARTS_PER_ATTEMPT} cap)",
+        )
 
 
 def _reject_total_overflow(

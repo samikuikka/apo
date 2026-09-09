@@ -506,9 +506,14 @@ def test_maintenance_cleans_stale_evidence_rows(
 
     _upload(claimed, "transcript", {"messages": []})
     row = session.exec(select(AgentTaskResultEvidenceDB)).one()
-    # Age the row past every plausible staging TTL.
+    # Age the row past every plausible staging TTL and end the attempt:
+    # the sweep reaps abandoned staging only for terminal attempts.
     row.created_at = datetime.now(timezone.utc) - timedelta(days=3)
     session.add(row)
+    attempt = session.get(TaskExecutionAttemptDB, claimed.attempt_id)
+    assert attempt is not None
+    attempt.status = "failed"
+    session.add(attempt)
     session.commit()
 
     deleted = cleanup_stale_result_evidence(session)
@@ -558,3 +563,219 @@ def test_run_deletion_removes_evidence_rows(
         )
     ).all()
     assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# Adversarial-review regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_put_same_length_digest_mismatch_returns_422_and_stays_pending(
+    session: Session, claimed: ClaimedAttempt
+) -> None:
+    """A corrupted retry (right length, wrong bytes) is a definite 422 —
+    not a 500 — and leaves the part pending for a correct re-PUT."""
+    import os
+
+    data = _compact({"messages": ["aaaaaaaaaaaaaaaaaa"]})
+    # Same length, different content: only the digest check can catch it.
+    wrong = _compact({"messages": ["bbbbbbbbbbbbbbbbbb"]})
+    assert len(wrong) == len(data)
+    r = claimed.create_intent(
+        {"slot": "transcript", "size_bytes": len(data), "sha256": _sha(data)}
+    )
+    evidence_id = r.json()["id"]
+
+    r = claimed.put(evidence_id, wrong)
+    assert r.status_code == 422, r.text
+    assert "digest" in r.text
+
+    row = session.get(AgentTaskResultEvidenceDB, evidence_id)
+    assert row is not None and row.status == "pending"
+
+    # The correct bytes still complete the upload afterwards.
+    r = claimed.put(evidence_id, data)
+    assert r.status_code == 200, r.text
+
+
+def test_ttl_sweep_skips_attempts_still_running(
+    session: Session, claimed: ClaimedAttempt
+) -> None:
+    """A long-running attempt's staging must not be reaped by age alone."""
+    from apo.services.result_evidence import cleanup_stale_result_evidence
+
+    _upload(claimed, "transcript", {"messages": []})
+    row = session.exec(select(AgentTaskResultEvidenceDB)).one()
+    row.created_at = datetime.now(timezone.utc) - timedelta(days=3)
+    session.add(row)
+    session.commit()
+
+    # Attempt still running → nothing reaped, however old the staging row.
+    deleted = cleanup_stale_result_evidence(session)
+    assert deleted == 0
+    assert session.exec(select(AgentTaskResultEvidenceDB)).all() != []
+
+    # Once the attempt is terminal, the same aged row is reaped.
+    attempt = session.get(TaskExecutionAttemptDB, claimed.attempt_id)
+    assert attempt is not None
+    attempt.status = "failed"
+    session.add(attempt)
+    session.commit()
+    assert cleanup_stale_result_evidence(session) == 1
+    assert session.exec(select(AgentTaskResultEvidenceDB)).all() == []
+
+
+def test_slot_uniqueness_enforced_by_the_database(session: Session, claimed: ClaimedAttempt) -> None:
+    """Concurrent intent creation cannot dodge the idempotency check: the
+    (attempt, slot, slot_key) uniqueness is a constraint, not a check-then-act."""
+    from sqlalchemy.exc import IntegrityError
+
+    row = AgentTaskResultEvidenceDB(
+        project=claimed.headers and "proj-evidence" or "p",
+        task_run_id=claimed.task_run_id,
+        attempt_id=claimed.attempt_id,
+        slot="checks",
+        slot_key="",
+        status="pending",
+        size_bytes=1,
+        sha256="0" * 64,
+        created_at=datetime.now(timezone.utc),
+    )
+    s = session
+    s.add(row)
+    s.commit()
+    dup = AgentTaskResultEvidenceDB(
+        project="proj-evidence",
+        task_run_id=claimed.task_run_id,
+        attempt_id=claimed.attempt_id,
+        slot="checks",
+        slot_key="",
+        status="pending",
+        size_bytes=1,
+        sha256="1" * 64,
+        created_at=datetime.now(timezone.utc),
+    )
+    s.add(dup)
+    try:
+        s.commit()
+        raise AssertionError("duplicate slot insert must fail")
+    except IntegrityError:
+        s.rollback()
+    # A different deliverable name is a different slot_key and may exist.
+    s.add(
+        AgentTaskResultEvidenceDB(
+            project="proj-evidence",
+            task_run_id=claimed.task_run_id,
+            attempt_id=claimed.attempt_id,
+            slot="deliverable",
+            slot_key="memo",
+            status="pending",
+            size_bytes=1,
+            sha256="2" * 64,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    s.commit()
+
+
+def test_transcript_and_checks_slots_coexist(session: Session, claimed: ClaimedAttempt) -> None:
+    """Both NULL-name slots carry slot_key=""; they must not collide — the
+    uniqueness key includes the slot itself."""
+    for slot in ("transcript", "checks"):
+        session.add(
+            AgentTaskResultEvidenceDB(
+                project="proj-evidence",
+                task_run_id=claimed.task_run_id,
+                attempt_id=claimed.attempt_id,
+                slot=slot,
+                slot_key="",
+                status="pending",
+                size_bytes=1,
+                sha256="3" * 64,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+    session.commit()
+
+
+def test_pending_part_count_is_capped(
+    claimed: ClaimedAttempt, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Intent flooding with 1-byte parts cannot grow rows without bound."""
+    from apo.services import result_evidence as svc
+
+    monkeypatch.setattr(svc, "_MAX_PARTS_PER_ATTEMPT", 3)
+    for i in range(3):
+        data = _compact({"i": i})
+        r = claimed.create_intent(
+            {
+                "slot": "deliverable",
+                "deliverable_name": f"d{i}",
+                "size_bytes": len(data),
+                "sha256": _sha(data),
+            }
+        )
+        assert r.status_code == 201, r.text
+    data = _compact({"i": 3})
+    r = claimed.create_intent(
+        {
+            "slot": "deliverable",
+            "deliverable_name": "d3",
+            "size_bytes": len(data),
+            "sha256": _sha(data),
+        }
+    )
+    assert r.status_code == 409, r.text
+    assert "too many" in r.text
+
+
+def test_finalize_enforces_ref_count_and_resolve_budget(
+    claimed: ClaimedAttempt, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finalization bounds its own work: refs per result and resolved bytes."""
+    from apo.services import result_evidence as svc
+
+    transcript_id, transcript_bytes = _upload(claimed, "transcript", {"messages": ["x" * 1000]})
+
+    monkeypatch.setattr(svc, "_MAX_REFS_PER_RESULT", 2)
+    r = claimed.result(
+        {"completion_id": "c-caps", "pass_result": True, "evidence_refs": ["a", "b", "c"]}
+    )
+    assert r.status_code == 409, r.text
+    assert "at most 2 evidence parts" in r.text
+
+    monkeypatch.setattr(svc, "_MAX_REFS_PER_RESULT", 1000)
+    monkeypatch.setenv("APO_RESULT_EVIDENCE_RESOLVE_MAX_BYTES", str(len(transcript_bytes) - 1))
+    r = claimed.result(
+        {"completion_id": "c-caps", "pass_result": True, "evidence_refs": [transcript_id]}
+    )
+    assert r.status_code == 409, r.text
+    assert "resolve" in r.text or "limit" in r.text
+
+
+def test_resolve_uses_the_row_recorded_store_backend(
+    session: Session, claimed: ClaimedAttempt, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Changing the configured write backend must not break finalization of
+    parts written by the previous backend (reads follow the row)."""
+    from apo.services.artifact_stores import registry
+
+    transcript_id, _ = _upload(claimed, "transcript", {"messages": ["ok"]})
+
+    real_get_store = registry.get_store
+
+    def default_store_must_not_be_used(name: str | None):
+        if name is None:
+            raise AssertionError("resolve must read via the row's backend, not get_store(None)")
+        return real_get_store(name)
+
+    monkeypatch.setattr(
+        "apo.services.artifact_stores.registry.get_store", default_store_must_not_be_used
+    )
+    r = claimed.result(
+        {"completion_id": "c-backend", "pass_result": True, "evidence_refs": [transcript_id]}
+    )
+    assert r.status_code == 200, r.text
+    monkeypatch.undo()
+    run = session.get(AgentTaskRunDB, claimed.task_run_id)
+    assert run is not None and run.transcript_json == {"messages": ["ok"]}

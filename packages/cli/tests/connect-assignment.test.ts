@@ -386,4 +386,71 @@ describe("assignment large-evidence recording (issue #251)", () => {
     const failure = fetchCalls.find((c) => c.url.endsWith("/failure"))!.body as Record<string, unknown>;
     expect(failure.failure_kind).toBe("result_invalid");
   });
+
+  it("finalizes a bounded result_invalid when the shrunken result is 413-rejected (adversarial review H2)", async () => {
+    childOutcome = {
+      ok: true,
+      summary: { pass: true, adapterName: "a", transcript: { blob: "x".repeat(8192) } },
+    };
+    const puts: Buffer[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: URL | Request | string, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/source-attestation")) return jsonResp({ task_revision_id: "rev-a", content_sha256: "x" });
+      if (url.endsWith("/start")) return jsonResp({ attempt_id: "att-1", status: "running", phase: "running" });
+      if (url.endsWith("/heartbeat")) return jsonResp({ cancel_requested: false });
+      if (url.endsWith("/result-evidence") && init?.method === "POST") {
+        fetchCalls.push({ url, body: JSON.parse(init.body as string) });
+        return jsonResp(
+          {
+            id: "rev-1",
+            slot: "transcript",
+            status: "pending",
+            upload_url: "/v1/executor-protocol/result-evidence/rev-1",
+            upload_max_bytes: 104857600,
+          },
+          201,
+        );
+      }
+      if (url.includes("/result-evidence/rev-1")) {
+        puts.push(Buffer.from(init?.body as ArrayBufferLike));
+        return jsonResp({ id: "rev-1", status: "ready", slot: "transcript" });
+      }
+      if (url.endsWith("/result")) {
+        // An intermediary (or a cap smaller than advertised) definitely
+        // rejects the small body after the uploads succeeded.
+        return new Response(JSON.stringify({ detail: "Request body exceeds the 2048 byte limit" }), {
+          status: 413,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.endsWith("/failure")) {
+        fetchCalls.push({ url, body: JSON.parse(init?.body as string) });
+        return jsonResp({ ok: true });
+      }
+      return jsonResp({});
+    });
+
+    await expect(
+      exec!(
+        "http://cp",
+        "/ws",
+        {
+          ...assignment,
+          result_max_bytes: 2048,
+          result_evidence_supported: true,
+          result_evidence_max_item_bytes: 10 * 1024 * 1024,
+          result_evidence_max_total_bytes: 512 * 1024 * 1024,
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(/413/);
+
+    // The upload happened, the result was rejected, and the run still
+    // reached a terminal, inspectable outcome through /failure.
+    expect(puts.length).toBe(1);
+    const failure = fetchCalls.find((c) => c.url.endsWith("/failure"))!.body as Record<string, unknown>;
+    expect(failure.failure_kind).toBe("result_invalid");
+    expect(String(failure.error_message)).toContain("server_rejected_with=413");
+  });
 });
+
