@@ -644,6 +644,11 @@ class AgentTaskResultEvidenceDB(SQLModel, table=True):
 
     __tablename__: ClassVar[str] = "agent_task_result_evidence"
     __table_args__: ClassVar[tuple[object, ...]] = (
+        # One part per (attempt, slot, name): idempotent intent retries and
+        # the slot-exclusivity rule are database-enforced, not check-then-act.
+        # SQLite treats NULLs as distinct in unique indexes, so the sentinel
+        # ``slot_key`` (deliverable_name or "") collapses the NULL slots.
+        UniqueConstraint("attempt_id", "slot", "slot_key", name="uq_result_evidence_slot"),
         Index("ix_result_evidence_attempt", "attempt_id"),
         Index("ix_result_evidence_run", "task_run_id"),
     )
@@ -655,6 +660,8 @@ class AgentTaskResultEvidenceDB(SQLModel, table=True):
     # "transcript" | "checks" | "deliverable"
     slot: str
     deliverable_name: str | None = None
+    # Uniqueness sentinel: the deliverable name, or "" for NULL-name slots.
+    slot_key: str = ""
     status: str  # "pending" | "ready"
     storage_backend: str | None = None
     storage_key: str | None = None

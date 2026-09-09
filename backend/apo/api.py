@@ -156,6 +156,11 @@ def create_app() -> FastAPI:
     from .services.request_body_limits import load_request_body_limits
 
     body_limits = load_request_body_limits()
+    # Fail fast on invalid evidence-limit env values too — same eager
+    # contract as the transport caps (issue #251).
+    from .services.result_evidence import result_evidence_limits
+
+    result_evidence_limits()
 
     # validate admission limits and construct the controller.
     admission_limits = load_telemetry_admission_limits()

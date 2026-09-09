@@ -447,11 +447,10 @@ async def _resolve_evidence_into_body(
             return body
         return replace(body, deliverables=inline_deliverables)
 
-    from apo.services.artifact_stores.registry import get_store
     from apo.services.result_evidence import ResultEvidenceError, resolve_result_evidence
 
     resolved = await resolve_result_evidence(
-        session, store=get_store(None), attempt_id=lease.attempt_id, refs=body.evidence_refs
+        session, attempt_id=lease.attempt_id, refs=body.evidence_refs
     )
 
     if resolved.transcript is not None and body.transcript is not None:

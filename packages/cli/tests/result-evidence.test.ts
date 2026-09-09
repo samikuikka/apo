@@ -230,3 +230,59 @@ describe("externalizeResultEvidence", () => {
     ).rejects.toThrow(ResultEvidenceTooLargeError);
   });
 });
+
+describe("externalizeResultEvidence boundary (issue #251 adversarial review)", () => {
+  const ctx: ResultEvidenceUploadContext = {
+    backendUrl: "http://cp",
+    attemptId: "att-1",
+    authToken: "jwt-1",
+    protocolVersion: 1,
+  };
+  const support = { maxItemBytes: 10 * 1024 * 1024, maxTotalBytes: 512 * 1024 * 1024 };
+
+  afterEach(() => vi.restoreAllMocks());
+
+  function mockUpload(): void {
+    let seq = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/result-evidence") && init?.method === "POST") {
+        seq += 1;
+        return jsonResp(
+          { id: `rev-${seq}`, upload_url: `/v1/executor-protocol/result-evidence/rev-${seq}` },
+          201,
+        );
+      }
+      return jsonResp({ status: "ready" });
+    });
+  }
+
+  it("counts the evidence_refs overhead: the returned body as sent never exceeds the limit", async () => {
+    mockUpload();
+
+    // Craft the exact boundary the review demonstrated: after removing the
+    // transcript, the remaining body fits with only ~a dozen bytes of slack,
+    // so the attached ref id — which the old measurement ignored — would
+    // push the serialized result over the cap.
+    const filler = "x".repeat(2_000);
+    const body = {
+      completion_id: "c-boundary",
+      pass_result: true,
+      transcript: { messages: "y".repeat(8_000) },
+      checks: [{ name: "c1", pass: true }],
+      stdout_tail: filler,
+    };
+    const probe = { ...body, transcript: null, evidence_refs: [] as string[] };
+    const restBytes = Buffer.byteLength(JSON.stringify(probe), "utf8");
+    const limit = restBytes + 12; // less slack than `"evidence_refs":["rev-1"]` costs
+
+    const result = await externalizeResultEvidence({ ctx, support, body, limitBytes: limit });
+
+    // The exact body the caller would serialize and send fits.
+    expect(
+      Buffer.byteLength(JSON.stringify({ ...result.body }), "utf8"),
+    ).toBeLessThanOrEqual(limit);
+    expect((result.body.evidence_refs as string[]).length).toBeGreaterThanOrEqual(1);
+    expect(result.body.transcript).toBeNull();
+  });
+});

@@ -1128,6 +1128,7 @@ def _migrate_to_v44() -> None:
             " attempt_id VARCHAR NOT NULL,"
             " slot VARCHAR NOT NULL,"
             " deliverable_name VARCHAR,"
+            " slot_key VARCHAR NOT NULL DEFAULT '',"
             " status VARCHAR NOT NULL,"
             " storage_backend VARCHAR,"
             " storage_key VARCHAR,"
@@ -1143,6 +1144,14 @@ def _migrate_to_v44() -> None:
         )
         _create_index_if_not_exists(
             conn, "ix_result_evidence_run", "agent_task_result_evidence", "task_run_id"
+        )
+        _create_index_if_not_exists(
+            conn, "ix_agent_task_result_evidence_project",
+            "agent_task_result_evidence", "project",
+        )
+        _create_unique_index_if_not_exists(
+            conn, "uq_result_evidence_slot", "agent_task_result_evidence",
+            "attempt_id, slot, slot_key",
         )
 
 

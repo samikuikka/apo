@@ -25,7 +25,7 @@ import {
   prepareResultSubmission,
   type ResultBodySize,
 } from "../lib/result-submission.ts";
-import { externalizeResultEvidence } from "../lib/result-evidence.ts";
+import { externalizeResultEvidence, ResultEvidenceTooLargeError } from "../lib/result-evidence.ts";
 
 type LocalRunSummary = {
   taskId: string;
@@ -350,28 +350,48 @@ async function runCallerRecorded(config: Config, resolved: ResolvedTask): Promis
       // as verified evidence parts and the result references them by id.
       // Uploads run inside the heartbeat window this command already
       // keeps open through submission (issue #176).
-      const externalized = await externalizeResultEvidence({
-        ctx: {
+      try {
+        const externalized = await externalizeResultEvidence({
+          ctx: {
+            backendUrl,
+            attemptId: created.lease.attemptId,
+            authToken: created.lease.token,
+            protocolVersion: 1,
+          },
+          support: created.evidence,
+          body: resultBody as unknown as Record<string, unknown>,
+          limitBytes: created.resultMaxBytes,
+        });
+        const rePrepared = prepareResultSubmission(
+          externalized.body,
+          created.resultMaxBytes,
+        );
+        if (rePrepared.overLimit) {
+          // Cannot happen unless the server rejects its own advertisement;
+          // treat as a definite size rejection rather than sending it.
+          throw new ResultEvidenceTooLargeError(
+            `${formatResultTooLarge(rePrepared.size)} after_evidence_externalization`,
+          );
+        }
+        await submitCallerResult(
           backendUrl,
-          attemptId: created.lease.attemptId,
-          authToken: created.lease.token,
-          protocolVersion: 1,
-        },
-        support: created.evidence,
-        body: resultBody as unknown as Record<string, unknown>,
-        limitBytes: created.resultMaxBytes,
-      });
-      const rePrepared = prepareResultSubmission(
-        externalized.body,
-        created.resultMaxBytes,
-      );
-      await submitCallerResult(
-        backendUrl,
-        created.lease,
-        externalized.body as unknown as CallerResultBody,
-        rePrepared.serialized,
-      );
-      exitCode = renderRecordedResult(config, summary, jsonDeliverables, created.taskRunId);
+          created.lease,
+          externalized.body as unknown as CallerResultBody,
+          rePrepared.serialized,
+        );
+        exitCode = renderRecordedResult(config, summary, jsonDeliverables, created.taskRunId);
+      } catch (error) {
+        if (error instanceof ResultEvidenceTooLargeError) {
+          // Even out of band the result could not fit: fall through to the
+          // bounded rejection, the same contract as an unsupported server.
+          const diagnostic = error.message.slice(0, 2_000);
+          await finalizeResultInvalid(config, created, completionId, diagnostic, heartbeat);
+          console.error(red(`Error: ${diagnostic}`));
+          exitCode = 2;
+        } else {
+          throw error;
+        }
+      }
     } else if (prepared.overLimit) {
       let diagnostic = formatResultTooLarge(prepared.size);
       if (!compactChecksImpl) {

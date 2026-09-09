@@ -67,7 +67,13 @@ def _error_status(kind: str) -> int:
         return status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
     if kind in ("size_mismatch", "digest_mismatch"):
         return status.HTTP_422_UNPROCESSABLE_CONTENT
-    if kind in ("attempt_not_running", "slot_conflict", "total_too_large", "not_ready"):
+    if kind in (
+        "attempt_not_running",
+        "slot_conflict",
+        "total_too_large",
+        "not_ready",
+        "too_many_parts",
+    ):
         return status.HTTP_409_CONFLICT
     return status.HTTP_422_UNPROCESSABLE_CONTENT
 

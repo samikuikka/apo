@@ -205,8 +205,14 @@ export async function externalizeResultEvidence(
     candidates.push({ kind: "checks", value: body.checks });
   }
 
+  // The measurement must include the ``evidence_refs`` key the final body
+  // will carry — the ref overhead is part of the wire bytes, and stopping
+  // the moment a ref-less body fits would send an over-limit result.
   const overLimit = (): boolean =>
-    prepareResultSubmission({ ...body, deliverables }, limitBytes).overLimit;
+    prepareResultSubmission(
+      { ...body, deliverables, evidence_refs: [...refs] },
+      limitBytes,
+    ).overLimit;
 
   const skipped: string[] = [];
   for (const candidate of candidates) {
@@ -247,7 +253,8 @@ export async function externalizeResultEvidence(
     const detail = skipped.length ? ` skipped_over_item_cap=${skipped.join(",")}` : "";
     throw new ResultEvidenceTooLargeError(
       `result_too_large_after_evidence: total_bytes=${
-        prepareResultSubmission({ ...body, deliverables }, limitBytes).size.totalBytes
+        prepareResultSubmission({ ...body, deliverables, evidence_refs: refs }, limitBytes)
+          .size.totalBytes
       } limit_bytes=${limitBytes}${detail}`,
     );
   }
