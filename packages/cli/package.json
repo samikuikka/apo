@@ -1,6 +1,6 @@
 {
   "name": "@apo-ai/cli",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "CLI for Apo — the end-to-end testing framework for AI agents. Run tasks, read pass/fail verdicts, and inspect traces.",
   "keywords": [
     "ai-agents",
@@ -50,7 +50,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@apo-ai/sdk": "^0.5.0",
+    "@apo-ai/sdk": "^0.6.0",
     "tsx": "^4.22.4"
   },
   "devDependencies": {
