@@ -521,3 +521,10 @@ The backend pushes real-time updates to the dashboard over Server-Sent Events. B
 ## Additional Resources
 
 - **Architecture**: See [`docs/architecture.md`](architecture.md)
+
+## Assertion received values
+
+The check drawer and source diagnostics format received values through
+`formatAssertionValue`. Recorded large strings may be truncation markers rather
+than strings; display their preview with an explicit truncation label. Ordinary
+objects are serialized as JSON rather than coerced with `String(value)`.
