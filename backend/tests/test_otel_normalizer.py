@@ -477,7 +477,7 @@ TOOL_DEFINITIONS = [
         },
     },
 ]
-SYSTEM_INSTRUCTIONS = [{"type": "text", "content": "You are an AI assistant for Bind."}]
+SYSTEM_INSTRUCTIONS = [{"type": "text", "content": "You are an AI assistant for document workflows."}]
 
 
 class TestGenAiCallContext:
