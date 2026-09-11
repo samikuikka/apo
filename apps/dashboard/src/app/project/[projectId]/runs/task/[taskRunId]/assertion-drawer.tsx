@@ -5,6 +5,7 @@ import { ExpandableJson } from "@/components/ExpandableJson";
 import { Markdown } from "@/components/trace-detail/Markdown";
 import type { CheckAssertionResult } from "@/lib/agent-task-api";
 import { extractJudgeReasoning } from "@/lib/judge-reasoning";
+import { formatAssertionValue } from "@/lib/format-assertion-value";
 import { cn } from "@/lib/utils";
 import { JudgeStrip } from "./judge-strip";
 
@@ -81,9 +82,7 @@ export function AssertionDrawer({ assertion, onClose }: { assertion: CheckAssert
               )}
               {assertion.received !== undefined && (
                 <LabeledValue label="Received" tone={assertion.pass ? undefined : "destructive"}>
-                  {typeof assertion.received === "string"
-                    ? assertion.received
-                    : String(assertion.received)}
+                  {formatAssertionValue(assertion.received)}
                 </LabeledValue>
               )}
             </>

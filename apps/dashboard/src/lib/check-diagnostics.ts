@@ -1,6 +1,7 @@
 import type { CheckAssertionResult, CheckResult } from "@/lib/agent-task-api";
 import { locateAssertionInBlock, locateAssertionsInBlock } from "./locate-assertion";
 import { extractJudgeReasoning } from "./judge-reasoning";
+import { formatAssertionValue } from "./format-assertion-value";
 
 export type CheckDiagnostic = {
   line: number;
@@ -47,7 +48,7 @@ function formatAssertionMessage(assertion: CheckAssertionResult): string {
   }
   if (assertion.expected != null || assertion.received != null) {
     const expected = assertion.expected ?? "—";
-    const received = assertion.received ?? "—";
+    const received = assertion.received == null ? "—" : formatAssertionValue(assertion.received);
     return `expected ${expected} · received ${received}`;
   }
   return assertion.reasoning || assertion.id;
@@ -150,12 +151,7 @@ export function buildCheckDiagnostics(
       severity: pass ? ("info" as const) : ("error" as const),
       label: assertion?.id ?? item.id,
       expected: assertion?.expected,
-      // The diff tooltip is code-assertion-only (judges early-return before
-      // rendering it), where received is always a string scalar. Coerce the
-      // polymorphic field to string just in case a structured value slips in.
-      received: typeof assertion?.received === "string"
-        ? assertion.received
-        : assertion?.received != null ? JSON.stringify(assertion.received) : undefined,
+      received: assertion?.received != null ? formatAssertionValue(assertion.received) : undefined,
       // Prefer the parsed reasoning; fall back to pulling it out of the raw
       // judge response (some runs leave assertion.reasoning empty even though
       // the model explained itself).
