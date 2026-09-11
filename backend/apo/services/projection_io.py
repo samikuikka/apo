@@ -79,6 +79,18 @@ class ResolvedCallIO:
     messages: list[dict[str, Any]]
     tool_parameters: dict[str, Any] | None
     tool_result: Any | None
+    # Span-derived call metadata (GenAI tool definitions / system
+    # instructions); merged over the call's stored ``meta``, never replacing it.
+    metadata: dict[str, Any] | None = None
+
+
+def merge_call_metadata(
+    stored: dict[str, Any] | None, resolved: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Stored call metadata with span-derived keys layered on top."""
+    if not resolved:
+        return stored
+    return {**(stored or {}), **resolved}
 
 
 def extract_generation_messages(normalized: NormalizedSpan) -> list[dict[str, Any]]:
@@ -124,6 +136,7 @@ def resolve_call_io(span: OtlpSpanDB) -> ResolvedCallIO:
         messages=extract_generation_messages(normalized),
         tool_parameters=normalized.tool_parameters,
         tool_result=normalized.tool_result,
+        metadata=dict(normalized.metadata) or None,
     )
 
 
@@ -160,6 +173,10 @@ def hydrate_calls_from_spans(
             set_committed_value(call, "tool_parameters", io.tool_parameters)
         if io.tool_result is not None:
             set_committed_value(call, "tool_result", io.tool_result)
+        if io.metadata:
+            set_committed_value(
+                call, "meta", merge_call_metadata(call.meta, io.metadata)
+            )
         resolved += 1
     return resolved
 

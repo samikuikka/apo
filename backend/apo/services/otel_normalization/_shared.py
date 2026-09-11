@@ -19,7 +19,8 @@ VALID_OBSERVATION_TYPES = frozenset({
 # v6: SKILL added to the valid override set (issue #164) — a SKILL.md read
 # instrumented with apo.observation.type=SKILL no longer falls through to
 # the gen-ai mapper's gen_ai.tool.name -> TOOL rule.
-NORMALIZER_VERSION = 6
+# v7: gen_ai.tool.definitions / gen_ai.system_instructions kept in metadata.
+NORMALIZER_VERSION = 7
 
 
 @final
@@ -385,6 +386,28 @@ def extract_output(attrs: dict[str, Any]) -> dict[str, Any] | None:
     if text is not None:
         result["text"] = text
     return result
+
+
+# GenAI semconv call context → the metadata key it is served under. A
+# producer may emit these only on the calls where they change (typically the
+# first call of a session), so they belong to the call, not the trace.
+_CALL_CONTEXT_ATTRIBUTES = (
+    ("gen_ai.tool.definitions", "tool_definitions"),
+    ("gen_ai.system_instructions", "system_instructions"),
+)
+
+
+def extract_call_context(attrs: dict[str, Any]) -> dict[str, Any]:
+    """Tool definitions and system instructions, JSON-decoded when possible.
+
+    Invalid JSON keeps the raw string; an absent attribute adds no key.
+    """
+    context: dict[str, Any] = {}
+    for attribute, key in _CALL_CONTEXT_ATTRIBUTES:
+        value = get_json(attrs, attribute)
+        if value is not None and value != "":
+            context[key] = value
+    return context
 
 
 def extract_error(span: Any, _attrs: dict[str, Any]) -> str | None:

@@ -36,6 +36,7 @@ from .otel_normalization import NormalizedSpan, normalize_span
 from .projection_io import (
     ResolvedCallIO,
     maybe_update_run_preview,
+    merge_call_metadata,
     projection_write_mode,
     resolve_call_io,
 )
@@ -389,6 +390,8 @@ class TraceProjector:
             call.tool_parameters = normalized.tool_parameters
         if write_fat and normalized.tool_result:
             call.tool_result = normalized.tool_result
+        if write_fat and io.metadata:
+            call.meta = merge_call_metadata(call.meta, io.metadata)
 
         # Timing
         call.end_time = span.end_time

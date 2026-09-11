@@ -26,6 +26,7 @@ from ..usage_normalization import normalize_usage
 from ._shared import (
     NORMALIZER_VERSION,
     NormalizedSpan,
+    extract_call_context,
     extract_error,
     extract_input,
     extract_model,
@@ -92,6 +93,7 @@ def normalize_span(span: OtlpSpanDB) -> NormalizedSpan:
     normalized.error_message = extract_error(span, attrs)
     normalized.input = extract_input(attrs)
     normalized.output = extract_output(attrs)
+    normalized.metadata.update(extract_call_context(attrs))
 
     # Tool-specific fields. Claude Code spans carry ``tool_name`` (the SDK's
     # own attribute), alongside the standard gen_ai.tool.name convention.

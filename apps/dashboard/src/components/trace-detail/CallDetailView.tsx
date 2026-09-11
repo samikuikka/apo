@@ -6,13 +6,16 @@ import { CorrectionDialog } from "./CorrectionDialog";
 import { CallDetailHeader } from "./CallDetailHeader";
 import { CallPreviewTab } from "./CallPreviewTab";
 import { CallMetadataTab } from "./CallMetadataTab";
+import { CallContextTab } from "./CallContextTab";
 import { useTraceData, type LoggedCall } from "./contexts/TraceDataContext";
 import { useSelection } from "./contexts/SelectionContext";
 import { saveCorrection } from "@/lib/traces-api";
 import { extractOutputText } from "./call-detail-utils";
+import { extractCallContext } from "./tool-utils";
 import { useCallPayload } from "./use-call-payload";
 
-const VALID_CALL_TABS = new Set(["preview", "metadata"]);
+type CallTab = "preview" | "context" | "metadata";
+const VALID_CALL_TABS = new Set<string>(["preview", "context", "metadata"]);
 
 /**
  * Correction mini-machine: the dialog's open flag and the current correction
@@ -56,9 +59,14 @@ export function CallDetailView({ call: slimCall }: { call: LoggedCall }) {
     open: false,
     corrected: call.corrected_output ?? null,
   });
-  const section = VALID_CALL_TABS.has(detailTab)
-    ? (detailTab as "preview" | "metadata")
-    : "preview";
+  const callContext = extractCallContext(call.metadata);
+  const hasContext = callContext.tools.length > 0 || callContext.systemInstructions !== null;
+  // The Context tab exists only on calls that carry context; a remembered
+  // "context" tab falls back to Preview on the calls without it.
+  const section: CallTab =
+    VALID_CALL_TABS.has(detailTab) && (detailTab !== "context" || hasContext)
+      ? (detailTab as CallTab)
+      : "preview";
   const hasToolParams = Boolean(call.tool_parameters && Object.keys(call.tool_parameters).length > 0);
   const hasToolResult = Boolean(call.tool_result && Object.keys(call.tool_result).length > 0);
   // Present a single input->output model regardless of observation kind.
@@ -115,6 +123,7 @@ export function CallDetailView({ call: slimCall }: { call: LoggedCall }) {
         <Tabs value={section} onValueChange={(v) => setDetailTab(v)} className="flex flex-1 flex-col overflow-hidden">
           <TabsList variant="line" className="shrink-0 border-b px-3">
             <TabsTrigger value="preview">Preview</TabsTrigger>
+            {hasContext ? <TabsTrigger value="context">Context</TabsTrigger> : null}
             <TabsTrigger value="metadata">Metadata</TabsTrigger>
           </TabsList>
 
@@ -130,6 +139,12 @@ export function CallDetailView({ call: slimCall }: { call: LoggedCall }) {
               onCommentCreated={refreshCommentCounts}
             />
           </TabsContent>
+
+          {hasContext ? (
+            <TabsContent value="context" className="min-h-0 flex-1 overflow-auto p-3">
+              <CallContextTab call={call} />
+            </TabsContent>
+          ) : null}
 
           <TabsContent value="metadata" className="flex-1 overflow-auto p-3">
             <CallMetadataTab call={call} run={run} />

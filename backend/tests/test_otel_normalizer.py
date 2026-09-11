@@ -463,3 +463,59 @@ class TestInputOutputContent:
         result = normalize_span(span)
         assert result.mapping_name != ""
         assert result.mapping_version >= 1
+
+
+TOOL_DEFINITIONS = [
+    {
+        "type": "function",
+        "name": "docxExtractMarkdown",
+        "description": "Extract a DOCX file as markdown.",
+        "parameters": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        },
+    },
+]
+SYSTEM_INSTRUCTIONS = [{"type": "text", "content": "You are an AI assistant for Bind."}]
+
+
+class TestGenAiCallContext:
+    """``gen_ai.tool.definitions`` / ``gen_ai.system_instructions`` land in
+    ``normalized.metadata`` — a producer emits them only on the calls where
+    they change, so they must survive on exactly those calls."""
+
+    def _generation(self, **extra: object) -> NormalizedSpan:
+        return normalize_span(_make_span(
+            span_name="chat gpt-4o",
+            attributes={"gen_ai.operation.name": "chat", **extra},
+        ))
+
+    def test_json_strings_are_parsed(self):
+        result = self._generation(**{
+            "gen_ai.tool.definitions": json.dumps(TOOL_DEFINITIONS),
+            "gen_ai.system_instructions": json.dumps(SYSTEM_INSTRUCTIONS),
+        })
+        assert result.metadata["tool_definitions"] == TOOL_DEFINITIONS
+        assert result.metadata["system_instructions"] == SYSTEM_INSTRUCTIONS
+
+    def test_already_decoded_arrays_are_kept(self):
+        """OTLP arrayValue attributes arrive decoded, not as JSON strings."""
+        result = self._generation(**{
+            "gen_ai.tool.definitions": TOOL_DEFINITIONS,
+            "gen_ai.system_instructions": SYSTEM_INSTRUCTIONS,
+        })
+        assert result.metadata["tool_definitions"] == TOOL_DEFINITIONS
+        assert result.metadata["system_instructions"] == SYSTEM_INSTRUCTIONS
+
+    def test_bare_string_system_instructions(self):
+        result = self._generation(**{"gen_ai.system_instructions": "Be concise."})
+        assert result.metadata["system_instructions"] == "Be concise."
+
+    def test_invalid_json_keeps_raw_string(self):
+        result = self._generation(**{"gen_ai.tool.definitions": "[{not json"})
+        assert result.metadata["tool_definitions"] == "[{not json"
+        assert "system_instructions" not in result.metadata
+
+    def test_absent_attributes_add_nothing(self):
+        assert self._generation().metadata == {}
