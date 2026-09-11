@@ -19,7 +19,7 @@ const TOOL_DEFINITIONS = [
   { type: "function", name: "docxApplyEdits", description: "Apply edits." },
 ];
 const SYSTEM_INSTRUCTIONS = [
-  { type: "text", content: "You are an AI assistant for Bind." },
+  { type: "text", content: "You are an AI assistant for document workflows." },
   { type: "text", content: "Answer in English." },
 ];
 
@@ -51,7 +51,7 @@ describe("extractCallContext", () => {
     ]);
     expect(context.tools[0].function?.parameters).toEqual(TOOL_DEFINITIONS[0].parameters);
     expect(context.systemInstructions).toBe(
-      "You are an AI assistant for Bind.\n\nAnswer in English.",
+      "You are an AI assistant for document workflows.\n\nAnswer in English.",
     );
   });
 
@@ -82,7 +82,7 @@ describe("CallContextTab", () => {
     );
 
     expect(screen.getByText("System instructions")).toBeInTheDocument();
-    expect(screen.getByText(/You are an AI assistant for Bind\./)).toBeInTheDocument();
+    expect(screen.getByText(/You are an AI assistant for document workflows\./)).toBeInTheDocument();
     expect(screen.getByText("docxExtractMarkdown")).toBeInTheDocument();
     expect(screen.getByText("docxApplyEdits")).toBeInTheDocument();
     expect(screen.getByText("Extract a DOCX file as markdown.")).toBeInTheDocument();

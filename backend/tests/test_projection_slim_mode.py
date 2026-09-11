@@ -1,4 +1,4 @@
-# pyright: reportAny=false, reportAttributeAccessIssue=false, reportDeprecated=false, reportExplicitAny=false, reportImplicitOverride=false, reportImplicitStringConcatenation=false, reportMissingParameterType=false, reportOptionalMemberAccess=false, reportPrivateLocalImportUsage=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedFunction=false, reportUnusedParameter=false
+# pyright: reportAny=false, reportAttributeAccessIssue=false, reportDeprecated=false, reportExplicitAny=false, reportImplicitOverride=false, reportImplicitStringConcatenation=false, reportMissingParameterType=false, reportOptionalMemberAccess=false, reportPrivateLocalImportUsage=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUntypedFunctionDecorator=false, reportUnusedCallResult=false, reportUnusedFunction=false, reportUnusedParameter=false
 
 """Slim projection, stored previews, and span-sourced detail reads.
 
@@ -377,7 +377,7 @@ class TestPreviewRootPreference:
         _ingest(session, _root_summary_payload())
         _ingest(
             session,
-            _gen_payload(GEN1, "You are an AI assistant for Bind…", "Hello."),
+            _gen_payload(GEN1, "You are an AI assistant for document workflows…", "Hello."),
         )
         session.commit()
         run = _run(session)
@@ -778,7 +778,7 @@ _TOOL_DEFINITIONS = [
         "parameters": {"type": "object", "properties": {"path": {"type": "string"}}},
     }
 ]
-_SYSTEM_INSTRUCTIONS = [{"type": "text", "content": "You are an AI assistant for Bind."}]
+_SYSTEM_INSTRUCTIONS = [{"type": "text", "content": "You are an AI assistant for document workflows."}]
 _CALL_CONTEXT = {
     "tool_definitions": _TOOL_DEFINITIONS,
     "system_instructions": _SYSTEM_INSTRUCTIONS,
@@ -816,7 +816,9 @@ class TestGenAiCallContext:
     def _metadata_by_id(response: dict[str, Any]) -> dict[str, Any]:
         return {c["id"]: c.get("metadata") for c in response["calls"]}
 
-    @pytest.mark.parametrize("mode", ["fat", "dual", "slim"])
+    @pytest.mark.parametrize(  # pyright: ignore[reportCallIssue]
+        "mode", ["fat", "dual", "slim"]
+    )
     def test_run_detail_serves_context_on_carrying_call_only(
         self, session: Session, client: Any, monkeypatch: pytest.MonkeyPatch, mode: str
     ) -> None:
@@ -829,7 +831,9 @@ class TestGenAiCallContext:
         assert not metadata[GEN2]
         assert not metadata[ROOT]
 
-    @pytest.mark.parametrize("mode", ["fat", "slim"])
+    @pytest.mark.parametrize(  # pyright: ignore[reportCallIssue]
+        "mode", ["fat", "slim"]
+    )
     def test_single_call_endpoint_serves_context(
         self, session: Session, client: Any, monkeypatch: pytest.MonkeyPatch, mode: str
     ) -> None:
