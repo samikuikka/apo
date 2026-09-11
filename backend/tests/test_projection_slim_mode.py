@@ -770,6 +770,116 @@ class TestSlimGolden:
 # ---------------------------------------------------------------------------
 
 
+_TOOL_DEFINITIONS = [
+    {
+        "type": "function",
+        "name": "docxExtractMarkdown",
+        "description": "Extract a DOCX file as markdown.",
+        "parameters": {"type": "object", "properties": {"path": {"type": "string"}}},
+    }
+]
+_SYSTEM_INSTRUCTIONS = [{"type": "text", "content": "You are an AI assistant for Bind."}]
+_CALL_CONTEXT = {
+    "tool_definitions": _TOOL_DEFINITIONS,
+    "system_instructions": _SYSTEM_INSTRUCTIONS,
+}
+
+
+class TestGenAiCallContext:
+    """``gen_ai.tool.definitions`` / ``gen_ai.system_instructions`` reach the
+    served call as ``metadata.tool_definitions`` / ``metadata.system_instructions``
+    on every read path — only on the calls whose span carries them."""
+
+    def _seed(self, session: Session) -> None:
+        _ingest(session, _payload(ROOT, parent=None, name="root"))
+        _ingest(
+            session,
+            _payload(
+                GEN1,
+                gen_attrs=[
+                    {"key": "gen_ai.operation.name", "value": {"stringValue": "chat"}},
+                    {
+                        "key": "gen_ai.tool.definitions",
+                        "value": {"stringValue": json.dumps(_TOOL_DEFINITIONS)},
+                    },
+                    {
+                        "key": "gen_ai.system_instructions",
+                        "value": {"stringValue": json.dumps(_SYSTEM_INSTRUCTIONS)},
+                    },
+                ],
+            ),
+        )
+        _ingest(session, _gen_payload(GEN2, "later prompt", "later answer"))
+        session.commit()
+
+    @staticmethod
+    def _metadata_by_id(response: dict[str, Any]) -> dict[str, Any]:
+        return {c["id"]: c.get("metadata") for c in response["calls"]}
+
+    @pytest.mark.parametrize("mode", ["fat", "dual", "slim"])
+    def test_run_detail_serves_context_on_carrying_call_only(
+        self, session: Session, client: Any, monkeypatch: pytest.MonkeyPatch, mode: str
+    ) -> None:
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", mode)
+        self._seed(session)
+
+        # The `apo traces show --json` shape: GET /v1/runs/{id}, not slim.
+        metadata = self._metadata_by_id(_detail(client))
+        assert metadata[GEN1] == _CALL_CONTEXT
+        assert not metadata[GEN2]
+        assert not metadata[ROOT]
+
+    @pytest.mark.parametrize("mode", ["fat", "slim"])
+    def test_single_call_endpoint_serves_context(
+        self, session: Session, client: Any, monkeypatch: pytest.MonkeyPatch, mode: str
+    ) -> None:
+        """The dashboard's slim trace view loads the selected call here."""
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", mode)
+        self._seed(session)
+
+        response = client.get(f"/v1/runs/{TRACE}/calls/{GEN1}?project=p1")
+        assert response.status_code == 200, response.text
+        assert response.json()["metadata"] == _CALL_CONTEXT
+
+    def test_fat_write_persists_context_on_the_projection(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "fat")
+        self._seed(session)
+        assert _call(session, GEN1).meta == _CALL_CONTEXT
+        assert _call(session, GEN2).meta is None
+
+    def test_slim_write_leaves_the_column_to_the_span(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Like the fat I/O columns: slim mode resolves context from spans."""
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "slim")
+        self._seed(session)
+        assert _call(session, GEN1).meta is None
+        assert resolve_call_io(_span(session, GEN1)).metadata == _CALL_CONTEXT
+
+    def test_hydration_keeps_stored_metadata_keys(
+        self, session: Session, client: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("APO_PROJECTION_WRITE_MODE", "slim")
+        self._seed(session)
+        call = _call(session, GEN1)
+        call.meta = {"custom": "kept"}
+        session.add(call)
+        session.commit()
+
+        metadata = self._metadata_by_id(_detail(client))
+        assert metadata[GEN1] == {"custom": "kept", **_CALL_CONTEXT}
+
+
+def _span(session: Session, span_id: str) -> OtlpSpanDB:
+    span = session.exec(
+        select(OtlpSpanDB).where(OtlpSpanDB.span_id == span_id)
+    ).first()
+    assert span is not None
+    return span
+
+
 class TestListPreviews:
     def test_list_reads_never_touch_call_io(
         self, session: Session, monkeypatch: pytest.MonkeyPatch

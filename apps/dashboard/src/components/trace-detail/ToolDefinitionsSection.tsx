@@ -9,11 +9,13 @@ import { type ToolDefinition } from "./tool-utils";
 interface ToolDefinitionsSectionProps {
   tools: ToolDefinition[];
   invocationCounts?: Record<string, number>;
+  /** Defaults to open only for short lists (≤ 3 tools). */
+  defaultOpen?: boolean;
 }
 
-export function ToolDefinitionsSection({ tools, invocationCounts }: ToolDefinitionsSectionProps) {
+export function ToolDefinitionsSection({ tools, invocationCounts, defaultOpen }: ToolDefinitionsSectionProps) {
   const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
-  const [sectionOpen, setSectionOpen] = useState(tools.length <= 3);
+  const [sectionOpen, setSectionOpen] = useState(defaultOpen ?? tools.length <= 3);
 
   if (tools.length === 0) return null;
 
