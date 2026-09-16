@@ -83,6 +83,17 @@ export type {
 } from "./checks/judge.ts";
 export { TEST_METHOD_NAMES } from "./checks/t.ts";
 export {
+  type AgentBudget,
+  type AgentEvidence,
+  type AgentJudgeOptions,
+} from "./checks/agent-session.ts";
+export type {
+  AgentJudgeSession,
+  AgentJudgeStep,
+  AgentJudgeOutcome,
+  EvidenceFingerprint,
+} from "./run/types.ts";
+export {
   compactChecksForSubmission,
   RECEIVED_VALUE_LIMIT,
   JUDGE_SEGMENT_LIMIT,

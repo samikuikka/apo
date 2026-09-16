@@ -22,6 +22,9 @@ const external = [
   // Runtime dependencies (from package.json "dependencies") — must resolve
   // from the consumer's node_modules, never bundled.
   "@opentelemetry/api",
+  "ai",
+  "@ai-sdk/openai-compatible",
+  "zod",
   "@opentelemetry/context-async-hooks",
   "@opentelemetry/core",
   "@opentelemetry/exporter-trace-otlp-http",

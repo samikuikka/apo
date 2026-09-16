@@ -93,6 +93,24 @@ check("extraction-is-complete", async (t, { deliverables }) => {
   );
 });
 
+// ── Layer 4: agentic judging (opt-in) ────────────────────────────────────
+// t.agent demo: the judge investigates the run's own evidence instead of
+// receiving pre-extracted values. Env-gated so CI without provider keys or
+// an agentic-capable judge model skips it (sessions cost ~$0.004 and run
+// minutes, not milliseconds).
+if (process.env.APO_T_AGENT_DEMO) {
+  check("summary-grounded-in-invoice-agentic", async (t) => {
+    await t.agent(
+      "PASS if the extraction summary's findings are grounded in invoice.txt — every " +
+      "named line item, seller, and amount the summary claims must be consistent with " +
+      "the extracted result deliverable. Investigate the run's deliverables before " +
+      "deciding. FAIL if the summary asserts anything the extracted data contradicts " +
+      "or cannot support.",
+      { label: "agentic-grounding", budget: { maxTurns: 10 } },
+    );
+  });
+}
+
 // ── Fixture sanity ───────────────────────────────────────────────────────
 check("invoice-file-present", (t, { files }) => {
   const paths = filePaths(files);

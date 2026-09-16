@@ -114,7 +114,7 @@ export type CheckResult = {
   reasoning: string;
   instruction?: string;
   deliverable?: string;
-  evaluator_type?: "llm" | "code" | "regex";
+  evaluator_type?: "llm" | "code" | "agent" | "regex";
   judge?: CheckJudgeMetadata;
   location?: CheckLocation;
   source_file?: string;

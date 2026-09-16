@@ -16,6 +16,7 @@ import type { Recorder } from "./recorder.ts";
 import type { Matcher, ValueMatcher } from "./matchers.ts";
 import { describeValue, matchValue } from "./matchers.ts";
 import { callJudge, type JudgeCallContext, type JudgePromptBuilder } from "./judge.ts";
+import { createAgentMethod, type AgentEvidence, type AgentJudgeOptions } from "./agent-session.ts";
 
 /** A tool/agent name matcher: literal (exact), RegExp, or predicate. */
 export type NameMatcher = string | RegExp | ((name: string) => boolean);
@@ -133,6 +134,22 @@ export interface TestContext {
     instruction: string,
     opts?: { label?: string; judge?: Partial<JudgeConfig> },
   ): Promise<void>;
+
+  /**
+   * Agentic judge: a tool-using LLM session that investigates the run's own
+   * evidence (deliverables via `read_deliverable`/`search_deliverable`, the
+   * trace via `get_trace`) before verdicting with `finish_verdict`. Async —
+   * the check function must `await` it. Records a single assertion tagged
+   * ``evaluator_type: "agent"`` with the full session transcript attached.
+   *
+   * Unlike `t.judge`, the author states a rubric and the judge gathers its
+   * own evidence; `opts.exhibits` optionally pre-stages values into turn 0.
+   * The session is budgeted (defaults: 12 turns / 24 tool calls / 300 s /
+   * 2 MiB read) and fail-closed: a session that ends without a verdict is a
+   * recorded failure, never a silent pass. Costs more and runs minutes, not
+   * seconds — reserve it for rubrics that need investigation.
+   */
+  agent(instruction: string, opts?: AgentJudgeOptions): Promise<void>;
 }
 
 /**
@@ -162,6 +179,7 @@ export const TEST_METHOD_NAMES = [
   "assert",
   "check",
   "judge",
+  "agent",
 ] as const satisfies readonly (keyof TestContext)[];
 
 /**
@@ -192,6 +210,7 @@ export function createTestContext(
   view: TraceView,
   rec: Recorder,
   judgeConfig?: JudgeConfig,
+  agentEvidence?: AgentEvidence,
 ): TestContext {
   return {    calledTool(name, opts) {
       const count = view.toolCalls.filter((call) =>
@@ -345,6 +364,7 @@ export function createTestContext(
     },
 
     judge: createJudgeMethod(rec, judgeConfig),
+    agent: createAgentMethod(rec, judgeConfig, undefined, agentEvidence ?? { deliverables: {}, view }),
   };
 }
 
@@ -455,6 +475,7 @@ export function createTraceTestContext(
   rec: Recorder,
   judgeConfig?: JudgeConfig,
   judgeScope?: JudgeScope,
+  agentEvidence?: AgentEvidence,
 ): TestContext {
   const unsupported = (
     id: string,
@@ -674,6 +695,7 @@ export function createTraceTestContext(
     // judge does not consult trace capabilities; the scope carries the
     // task/check frame for prompt builders (#161).
     judge: createJudgeMethod(rec, judgeConfig, judgeScope),
+    agent: createAgentMethod(rec, judgeConfig, judgeScope, agentEvidence ?? { deliverables: {}, view }),
   };
 }
 

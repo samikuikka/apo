@@ -49,7 +49,7 @@ export class Recorder {
       location?: CheckLocation;
       expected?: string;
       received?: unknown;
-      evaluator_type?: "llm" | "code";
+      evaluator_type?: "llm" | "code" | "agent";
       judge?: import("../run/types.ts").JudgeMetadata;
       outcome?: import("../run/types.ts").AssertionOutcome;
     },

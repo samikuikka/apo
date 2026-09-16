@@ -204,12 +204,21 @@ export async function runTraceChecks(args: {
     registry.map(async (check) => {
       const rec = new Recorder(locate);
       const reads = trackDeliverableReads(args.deliverables);
-      const t = createTraceTestContext(view, rec, args.judgeConfig, {
-        taskId: taskMeta.id ?? "",
-        ...(taskMeta.description !== undefined ? { taskDescription: taskMeta.description } : {}),
-        checkName: check.id,
-        readDeliverableNames: reads.names,
-      });
+      const t = createTraceTestContext(
+        view,
+        rec,
+        args.judgeConfig,
+        {
+          taskId: taskMeta.id ?? "",
+          ...(taskMeta.description !== undefined ? { taskDescription: taskMeta.description } : {}),
+          checkName: check.id,
+          readDeliverableNames: reads.names,
+        },
+        // The agentic judge investigates the raw deliverables + frozen
+        // trace, not the read-tracking proxy (its reads are accounted in
+        // the session's own evidence manifest).
+        { deliverables: args.deliverables, view },
+      );
       let thrownLocation: CheckLocation | undefined;
       try {
         await check.fn(t, {

@@ -45,6 +45,68 @@ export type JudgeMetadata = {
   latency_ms?: number;
   /** Temperature or other sampling parameters, if relevant. */
   temperature?: number;
+  /**
+   * Agentic-judge session transcript (`t.agent`). Absent for single-shot
+   * `t.judge` calls. Records every investigation step (tool calls with
+   * truncated results), the session outcome, per-step usage, and the
+   * content-hashed evidence manifest (replay audit backbone).
+   */
+  session?: AgentJudgeSession;
+};
+
+/**
+ * One investigation step of an agentic judge session. Tool results are
+ * truncated text; the sha256 + byte size are always kept so the full value
+ * stays recoverable from the evidence store (the transcript is an index,
+ * not a copy).
+ */
+export type AgentJudgeStep = {
+  index: number;
+  tool_calls?: {
+    name: string;
+    input?: string;
+    result?: string;
+    result_sha256?: string;
+    result_bytes?: number;
+  }[];
+  /** Assistant prose, if the model produced text alongside tool calls. */
+  text?: string;
+  tokens?: { input?: number; output?: number; cost?: number };
+  latency_ms?: number;
+};
+
+/** How an agentic judge session ended. */
+export type AgentJudgeOutcome = "verdict" | "budget_exhausted" | "error";
+
+/**
+ * A fingerprint of one piece of evidence the judge consumed — the
+ * content-addressed manifest. Never truncated.
+ */
+export type EvidenceFingerprint = {
+  step: number;
+  tool: string;
+  args_sha256?: string;
+  result_sha256: string;
+  result_bytes: number;
+};
+
+/** Transcript-shaped record of one `t.agent` session. */
+export type AgentJudgeSession = {
+  /** Tool names offered to the judge. */
+  tools?: string[];
+  /** Turn-0 context: system briefing and the rubric (user message). */
+  briefing?: { system?: string; rubric?: string };
+  /** Ordered investigation steps. */
+  steps?: AgentJudgeStep[];
+  outcome: AgentJudgeOutcome;
+  /** Evidence manifest — what this session consumed, hashed. Never truncated. */
+  evidence?: EvidenceFingerprint[];
+  usage?: {
+    steps?: number;
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_tokens?: number;
+  };
 };
 
 /**
@@ -90,7 +152,7 @@ export type AssertionResult = {
    */
   received?: unknown;
   location?: CheckLocation;
-  evaluator_type?: "llm" | "code";
+  evaluator_type?: "llm" | "code" | "agent";
   judge?: JudgeMetadata;
 };
 
@@ -124,7 +186,7 @@ export type EvaluationItemResult = {
    * - ``"regex"`` — pattern matching
    * Older persisted results may still use ``"llm"`` at this level.
    */
-  evaluator_type?: "llm" | "code" | "regex";
+  evaluator_type?: "llm" | "code" | "agent" | "regex";
   /**
    * If this check was judged by an LLM, details about the judge call
    * (model, prompt, response, tokens, cost, latency). Populated by the

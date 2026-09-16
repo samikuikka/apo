@@ -127,6 +127,11 @@ function truncateJudge(judge: unknown): { value: JudgeMetadata; truncated: numbe
       truncated += 1;
     }
   }
+  const session = next.session;
+  if (typeof session === "object" && session !== null) {
+    truncated += truncateSessionText(session as Record<string, unknown>);
+    // session is truncated in place: its steps/briefing are its own arrays.
+  }
   return { value: next as unknown as JudgeMetadata, truncated };
 }
 
@@ -165,4 +170,59 @@ function marker(bytes: Uint8Array): TruncatedMarker {
     size_bytes: bytes.length,
     sha256: createHash("sha256").update(bytes).digest("hex"),
   };
+}
+
+/**
+ * Defensive pass over an agentic session's text fields (briefing, step text,
+ * tool input/result). The engine already truncates at record time; this
+ * mirrors the backend's normalize step so a hand-built session can never
+ * blow the submission budget. sha256/bytes identity fields are never touched.
+ */
+function truncateSessionText(session: Record<string, unknown>): number {
+  let truncated = 0;
+  const briefing = session.briefing;
+  if (typeof briefing === "object" && briefing !== null) {
+    for (const key of ["system", "rubric"] as const) {
+      const value = (briefing as Record<string, unknown>)[key];
+      if (typeof value === "string") {
+        const replaced = truncateText(value);
+        if (replaced !== value) {
+          (briefing as Record<string, unknown>)[key] = replaced;
+          truncated += 1;
+        }
+      }
+    }
+  }
+  const steps = session.steps;
+  if (Array.isArray(steps)) {
+    session.steps = steps.slice(0, 64).map((step) => {
+      if (typeof step !== "object" || step === null) return step;
+      const next: Record<string, unknown> = { ...step };
+      if (typeof next.text === "string") {
+        const replaced = truncateText(next.text);
+        if (replaced !== next.text) {
+          next.text = replaced;
+          truncated += 1;
+        }
+      }
+      if (Array.isArray(next.tool_calls)) {
+        next.tool_calls = (next.tool_calls as Record<string, unknown>[]).map((call) => {
+          const nextCall = { ...call };
+          for (const key of ["input", "result"] as const) {
+            const value = nextCall[key];
+            if (typeof value === "string") {
+              const replaced = truncateText(value);
+              if (replaced !== value) {
+                nextCall[key] = replaced;
+                truncated += 1;
+              }
+            }
+          }
+          return nextCall;
+        });
+      }
+      return next;
+    });
+  }
+  return truncated;
 }
