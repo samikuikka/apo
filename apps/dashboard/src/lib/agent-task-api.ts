@@ -166,8 +166,34 @@ export interface CheckLocation {
   column?: number;
 }
 
+/** One investigation step of an agentic-judge (t.agent) session. */
+export interface AgentJudgeStep {
+  index: number;
+  tool_calls?: {
+    name: string;
+    input?: string;
+    result?: string | { kind: string; [k: string]: unknown };
+    result_sha256?: string;
+    result_bytes?: number;
+  }[];
+  text?: string;
+  tokens?: { input?: number; output?: number; cost?: number };
+}
+
+/** Transcript-shaped record of one `t.agent` session. */
+export interface AgentJudgeSession {
+  tools?: string[];
+  briefing?: { system?: string; rubric?: string };
+  steps?: AgentJudgeStep[];
+  outcome: "verdict" | "budget_exhausted" | "error";
+  evidence?: { step: number; tool: string; result_sha256: string; result_bytes: number }[];
+  usage?: { steps?: number; input_tokens?: number; output_tokens?: number };
+}
+
 export interface JudgeMetadata {
   model?: string;
+  /** Agentic session transcript; only with evaluator_type "agent". */
+  session?: AgentJudgeSession;
   prompt?: {
     system?: string;
     user?: string;

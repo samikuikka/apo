@@ -15,7 +15,7 @@ from sqlmodel import Session, col, select
 
 from apo.models.db import AgentTaskJudgmentDB, AgentTaskRunDB
 from apo.models.schemas import AgentTaskJudgmentSummary
-from apo.services.check_report_storage import load_check_report
+from apo.services.check_report_storage import load_check_report, normalize_check_report
 
 MAX_JUDGMENT_SAMPLES = 50
 
@@ -52,7 +52,7 @@ def create_judgment(
         total_checks=len(checks),
         passed_checks=passed,
         failed_checks=len(checks) - passed,
-        checks_json=checks,
+        checks_json=normalize_check_report(checks),
         stability_json=stability,
     )
     session.add(judgment)

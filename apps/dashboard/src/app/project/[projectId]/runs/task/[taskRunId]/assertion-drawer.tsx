@@ -8,6 +8,7 @@ import { extractJudgeReasoning } from "@/lib/judge-reasoning";
 import { formatAssertionValue } from "@/lib/format-assertion-value";
 import { cn } from "@/lib/utils";
 import { JudgeStrip } from "./judge-strip";
+import { AgentSessionTimeline } from "./agent-session-timeline";
 
 // AssertionDrawer — full-height right drawer shown when a diagnostic marker
 // is clicked in the code viewer. Header stays pinned; body scrolls as one so
@@ -90,6 +91,9 @@ export function AssertionDrawer({ assertion, onClose }: { assertion: CheckAssert
 
           {/* Judge metadata + collapsible prompt/response. Reuses the shared
              JudgeStrip so there's one judge-detail surface, not two. */}
+          {judge?.session && assertion.evaluator_type === "agent" && (
+            <AgentSessionTimeline session={judge.session} />
+          )}
           {judge && <JudgeStrip judge={judge} />}
 
           {!reasoning && !judge && !isJudge && (

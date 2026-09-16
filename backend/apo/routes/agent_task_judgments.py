@@ -29,6 +29,7 @@ from ..models.schemas import (
 )
 from ..services.agent_task_run_access import require_task_run_access
 from ..services.check_report_storage import load_check_report
+from ..services.check_report_storage import normalize_check_report
 from ..services.judgments import (
     MAX_JUDGMENT_SAMPLES,
     build_judgment_summary,
@@ -94,6 +95,67 @@ async def get_run_judgment(
     raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Judgment not found")
 
 
+_AGENT_SESSION_OUTCOMES = ("verdict", "budget_exhausted", "error")
+
+
+def _validate_agent_sessions(checks: list[dict[str, object]]) -> None:
+    """Enforce the agentic-session contract on submitted check reports.
+
+    A ``judge.session`` may only ride an ``evaluator_type: "agent"`` check or
+    assertion, must declare a known outcome, and a ``"verdict"`` outcome must
+    carry an actual verdict (pass + reasoning). Violations are 422s — a
+    malformed transcript must never be stored as if it were a judgment.
+    """
+    for check in checks:
+        _validate_one_judge(check.get("judge"), check.get("evaluator_type"))
+        assertions = check.get("assertions")
+        if not isinstance(assertions, list):
+            continue
+        for assertion in assertions:
+            if not isinstance(assertion, dict):
+                continue
+            _validate_one_judge(assertion.get("judge"), assertion.get("evaluator_type"), assertion)
+
+
+def _validate_one_judge(
+    judge: object, evaluator_type: object, assertion: dict[str, object] | None = None
+) -> None:
+    if not isinstance(judge, dict) or "session" not in judge:
+        return
+    session = judge["session"]
+    if evaluator_type != "agent":
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "kind": "agent_session_misfiled",
+                "msg": "judge.session requires evaluator_type 'agent'",
+            },
+        )
+    if not isinstance(session, dict) or session.get("outcome") not in _AGENT_SESSION_OUTCOMES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "kind": "agent_session_missing_outcome",
+                "msg": f"judge.session outcome must be one of {_AGENT_SESSION_OUTCOMES}",
+            },
+        )
+    if session["outcome"] == "verdict" and assertion is not None:
+        reasoning = assertion.get("reasoning")
+        has_verdict = (
+            isinstance(assertion.get("pass"), bool)
+            and isinstance(reasoning, str)
+            and reasoning.strip() != ""
+        )
+        if not has_verdict:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    "kind": "agent_session_verdict_missing",
+                    "msg": "outcome 'verdict' requires pass and non-empty reasoning",
+                },
+            )
+
+
 @router.post(
     "/agent-task-runs/{task_run_id}/judgments",
     response_model=AgentTaskJudgmentSummary,
@@ -134,6 +196,10 @@ async def record_run_judgment(
                 "msg": "A judgment must record the full check set; got an empty list",
             },
         )
+    _validate_agent_sessions(body.checks)
+    # POSTed transcripts are untrusted input: the same caps that guard the
+    # run's own check report guard every recorded judgment (write+read).
+    normalized_checks = normalize_check_report(body.checks)
     if not 1 <= body.samples <= MAX_JUDGMENT_SAMPLES:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -164,7 +230,7 @@ async def record_run_judgment(
         judge_base_url=body.judge_base_url,
         task_definition_revision_id=revision_id,
         samples=body.samples,
-        checks=body.checks,
+        checks=normalized_checks,
         stability=body.stability,
     )
     session.commit()

@@ -23,6 +23,7 @@ export const TEST_METHOD_NAMES = [
   "maxDurationMs",
   "assert",
   "check",
+  "agent",
   "judge",
   "agent",
 ] as const;

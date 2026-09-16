@@ -474,3 +474,101 @@ class TestHistoricalReadNormalization:
         row = session.get(AgentTaskCheckReportDB, run.id)
         assert row is not None
         assert row.value_json[0]["judge"]["response"] == big  # unchanged on disk  # pyright: ignore[reportOptionalSubscript, reportIndexIssue]
+
+
+def _session_step(index: int, result: str = "x") -> dict[str, object]:
+    return {
+        "index": index,
+        "tool_calls": [{
+            "name": "read_deliverable",
+            "input": '{"name":"log"}',
+            "result": result,
+            "result_sha256": "a" * 64,
+            "result_bytes": len(result),
+        }],
+        "text": "step text",
+        "tokens": {"input": 10, "output": 5},
+    }
+
+
+def _agent_judge(steps: list[dict[str, object]], outcome: str = "verdict") -> dict[str, object]:
+    return {
+        "model": "z-ai/glm-5.3-flash",
+        "temperature": 0,
+        "session": {
+            "tools": ["read_deliverable", "finish_verdict"],
+            "briefing": {"system": "b" * 100, "rubric": "r" * 100},
+            "steps": steps,
+            "outcome": outcome,
+            "evidence": [
+                {"step": 0, "tool": "read_deliverable", "result_sha256": "f" * 64, "result_bytes": 9}
+            ],
+            "usage": {"steps": len(steps), "input_tokens": 100, "output_tokens": 50},
+        },
+    }
+
+
+class TestAgentSessionNormalization:
+    def test_tool_result_truncated_identity_kept(self) -> None:
+        big = "y" * 10_000
+        checks = [{"id": "c", "pass": True, "reasoning": "ok",
+                   "evaluator_type": "agent",
+                   "judge": _agent_judge([_session_step(0, big)])}]
+        cleaned = normalize_check_report(checks)
+        call = cleaned[0]["judge"]["session"]["steps"][0]["tool_calls"][0]
+        assert isinstance(call["result"], dict) and call["result"]["kind"] == "truncated"
+        assert call["result_sha256"] == "a" * 64
+        assert call["result_bytes"] == 10_000
+
+    def test_steps_head_and_tail_preserved_beyond_cap(self) -> None:
+        steps = [_session_step(i) for i in range(80)]
+        cleaned = normalize_check_report(
+            [{"id": "c", "pass": True, "reasoning": "ok",
+              "evaluator_type": "agent", "judge": _agent_judge(steps)}]
+        )
+        kept = cleaned[0]["judge"]["session"]["steps"]
+        # 56 head + 1 marker + 8 tail = 65 entries
+        assert len(kept) == 65
+        assert kept[56]["text"] and "truncated" in str(kept[56]["text"])
+        assert kept[0]["index"] == 0
+        assert kept[-1]["index"] == 79
+
+    def test_identity_fields_never_truncated(self) -> None:
+        huge_sha = "e" * 5000
+        judge = _agent_judge([_session_step(0)])
+        judge["session"]["evidence"] = [
+            {"step": i, "tool": "t", "result_sha256": huge_sha, "result_bytes": 9}
+            for i in range(20)
+        ]
+        cleaned = normalize_check_report(
+            [{"id": "c", "pass": True, "reasoning": "ok",
+              "evaluator_type": "agent", "judge": judge}]
+        )
+        ev = cleaned[0]["judge"]["session"]["evidence"]
+        assert len(ev) == 20
+        assert ev[0]["result_sha256"] == huge_sha
+
+    def test_total_session_capped(self) -> None:
+        # Just under the 4 KiB field cap so results survive truncation and
+        # the 96 KiB session budget forces the shrink path to actually run
+        # (5 KiB results would all become markers and never reach it).
+        big = "z" * 4_000
+        steps = [_session_step(i, big) for i in range(300)]
+        cleaned = normalize_check_report(
+            [{"id": "c", "pass": True, "reasoning": "ok",
+              "evaluator_type": "agent", "judge": _agent_judge(steps)}]
+        )
+        session_json = __import__("json").dumps(cleaned[0]["judge"]["session"])
+        assert len(session_json.encode("utf-8")) <= 96 * 1024
+
+
+    def test_dict_valued_tool_result_capped(self) -> None:
+        big_obj = {"blob": "y" * 300_000}
+        step = _session_step(0)
+        step["tool_calls"][0]["result"] = big_obj  # type: ignore[index]
+        cleaned = normalize_check_report(
+            [{"id": "c", "pass": True, "reasoning": "ok",
+              "evaluator_type": "agent", "judge": _agent_judge([step])}]
+        )
+        call = cleaned[0]["judge"]["session"]["steps"][0]["tool_calls"][0]
+        assert isinstance(call["result"], dict) and call["result"]["kind"] == "truncated"

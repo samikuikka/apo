@@ -38,6 +38,17 @@ from ..models.db import AgentTaskCheckReportDB, AgentTaskRunDB
 RECEIVED_VALUE_LIMIT = 4 * 1024  # 4 KiB
 JUDGE_SEGMENT_LIMIT = 16 * 1024  # 16 KiB
 
+# Agentic-judge session caps (the SDK pre-compacts to the same numbers; the
+# backend re-enforces defensively — same double-enforcement contract as the
+# limits above). Identity fields (outcome, usage, evidence fingerprints) are
+# never truncated: they are the replay-audit backbone.
+MAX_JUDGE_STEPS = 64
+JUDGE_KEEP_HEAD_STEPS = 56
+JUDGE_TOOL_INPUT_LIMIT = 2 * 1024
+JUDGE_TOOL_RESULT_LIMIT = 4 * 1024
+JUDGE_STEP_TEXT_LIMIT = 2 * 1024
+JUDGE_SESSION_LIMIT = 96 * 1024
+
 _PREVIEW_CHARS = 256
 
 # Legacy text-segment fields truncated to TruncatedCheckValue markers.
@@ -193,9 +204,118 @@ def _normalize_judge(judge: dict[str, object]) -> dict[str, object]:
             result[key] = _truncate_text(value, JUDGE_SEGMENT_LIMIT)
         elif key == "prompt" and isinstance(value, dict):
             result[key] = _normalize_prompt(value)
+        elif key == "session" and isinstance(value, dict):
+            result[key] = _normalize_session(value)
         else:
             result[key] = value
     return result
+
+
+def _normalize_session(session: dict[str, object]) -> dict[str, object]:
+    """Cap an agentic-judge session transcript under the design-doc limits.
+
+    Tool input/result text and step prose truncate to their limits with
+    sha256/bytes identity preserved; beyond 64 steps the middle collapses to
+    a marker so early orientation and the final verdict always survive; and
+    a pathological session still over budget after field caps loses more
+    middle steps until it fits or hits the keep floor (identity fields are
+    never cut, so the cap is soft by design). ``outcome``, ``usage`` and
+    ``evidence`` pass through untouched.
+    """
+    result: dict[str, object] = {}
+    for key, value in session.items():
+        if key == "briefing" and isinstance(value, dict):
+            result[key] = {
+                k: _truncate_text(v, JUDGE_SEGMENT_LIMIT)
+                for k, v in value.items()
+            }
+        elif key == "steps" and isinstance(value, list):
+            result[key] = _normalize_steps(value)
+        else:
+            result[key] = value
+
+    if len(_dumps(result)) > JUDGE_SESSION_LIMIT:
+        result = _shrink_session_to_budget(result)
+    return result
+
+
+def _normalize_steps(steps: list[object]) -> list[dict[str, object]]:
+    cleaned: list[dict[str, object]] = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        entry: dict[str, object] = {}
+        for key, value in step.items():
+            if key == "text":
+                entry[key] = _truncate_text(value, JUDGE_STEP_TEXT_LIMIT)
+            elif key == "tool_calls" and isinstance(value, list):
+                entry[key] = [_normalize_tool_call(c) for c in value if isinstance(c, dict)]
+            else:
+                entry[key] = value
+        cleaned.append(entry)
+
+    if len(cleaned) <= MAX_JUDGE_STEPS:
+        return cleaned
+    head = cleaned[:JUDGE_KEEP_HEAD_STEPS]
+    tail = cleaned[-(MAX_JUDGE_STEPS - JUDGE_KEEP_HEAD_STEPS):]
+    skipped = len(cleaned) - MAX_JUDGE_STEPS
+    marker: dict[str, object] = {
+        "index": JUDGE_KEEP_HEAD_STEPS,
+        "text": f"…[{skipped} intermediate steps truncated]",
+    }
+    return [*head, marker, *tail]
+
+
+def _normalize_tool_call(call: dict[str, object]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in call.items():
+        if key == "input":
+            result[key] = _truncate_text_or_value(value, JUDGE_TOOL_INPUT_LIMIT)
+        elif key == "result":
+            result[key] = _truncate_text_or_value(value, JUDGE_TOOL_RESULT_LIMIT)
+        else:
+            result[key] = value
+    return result
+
+
+def _truncate_text_or_value(value: object, limit: int) -> object:
+    """Truncate text directly; measure structured values by their JSON form.
+
+    Tool results may arrive as objects (the API models that), and a large
+    dict would sail past the text limit untouched — measure it like a
+    ``received`` value instead so the cap holds for both shapes.
+    """
+    if isinstance(value, str):
+        return _truncate_text(value, limit)
+    if value is None:
+        return value
+    if len(_dumps(value)) <= limit:
+        return value
+    return _truncate_value(value, limit)
+
+
+def _shrink_session_to_budget(session: dict[str, object]) -> dict[str, object]:
+    """Last-resort fit: drop middle steps until the session fits its budget."""
+    steps_obj = session.get("steps")
+    if not isinstance(steps_obj, list):
+        return session
+    steps: list[object] = steps_obj
+    import json as _json
+
+    keep = len(steps)
+    while keep > 2:
+        candidate = _json.dumps(session, default=str).encode("utf-8")
+        if len(candidate) <= JUDGE_SESSION_LIMIT:
+            break
+        keep = max(2, keep // 2)
+        head = steps[: max(1, keep // 2)]
+        tail = steps[-max(1, keep // 2):]
+        rebuilt: list[object] = [
+            *head, {"index": len(head), "text": "…[session shrunk to storage budget]"}, *tail
+        ]
+        session = {**session, "steps": rebuilt}
+        steps = rebuilt
+    return session
 
 
 def _normalize_prompt(prompt: dict[str, object]) -> dict[str, object]:

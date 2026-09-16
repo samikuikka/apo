@@ -390,3 +390,62 @@ class TestProjectionMemberAccess:
 
         response = client.get(f"/v1/agent-task-runs/{run.id}/trace-projection")
         assert response.status_code == 409
+
+
+def _agent_checks(session: dict[str, object], *, evaluator: str = "agent",
+                  outcome_mismatch: bool = False) -> list[dict[str, object]]:
+    judge = {"model": "z-ai/glm-5.3-flash", "temperature": 0, "session": session}
+    assertion: dict[str, object] = {
+        "id": "check", "pass": outcome_mismatch is False,
+        "reasoning": "ok", "evaluator_type": evaluator, "judge": judge,
+    }
+    return [{"id": "c", "pass": True, "reasoning": "ok",
+             "evaluator_type": evaluator, "assertions": [assertion]}]
+
+
+def _valid_session(outcome: str = "verdict") -> dict[str, object]:
+    return {
+        "tools": ["finish_verdict"], "outcome": outcome, "steps": [], "evidence": [],
+        "usage": {"steps": 2, "input_tokens": 10, "output_tokens": 5},
+    }
+
+
+class TestCreateJudgmentAgentSessionValidation:
+    def test_session_requires_agent_evaluator(self, client: TestClient, session: Session) -> None:
+        run = _seed_run(session)
+        response = client.post(
+            f"/v1/agent-task-runs/{run.id}/judgments",
+            json={"checks": _agent_checks(_valid_session(), evaluator="llm"), "samples": 1},
+        )
+        assert response.status_code == 422
+        assert "evaluator_type" in response.text
+
+    def test_session_requires_outcome(self, client: TestClient, session: Session) -> None:
+        run = _seed_run(session)
+        body_session = {k: v for k, v in _valid_session().items() if k != "outcome"}
+        response = client.post(
+            f"/v1/agent-task-runs/{run.id}/judgments",
+            json={"checks": _agent_checks(body_session), "samples": 1},
+        )
+        assert response.status_code == 422
+        assert "outcome" in response.text
+
+    def test_outcome_verdict_requires_verdict_fields(self, client: TestClient, session: Session) -> None:
+        run = _seed_run(session)
+        checks = _agent_checks(_valid_session("verdict"))
+        checks[0]["assertions"][0]["pass"] = None  # type: ignore[assignment]
+        checks[0]["assertions"][0].pop("pass")
+        checks[0]["assertions"][0]["reasoning"] = ""
+        response = client.post(
+            f"/v1/agent-task-runs/{run.id}/judgments",
+            json={"checks": checks, "samples": 1},
+        )
+        assert response.status_code == 422
+
+    def test_valid_agent_judgment_round_trips(self, client: TestClient, session: Session) -> None:
+        run = _seed_run(session)
+        response = client.post(
+            f"/v1/agent-task-runs/{run.id}/judgments",
+            json={"checks": _agent_checks(_valid_session()), "samples": 1},
+        )
+        assert response.status_code == 201, response.text
