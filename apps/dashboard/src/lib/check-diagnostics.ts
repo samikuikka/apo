@@ -26,7 +26,7 @@ export type RichCheckDiagnostic = CheckDiagnostic & {
   /** LLM judge reasoning — rendered as prose body when present. */
   reasoning?: string;
   /** "llm" for judge assertions (verdict presentation), "code" otherwise. */
-  evaluator_type?: "llm" | "code";
+  evaluator_type?: "llm" | "code" | "agent";
 };
 
 /**

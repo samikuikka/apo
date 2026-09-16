@@ -151,7 +151,7 @@ export interface GenerationExecutionSummary {
   error_finish_reasons: Record<string, number>;
 }
 
-export type EvaluatorType = "llm" | "code" | "regex";
+export type EvaluatorType = "llm" | "code" | "agent" | "regex";
 
 /** typed catalog selection stored on a source-owned Schedule. */
 export type ScheduleSelection =
