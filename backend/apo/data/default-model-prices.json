@@ -268,6 +268,78 @@
       ]
     },
     {
+      "_doc": "Carries the same reduced rates as Opus 4.6/4.7 and Opus 5 ($5/$25 per MTok) \u2014 the per-dimension pricing cut that ended Opus 4.5's $15/$75 era has held through every Opus generation since. OpenRouter rates read from https://openrouter.ai/api/v1/models on 2026-09-16.",
+      "match_pattern": "(?i)^claude-opus-4[.-]8.*$",
+      "provider": "anthropic",
+      "display_name": "Claude Opus 4.8",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 5.0,
+            "cache_read": 0.5,
+            "cache_write_5m": 6.25,
+            "cache_write_1h": 10.0,
+            "output": 25.0
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "Anthropic's Fable line launches at Opus-4.5-era rates: $10/$50 per MTok, $1.00 cache read, $12.50/$20.00 5m/1h cache writes (the usual 1.25x/2x of input). fable-5.1 later cut the cache read 4x, so this entry intentionally covers only the original 5 slug. OpenRouter rates read from https://openrouter.ai/api/v1/models on 2026-09-16.",
+      "match_pattern": "(?i)^claude-fable-5$",
+      "provider": "anthropic",
+      "display_name": "Claude Fable 5",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 10.0,
+            "cache_read": 1.0,
+            "cache_write_5m": 12.5,
+            "cache_write_1h": 20.0,
+            "output": 50.0
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "Same launch rates as fable-5 ($10/$50 per MTok) except the cache read, which dropped 4x to $0.25 \u2014 long cached agent sessions are this line's selling point. Cache writes keep the usual 1.25x/2x of input. OpenRouter rates read from https://openrouter.ai/api/v1/models on 2026-09-16.",
+      "match_pattern": "(?i)^claude-fable-5[.-]1.*$",
+      "provider": "anthropic",
+      "display_name": "Claude Fable 5.1",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 10.0,
+            "cache_read": 0.25,
+            "cache_write_5m": 12.5,
+            "cache_write_1h": 20.0,
+            "output": 50.0
+          }
+        }
+      ]
+    },
+    {
       "match_pattern": "(?i)^gpt-4o$",
       "provider": "openai",
       "display_name": "GPT-4o",
@@ -565,6 +637,270 @@
       ]
     },
     {
+      "_doc": "The third 5.6 sku alongside terra and luna: $2.00/$10.00 per MTok, $0.20 cache read, $2.50 cache write (1.25x input), plus the family-wide 272k-prompt-token long-context override ($4.00/$15.00, $0.40 read, $5.00 write). OpenRouter rates read from https://openrouter.ai/api/v1/models on 2026-09-16.",
+      "match_pattern": "(?i)^gpt-5\\.6-sol$",
+      "provider": "openai",
+      "display_name": "GPT-5.6 Sol",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 2.0,
+            "cache_read": 0.2,
+            "cache_write_5m": 2.5,
+            "output": 10.0
+          }
+        },
+        {
+          "name": "large-context",
+          "is_default": false,
+          "priority": 1,
+          "conditions": [
+            {
+              "keys": [
+                "input",
+                "cache_read"
+              ],
+              "operator": "gte",
+              "threshold": 272000
+            }
+          ],
+          "prices": {
+            "input": 4.0,
+            "cache_read": 0.4,
+            "cache_write_5m": 5.0,
+            "output": 15.0
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "OpenRouter lists the -pro sku at rates identical to gpt-5.6-sol (input, output, and cache prices all match, 2026-09-16); priced separately so the pro slug stops arriving unpriced.",
+      "match_pattern": "(?i)^gpt-5\\.6-sol-pro$",
+      "provider": "openai",
+      "display_name": "GPT-5.6 Sol Pro",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 2.0,
+            "cache_read": 0.2,
+            "cache_write_5m": 2.5,
+            "output": 10.0
+          }
+        },
+        {
+          "name": "large-context",
+          "is_default": false,
+          "priority": 1,
+          "conditions": [
+            {
+              "keys": [
+                "input",
+                "cache_read"
+              ],
+              "operator": "gte",
+              "threshold": 272000
+            }
+          ],
+          "prices": {
+            "input": 4.0,
+            "cache_read": 0.4,
+            "cache_write_5m": 5.0,
+            "output": 15.0
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "OpenRouter lists terra-pro at rates identical to terra ($2.00/$12.00 per MTok, $0.20 cache read, $2.50 cache write) including the 272k long-context override ($4.00/$18.00). OpenRouter rates read from https://openrouter.ai/api/v1/models on 2026-09-16.",
+      "match_pattern": "(?i)^gpt-5\\.6-terra-pro$",
+      "provider": "openai",
+      "display_name": "GPT-5.6 Terra Pro",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 2.0,
+            "cache_read": 0.2,
+            "cache_write_5m": 2.5,
+            "output": 12.0
+          }
+        },
+        {
+          "name": "large-context",
+          "is_default": false,
+          "priority": 1,
+          "conditions": [
+            {
+              "keys": [
+                "input",
+                "cache_read"
+              ],
+              "operator": "gte",
+              "threshold": 272000
+            }
+          ],
+          "prices": {
+            "input": 4.0,
+            "cache_read": 0.4,
+            "cache_write_5m": 5.0,
+            "output": 18.0
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "OpenRouter lists luna-pro at rates identical to luna ($0.20/$1.20 per MTok, $0.02 cache read, $0.25 cache write) including the 272k long-context override ($0.40/$1.80). OpenRouter rates read from https://openrouter.ai/api/v1/models on 2026-09-16.",
+      "match_pattern": "(?i)^gpt-5\\.6-luna-pro$",
+      "provider": "openai",
+      "display_name": "GPT-5.6 Luna Pro",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 0.2,
+            "cache_read": 0.02,
+            "cache_write_5m": 0.25,
+            "output": 1.2
+          }
+        },
+        {
+          "name": "large-context",
+          "is_default": false,
+          "priority": 1,
+          "conditions": [
+            {
+              "keys": [
+                "input",
+                "cache_read"
+              ],
+              "operator": "gte",
+              "threshold": 272000
+            }
+          ],
+          "prices": {
+            "input": 0.4,
+            "cache_read": 0.04,
+            "cache_write_5m": 0.5,
+            "output": 1.8
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "First GPT-6 sku on OpenRouter: $10.00/$50.00 per MTok, $1.00 cache read, $12.50 cache write (1.25x input), with the family's 272k-prompt-token override doubling input to $20.00 and raising output to $75.00. OpenRouter rates read from https://openrouter.ai/api/v1/models on 2026-09-16.",
+      "match_pattern": "(?i)^gpt-6-astra$",
+      "provider": "openai",
+      "display_name": "GPT-6 Astra",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 10.0,
+            "cache_read": 1.0,
+            "cache_write_5m": 12.5,
+            "output": 50.0
+          }
+        },
+        {
+          "name": "large-context",
+          "is_default": false,
+          "priority": 1,
+          "conditions": [
+            {
+              "keys": [
+                "input",
+                "cache_read"
+              ],
+              "operator": "gte",
+              "threshold": 272000
+            }
+          ],
+          "prices": {
+            "input": 20.0,
+            "cache_read": 2.0,
+            "cache_write_5m": 25.0,
+            "output": 75.0
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "OpenRouter lists gpt-6-astra-pro at rates identical to gpt-6-astra ($10.00/$50.00 per MTok, same cache rates, same 272k override); priced separately so the pro slug stops arriving unpriced.",
+      "match_pattern": "(?i)^gpt-6-astra-pro$",
+      "provider": "openai",
+      "display_name": "GPT-6 Astra Pro",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 10.0,
+            "cache_read": 1.0,
+            "cache_write_5m": 12.5,
+            "output": 50.0
+          }
+        },
+        {
+          "name": "large-context",
+          "is_default": false,
+          "priority": 1,
+          "conditions": [
+            {
+              "keys": [
+                "input",
+                "cache_read"
+              ],
+              "operator": "gte",
+              "threshold": 272000
+            }
+          ],
+          "prices": {
+            "input": 20.0,
+            "cache_read": 2.0,
+            "cache_write_5m": 25.0,
+            "output": 75.0
+          }
+        }
+      ]
+    },
+    {
       "_doc": "Large-context-tiered model (golden shape #2, ticket 13 \u00a75): the threshold sums input+cache_read (cached tokens occupy the context window). When the read-side family exceeds 200k, the large-context tier doubles input price. cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero.",
       "match_pattern": "(?i)^gemini-2\\.5-pro$",
       "provider": "gemini",
@@ -604,6 +940,50 @@
             "cache_read": 0.625,
             "cache_write_5m": 2.5,
             "output": 15.0
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "The 3.x pro line is still preview-only; this covers both gemini-3.1-pro-preview and the -customtools variant, which OpenRouter lists at identical rates ($2.00/$12.00 per MTok, $0.20 cache read, $0.375 explicit cache write). The 200k-prompt-token override doubles input and output ($4.00/$18.00) and the cache read ($0.40) but leaves the write rate unchanged. OpenRouter rates read from https://openrouter.ai/api/v1/models on 2026-09-16.",
+      "match_pattern": "(?i)^gemini-3\\.1-pro.*$",
+      "provider": "gemini",
+      "display_name": "Gemini 3.1 Pro (preview)",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 2.0,
+            "cache_read": 0.2,
+            "cache_write_5m": 0.375,
+            "output": 12.0
+          }
+        },
+        {
+          "name": "large-context",
+          "is_default": false,
+          "priority": 1,
+          "conditions": [
+            {
+              "keys": [
+                "input",
+                "cache_read"
+              ],
+              "operator": "gte",
+              "threshold": 200000
+            }
+          ],
+          "prices": {
+            "input": 4.0,
+            "cache_read": 0.4,
+            "cache_write_5m": 0.375,
+            "output": 18.0
           }
         }
       ]
@@ -969,6 +1349,29 @@
       ]
     },
     {
+      "_doc": "OpenRouter marks this rotating alias with floor pricing (~ prefix), so a provider may charge up to these rates: $0.96/$2.88 per MTok, $0.088 cache read. Pinning the floor under-charges worst-case, which beats arriving unpriced; the dated deepseek-v4-pro-0813 build carries its own entry. DeepSeek charges no cache-write premium \u2014 writes bill as ordinary input, so cache_write_5m equals the input rate. OpenRouter rates read from https://openrouter.ai/api/v1/models on 2026-09-16.",
+      "match_pattern": "(?i)^deepseek-pro-latest$",
+      "provider": "generic",
+      "display_name": "DeepSeek Pro (latest)",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 0.96,
+            "cache_read": 0.088,
+            "cache_write_5m": 0.96,
+            "output": 2.88
+          }
+        }
+      ]
+    },
+    {
       "_doc": "Issue #146: was arriving unpriced. OpenRouter rates verified 2026-08-14 ($0.435/$0.87, cache read $0.003625); re-verified 2026-08-30 after the listing moved to $0.66/$1.98 per MTok with a $0.022 cache read (explicitly dated slug, anchored like deepseek-v4-flash-0731 in issue #94 so a later build does not silently inherit these rates). DeepSeek charges no cache-write premium — writes bill as ordinary input, so cache_write_5m equals the input rate. Direct DeepSeek API peak/off-peak tiers differ; these are the flat OpenRouter rates the routed observations bill at.",
       "match_pattern": "(?i)^deepseek-v4-pro-0813$",
       "provider": "generic",
@@ -1128,6 +1531,75 @@
         }
       ],
       "_doc": "cache_write_5m equals the input rate: this provider charges no write premium, but the tokens that populate a cache are billed as input on the call that writes them. Callers that report usage in Anthropic buckets (input_cache_creation) land on cache_write_5m for every provider, so an absent price here silently bills those tokens at zero."
+    },
+    {
+      "_doc": "The k2.7 coding sku still routes agent traffic alongside k3: $0.7062/$3.21 per MTok with an $0.18 cache read (rates are multi-provider weighted on the listing; pinned as published). No write premium \u2014 writes bill as ordinary input, per the kimi-k3 convention. OpenRouter rates read from https://openrouter.ai/api/v1/models on 2026-09-16.",
+      "match_pattern": "(?i)^kimi-k2[.-]7-code$",
+      "provider": "generic",
+      "display_name": "Kimi K2.7 Code",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 0.7062,
+            "cache_read": 0.18,
+            "cache_write_5m": 0.7062,
+            "output": 3.21
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "First Qwen entry: the dated max slug at $2.00/$6.00 per MTok, $0.25 cache read, and an explicit $2.50 cache write (1.25x input) \u2014 unlike DeepSeek, this listing carries a write premium. Anchored to the 0902 build so a later refresh does not silently inherit these rates. OpenRouter rates read from https://openrouter.ai/api/v1/models on 2026-09-16.",
+      "match_pattern": "(?i)^qwen3\\.8-max-0902$",
+      "provider": "generic",
+      "display_name": "Qwen 3.8 Max (0902)",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 2.0,
+            "cache_read": 0.25,
+            "cache_write_5m": 2.5,
+            "output": 6.0
+          }
+        }
+      ]
+    },
+    {
+      "_doc": "The 3.8 flash sku at $0.15/$0.47 per MTok, $0.016 cache read, $0.20 cache write (4/3x input per the listing). OpenRouter rates read from https://openrouter.ai/api/v1/models on 2026-09-16.",
+      "match_pattern": "(?i)^qwen3\\.8-flash$",
+      "provider": "generic",
+      "display_name": "Qwen 3.8 Flash",
+      "start_date": null,
+      "updated_at": "2026-09-16T00:00:00Z",
+      "last_reviewed": "2026-09",
+      "pricing_tiers": [
+        {
+          "name": "default",
+          "is_default": true,
+          "priority": 0,
+          "conditions": [],
+          "prices": {
+            "input": 0.15,
+            "cache_read": 0.016,
+            "cache_write_5m": 0.2,
+            "output": 0.47
+          }
+        }
+      ]
     }
   ]
 }
