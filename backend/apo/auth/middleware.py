@@ -120,6 +120,34 @@ _anonymous_demo_limiter = LoginRateLimiter(
 )
 
 
+_MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _cookie_origin_allowed(request: Request) -> bool:
+    """Explicit CSRF control for cookie-authenticated mutations.
+
+    The session cookie is SameSite=Lax and mutating bodies are JSON behind
+    a locked CORS policy, which already blocks classic cross-site form
+    posts — this check makes the guarantee explicit instead of resting on
+    content-type conventions alone. Browsers always send ``Origin`` on
+    cross-site requests; non-browser clients (CLI, executors, scripts)
+    authenticate with API keys or tokens rather than cookies, so a absent
+    ``Origin`` is allowed.
+    """
+    if request.method.upper() not in _MUTATING_METHODS:
+        return True
+    origin = request.headers.get("origin")
+    if not origin:
+        return True
+    return origin.rstrip("/") in _allowed_frontend_origins()
+
+
+def _allowed_frontend_origins() -> set[str]:
+    """The origins the dashboard may be served from (FRONTEND_URL)."""
+    raw = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+    return {part.strip().rstrip("/") for part in raw.split(",") if part.strip()}
+
+
 def _is_demo_enabled() -> bool:
     """APO_DEMO_ENABLED=false removes the demo (and anonymous access) entirely."""
     return os.environ.get("APO_DEMO_ENABLED", "true").strip().lower() not in (
@@ -138,7 +166,11 @@ def _authenticate_anonymous_demo(request: Request) -> AuthContext | JSONResponse
     """
     if request.method.upper() not in ("GET", "HEAD"):
         return None
-    if not _is_demo_enabled():
+    # /health/ready is the Compose healthcheck target and must probe
+    # without credentials in every profile, including demo-disabled ones.
+    # The route strips readiness detail for anonymous callers, so this
+    # only exposes verdicts (ok/503), not operator diagnostics.
+    if request.url.path != "/health/ready" and not _is_demo_enabled():
         return None
     # A misconfigured deployment (missing/placeholder/short AUTH_SECRET)
     # fails closed everywhere — the anonymous path must not become the
@@ -195,6 +227,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return _forbidden()
         if auth_method == "attempt_token" and not _attempt_token_allows_request(request):
             return _forbidden()
+        if auth_method == "cookie" and not _cookie_origin_allowed(request):
+            return JSONResponse(
+                status_code=403, content={"detail": "Cross-origin request rejected"}
+            )
 
         for key, value in user_info.items():
             setattr(request.state, key, value)

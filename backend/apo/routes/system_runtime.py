@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from ..auth.deps import require_admin
@@ -27,14 +27,24 @@ router = APIRouter()
 
 
 @router.get("/health/ready")
-async def readiness_check() -> JSONResponse:
+async def readiness_check(request: Request) -> JSONResponse:
     """Deep readiness probe used by operators and Compose healthchecks.
 
     Returns 503 when any operator-relevant prerequisite fails so the
-    probe is actually meaningful, not just a liveness signal.
+    probe is actually meaningful, not just a liveness signal. The Compose
+    healthcheck calls this without credentials, so anonymous access must
+    stay possible in every profile — but check detail (backend paths, DB
+    error text, secret diagnostics) is operator information and is
+    stripped for callers without a real credential.
     """
     report = await asyncio.to_thread(run_readiness_checks)
     payload = report.model_dump()
+    auth_method = getattr(request.state, "auth_method", None)
+    if auth_method not in ("cookie", "api_key", "service_token", "attempt_token"):
+        payload["checks"] = {
+            name: {"name": check["name"], "ok": check["ok"], "detail": None}
+            for name, check in payload["checks"].items()
+        }
     status_code = 200 if report.ok else 503
     return JSONResponse(status_code=status_code, content=payload)
 

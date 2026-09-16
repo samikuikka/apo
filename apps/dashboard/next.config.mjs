@@ -92,10 +92,33 @@ const nextConfig = {
     ];
   },
   async headers() {
+    // Next.js's bootstrap scripts and Tailwind-class styling rely on inline
+    // script/style elements, so those two directives must stay 'unsafe-inline'
+    // (a nonce-based policy would require a middleware that rewrites every
+    // response). Everything else is locked to 'self': no third-party script,
+    // object, or frame sources exist. Dev adds eval (React refresh) and the
+    // HMR websocket origin.
+    const isDev = process.env.NODE_ENV === 'development';
+    const csp = [
+      "default-src 'self'",
+      isDev
+        ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+        : "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self' data:",
+      isDev ? "connect-src 'self' ws: http://localhost:* http://127.0.0.1:*" : "connect-src 'self'",
+      "worker-src 'self' blob:",
+      "object-src 'none'",
+      "base-uri 'none'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+    ].join('; ');
     return [
       {
         source: '/(.*)',
         headers: [
+          { key: 'Content-Security-Policy', value: csp },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },

@@ -57,19 +57,19 @@ jobs:
       contents: read # required for actions/checkout
       id-token: write # required for OIDC authentication with CodSpeed
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.13"
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
       - name: Sync dependencies
         working-directory: backend
         run: uv sync --frozen
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@v5
+        uses: CodSpeedHQ/action@562878fc153dee6c0f3719c99b1799334cfc3ccc # v5
         with:
           mode: simulation
           run: cd backend && uv run pytest tests/benchmarks --codspeed
@@ -82,17 +82,17 @@ jobs:
       contents: read # required for actions/checkout
       id-token: write # required for OIDC authentication with CodSpeed
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
         with:
           version: 11.3.0
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@v5
+        uses: CodSpeedHQ/action@562878fc153dee6c0f3719c99b1799334cfc3ccc # v5
         with:
           mode: simulation
           run: pnpm --filter @apo-ai/sdk bench

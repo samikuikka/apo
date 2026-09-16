@@ -9,7 +9,7 @@ COPY packages/cli/package.json ./packages/cli/package.json
 # needs libatomic.so.1 — absent from node slim images.
 RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g pnpm && pnpm install --frozen-lockfile
+    && npm install -g pnpm@11.3.0 && pnpm install --frozen-lockfile
 
 COPY apps/dashboard/ ./apps/dashboard/
 COPY packages/ ./packages/

@@ -28,7 +28,7 @@ COPY apps/dashboard/package.json ./apps/dashboard/package.json
 # needs libatomic.so.1 — absent from node slim images.
 RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g pnpm && pnpm install --frozen-lockfile --filter @apo-ai/sdk...
+    && npm install -g pnpm@11.3.0 && pnpm install --frozen-lockfile --filter @apo-ai/sdk...
 
 # Copy SDK source, build its published entry points for task imports, then
 # build the standalone runner. The demo task package resolves

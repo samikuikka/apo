@@ -154,9 +154,24 @@ def create_app() -> FastAPI:
     # The daily maintenance loop logs its pass summaries at INFO; the root
     # logger stays at WARNING by default, so apo's own INFO lines would be
     # invisible without this (issue #231's "log-invisible maintenance").
+    # A level alone is not enough: with no handler configured anywhere,
+    # Python's last-resort handler only emits WARNING+, so documented
+    # log-based flows (reading the password-reset link from
+    # `docker compose logs backend`) printed nothing. Attach a real
+    # handler unless one is already configured (e.g. by a test runner).
     import logging
+    import sys
 
-    logging.getLogger("apo").setLevel(logging.INFO)
+    level_name = os.environ.get("LOG_LEVEL", "info").strip().upper() or "INFO"
+    level = logging.getLevelName(level_name)
+    apo_logger = logging.getLogger("apo")
+    apo_logger.setLevel(level if isinstance(level, int) else logging.INFO)
+    if not logging.getLogger().handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(
+            logging.Formatter("%(levelname)s:     %(name)s - %(message)s")
+        )
+        apo_logger.addHandler(handler)
 
     # validate transport limits at app construction (not lazily).
     transport_limits = load_telemetry_transport_limits()
