@@ -30,6 +30,7 @@ import { createProjectionTee } from "../trace-projection/projection-tee.ts";
 import type { TraceProjectionSnapshot } from "../trace-projection/types.ts";
 import { readTaskRunProjection } from "../trace-projection/remote-capture.ts";
 import { resolveJudgeConfig, type JudgeConfig } from "../checks/t.ts";
+import { freezeHistoryPlaneFromEnv } from "../checks/agent-history.ts";
 import { APO_TASK_ID, APO_TASK_RUN_ID } from "../../semconv.ts";
 import { aggregateResult } from "./aggregate.ts";
 import type { AgentTaskTraceContext, AgentTaskTraceOptions } from "../tracing.ts";
@@ -434,6 +435,7 @@ async function executeLoadedTask(
         // Task-level judge config beats the run-level one (#161); per-call
         // overrides are applied later, inside t.judge.
         const judgeConfig = resolveJudgeConfig(options?.judge, task.judge);
+        const historyPlane = await freezeHistoryPlaneFromEnv(task.id);
         if (!inlineChecks) {
           return loadAndRunFlowChecks(
             checksPath,
@@ -443,6 +445,7 @@ async function executeLoadedTask(
               files,
               task,
               ...(judgeConfig ? { judgeConfig } : {}),
+              ...(historyPlane ? { historyPlane } : {}),
             },
             validationResults.brokenDeliverables,
           );
@@ -456,6 +459,7 @@ async function executeLoadedTask(
           files,
           task,
           ...(judgeConfig ? { judgeConfig } : {}),
+          ...(historyPlane ? { historyPlane } : {}),
           moduleUrl,
           displayFile: evalFileName,
         });
@@ -528,6 +532,7 @@ async function evaluate(
   // Task-level judge config beats the run-level one (#161); per-call
   // overrides are applied later, inside t.judge.
   const judgeConfig = resolveJudgeConfig(options?.judge, task.judge);
+  const historyPlane = await freezeHistoryPlaneFromEnv(task.id);
 
   const checksResults = await (inlineChecks
     ? runTraceChecks({
@@ -536,6 +541,7 @@ async function evaluate(
         files,
         task,
         ...(judgeConfig ? { judgeConfig } : {}),
+        ...(historyPlane ? { historyPlane } : {}),
         moduleUrl,
         displayFile: evalFileName,
       })
@@ -547,6 +553,7 @@ async function evaluate(
           files,
           task,
           ...(judgeConfig ? { judgeConfig } : {}),
+          ...(historyPlane ? { historyPlane } : {}),
         },
         validationResults.brokenDeliverables,
       ));

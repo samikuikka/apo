@@ -23,6 +23,7 @@ import type {
 import type { Recorder } from "./recorder.ts";
 import type { JudgeConfig, JudgeScope } from "./t.ts";
 import { resolveJudgeConfig } from "./t.ts";
+import type { AgentHistoryPlane } from "./agent-history.ts";
 
 // ── Public types ───────────────────────────────────────────────────────────
 
@@ -56,6 +57,8 @@ export type AgentEvidence = {
   deliverables: Record<string, unknown>;
   /** The frozen trace projection; absent = no trace evidence plane. */
   view?: TraceView;
+  /** This task's prior runs; absent = history plane unavailable. */
+  history?: AgentHistoryPlane;
 };
 
 // ── Engine facade ──────────────────────────────────────────────────────────
@@ -307,6 +310,43 @@ function buildEvidenceTools(args: {
       },
     }),
 
+    ...(evidence.history
+      ? {
+          list_runs: tool({
+            description:
+              "List runs of this task — id, status, pass/fail, model, check counts. " +
+              "The run under judgment is flagged; use get_run for a prior run's full check report.",
+            inputSchema: z.object({}),
+            execute: async () => {
+              const guard = budgetGuard();
+              if (guard) return { error: guard };
+              return evidence.history!.runs;
+            },
+          }),
+
+          get_run: tool({
+            description:
+              "Full check report of a PRIOR run: every check with pass/fail, reasoning, " +
+              "expected/received, and any human corrections. Prior attempts show whether a " +
+              "failure mode recurs; human corrections are ground truth, not opinions.",
+            inputSchema: z.object({ run_id: z.string() }),
+            execute: async (input: never) => {
+              const { run_id } = input as { run_id: string };
+              const guard = budgetGuard();
+              if (guard) return { error: guard };
+              const detail = await evidence.history!.getRun(run_id);
+              const served = JSON.stringify(detail);
+              const overflow = accountRead(
+                "get_run", JSON.stringify({ run_id }), served,
+                () => `read budget exhausted (${budget.maxReadBytes} bytes); call finish_verdict now`,
+              );
+              if (overflow) return { error: overflow };
+              return detail;
+            },
+          }),
+        }
+      : {}),
+
     get_task_definition: tool({
       description: "The task this run executed: id, description, deliverable names.",
       inputSchema: z.object({}),
@@ -392,6 +432,7 @@ function buildBriefing(
     `RUN UNDER JUDGMENT — task: ${scope?.taskId ?? "(unknown)"}\n` +
     `  deliverables: ${deliverableNames.map((n) => `${n} (${deliverableSize(evidence.deliverables[n])})`).join(", ") || "none"}\n` +
     `  trace: ${evidence.view ? "available via get_trace" : "not recorded for this run"}\n` +
+    `  history: ${evidence.history ? `${evidence.history.runs.length} run(s) of this task via list_runs` : "unavailable (no backend credentials)"}\n` +
     (scope?.taskDescription ? `  task description: ${scope.taskDescription}\n` : "") +
     "\nYou MUST end by calling finish_verdict exactly once. " +
     `You have at most ${budget.maxTurns} steps and ${budget.maxToolCalls} tool calls; ` +

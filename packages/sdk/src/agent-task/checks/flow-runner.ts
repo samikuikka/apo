@@ -8,6 +8,7 @@ import { TraceView } from "../trace-projection/view.ts";
 import type { TraceProjectionSnapshot } from "../trace-projection/types.ts";
 import type { CheckLocation, EvaluationItemResult } from "../run/types.ts";
 import { createTraceTestContext, type TestContext, type JudgeConfig } from "./t.ts";
+import type { AgentHistoryPlane } from "./agent-history.ts";
 import { Recorder, type LocateFn } from "./recorder.ts";
 import { parseCheckLocation } from "./location.ts";
 import { copyFileSync, existsSync, unlinkSync } from "fs";
@@ -186,6 +187,7 @@ export async function runTraceChecks(args: {
   files?: unknown;
   task?: unknown;
   judgeConfig?: JudgeConfig;
+  historyPlane?: AgentHistoryPlane;
   moduleUrl?: string;
   displayFile?: string;
 }): Promise<EvaluationItemResult[]> {
@@ -217,7 +219,11 @@ export async function runTraceChecks(args: {
         // The agentic judge investigates the raw deliverables + frozen
         // trace, not the read-tracking proxy (its reads are accounted in
         // the session's own evidence manifest).
-        { deliverables: args.deliverables, view },
+        {
+          deliverables: args.deliverables,
+          view,
+          ...(args.historyPlane ? { history: args.historyPlane } : {}),
+        },
       );
       let thrownLocation: CheckLocation | undefined;
       try {
@@ -284,6 +290,7 @@ export async function loadAndRunFlowChecks(
     files?: unknown;
     task?: unknown;
     judgeConfig?: JudgeConfig;
+    historyPlane?: AgentHistoryPlane;
   },
   brokenDeliverables: Record<string, string> = {},
 ): Promise<EvaluationItemResult[]> {
@@ -299,6 +306,7 @@ export async function loadAndRunFlowChecks(
     files: args.files,
     task: args.task,
     judgeConfig: args.judgeConfig,
+    ...(args.historyPlane ? { historyPlane: args.historyPlane } : {}),
     moduleUrl,
     displayFile: basename(checksPath),
   });
