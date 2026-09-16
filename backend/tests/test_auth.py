@@ -1,6 +1,7 @@
 # pyright: reportAny=false, reportPrivateUsage=false, reportUnusedCallResult=false
 
 import time
+from statistics import median
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
@@ -200,20 +201,45 @@ class TestVerifyPassword:
         assert resp.status_code == 401
 
     def test_timing_safe_login(self, client: TestClient) -> None:
+        # Unknown email must cost the same as a wrong password — both run one
+        # bcrypt verification (unknown email against a dummy hash), otherwise
+        # the response time becomes an account-enumeration oracle.
+        #
+        # A single wall-clock sample per path is untestable on shared CI
+        # runners: one bcrypt op costs ~0.25s there and a scheduler hiccup on
+        # either request skews the pair by more than the old 0.15s tolerance.
+        # Each path is therefore sampled in both request orders (whichever
+        # request runs second absorbs the runner's positional bias — pairing
+        # both ways cancels it) and compared by median.
         self._setup_user(client)
 
-        start = time.monotonic()
-        client.post(
-            "/auth/verify-password",
-            json={"email": "nobody@test.com", "password": "Whatever123"},
-        )
-        nonexistent_time = time.monotonic() - start
+        nonexistent_times: list[float] = []
+        wrong_pw_times: list[float] = []
+        for nonexistent_first in (True, False, False, True):
+            requests = [
+                ("nobody@test.com", "Whatever123"),
+                ("admin@test.com", "WrongPass999"),
+            ]
+            if not nonexistent_first:
+                requests.reverse()
 
-        start = time.monotonic()
-        client.post(
-            "/auth/verify-password",
-            json={"email": "admin@test.com", "password": "WrongPass999"},
-        )
-        wrong_pw_time = time.monotonic() - start
+            for email, password in requests:
+                start = time.monotonic()
+                client.post(
+                    "/auth/verify-password",
+                    json={"email": email, "password": password},
+                )
+                elapsed = time.monotonic() - start
+                if email == "nobody@test.com":
+                    nonexistent_times.append(elapsed)
+                else:
+                    wrong_pw_times.append(elapsed)
 
-        assert abs(nonexistent_time - wrong_pw_time) < 0.15
+        nonexistent = median(nonexistent_times)
+        wrong_pw = median(wrong_pw_times)
+        # The tolerance must scale with bcrypt cost on the runner (an op can
+        # exceed 0.4s on slow vCPUs), yet still catch the oracle everywhere:
+        # a dropped dummy-hash check collapses one median to ~0s against a
+        # full bcrypt op on the other, which no tolerance here can absorb.
+        tolerance = max(0.15, 0.4 * min(nonexistent, wrong_pw))
+        assert abs(nonexistent - wrong_pw) < tolerance
