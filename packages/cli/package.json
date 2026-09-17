@@ -1,7 +1,7 @@
 {
   "name": "@apo-ai/cli",
-  "version": "0.9.0",
-  "description": "CLI for Apo — run executable capability specifications, read pass/fail evidence, and close the harness-engineering loop.",
+  "version": "0.10.0",
+  "description": "CLI for Apo \u2014 run executable capability specifications, read pass/fail evidence, and close the harness-engineering loop.",
   "keywords": [
     "ai-agents",
     "agent-testing",
