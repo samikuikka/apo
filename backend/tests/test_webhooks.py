@@ -237,6 +237,35 @@ class TestHMACSigning:
 
 
 class TestWebhookCRUD:
+    def test_ingest_scoped_api_key_rejected(
+        self, make_api_key_client, session: Session
+    ):
+        """Ingest keys (embedded in executors) must not mint webhooks.
+
+        Without the full-scope gate, such a key could register a URL that
+        receives every subsequent run event for the project.
+        """
+        from apo.models.db import UserDB
+        from tests.conftest import seed_project_for_user
+
+        session.add(
+            UserDB(
+                id="key-owner",
+                email="key-owner@test.invalid",
+                password_hash="x",
+            )
+        )
+        session.commit()
+        seed_project_for_user(session, "key-owner", project_id="example-service")
+        keyed = make_api_key_client(
+            "key-owner", "example-service", session, scope="ingest"
+        )
+        resp = keyed.post(
+            "/v1/webhooks",
+            json={"project": "example-service", "url": "https://evil.example/hook"},
+        )
+        assert resp.status_code == 403
+
     def test_create_webhook(self, client: TestClient):
         resp = client.post(
             "/v1/webhooks",

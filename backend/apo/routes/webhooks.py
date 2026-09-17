@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from ..auth.deps import require_api_key_scope
 from ..db import get_session
 from ..models.db import WebhookDB
 from ..services.demo_workspace import require_project_not_demo
@@ -85,6 +86,7 @@ def create_webhook(
     body: WebhookCreate,
     request: Request,
     session: Session = Depends(get_session),
+    _: object = Depends(require_api_key_scope("full")),
 ):
     """Create a webhook with a freshly generated signing secret (shown once).
 
@@ -132,6 +134,7 @@ def list_webhooks(
     project: str,
     request: Request,
     session: Session = Depends(get_session),
+    _: object = Depends(require_api_key_scope("full")),
 ):
     """List a Project's webhooks (without secrets). Admin-scoped so members
     cannot enumerate webhook configurations."""
@@ -151,6 +154,7 @@ def get_webhook(
     webhook_id: int,
     request: Request,
     session: Session = Depends(get_session),
+    _: object = Depends(require_api_key_scope("full")),
 ):
     """Return one webhook's configuration (never its secret).
 
@@ -174,6 +178,7 @@ def update_webhook(
     body: WebhookUpdate,
     request: Request,
     session: Session = Depends(get_session),
+    _: object = Depends(require_api_key_scope("full")),
 ):
     """Patch webhook url/description/events/enabled. Project admin only;
     unknown event types get 400."""
@@ -223,6 +228,7 @@ def delete_webhook(
     webhook_id: int,
     request: Request,
     session: Session = Depends(get_session),
+    _: object = Depends(require_api_key_scope("full")),
 ):
     """Delete a webhook permanently. Project admin only; returns 204."""
     wh = session.get(WebhookDB, webhook_id)
@@ -242,6 +248,7 @@ def rotate_secret(
     webhook_id: int,
     request: Request,
     session: Session = Depends(get_session),
+    _: object = Depends(require_api_key_scope("full")),
 ):
     """Replace the webhook's signing secret; the new secret is shown once.
     Project admin only."""
@@ -269,6 +276,7 @@ async def test_webhook(
     webhook_id: int,
     request: Request,
     session: Session = Depends(get_session),
+    _: object = Depends(require_api_key_scope("full")),
 ):
     """Deliver a signed test event to the webhook's URL and report whether
     it succeeded. Project admin only."""
