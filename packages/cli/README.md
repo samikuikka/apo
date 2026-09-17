@@ -1,6 +1,8 @@
 # @apo-ai/cli
 
-Command-line interface for [Apo](https://github.com/samikuikka/apo) — an opinionated agent testing framework.
+Command-line interface for [Apo](https://github.com/samikuikka/apo), the testing and engineering system that turns expert knowledge into executable capability specifications for agent harnesses.
+
+The CLI is the machine interface for harness engineering: a developer, CI workflow, or coding agent can run the real harness, read the pass/fail verdict and evidence, change the implementation, and run the same specification again.
 
 ## Installation
 

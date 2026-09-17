@@ -2,8 +2,8 @@
 /**
  * EndToEndLoopDemo — two passes through the same agent test loop.
  *
- * User-defined tests enter as a fixed definition of done. The first Task Run
- * fails, its evidence informs a caller-owned implementation change, and the
+ * An expert-defined specification enters as the definition of done. The first
+ * Task Run fails, its evidence informs a caller-owned implementation change, and the
  * second Task Run passes. The improved agent exits; the tests never change.
  *
  * Motion is illustrative rather than decorative: a token makes two literal
@@ -13,8 +13,8 @@
 
 <figure class="test-loop not-content" data-test-loop>
 	<figcaption class="test-loop__sr-only">
-		User-defined tests stay fixed while the real agent runs twice. The first run
-		fails and returns tests, trace, and deliverables. The caller improves the
+		An expert-defined specification stays fixed while the real agent runs twice. The first run
+		fails and returns tests, trace, and deliverables. A coding agent improves the
 		implementation and starts a second run. When the same tests pass, the
 		improved agent exits the loop.
 	</figcaption>
@@ -22,7 +22,7 @@
 	<div class="test-loop__flow" aria-hidden="true">
 		<div class="test-loop__card test-loop__card--input">
 			<span>Input</span>
-			<strong>Your tests</strong>
+			<strong>Expert specification</strong>
 			<small>Definition of done</small>
 		</div>
 
@@ -46,7 +46,7 @@
 				<small>tests · trace · deliverables</small>
 			</div>
 			<div class="test-loop__node test-loop__node--improve" data-node="improve">
-				Caller improves
+				Coding agent improves
 			</div>
 
 			<div class="test-loop__center">

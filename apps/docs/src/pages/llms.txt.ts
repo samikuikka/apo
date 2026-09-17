@@ -97,13 +97,25 @@ const SECTIONS: { heading: string; slugs: string[] }[] = [
 
 const INTRO = `# apo
 
-> apo is a testing and engineering system for agent harnesses. You define what
-> your agent must be capable of (tasks, constraints, deliverables) and apo
-> makes that specification executable: it runs your real agent through an
-> adapter, asserts on the deliverable it produced and the trace of what it did
-> (code assertions and LLM judges), and returns a binary verdict, pass or
-> fail, with the full evidence. Not another eval framework, not a
-> prompt-scoring tool, not an observability platform.
+> apo turns expert knowledge into executable capability specifications for
+> harness engineering. Experts define the real jobs, conditions, outcomes,
+> and requirements that constitute done. apo runs the real harness through an
+> adapter and returns pass or fail with the test breakdown, trace, and
+> deliverables. That result is a machine-actionable control signal: a coding
+> agent can change the prompts, tools, context, orchestration, models, or code
+> and run the same specification again. Expert judgment controls where the
+> loop must converge; the coding agent finds the path.
+
+The same foundation gives an organization an executable record of what its
+agent system is required to do and whether that standard still holds as the
+system changes. apo does not edit the harness or autonomously rerun failures;
+it supplies the specification, execution interface, verdict, and evidence for
+the surrounding harness-engineering loop.
+
+The individual pieces can be assembled with testing libraries, observability
+platforms, artifact parsers, CI, and custom agent instructions. apo makes that
+specification-centered lifecycle one coherent system. It is not a production
+observability replacement or a prompt-scoring tool.
 
 Usage: install the CLI from npm (\`npm install -g @apo-ai/cli\`), the SDK for
 tasks (\`npm install @apo-ai/sdk\`), or self-host the server from source
@@ -111,8 +123,9 @@ tasks (\`npm install @apo-ai/sdk\`), or self-host the server from source
 the same path without the \`.md\` suffix.
 
 - [Set up apo (complete agent skill)](${ORIGIN}/start.md): a self-contained
-  guide for coding agents, discovery, adapter, first task, first run, debug
-  loop. Start here if you are an agent helping a user adopt apo.
+  guide for coding agents: explain the model, discover the user's system,
+  create the adapter and first task, run it, and close the debug loop. Start
+  here if you are an agent helping a user adopt apo.
 - [GitHub repository](https://github.com/samikuikka/apo): source, example
   service, self-hosting scripts.
 - [npm: @apo-ai/sdk](https://www.npmjs.com/package/@apo-ai/sdk): task,

@@ -23,24 +23,54 @@ const ORIGIN = import.meta.env.SITE;
 const START_INSTRUCTIONS = `# Skill: Set up apo and run a first end-to-end test
 
 You are helping the user set up **apo**: a testing and engineering system
-for agent harnesses. Your goal: give one real agent task an executable
-definition of done, then get a pass/fail result with evidence.
+that turns expert knowledge into executable capability specifications for
+harness engineering. Your goal is not merely to install a test runner. Help
+the user encode one real job as a definition of done, run their real harness,
+and establish a feedback path a human, CI workflow, or coding agent can act on.
 
 ## What apo is (and isn't)
 
-apo turns expected agent behavior into executable tests. It runs the **real**
+The user's experts define what the agent system must be capable of: the real
+job, its conditions, the outcome it must produce, and the requirements that
+constitute done. apo makes that knowledge executable. It runs the **real**
 agent orchestration, and each completed evaluation comes back **pass or fail**
-with the test breakdown, trace, and deliverables. A human, CI workflow, or
-coding agent can use that evidence to change the system and decide when to run
-again. apo itself
-does not edit the implementation or autonomously start another Task Run to
-improve a failed verdict. Transport or finalization work may retry without
-creating a new Task Run.
+with the test breakdown, trace, and deliverables.
+
+That foundation serves two outcomes. It gives the organization an executable
+record of what its agent system is required to do as the system changes. It
+also closes the feedback loop for harness engineering: a coding agent can use
+the verdict and evidence to change prompts, tools, context, orchestration,
+models, or code, then run the same specification again. Expert judgment
+controls where the loop must converge; the coding agent finds the path.
+
+apo itself does not edit the implementation or autonomously start another
+Task Run to improve a failed verdict. It supplies the specification, execution
+interface, verdict, and evidence for the surrounding loop. Transport or
+finalization work may retry without creating a new Task Run.
 
 What apo is **not**: not another eval framework, not a prompt-scoring tool,
-and not an observability platform. It doesn't grade the chat conversation, it
-judges the **deliverable** (the artifact, file, or structured output the agent
-produced).
+and not a production observability platform. It judges the **task outcome**,
+not merely the agent's self-report. That outcome may be an artifact, file,
+structured result, state change, action, or a conversation when conversation
+is the actual job.
+
+The individual pieces can be assembled with testing libraries, observability
+platforms, artifact parsers, CI scripts, and custom instructions for coding
+agents. apo's value is that the specification, real execution, verdict,
+evidence, and harness-engineering loop already form one coherent system.
+
+## Interpretation contract
+
+Before changing the user's repository:
+
+1. Explain apo in terms of the user's own agent and the real work it performs.
+2. Identify the expert knowledge that defines an acceptable outcome.
+3. Explain both benefits: knowing whether the system still meets that standard,
+   and giving coding agents a feedback loop for improving the harness.
+4. Do not claim apo has exclusive testing primitives or replaces production
+   observability. The distinction is the specification-centered lifecycle.
+5. Do not reduce apo to trace inspection. A failed test directs attention;
+   the deliverable shows the outcome; the trace helps diagnose the cause.
 
 ## How apo works (the 30-second mental model)
 
@@ -107,10 +137,13 @@ and confirm with the user.
      ${ORIGIN}/reference/flow-normalizers.md. This is a secondary path, the
      primary path is always the adapter if the agent can run live.
 
-3. **What should the first task test?** Pick the simplest behavior the user
-   cares about, one the agent already mostly does right. A good first task:
-   one input file, one turn, two tests (one code assertion, one judge). Don't
-   start with a complex multi-turn workflow.
+3. **What should the first task test?** Pick the simplest real job the user
+   cares about, one the agent already mostly does right. Identify the actual
+   outcome and the expert requirements that make it acceptable. A good first
+   task uses one input file, one turn, and two tests (one code assertion, one
+   judge). This is an onboarding slice of the specification, not a claim that
+   the agent's full capability is captured. Don't start with a complex
+   multi-turn workflow.
 
 4. **Does the user have an apo server to connect to?** Ask: "What's your team's
    apo server URL?" If they don't have one yet, they'll self-host (Path B in

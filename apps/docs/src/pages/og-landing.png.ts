@@ -41,9 +41,9 @@ const COLORS = {
 
 const SITE_URL = "docs.test-apo.online";
 const WORDMARK = "apo";
-const TAGLINE = "Prove your agent works.";
+const TAGLINE = "Define done. Engineer until it holds.";
 const SUB =
-	"Executable specifications. Real harness runs. Pass or fail with evidence.";
+	"Expert knowledge becomes executable specifications and a harness-engineering loop.";
 
 // --- Minimal hyperscript: builds the element-shaped objects satori consumes. ---
 

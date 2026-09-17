@@ -7,15 +7,34 @@ import GradedAcrossRunsDemo from '../../components/demos/GradedAcrossRunsDemo.as
 import DeliverableDemo from '../../components/demos/DeliverableDemo.astro';
 import SchedulesDemo from '../../components/demos/SchedulesDemo.astro';
 
-Agent development needs a definition of done. **apo** turns that definition into executable tests, runs the real agent system, and returns a pass/fail verdict with enough evidence to understand the result. If evaluation cannot complete, the Task Run surfaces an error instead.
+Harness development is a feedback loop. Someone changes the harness, runs the agent, inspects the outcome, decides whether it is good enough, and tries again. **apo makes that loop operable by humans and coding agents without surrendering the standard to either one.**
 
 ```text
-expected behavior → real agent run → PASS / FAIL + evidence → improve → run again
+expert knowledge → executable specification → real harness run
+                                              ↓
+                              PASS / FAIL + useful evidence
+                                              ↓
+                                  improve the harness ↺
 ```
 
-That is the familiar end-to-end testing loop, adapted to systems whose outputs are not always exact-match. A test can assert a concrete fact in code or hand a deliverable to an LLM and ask *is this actually good?*
+Your experts define the real jobs, conditions, outcomes, and requirements that constitute done. apo turns that judgment into executable tests, runs the real agent system, and returns a verdict with the test breakdown, trace, and deliverables. If evaluation cannot complete, the Task Run surfaces an error instead.
 
-The result is useful to both humans and machines. A developer, CI workflow, or coding agent can use pass/fail as a control signal, read the failed tests, trace, and deliverables, change the implementation, and run again. apo owns the Task Run and evidence; it does not edit the implementation or autonomously start another Task Run to improve a failed verdict.
+The specification does more than prevent regressions. It is the interface between expert knowledge and whoever improves the system. A coding agent can use pass/fail as a control signal, read the failed tests, trace, and deliverables, change the implementation, and run again without asking an expert to judge every attempt.
+
+apo owns the Task Run and evidence. It does not edit the implementation or autonomously start another Task Run. It supplies the trusted feedback environment that makes the surrounding practice possible. That practice is **harness engineering**.
+
+## Two outcomes, one specification
+
+The same primitives serve the organization and the people building the harness.
+
+| | What the specification provides |
+|---|---|
+| **The organization** | An executable record of what the agent system is required to do, and evidence of whether that standard still holds as models, features, and harnesses change. |
+| **Domain experts** | A place to encode and strengthen their judgment instead of manually reviewing every attempt. |
+| **Harness engineers** | A stable target for changes to prompts, tools, context, orchestration, models, memory, retries, and code. |
+| **Coding agents** | A machine-usable definition of done, a way to run the real system, and actionable evidence when it fails. |
+
+A specification without an engineering loop is a test suite. A loop without an authoritative specification is aimless automation. apo connects expert intent to real execution, independent judgment, useful failure evidence, and the next engineering action.
 
 ## Three starting points
 
@@ -35,9 +54,11 @@ apo makes that statement executable: it loads the task with its fixtures, runs t
 |---|---|
 | Testing & eval frameworks | Did this execution satisfy my test? |
 | Observability & eval platforms | How is my AI system behaving and changing? |
-| **apo** | **Can this harness reliably do what we require?** |
+| **apo** | **Can this harness do what we require?** |
 
-There is overlap between all three, and that's fine. apo doesn't replace an observability stack: production failures found there become apo regression tests, and existing evaluators can help verify a specification. The distinction is what everything is organized around, in apo, the primary artifact is the executable definition of what your agent system must be capable of doing.
+There is overlap between all three, and that's fine. You can assemble this workflow from testing libraries, observability platforms, artifact parsers, CI scripts, and instructions for coding agents. Then your team owns the glue: how a real job becomes a testable outcome, how tests become one verdict, how that verdict links to the deliverables and trace, and how a coding agent navigates the repair loop.
+
+apo doesn't replace an observability stack: production failures found there become apo regression tests, and existing evaluators can help verify a specification. The distinction is what everything is organized around. In apo, the primary artifact is the executable definition of what your agent system must be capable of doing, and every other primitive serves the loop that engineers the harness against it.
 
 ## The specification is the source of truth
 
@@ -51,7 +72,7 @@ capability specification → run the real harness → PASS / FAIL
    └──────── improve the harness until it passes ─┘
 ```
 
-Production traces can tell you what happened. They cannot define what your system should be. A specification can, and once written, it applies the same standard every run, gates every change, and gives a coding agent a concrete target to work against.
+Production traces can tell you what happened. They cannot define what your system should be. A specification can. It applies an explicit standard every run, gates changes, and gives a coding agent a concrete target to work against. When a run reveals an unacceptable behavior nobody anticipated, the team strengthens the specification; the discovery becomes part of the standard instead of remaining in somebody's memory.
 
 Most of the choices below fall out of taking that specification seriously.
 
@@ -63,11 +84,11 @@ An agent is not a prompt. It's a prompt plus tools plus the code that wires them
 
 So apo runs your real agent orchestration through the adapter and judges what comes back. The task may use safe test data, sandboxed tools, or test dependencies; what matters is that you exercise the implementation as a system instead of scoring a prompt-only proxy. If you change the orchestration, the next run reflects it. If you introduce a behavioral regression, the tests can catch it.
 
-## Judge the deliverable, not the chat
+## Judge the task outcome, not the self-report
 
-**What the agent *produced* matters more than what it *said*.**
+**What the agent actually accomplished matters more than what it claims.**
 
-Most agent eval tools grade the conversation, the back-and-forth text between the user and the model. That's the easiest thing to capture, so it's what gets scored. But for most agent systems, the chat is not the result. The result is an artifact: a file written, a state changed, a report generated, an action taken, a structured deliverable the agent was asked to produce.
+For many agent systems, the conversation is not the result. The result is an artifact, a file written, a state changed, a report generated, an action taken, or another outcome the agent was asked to produce. When the conversation itself is the job, it can be the deliverable too.
 
 apo is built around those deliverables. A task declares what the agent should produce, the adapter collects it after the run, and the tests assert on the actual output, not on whether the conversation *sounded* right. A response that's polite, fluent, and completely wrong should fail. A response that's terse but produced the right artifact should pass.
 
@@ -152,13 +173,13 @@ A task says *what* to evaluate. When it runs is a separate concern, and the righ
 
 <SchedulesDemo />
 
-## Close the loop without watching every run
+## Make the loop agent-operable
 
-**A coding agent can run this whole loop itself.** You write the tests once, encoding your expert judgment, then hand the loop to the agent: it runs the task from the CLI, reads the result, opens the trace, iterates on the codebase, and runs again until the tests pass. Your expertise lives in the tests; the agent applies it without you watching each run.
+**A coding agent can operate the implementation loop itself.** Your experts encode their judgment in the specification, then the coding agent runs the task from the CLI, reads the result, opens the relevant evidence, iterates on the codebase, and runs again until the tests pass. Your expertise lives in the standard; the agent applies it without asking you to judge each attempt.
 
-This loop has a name: **harness engineering**. The thing being optimized is not a prompt, it's the harness itself: model choice, prompts, context construction, tools and their descriptions, orchestration, and code. The test suite is the interface between your domain expertise and the agents improving the system.
+The thing being engineered is not a prompt, but the harness itself: model choice, prompts, context construction, tools and their descriptions, orchestration, memory, retries, and code. The test suite is the interface between your domain expertise and the agents improving the system.
 
-apo is the harness inside that loop, not the repair agent. It runs one Task Run at a time and reports what happened. The coding agent owns the edits and decides when to start another Task Run.
+apo is the testing and feedback system inside that loop, not the repair agent. It runs one Task Run at a time and reports what happened. The coding agent owns the edits and decides when to start another Task Run.
 
 See [Close the loop with a coding agent](/guides/loop-engineering/) for the workflow.
 

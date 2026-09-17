@@ -3,7 +3,7 @@
  * LandingFeatures — the editorial bento features section.
  *
  * One anchor cell (col-span 4 × row-span 2) carrying apo's core mechanic —
- * tests as the spec, with a real .eval.ts fragment showing a code assertion
+ * expert knowledge as the spec, with a real .eval.ts fragment showing a code assertion
  * and an LLM judge as peers — plus five supporting cells.
  *
  * The line-up reflects what apo actually is (PROJECT-BELIEFS.md), not the
@@ -23,10 +23,10 @@
 	<div class="bento__grid">
 		{/* ── Anchor: Tests define done ──────────────────────────────── */}
 		<article class="cell cell--anchor" data-cell>
-			<h3 class="cell__title">Tests define done</h3>
+			<h3 class="cell__title">Expert knowledge defines done</h3>
 			<p class="cell__desc">
-					Turn expected behavior into an executable contract with deterministic and LLM-judged assertions in the same file.
-				</p>
+				Turn domain judgment into an executable contract with deterministic and LLM-judged assertions in the same file.
+			</p>
 
 			<div class="spec" aria-hidden="true">
 				<div class="spec__file">tasks/refund.eval.ts</div>
@@ -44,8 +44,8 @@
 		<article class="cell" data-cell>
 			<h3 class="cell__title">Runs the real agent</h3>
 			<p class="cell__desc">
-					An adapter you write drives your real orchestration and agent code in the test environment you choose.
-				</p>
+				An adapter you write drives your real orchestration and agent code in the test environment you choose.
+			</p>
 			<div class="converge" aria-hidden="true">
 				{/* One cohesive SVG: three source circles → flowing lines → adapter → result.
 				    Three named stacks; the "works with anything" claim lives in the
@@ -82,10 +82,10 @@
 
 		{/* ── Judges deliverables ───────────────────────────────────── */}
 		<article class="cell" data-cell>
-			<h3 class="cell__title">Judges deliverables</h3>
+			<h3 class="cell__title">Judges the task outcome</h3>
 			<p class="cell__desc">
-					Tests run against the structured output the agent produced — the deliverable — not the chat text.
-				</p>
+				Tests inspect what the agent actually produced or changed, not merely its self-report.
+			</p>
 			<div class="deliverable" aria-hidden="true">
 				{/* Two rows: the chat (dimmed, ignored) vs the deliverable (checked).
 				    A concrete split that shows exactly what apo scores vs ignores. */}

@@ -8,7 +8,14 @@ It exists so future work stays aligned with the actual point of view of the prod
 
 This project is an opinionated testing and engineering system for agent harnesses.
 
-Its job is to give every agent task an **executable definition of done**. A team states the behavior it expects, apo runs the real system, and a completed evaluation produces a machine-actionable control signal: pass or fail, backed by the test breakdown, trace, and deliverables. Runtime and infrastructure failures are surfaced separately as errors.
+Its job is to turn a team's expert knowledge into **executable capability specifications**. A specification states the real job, its conditions, the outcome the agent must produce, and the requirements that define done. apo runs the real system against that standard, and a completed evaluation produces a machine-actionable control signal: pass or fail, backed by the test breakdown, trace, and deliverables. Runtime and infrastructure failures are surfaced separately as errors.
+
+That same foundation serves two outcomes:
+
+- **Organizational knowledge:** the suite is a durable, executable account of what the agent system is required to do. It lets a team see whether those capabilities still hold as models, features, and harnesses change.
+- **Harness engineering:** a developer or coding agent can use the verdict and evidence to change the prompts, tools, context, orchestration, models, or code, then run the same specification again. Expert judgment defines where the loop must converge; the coding agent finds the path.
+
+apo does not edit the implementation or autonomously start another Task Run. It supplies the specification, execution interface, verdict, and evidence that make the surrounding harness-engineering loop possible.
 
 That makes apo useful in both a normal engineering workflow and an agent-driven one. A human, CI system, or coding agent can use the result to decide what to change and when to run again. apo does not edit the implementation or autonomously start another Task Run to improve a failed verdict; it grounds each verdict in inspectable evidence.
 
@@ -27,11 +34,13 @@ The agent tooling landscape has two established starting objects, and both categ
 - **Testing/eval frameworks** start from a *test case plus evaluator*: did this execution satisfy my assertion or metric?
 - **Observability/eval platforms** start from an *execution record*: trace production traffic, score it, mine datasets, monitor.
 
-apo starts from a third object: the **capability specification**: "this harness must be capable of doing X, under these conditions, while satisfying these constraints, and leaving behind this result." apo's job is to make that statement executable and to support the loop that engineers the harness until it holds.
+apo starts from a third object: the **capability specification**: "this harness must be capable of doing X, under these conditions, while satisfying these constraints, and leaving behind this result." apo's job is to make that expert standard executable and to provide the feedback that lets a human or coding agent engineer the harness until it holds.
 
 Those other products can contain tests. apo treats the specification as the product: traces explain failures, judges verify subjective requirements, datasets provide scenarios, CI prevents regressions, but every primitive is organized around the specification, not around an execution or a score.
 
-This is a deliberate boundary, not a limitation to grow out of. apo is not trying to be another eval framework or a production observability platform; the acceptance-test layer for agent systems is the ground to own. What that framework enables is **harness engineering**: expert knowledge encoded as executable specifications, with humans or coding agents changing the harness until the specifications pass.
+This is a deliberate boundary, not a limitation to grow out of. apo is not trying to be another eval framework or a production observability platform; the acceptance-test layer for agent systems is the ground to own. What that layer enables is **harness engineering**: expert knowledge encoded as executable specifications, with humans or coding agents changing the harness until the specifications pass.
+
+The pieces are more valuable together than alone. A specification without an engineering loop is a test suite. A loop without an authoritative specification is aimless automation. apo connects expert intent to real execution, independent judgment, useful failure evidence, and the next engineering action.
 
 ## Core Beliefs
 

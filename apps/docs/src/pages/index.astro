@@ -25,9 +25,9 @@ const COPY_PROMPT_TEXT =
 // Open Graph / Twitter card metadata. The preview image is generated at build
 // time by src/pages/og-landing.png.ts, see that file for the design. Keep these
 // in sync with the <title>/<meta description> below (single source via consts).
-const PAGE_TITLE = "apo, Capability testing for agent harnesses";
+const PAGE_TITLE = "apo, Executable specifications for harness engineering";
 const PAGE_DESCRIPTION =
-	"Executable capability specifications for agent harnesses. Define what your agent must be capable of, run the real system, verify the outcome, and engineer the harness until it passes.";
+	"Turn expert knowledge into executable capability specifications. Run the real harness, return pass or fail with evidence, and give coding agents the feedback to improve it.";
 const OG_IMAGE = new URL("/og-landing.png", Astro.site).href;
 const CANONICAL = new URL("/", Astro.site).href;
 ---
@@ -56,7 +56,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 		<meta property="og:image" content={OG_IMAGE} />
 		<meta property="og:image:width" content="1200" />
 		<meta property="og:image:height" content="630" />
-		<meta property="og:image:alt" content="apo, capability testing for agent harnesses" />
+		<meta property="og:image:alt" content="apo, executable specifications for harness engineering" />
 		{/* Twitter / X, summary_large_image gives the big banner card. */}
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:title" content={PAGE_TITLE} />
@@ -140,10 +140,10 @@ const CANONICAL = new URL("/", Astro.site).href;
 					<div class="landing-hero__text">
 						<span class="landing-alpha-badge">Public Alpha</span>
 						<h1 class="landing-hero__title">
-							Prove your agent works.
+							Define done. Engineer until it holds.
 						</h1>
 						<p class="landing-hero__sub">
-							Executable specifications. Real agent runs. Pass or fail with evidence.
+							Turn expert knowledge into executable specifications. Apo runs the real harness and gives coding agents the verdict and evidence to improve it.
 						</p>
 						<div class="landing-cta">
 							<CopyPromptButton text={COPY_PROMPT_TEXT} />
@@ -166,6 +166,27 @@ const CANONICAL = new URL("/", Astro.site).href;
 					<div class="landing-hero__visual">
 						<SignalSphereIsland client:load size={260} />
 					</div>
+				</div>
+			</section>
+
+			<!-- The operating model comes before the category map: first make the
+			     specification-and-loop relationship concrete, then explain where apo fits. -->
+			<section class="landing-section landing-section--bordered">
+				<div class="landing-container">
+					<h2 class="landing-section__heading">Expert judgment becomes the feedback loop.</h2>
+					<p class="landing-section__sub">
+						Your experts define what done means. Apo runs and judges the real harness. Coding agents use the evidence to improve it.
+					</p>
+					<video
+						class="landing-video"
+						src="/video/the-loop.mp4"
+						poster="/video/the-loop-poster.png"
+						muted
+						loop
+						playsinline
+						preload="none"
+						data-landing-video
+					></video>
 				</div>
 			</section>
 
@@ -220,30 +241,8 @@ const CANONICAL = new URL("/", Astro.site).href;
 						</article>
 					</div>
 					<p class="landing-cats__foot">
-						apo starts from the specification. <a href="/why-apo/">The full map →</a>
+						The pieces exist elsewhere. Apo makes the specification and the harness-engineering loop one system. <a href="/why-apo/">The full map →</a>
 					</p>
-				</div>
-			</section>
-
-			<!-- The loop, explained in fifty seconds. Plays muted when scrolled
-			     into view, pauses off-screen; reduced-motion keeps it still with
-			     controls. Same onVisible idiom as the sections above. -->
-			<section class="landing-section landing-section--bordered">
-				<div class="landing-container">
-					<h2 class="landing-section__heading">The loop, in fifty seconds.</h2>
-					<p class="landing-section__sub">
-						Define what your agent must be capable of, then run the loop until it holds.
-					</p>
-					<video
-						class="landing-video"
-						src="/video/the-loop.mp4"
-						poster="/video/the-loop-poster.png"
-						muted
-						loop
-						playsinline
-						preload="none"
-						data-landing-video
-					></video>
 				</div>
 			</section>
 
@@ -269,7 +268,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 
 		<footer class="landing-footer">
 			<div class="landing-container landing-footer__inner">
-				<span>apo, executable capability specifications for agent harnesses.</span>
+				<span>apo, executable capability specifications for harness engineering.</span>
 				<span class="landing-footer__links">
 					<a href="/overview/">Docs</a>
 					<a href={GITHUB_URL} target="_blank" rel="noopener noreferrer">GitHub</a>

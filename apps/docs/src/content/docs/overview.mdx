@@ -5,13 +5,20 @@ description: Executable capability specifications for agent harnesses, define wh
 
 import EndToEndLoopDemo from '../../components/demos/EndToEndLoopDemo.astro';
 
-**apo** is a testing and engineering system for agent harnesses. You write down what your agent must be capable of (the tasks, the constraints, the deliverables that define done) and apo turns that into an executable specification: run the real agent, verify the actual outcome, and get a pass/fail verdict backed by the test breakdown, trace, and deliverables. If evaluation cannot complete, apo surfaces an execution error instead of inventing a verdict.
+**apo turns expert knowledge into a harness-engineering loop.** Your experts define what the agent system must be capable of—the real jobs, conditions, outcomes, and requirements that define done—and apo makes that standard executable.
 
 <EndToEndLoopDemo />
 
-The loop can be driven by a developer, CI, or a coding agent. apo owns one Task Run and its evidence. The caller owns the code change and decides whether to run again. That separation is why apo returns a control signal you can act on, not a score to monitor.
+Apo runs the real harness, verifies the actual outcome, and returns pass or fail backed by the test breakdown, trace, and deliverables. If evaluation cannot complete, apo surfaces an execution error instead of inventing a verdict.
 
-apo is not another eval framework, and not an observability platform. Testing frameworks ask whether one execution passed a test. Observability platforms ask what your system already did. apo starts from the specification (what this harness must be able to do) and gives you the loop to engineer the harness until it can. [Why apo](/why-apo/) lays out the full map.
+That same result serves two jobs:
+
+- **Know what the system can do.** The suite is an executable record of the capabilities your organization requires. Run it as models, features, and harnesses change to see whether the same standard still holds.
+- **Engineer the harness.** A developer or coding agent reads the verdict and evidence, changes the prompts, tools, context, orchestration, models, or code, and starts another Task Run. Expert judgment defines where the loop must converge; the coding agent finds the path.
+
+Apo owns one Task Run and its evidence. It does not edit the implementation or autonomously rerun a failure. That separation is why apo returns a control signal another human or machine can act on, not merely a score to monitor.
+
+Apo is not another eval framework, and not an observability platform. Testing frameworks start from a test case and evaluator. Observability platforms start from an execution record. Apo starts from the specification: what this harness must be able to do. The individual pieces can be assembled elsewhere; apo makes the specification and the harness-engineering loop one coherent system. [Why apo](/why-apo/) lays out the full map.
 
 ## It runs in your system
 
@@ -23,9 +30,9 @@ This is the part that's yours to build, because it has to be. No framework can s
 
 ## It judges what the agent produced
 
-apo judges the **deliverable**: the file written, the state changed, or the structured output the agent was asked to produce. A polite, fluent, wrong response fails. A terse one that produced the right artifact passes.
+apo judges the **task outcome**: the file written, the state changed, the action taken, the structured output returned, or the conversation the task required. A fluent self-report does not excuse a wrong result.
 
-The deliverable is declared up front, collected by the adapter after the run, and schema-validated before the tests see it. You're asserting on what the agent *did*, not on whether the chat *sounded right*.
+The deliverable is declared up front, collected by the adapter after the run, and schema-validated before the tests see it. You're asserting on what the agent actually *did*, not merely whether its account of the work sounded right.
 
 ## How to use these docs
 

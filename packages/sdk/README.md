@@ -1,13 +1,16 @@
 # apo SDK
 
-TypeScript/JavaScript SDK for the [apo](.) backend — an agent testing and
-observability platform. The SDK's entry points:
+TypeScript/JavaScript SDK for [apo](https://github.com/samikuikka/apo), the
+testing and engineering system that turns expert knowledge into executable
+capability specifications for agent harnesses. The task API runs a real harness
+against that definition of done; the tracing API preserves the evidence a human
+or coding agent needs to improve it. The SDK's entry points:
 
 - **`@apo-ai/sdk/otel`** — OpenTelemetry-native tracing. Wrap your LLM calls and
   agent steps so they land in apo as structured spans, then attach scores.
-- **`@apo-ai/sdk/agent-task`** — the agent-task evaluation framework. Define tasks,
-  adapters, and checks; run them against an agent and collect structured
-  results.
+- **`@apo-ai/sdk/agent-task`** — the primary capability-testing surface. Define
+  tasks, adapters, and tests; run them against the real harness and collect a
+  verdict with structured evidence.
 - **`@apo-ai/sdk/agent-task/integrations/{ai-sdk,openai,anthropic}`** —
   per-framework tracing wrappers re-exported for direct import.
 

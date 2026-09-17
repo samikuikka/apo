@@ -5,9 +5,9 @@ description: Use apo's pass/fail verdict and evidence to drive an agent-led repa
 
 import LoopEngineeringDemo from "../../../components/demos/LoopEngineeringDemo.astro";
 
-Changing how an agent behaves is usually a manual loop. You run it, watch what it does, judge the output, tweak the code, and run it again.
+Harness engineering is usually a manual loop. You change the prompts, tools, context, orchestration, models, or code; run the agent; inspect what happened; judge the outcome; and try again.
 
-Once your judgment is encoded as tests, a coding agent can drive that loop. It runs the task from the CLI, reads the result, opens the trace, edits the implementation, and runs again.
+apo moves the expert's recurring judgment into an executable specification. Once the definition of done is independently observable, a coding agent can drive the implementation loop: run the task from the CLI, read the verdict, inspect the failed tests and their evidence, edit the harness, and run again.
 
 **apo does not perform the repair or autonomously rerun a failed task.** It executes one Task Run and returns the control signal: pass/fail plus the tests, trace, and deliverables. The coding agent owns the change and decides when to start another Task Run. Transport or finalization work may retry without creating a new Task Run.
 
@@ -15,8 +15,9 @@ Once your judgment is encoded as tests, a coding agent can drive that loop. It r
 
 ## Why a coding agent can do this
 
-That loop only works because three things are true at once:
+That loop only works because four things are true at once:
 
+- **Experts define done.** The coding agent chooses the implementation path, but the specification controls where the loop must converge.
 - **The CLI is a first-class trigger.** `apo task run` isn't a convenience wrapper around the dashboard. It's the interface a coding agent uses to drive apo. Every operation the loop needs (run, read result, read trace) has a CLI command with parseable output.
 - **Tests encode expert judgment.** The deterministic checks capture "did it do the obvious things right." The judged tests capture "is this actually good": the taste and domain knowledge you'd otherwise apply by watching each run. Once written, they apply the same rubric every run without requiring you to watch.
 - **Traces make failures legible to an agent.** When a test fails, the trace shows exactly what the agent did: the calls, the inputs, the messages. A coding agent can read that and form a hypothesis about what to change in the codebase, the same way you would.

@@ -5,7 +5,7 @@
 <h1 align="center">Apo</h1>
 
 <p align="center">
-  Define what your agent must be capable of. Prove it on the real system.
+  Turn expert knowledge into a harness-engineering loop.
 </p>
 
 <p align="center">
@@ -22,7 +22,9 @@
 
 ---
 
-Apo is a testing and engineering system for agent harnesses. You define what your agent must be capable of (the situations, the constraints, the deliverables that define done) as **executable capability specifications**: `.eval.ts` tasks run against your **real agent implementation**, returning a **binary verdict** (pass or fail) backed by the test breakdown, trace, and deliverables. Execution problems surface separately as errors.
+Apo is a testing and engineering system for agent harnesses. Your experts define what the system must be capable of—the real jobs, conditions, outcomes, and requirements that define done—as **executable capability specifications**. Apo runs those specifications against your **real agent implementation** and returns a **binary verdict** backed by the test breakdown, trace, and deliverables. Execution problems surface separately as errors.
+
+That foundation serves two outcomes. For the organization, the suite is an executable record of what the agent system is required to do and whether those capabilities still hold as models, features, and harnesses change. For developers, the same verdict and evidence close the harness-engineering loop: a coding agent can change the prompts, tools, context, orchestration, models, or code and run the unchanged specification again.
 
 It is not another eval framework, and not an observability platform. Those categories are full, and they start somewhere else:
 
@@ -30,9 +32,9 @@ It is not another eval framework, and not an observability platform. Those categ
 |---|---|
 | Testing & eval frameworks | Did this execution satisfy my test? |
 | Observability & eval platforms | What did my AI system already do? |
-| **Apo** | **Can this harness reliably do what we require, and can we engineer it until it can?** |
+| **Apo** | **Can this harness do what we require, and can we engineer it until it can?** |
 
-Production failures found in an observability stack become apo regression tests. Coding agents work against the specification until it passes. [Why apo](https://docs.test-apo.online/why-apo/) has the full map.
+Production failures found in an observability stack become Apo regression tests. Coding agents work against the specification until it passes. The individual pieces can be assembled elsewhere; Apo makes the specification and the engineering loop one coherent system. [Why Apo](https://docs.test-apo.online/why-apo/) has the full map.
 
 > **Coding agent?** The docs are machine-readable: fetch [`docs.test-apo.online/llms.txt`](https://docs.test-apo.online/llms.txt) for the full index (every page has a `.md` rendition), or [`docs.test-apo.online/start.md`](https://docs.test-apo.online/start.md) for a complete setup skill.
 
@@ -51,7 +53,7 @@ improve the harness until it passes
 
 Apo owns one Task Run and the evidence it produces. A developer, CI workflow, or coding agent reads that evidence, changes the system, and decides whether to start another Task Run. Apo does not edit your agent or autonomously rerun a failed task to improve it.
 
-That loop is **harness engineering**: the suite encodes your domain expertise, and whoever (or whatever) improves the system (model choice, prompts, tools, orchestration, code) works against that specification until it holds.
+That loop is **harness engineering**. Your experts control where the loop must converge by encoding their judgment in the suite; the coding agent finds the implementation path. The specification is not only a regression guard—it is the interface between expert knowledge and the agents improving the system.
 
 ## The model
 
@@ -165,7 +167,7 @@ Test importance isn't hardcoded in the task. Schedules say *how often* each subs
 
 ## Traces
 
-Every failing run is debuggable through traces: parent/child call relationships, token usage, model parameters, the actual messages exchanged. The trace is the first place you go when a run fails, that's by design, not an afterthought.
+Every failing run is debuggable through traces: parent/child call relationships, token usage, model parameters, and the actual messages exchanged. The failed test tells you what did not meet the specification; the linked trace helps explain why. The trace is evidence for the loop, not the workflow itself.
 
 ## Status
 
