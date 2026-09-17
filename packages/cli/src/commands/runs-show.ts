@@ -3,7 +3,7 @@ import { resolveConfig } from "../lib/config.ts";
 import { bold, dim, formatCost, formatJson, formatTime, passFail, yellow } from "../lib/format.ts";
 import { apiGet } from "../lib/api.ts";
 import type { CheckResult, DeliverableSummary } from "../lib/agent-task-types.ts";
-import { formatChecks, NO_CHECKS_REGISTERED_MESSAGE } from "../lib/checks-format.ts";
+import { formatChecks, NO_CHECKS_REGISTERED_MESSAGE, secondJudgeSummary } from "../lib/checks-format.ts";
 import { conciseChecks, conciseDeliverables } from "../lib/runs-truncate.ts";
 import { resolveRunIdByPrefix, resolveLatestRunId } from "../lib/runs-resolve.ts";
 import { reportCommandError } from "../lib/command-error.ts";
@@ -213,6 +213,8 @@ function printRunDetail(run: RunDetail, verbose: boolean): void {
   if (run.checks_json && run.checks_json.length > 0) {
     console.log(bold("\n  Checks:"));
     console.log(formatChecks(run.checks_json, verbose));
+    const sjSummary = secondJudgeSummary(run.checks_json);
+    if (sjSummary) console.log(dim(`\n  ${sjSummary}`));
   } else if (run.pass_result === false) {
     // Issue #8: a failed run with no checks is a registration bug, not a real
     // failure. The backend also stores this on error_message (see backend

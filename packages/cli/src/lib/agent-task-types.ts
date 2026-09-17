@@ -76,6 +76,23 @@ export type CheckLocation = {
  * Metadata about an LLM judge call. Populated by evaluators that use an LLM to
  * make their pass/fail decision. All optional so code-only evaluators can omit.
  */
+/**
+ * Evidence from the second grader — a typed-decision model that graded the
+ * same deliverable alongside the primary judge (opt-in via
+ * `APO_SECOND_JUDGE_MODEL`). Never affects the verdict; `error` is set when
+ * the second opinion failed to arrive.
+ */
+export type SecondJudgeEvidence = {
+  model: string;
+  choice?: "pass" | "fail";
+  passProbability?: number;
+  confidence?: number;
+  inputTokens?: number;
+  costUsd?: number;
+  latencyMs?: number;
+  error?: string;
+};
+
 export type CheckJudgeMetadata = {
   model?: string;
   prompt?: { system?: string; user?: string };
@@ -84,6 +101,7 @@ export type CheckJudgeMetadata = {
   cost?: number;
   latency_ms?: number;
   temperature?: number;
+  secondJudge?: SecondJudgeEvidence;
 };
 
 /**

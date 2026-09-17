@@ -89,6 +89,8 @@ The second sample is a run with **no verdict**: most of its generations ended in
 
 With `--verbose`, passing checks are listed with their matchers, and judged checks include the judge's model, prompt, and response, so you can see exactly what the judge was asked and what it said.
 
+When a [second judge](/concepts/tests/#the-second-judge) ran (`APO_SECOND_JUDGE_MODEL`), contested checks carry its verdict inline (`✓✗ 0.99` — the number is its confidence), a one-line takeaway underneath, and a fact line after the checks (`Second judge: 12 corroborated · judges split on 1`). Without a second judge the output is unchanged.
+
 ## Corrected tests
 
 A test that was [manually corrected](/cli/runs-correct/) shows its **effective** verdict with a `(corrected)` marker, the recorded verdict, and who corrected it and why:

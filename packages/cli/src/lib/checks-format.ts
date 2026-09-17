@@ -6,6 +6,80 @@ import type {
 import { dim, green, passFail, red, yellow } from "./format.ts";
 import { RECEIVED_PREVIEW_CHARS, previewString } from "./runs-truncate.ts";
 
+//─ Second judge: measurements, not diagnoses ──────────────────────────
+//
+// The same language as the dashboard run page: corroborated checks stay
+// silent; a split shows both verdicts plus the second judge's confidence
+// (the number is the measurement — no label claims *why* they differ).
+
+type SecondJudgeFacts =
+  | { kind: "none" }
+  | { kind: "error" }
+  | { kind: "split"; confidence: number }
+  | { kind: "agree"; confidence: number }
+  | { kind: "unsure"; confidence: number };
+
+export function secondJudgeFacts(check: CheckResult): SecondJudgeFacts {
+  const sj = check.judge?.secondJudge;
+  if (!sj) return { kind: "none" };
+  if (sj.error || sj.choice == null) return { kind: "error" };
+  const conf = sj.confidence ?? 0;
+  if ((sj.choice === "pass") !== check.pass) return { kind: "split", confidence: conf };
+  if (conf < 0.6) return { kind: "unsure", confidence: conf };
+  return { kind: "agree", confidence: conf };
+}
+
+/** Row suffix: `✓✗ 0.99` (amber) for splits, `✓✓ ·0.31` (dim) for unsure,
+ *  `2nd ✕` for a failed second opinion, empty when corroborated. */
+function secondJudgeMark(check: CheckResult): string {
+  const sj = check.judge?.secondJudge;
+  const facts = secondJudgeFacts(check);
+  if (facts.kind === "split" || facts.kind === "unsure") {
+    const primary = check.pass ? green("✓") : red("✗");
+    const second = sj!.choice === "pass" ? green("✓") : red("✗");
+    const num = facts.confidence.toFixed(2);
+    return facts.kind === "split"
+      ? ` ${primary}${second} ${yellow(num)}`
+      : ` ${dim(`${check.pass ? "✓" : "✗"}${sj!.choice === "pass" ? "✓" : "✗"} ·${num}`)}`;
+  }
+  if (facts.kind === "error") return ` ${dim("2nd ✕")}`;
+  return "";
+}
+
+/** One honest sentence about the relation — the same takeaway the dashboard expand shows. */
+function secondJudgeTakeaway(check: CheckResult): string | null {
+  const facts = secondJudgeFacts(check);
+  switch (facts.kind) {
+    case "split":
+      return `Verdicts differ — second judge contradicts at ${facts.confidence.toFixed(2)} confidence.`;
+    case "unsure":
+      return `Second judge unsure (${facts.confidence.toFixed(2)}) — weak corroboration.`;
+    case "error":
+      return `Second opinion failed to arrive${check.judge?.secondJudge?.error ? ` (${check.judge.secondJudge.error})` : ""}.`;
+    default:
+      return null;
+  }
+}
+
+/** Run-level fact line, or null when no second judge ran on any check. */
+export function secondJudgeSummary(checks: CheckResult[]): string | null {
+  let split = 0;
+  let unsure = 0;
+  let corroborated = 0;
+  for (const c of checks) {
+    const f = secondJudgeFacts(c);
+    if (f.kind === "split") split++;
+    else if (f.kind === "unsure") unsure++;
+    else if (f.kind === "agree") corroborated++;
+  }
+  const judged = split + unsure + corroborated;
+  if (judged === 0) return null;
+  const parts = [`${corroborated} corroborated`];
+  if (split > 0) parts.push(`judges split on ${split}`);
+  if (unsure > 0) parts.push(`${unsure} unsure`);
+  return `Second judge: ${parts.join(" · ")}`;
+}
+
 /**
  * Issue #8: shown when a run ends with zero registered checks. A bare
  * `FAIL <task>` with no Checks section looked like a real failure but was
@@ -94,7 +168,7 @@ function formatCheck(check: CheckResult, verbose: boolean): string {
   // recorded one and the correction provenance one line below.
   if (check.correction && check.recorded_pass !== undefined) {
     lines.push(
-      `    ${passFail(check.pass)} ${check.id} ${yellow("(corrected)")}`,
+      `    ${passFail(check.pass)} ${check.id} ${yellow("(corrected)")}${secondJudgeMark(check)}`,
     );
     const recorded = check.recorded_pass ? "PASS" : "FAIL";
     const who = check.correction.corrected_by_label ?? check.correction.corrected_by_user_id ?? "unknown";
@@ -104,7 +178,27 @@ function formatCheck(check: CheckResult, verbose: boolean): string {
       ),
     );
   } else {
-    lines.push(`    ${passFail(check.pass)} ${check.id}`);
+    lines.push(`    ${passFail(check.pass)} ${check.id}${secondJudgeMark(check)}`);
+  }
+
+  // The second-judge relation is signal, not decoration — splits and unsure
+  // cases get their takeaway even without --verbose.
+  const takeaway = secondJudgeTakeaway(check);
+  if (takeaway) {
+    lines.push(check.pass && secondJudgeFacts(check).kind === "split"
+      ? yellow(`      ${takeaway}`)
+      : dim(`      ${takeaway}`));
+  }
+  const sj = check.judge?.secondJudge;
+  if (verbose && sj && !sj.error && sj.choice != null) {
+    const parts = [
+      `${sj.choice.toUpperCase()}`,
+      sj.passProbability != null ? `p(pass) ${sj.passProbability.toFixed(2)}` : null,
+      sj.confidence != null ? `conf ${sj.confidence.toFixed(2)}` : null,
+      sj.latencyMs != null ? `${sj.latencyMs}ms` : null,
+      sj.costUsd != null ? `$${sj.costUsd.toFixed(6)}` : null,
+    ].filter((p): p is string => p != null);
+    lines.push(dim(`      2nd judge (${sj.model}): ${parts.join(" · ")}`));
   }
 
   // Always show reasoning for failures; for passes only when verbose.

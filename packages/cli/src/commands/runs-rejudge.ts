@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { parseArgs, getFlagValue, getBoolFlag } from "../lib/args.ts";
 import { resolveConfig } from "../lib/config.ts";
 import { bold, dim, formatJson, passFail, yellow } from "../lib/format.ts";
-import { formatChecks } from "../lib/checks-format.ts";
+import { formatChecks, secondJudgeSummary } from "../lib/checks-format.ts";
 import { apiGet, apiPost } from "../lib/api.ts";
 import { resolveRunId } from "../lib/runs-resolve.ts";
 import { reportCommandError } from "../lib/command-error.ts";
@@ -203,6 +203,8 @@ function printOutcome(
 
   console.log(bold("\n  Checks:"));
   console.log(formatChecks(outcome.checks as never, meta.verbose));
+  const sjSummary = secondJudgeSummary(outcome.checks as never);
+  if (sjSummary) console.log(dim(`\n  ${sjSummary}`));
 
   if (outcome.samples > 1) {
     console.log(bold(`\n  Stability (${outcome.samples} samples):`));

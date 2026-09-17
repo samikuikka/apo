@@ -143,7 +143,7 @@ const commands: Record<string, CommandEntry> = {
   },
   "task run": {
     handler: loadCommand("task-run"),
-    help: "Run a task",
+    help: "Run a task. With APO_SECOND_JUDGE_MODEL set, judged checks also get a second judge: ✓✗ marks per check + a split count after the checks",
     args: [
       ["<task-id | path>", "Task id or filesystem path"],
     ],
@@ -208,7 +208,7 @@ const commands: Record<string, CommandEntry> = {
   },
   "runs show": {
     handler: loadCommand("runs-show"),
-    help: "Show run details (checks, failures, cost) from backend",
+    help: "Show run details (checks, failures, cost) from backend. Checks judged with a second judge carry ✓✗ marks and a split count (APO_SECOND_JUDGE_MODEL)",
     args: [
       ["[run-id]", "Run ID, unique prefix, or 'last' (default: latest run)"],
     ],
@@ -246,7 +246,7 @@ const commands: Record<string, CommandEntry> = {
   },
   "runs rejudge": {
     handler: loadCommand("runs-rejudge"),
-    help: "Re-judge a completed run against its stored deliverables — without re-running the agent",
+    help: "Re-judge a completed run against its stored deliverables — without re-running the agent. Judged checks carry second-judge ✓✗ marks when APO_SECOND_JUDGE_MODEL is set",
     args: [
       ["<run-id>", "Run ID, unique prefix, or 'last'"],
     ],

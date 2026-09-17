@@ -6,7 +6,7 @@ import { apiGet, isBackendReachable } from "../lib/api.ts";
 import { discoverTaskMeta, findTaskMetaById } from "../lib/task-meta.ts";
 import { bold, dim, formatJson, passFail, red } from "../lib/format.ts";
 import type { CheckResult } from "../lib/agent-task-types.ts";
-import { formatChecks, NO_CHECKS_REGISTERED_MESSAGE } from "../lib/checks-format.ts";
+import { formatChecks, NO_CHECKS_REGISTERED_MESSAGE, secondJudgeSummary } from "../lib/checks-format.ts";
 import { walkWorkspaceForRevision } from "../lib/task-revision.ts";
 import { prepareTaskDefinition } from "../lib/task-definition.ts";
 import { readGitProvenance, buildCallerIdentity } from "../lib/git-provenance.ts";
@@ -484,6 +484,8 @@ function printLocalRunSummary(summary: LocalRunSummary): void {
   if (summary.checks.length > 0) {
     console.log(bold("  Checks:"));
     console.log(formatChecks(summary.checks));
+    const sjSummary = secondJudgeSummary(summary.checks);
+    if (sjSummary) console.log(dim(`\n  ${sjSummary}`));
   } else if (!summary.pass) {
     // Issue #8: a failed run with zero checks is almost always a silent
     // registration bug (e.g. a double-import that wiped the check registry).

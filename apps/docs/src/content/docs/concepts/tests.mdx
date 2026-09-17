@@ -83,6 +83,44 @@ A PASS/FAIL verdict claims "the agent ran, and here is what it produced." When t
 
 A minority of errored generations (the run recovered) keeps its normal PASS/FAIL verdict; the totals are still disclosed as partial. The strict rule is: silence beats a wrong signal.
 
+## The second judge
+
+One judge gives you a verdict. Two judges of different kinds give you an error bar. apo can grade every `t.judge` call twice: your normal LLM judge decides the verdict, and a **second judge** — a typed-decision model that cannot generate text — grades the same deliverable alongside it and reports its verdict as a probability and a confidence. It never changes the verdict; it tells you how much to trust it.
+
+```bash
+export APO_SECOND_JUDGE_MODEL=typesafe/jev-1.13
+```
+
+Why a *non-generative* second opinion: text judges sometimes fabricate evidence in their reasoning — quoting findings that aren't in the deliverable — and then verdict off their own fabrication. A decision model can't write a quote, so it can't do that. Measured against production data (2,094 judged checks re-played through the second judge): 96% agreement, and the disagreements clustered exactly where judges contradicted rubric text or rubrics couldn't decide the case.
+
+The marks state **measurements, not diagnoses** — they never claim *why* the judges differ, only that they did, and how confident the second one was:
+
+| Mark | Meaning |
+|---|---|
+| *(nothing)* | Both judges agree with confidence — the check is corroborated |
+| `✓✗ 0.99` | The judges' verdicts differ; 0.99 is the second judge's confidence |
+| `✓✓ ·0.31` | They agree, but the second judge was low-confidence — weak corroboration |
+| `2nd ✕` | The second opinion failed to arrive (transport error, not a verdict) |
+
+In the CLI they sit at the end of the check line, with one sentence under contested checks, and one fact line after the checks:
+
+```
+  Checks:
+    PASS c-001 — Accept independent-development carve-out
+    PASS c-003 — Restore 'publicly available' exception ✓✗ 0.99
+      Verdicts differ — second judge contradicts at 0.99 confidence.
+    FAIL c-005 — Term of agreement survives for trade secrets ✓✓ ·0.31
+      Second judge unsure (0.31) — weak corroboration.
+
+  Second judge: 12 corroborated · judges split on 1 · 1 unsure
+```
+
+Agents reading `--json` get the raw evidence instead of marks: every check carries `judge.secondJudge` with `choice`, `passProbability`, and `confidence` — branch on the numbers, not on ANSI.
+
+:::note
+Everything works without the second judge. Unset, `APO_SECOND_JUDGE_MODEL` changes nothing: no marks, no lines, output byte-identical. Code-assertion and agentic (`t.agent`) tests never get a second judge — only `t.judge` calls do.
+:::
+
 ## Re-judging a run
 
 A verdict is only meaningful together with the conditions that produced it: the task definition it ran under, and (for judged tests) the judge model that was configured. Change the judge and the *same deliverables* score differently: on rubric-heavy tasks, roughly one in six judged criteria flips with the judge, not the agent. That variance is a property of your eval, and you should be able to see it without re-running the agent.
