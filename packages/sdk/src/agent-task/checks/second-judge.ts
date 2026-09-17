@@ -113,7 +113,19 @@ export async function callSecondJudge(args: {
       return evidence;
     }
 
-    const data = (await response.json()) as {
+    // An HTML answer means the endpoint is a website, not the decisions API —
+    // the base URL is missing its API root (e.g. openrouter.ai instead of
+    // openrouter.ai/api/v1). Say that instead of a JSON-parser stack trace.
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("text/html")) {
+      evidence.error =
+        "Second judge endpoint returned HTML, not the decisions API — " +
+        "APO_SECOND_JUDGE_BASE_URL likely points at the site root. " +
+        "Use the API root, e.g. https://openrouter.ai/api/v1";
+      return evidence;
+    }
+
+    let data: {
       answers?: {
         verdict?: {
           choice?: string;
@@ -123,6 +135,15 @@ export async function callSecondJudge(args: {
       };
       usage?: { input_tokens?: number; cost?: number };
     };
+    try {
+      data = JSON.parse(await response.text());
+    } catch {
+      evidence.error =
+        "Second judge endpoint returned a non-JSON body — check " +
+        "APO_SECOND_JUDGE_BASE_URL points at the decisions API root " +
+        "(e.g. https://openrouter.ai/api/v1)";
+      return evidence;
+    }
 
     const verdict = data.answers?.verdict;
     if (verdict?.choice !== "pass" && verdict?.choice !== "fail") {

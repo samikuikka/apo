@@ -118,6 +118,27 @@ describe("second judge wiring", () => {
     expect(result.pass).toBe(true);
     expect(result.judge.secondJudge?.error).toContain("no verdict choice");
   });
+  it("HTML answer (site root instead of API root) names the misconfiguration", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    stubBoth(async () =>
+      new Response("<!DOCTYPE html><html></html>", {
+        headers: { "content-type": "text/html" },
+      }),
+    );
+    const result = await callJudge(judgeArgs);
+    expect(result.pass).toBe(true); // the check itself is unaffected
+    expect(result.judge.secondJudge?.error).toContain("returned HTML");
+    expect(result.judge.secondJudge?.error).toContain("APO_SECOND_JUDGE_BASE_URL");
+    expect(result.judge.secondJudge?.error).toContain("https://openrouter.ai/api/v1");
+  });
+
+  it("non-JSON body without content-type also gets the guidance", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    stubBoth(async () => new Response("<html>proxy error page</html>"));
+    const result = await callJudge(judgeArgs);
+    expect(result.judge.secondJudge?.error).toContain("non-JSON body");
+    expect(result.judge.secondJudge?.error).toContain("APO_SECOND_JUDGE_BASE_URL");
+  });
 });
 
 describe("second judge connection overrides (proxied primary)", () => {
