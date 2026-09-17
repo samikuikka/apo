@@ -271,11 +271,61 @@ main p {
   color: var(--sl-color-gray-1);
 }
 
-/* Fenced code blocks (Expressive Code) */
-.ec {
-  background: var(--sl-color-gray-6) !important;
-  border: 1px solid var(--sl-color-gray-5) !important;
-  border-radius: 0 !important;
+/* Fenced code blocks (Expressive Code). A code fence renders as
+   .expressive-code > figure.frame > (figcaption.header) + pre — the `.ec`
+   selector this rule used before matches nothing Expressive Code emits, so
+   EC's own theme decided the look and the re-skin below never applied.
+   No !important needed: this file ships unlayered while EC's styles live
+   in @layer starlight.components, and unlayered wins the cascade. */
+.expressive-code pre {
+  background: var(--sl-code-bg);
+  border: 1px solid var(--sl-code-border);
+}
+
+/* Expressive Code ships dual themes and switches them on html[data-theme].
+   A visitor with no stored preference and an OS in light mode gets
+   data-theme="light" (Starlight's theme script follows prefers-color-scheme),
+   and EC flips its code blocks to the light theme — white boxes on the
+   otherwise dark page. The --sl-* vars above are already forced dark for
+   light mode; do the same for the --ec-* vars EC's light rules override,
+   re-declaring them with EC's dark values so both modes render identically. */
+.expressive-code {
+  --ec-codeBg: var(--sl-code-bg);
+  --ec-codeFg: #d6deeb;
+  --ec-codeSelBg: #1d3b53;
+  --ec-gtrFg: #63798b;
+  --ec-gtrBrdCol: #63798b33;
+  --ec-gtrHlFg: #c5e4fd97;
+  --ec-uiSelBg: #234d708c;
+  --ec-uiSelFg: #ffffff;
+  --ec-focusBrd: #122d42;
+  --ec-sbThumbCol: #ffffff17;
+  --ec-sbThumbHoverCol: #ffffff47;
+  --ec-tm-markBg: #ffffff17;
+  --ec-tm-markBrdCol: #ffffff40;
+  --ec-tm-insBg: #1e571599;
+  --ec-tm-insDiffIndCol: #79b169d0;
+  --ec-tm-delBg: #862d2799;
+  --ec-tm-delDiffIndCol: #ed8779d0;
+  --ec-frm-shdCol: #011627;
+  --ec-frm-edActTabBg: var(--sl-color-gray-6);
+  --ec-frm-edActTabIndTopCol: var(--sl-color-accent-high);
+  --ec-frm-edTabBarBg: var(--sl-color-black);
+  --ec-frm-edBg: var(--sl-color-gray-6);
+  --ec-frm-trmTtbBg: var(--sl-color-black);
+  --ec-frm-trmBg: var(--sl-color-gray-6);
+  --ec-frm-tooltipSuccessBg: #158744;
+}
+
+/* Syntax token spans carry both palettes as inline CSS vars (--0 dark,
+   --1 light); EC's light-mode rules switch them to --1, which pairs light
+   text colors with a dark background. Pin them to --0 in all modes. */
+.expressive-code .ec-line :where(span[style^='--']:not([class])) {
+  color: var(--0, inherit);
+  background-color: var(--0bg, transparent);
+  font-style: var(--0fs, inherit);
+  font-weight: var(--0fw, inherit);
+  text-decoration: var(--0td, inherit);
 }
 
 /* ---------------------------------------------------------------------------
