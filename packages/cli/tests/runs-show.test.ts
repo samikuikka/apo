@@ -465,6 +465,49 @@ describe("runs show command", () => {
   });
 });
 
+// Issue #298: canonical run ids (run_ + 24 hex = 28 chars) fell under the
+// old "< 32 chars means prefix" threshold, so `runs show <full-id>` resolved
+// through the 1000-run listing window and failed for any run outside it.
+describe("runs show full canonical id (issue #298)", () => {
+  const CANONICAL_ID = "run_7e99888dfb3dd44e7f0fb197";
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("fetches a 28-char canonical id directly — no listing request first", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(mockResponse(makeRun({ id: CANONICAL_ID })));
+    const { logs, restore } = captureLog();
+
+    const code = await run([CANONICAL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    expect(code).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      `http://backend.test/v1/agent-task-runs/${CANONICAL_ID}`,
+    );
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain(CANONICAL_ID);
+  });
+
+  it("explains a prefix miss instead of reporting a run the backend never saw", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse([]));
+    const { errors, restore } = captureError();
+
+    const code = await run(["run_deadbee", "--backend", "http://backend.test"]);
+    restore();
+
+    expect(code).toBe(2);
+    const out = stripAnsi(errors.join("\n"));
+    expect(out).toContain("run_deadbee");
+    expect(out).toMatch(/full run id/i);
+    expect(out).not.toContain("Backend error");
+  });
+});
+
 describe("runs show heartbeat visibility (issue #176)", () => {
   afterEach(() => {
     vi.restoreAllMocks();

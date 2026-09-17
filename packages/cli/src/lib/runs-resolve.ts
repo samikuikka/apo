@@ -6,9 +6,21 @@
  */
 import type { resolveConfig } from "../lib/config.ts";
 import { apiGet } from "./api.ts";
-import { findByPrefix } from "./prefix.ts";
+import { findByPrefix, isCanonicalRunId, UnresolvedIdError } from "./prefix.ts";
 
 type ResolvedConfig = ReturnType<typeof resolveConfig>;
+
+/**
+ * A complete run id, usable verbatim — a canonical id (`run_` + 24 hex) or a
+ * legacy pre-canonical id (32+ chars). Anything else may be a prefix and is
+ * matched against the run list. Length alone can't decide this: canonical ids
+ * are 28 chars, so the old `< 32 means prefix` rule sent every full id
+ * through prefix matching, which only sees the backend's default listing
+ * window (the 1000 most recent runs) and failed for older runs.
+ */
+export function isFullRunId(input: string): boolean {
+  return isCanonicalRunId(input) || input.length >= 32;
+}
 
 /** Resolve `input` (full id | prefix | "last") to a concrete run id. */
 export async function resolveRunId(
@@ -20,7 +32,7 @@ export async function resolveRunId(
   if (!input || input === "last") {
     return resolveLatestRunId(backendUrl, config, taskFilter);
   }
-  if (input.length < 32) {
+  if (!isFullRunId(input)) {
     return resolveRunIdByPrefix(backendUrl, input, config);
   }
   return input;
@@ -42,7 +54,10 @@ export async function resolveRunIdByPrefix(
   );
   const result = findByPrefix(runs, prefix, (r) => r.id);
   if (result.status === "none") {
-    throw new Error(`Backend error 404: {"detail":"Run not found"}`);
+    throw new UnresolvedIdError(
+      `No run matching "${prefix}" in the recent runs (prefixes are resolved ` +
+        `against the most recent runs only). Use the full run id to address older runs.`,
+    );
   }
   if (result.status === "ambiguous") {
     throw new Error(

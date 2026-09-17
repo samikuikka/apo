@@ -51,22 +51,15 @@ export async function run(argv: string[]): Promise<number> {
 
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  let resolvedBatchId = batchIdPrefix;
-  if (batchIdPrefix.length < 32) {
-    try {
-      resolvedBatchId = await resolveBatchId(
-        config.backendUrl,
-        batchIdPrefix,
-        config,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("404")) {
-        console.error(`Batch run not found: ${batchIdPrefix}`);
-        return 2;
-      }
-      return reportCommandError(error, config.backendUrl);
-    }
+  let resolvedBatchId: string;
+  try {
+    resolvedBatchId = await resolveBatchId(
+      config.backendUrl,
+      batchIdPrefix,
+      config,
+    );
+  } catch (error) {
+    return reportCommandError(error, config.backendUrl);
   }
 
   while (true) {

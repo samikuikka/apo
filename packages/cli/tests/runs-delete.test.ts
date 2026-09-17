@@ -195,3 +195,46 @@ describe("runs delete command", () => {
     restore();
   });
 });
+
+// Issue #298: canonical run ids (run_ + 24 hex = 28 chars) fell under the
+// old "< 32 chars means prefix" threshold, so `runs delete <full-id>` first
+// listed the 1000 most recent runs and reported a fabricated backend 404
+// for any run outside that window — the backend deletes those runs happily.
+describe("runs delete full canonical id (issue #298)", () => {
+  const CANONICAL_ID = "run_7e99888dfb3dd44e7f0fb197"; // run_ + 24 hex = 28 chars
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("deletes a 28-char canonical id directly without resolving through the run list", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse(deleted()));
+    const { logs, restore } = captureLog();
+
+    const code = await run([CANONICAL_ID, "--yes"]);
+
+    expect(code).toBe(0);
+    const reqs = requests(fetchMock);
+    expect(reqs).toHaveLength(1); // no list GET before the DELETE
+    expect(reqs[0]!.method).toBe("DELETE");
+    expect(reqs[0]!.url).toContain(`/v1/agent-task-runs/${CANONICAL_ID}`);
+    expect(stripAnsi(logs.join("\n"))).toContain(`${CANONICAL_ID} deleted`);
+    restore();
+  });
+
+  it("reports an honest miss instead of a fabricated backend 404 when a prefix matches nothing", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jsonResponse([]));
+    const { logs, restore } = captureError();
+
+    const code = await run(["run_deadbee", "--yes"]);
+
+    expect(code).toBe(2);
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).not.toContain("Backend error 404");
+    expect(out).toContain("run_deadbee");
+    expect(out).toMatch(/full run id/i);
+    restore();
+  });
+});

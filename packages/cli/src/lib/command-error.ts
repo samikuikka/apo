@@ -1,5 +1,6 @@
 import { AuthError } from "./api.ts";
 import { dim } from "./format.ts";
+import { UnresolvedIdError } from "./prefix.ts";
 
 /** Exit code for a command that failed before producing output. */
 export const COMMAND_ERROR_EXIT_CODE = 2;
@@ -27,6 +28,7 @@ export function reportCommandError(error: unknown, backendUrl: string): number {
 function isDeliberateError(error: unknown, message: string): boolean {
   return (
     error instanceof AuthError ||
+    error instanceof UnresolvedIdError ||
     message.startsWith("Backend error") ||
     message.includes("timed out") ||
     message.includes("Cannot connect") ||

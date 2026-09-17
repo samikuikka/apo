@@ -1,5 +1,29 @@
 import { cyan, dim } from "./format.ts";
 
+/**
+ * A full id or prefix that matched nothing in the runs/batches the CLI can
+ * see. This is a local resolution miss — no request for the id itself was
+ * ever made — so it must not be reported the way a backend rejection is.
+ */
+export class UnresolvedIdError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnresolvedIdError";
+  }
+}
+
+/** Canonical run/batch ids: 3-letter prefix + 24 lowercase hex (28 chars). */
+const CANONICAL_RUN_ID = /^run_[0-9a-f]{24}$/;
+const CANONICAL_BATCH_ID = /^bch_[0-9a-f]{24}$/;
+
+export function isCanonicalRunId(id: string): boolean {
+  return CANONICAL_RUN_ID.test(id);
+}
+
+export function isCanonicalBatchId(id: string): boolean {
+  return CANONICAL_BATCH_ID.test(id);
+}
+
 export type PrefixResolveResult<T> =
   | { status: "unique"; item: T }
   | { status: "ambiguous"; items: T[] }

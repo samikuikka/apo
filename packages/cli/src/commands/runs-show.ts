@@ -5,7 +5,7 @@ import { apiGet } from "../lib/api.ts";
 import type { CheckResult, DeliverableSummary } from "../lib/agent-task-types.ts";
 import { formatChecks, NO_CHECKS_REGISTERED_MESSAGE, secondJudgeSummary } from "../lib/checks-format.ts";
 import { conciseChecks, conciseDeliverables } from "../lib/runs-truncate.ts";
-import { resolveRunIdByPrefix, resolveLatestRunId } from "../lib/runs-resolve.ts";
+import { resolveRunId, resolveLatestRunId } from "../lib/runs-resolve.ts";
 import { reportCommandError } from "../lib/command-error.ts";
 
 type RunDetail = {
@@ -83,26 +83,10 @@ export async function run(argv: string[]): Promise<number> {
       return reportCommandError(error, config.backendUrl);
     }
   } else {
-    resolvedRunId = input;
-    if (input.length < 32) {
-      try {
-        resolvedRunId = await resolveRunIdByPrefix(
-          config.backendUrl,
-          input,
-          config,
-        );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.includes("404")) {
-          console.error(`Run not found: ${input}`);
-        } else if (message.startsWith("Backend error") || message.includes("timed out") || message.includes("Cannot connect") || message.includes("matches multiple")) {
-          console.error(message);
-        } else {
-          console.error(`Cannot connect to backend at ${config.backendUrl}`);
-          console.error(dim(message));
-        }
-        return 2;
-      }
+    try {
+      resolvedRunId = await resolveRunId(config.backendUrl, input, config);
+    } catch (error) {
+      return reportCommandError(error, config.backendUrl);
     }
   }
 

@@ -38,13 +38,11 @@ export async function run(argv: string[]): Promise<number> {
     return 2;
   }
 
-  let batchId = input;
-  if (input.length < 32) {
-    try {
-      batchId = await resolveBatchId(config.backendUrl, input, config);
-    } catch (error) {
-      return reportCommandError(error, config.backendUrl);
-    }
+  let batchId: string;
+  try {
+    batchId = await resolveBatchId(config.backendUrl, input, config);
+  } catch (error) {
+    return reportCommandError(error, config.backendUrl);
   }
 
   if (!confirmed) {
