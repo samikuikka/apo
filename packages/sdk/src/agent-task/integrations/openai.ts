@@ -81,6 +81,10 @@ interface OpenAIResponseLike {
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
+    completion_tokens_details?: {
+      /** Thinking tokens, reported by o-series/DeepSeek/GLM-style providers. */
+      reasoning_tokens?: number;
+    };
   };
 }
 
@@ -134,6 +138,10 @@ export function createApoOpenAI<T extends OpenAIClientLike>(
         text,
         promptTokens: response.usage?.prompt_tokens,
         completionTokens: response.usage?.completion_tokens,
+        // OpenAI-compatible providers report thinking tokens here (o-series,
+        // DeepSeek, GLM). Absent detail = unreported, not zero.
+        reasoningTokens:
+          response.usage?.completion_tokens_details?.reasoning_tokens,
         toolCalls,
         taskId,
         turnNumber,

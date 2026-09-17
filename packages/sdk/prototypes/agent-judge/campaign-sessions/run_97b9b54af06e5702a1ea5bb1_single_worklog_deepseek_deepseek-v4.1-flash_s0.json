@@ -1,0 +1,10 @@
+{
+  "judge": "single_worklog",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The task asks whether Martinis_Fine_Steakhouse is in danger of a high-fraud rate fine. The run's work computes the merchant's monthly fraud rates from payments.csv, compares them against the fraud-level thresholds (7.2%, 7.7%, 8.3%) found in the manual and fees.json, and checks both including and excluding refused transactions. This directly addresses the question's core quantity (monthly fraud rate vs. thresholds for a high-fraud rate fine). The submitted answer 'yes' is consistent with the analysis performed, and there is no evidence that the work computes a different quantity or a different slice of the question. Therefore, the answer is supported by the run's own work.",
+  "steps": 1,
+  "cost_usd": 0.01698796863,
+  "latency_ms": 156739
+}

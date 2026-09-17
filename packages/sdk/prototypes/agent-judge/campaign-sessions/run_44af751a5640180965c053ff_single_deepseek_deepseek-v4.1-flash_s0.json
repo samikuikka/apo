@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": false,
+  "reasoning": "The submitted answer is a single numeric value (0.123217) with no supporting tool_log, deliverables, or intermediate work shown. The task requires computing an average fee for a specific slice (account type H, MCC 'Eating Places and Restaurants', card scheme GlobalCard, transaction value 10 EUR) and reporting it in EUR with 6 decimals. While the format matches (6 decimals), there is no evidence in the provided run materials that this value was derived from the correct data slice or calculation. Without any tool_log or work to verify the computation, the answer is unsupported. Per the instruction, an unsupported answer must FAIL.",
+  "steps": 1,
+  "cost_usd": 0.00009732,
+  "latency_ms": 21123,
+  "tokens": {
+    "input": 247,
+    "output": 141
+  }
+}

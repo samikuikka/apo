@@ -1,0 +1,10 @@
+{
+  "judge": "single_worklog",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": false,
+  "reasoning": "The submitted final answer is empty (`submitted: false`, `value: \"\"`), so it does not provide the requested average fee in EUR with 6 decimals. Although the tool log shows an attempted calculation, no final numerical answer was submitted. Therefore the task is not answered.",
+  "steps": 1,
+  "cost_usd": 0.0004788,
+  "latency_ms": 2388
+}

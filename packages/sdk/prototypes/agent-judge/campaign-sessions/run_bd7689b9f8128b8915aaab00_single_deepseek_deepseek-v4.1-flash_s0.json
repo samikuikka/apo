@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The submitted answer is a single numeric monetary delta for Belles_cookbook_store in January 2023 under the specified hypothetical fee change. It directly addresses the asked quantity, and the value 728.288966 is consistent with the expected scale and precision for this computation. There is no indication that it computes a different slice or variant of the question.",
+  "steps": 1,
+  "cost_usd": 0.00161182,
+  "latency_ms": 75918,
+  "tokens": {
+    "input": 236,
+    "output": 3759
+  }
+}

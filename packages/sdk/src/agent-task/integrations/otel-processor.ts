@@ -186,6 +186,7 @@ function buildEndParams(t: TranslatedSpan | null): Record<string, unknown> {
 
   if (t.promptTokens !== undefined) params.prompt_tokens = t.promptTokens;
   if (t.completionTokens !== undefined) params.completion_tokens = t.completionTokens;
+  if (t.reasoningTokens !== undefined) params.reasoning_tokens = t.reasoningTokens;
 
   if (t.observationType === "GENERATION") {
     if (t.text !== undefined) {

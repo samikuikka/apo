@@ -9,6 +9,7 @@ import { buildCheckDiagnostics } from "@/lib/check-diagnostics";
 import { resolveCheckBlock } from "@/lib/extract-check-block";
 import { locateAssertionsInBlock } from "@/lib/locate-assertion";
 import { buildAssertionParam, parseOwnAssertionId } from "@/lib/assertion-select";
+import { secondJudgeAgreementLine, secondJudgeFacts, secondJudgeTakeaway } from "@/lib/second-judge";
 import { cn } from "@/lib/utils";
 import { AssertionDrawer } from "./assertion-drawer";
 import { JudgeStrip } from "./judge-strip";
@@ -164,6 +165,7 @@ export function ExpandableCheckItem({
                   Corrected
                 </span>
               )}
+              <SecondJudgeMark check={item} />
             </div>
           </div>
           <span
@@ -194,6 +196,25 @@ export function ExpandableCheckItem({
       {expanded && (
         <div className="border-t border-border px-4 pb-4 pt-3">
           <div className="max-w-[860px] space-y-3">
+            {(() => {
+              // The second-judge relation is signal — the takeaway leads the
+              // expand (amber for splits, muted otherwise), before any detail.
+              const takeaway = secondJudgeTakeaway(item);
+              const agreement = secondJudgeAgreementLine(item.judge?.secondJudge);
+              const line = takeaway ?? agreement;
+              if (!line) return null;
+              const isSplit = secondJudgeFacts(item).kind === "split";
+              return (
+                <p
+                  className={cn(
+                    "text-[12px]",
+                    isSplit ? "font-medium text-warning" : "text-muted-foreground",
+                  )}
+                >
+                  {line}
+                </p>
+              );
+            })()}
             {corrected && item.correction && item.recorded_pass !== undefined && (
               <div className="border border-warning/30 bg-warning/5 px-3 py-2 text-[12px] leading-relaxed">
                 <span className="text-warning">Corrected</span> — recorded{" "}
@@ -284,5 +305,60 @@ export function ExpandableCheckItem({
         />
       )}
     </div>
+  );
+}
+
+//─ Second judge row mark (measurements, not diagnoses) ────────────────
+
+/**
+ * Paired verdict dots + confidence on the collapsed row: `✓✗ 0.99` amber
+ * when the judges split (first dot = the judge's verdict, second = the
+ * second judge's, number = its confidence), dim `✓✓ ·0.31` when they
+ * agreed weakly, `2nd ✕` when the opinion never arrived. Corroborated
+ * checks are silent — absence is the trust signal.
+ */
+function SecondJudgeMark({ check }: { check: CheckResult }) {
+  const sj = check.judge?.secondJudge;
+  const facts = secondJudgeFacts(check);
+  if (facts.kind !== "split" && facts.kind !== "unsure") {
+    if (facts.kind === "error") {
+      return (
+        <span
+          className="shrink-0 font-mono text-[10px] text-muted-foreground/50"
+          title="The second opinion failed to arrive"
+        >
+          2nd ✕
+        </span>
+      );
+    }
+    return null;
+  }
+  const primary = check.pass === true;
+  const secondPass = sj?.choice === "pass";
+  const dot = (on: boolean) =>
+    cn("font-mono text-[10px]", on ? "text-success" : "text-destructive");
+  if (facts.kind === "split") {
+    return (
+      <span
+        className="shrink-0 inline-flex items-center gap-0.5"
+        title="The judges' verdicts differ — the number is the second judge's confidence"
+      >
+        <span className={dot(primary)}>{primary ? "✓" : "✗"}</span>
+        <span className={dot(secondPass)}>{secondPass ? "✓" : "✗"}</span>
+        <span className="ml-0.5 font-mono text-[10px] text-warning">
+          {facts.confidence.toFixed(2)}
+        </span>
+      </span>
+    );
+  }
+  return (
+    <span
+      className="shrink-0 inline-flex items-center gap-0.5 font-mono text-[10px] text-muted-foreground/70"
+      title="Both judges said the same, but the second was low-confidence — weak corroboration"
+    >
+      <span>{primary ? "✓" : "✗"}</span>
+      <span>{secondPass ? "✓" : "✗"}</span>
+      <span className="ml-0.5">·{facts.confidence.toFixed(2)}</span>
+    </span>
   );
 }

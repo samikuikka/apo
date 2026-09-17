@@ -8,7 +8,7 @@ import { RunCostBreakdownTooltip } from "./DimensionBreakdownTooltip";
 import { DimensionMixBar } from "./DimensionMixBar";
 import { CallDetailTabs } from "./CallDetailTabs";
 import { useSelection } from "./contexts/SelectionContext";
-import type { TraceDetail } from "./contexts/TraceDataContext";
+import type { LoggedCall, TraceDetail } from "./contexts/TraceDataContext";
 import { formatCostMicro } from "@/lib/format";
 
 export interface TraceDetailTabsProps {
@@ -94,7 +94,7 @@ function MetricRow({
 
 export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
   const calls = useMemo(() => run.calls || [], [run.calls]);
-  const { detailTab, setDetailTab } = useSelection();
+  const { detailTab, setDetailTab, selectCall } = useSelection();
   const activeTab = VALID_RUN_TABS.has(detailTab) ? detailTab : "preview";
   const [previewMode, setPreviewMode] = useState<"preview" | "json">("preview");
 
@@ -109,11 +109,19 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
     () => calls.reduce((sum: number, c: any) => sum + (c.cost || 0), 0),
     [calls],
   );
-  const totalLatency = useMemo(
-    () => calls.reduce((sum: number, c: any) => sum + (c.latency_ms || 0), 0),
+  // Latency facts are model-call facts: GENERATION observations only. Tool and
+  // structural rows carry latencies too (the agent-task root span's latency is
+  // the run's whole wall clock), and averaging those in would describe the
+  // run, not the model (issue #309).
+  const generations = useMemo(
+    () => calls.filter((c) => c.observation_type === "GENERATION"),
     [calls],
   );
-  const avgLatency = calls.length > 0 ? totalLatency / calls.length : 0;
+  const totalLatency = useMemo(
+    () => generations.reduce((sum: number, c) => sum + (c.latency_ms || 0), 0),
+    [generations],
+  );
+  const avgLatency = generations.length > 0 ? totalLatency / generations.length : 0;
 
   const promptTokens = useMemo(
     () => calls.reduce((sum: number, c: any) => sum + (c.prompt_tokens || 0), 0),
@@ -124,6 +132,39 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
     [calls],
   );
   const totalTokens = promptTokens + completionTokens;
+
+  // Reasoning rollups (issue #309): a model-call fact, aligned with the
+  // backend scalars — GENERATION observations only, and errored generations
+  // skip usage (a provider error omits the final usage event, so its
+  // projected usage is not a measurement). No reporting call anywhere →
+  // unknown, rendered as "not reported" rather than a false zero.
+  const reasoningCalls = useMemo(
+    () =>
+      generations.filter(
+        (c) => c.level !== "ERROR" && c.raw_usage?.reasoning != null,
+      ),
+    [generations],
+  );
+  const totalReasoning = reasoningCalls.reduce(
+    (sum: number, c) => sum + (c.raw_usage?.reasoning || 0),
+    0,
+  );
+  const deepestReasoningCall = reasoningCalls.reduce<LoggedCall | null>(
+    (deepest, c) =>
+      deepest == null || (c.raw_usage?.reasoning ?? 0) > (deepest.raw_usage?.reasoning ?? 0)
+        ? c
+        : deepest,
+    null,
+  );
+  const slowestCall = useMemo(
+    () =>
+      generations.reduce<LoggedCall | null>(
+        (slowest, c) =>
+          slowest == null || (c.latency_ms ?? -1) > (slowest.latency_ms ?? -1) ? c : slowest,
+        null,
+      ),
+    [generations],
+  );
 
   const modelBreakdown = useMemo(
     () =>
@@ -244,6 +285,35 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
               <MetricRow label="Prompt" value={promptTokens.toLocaleString()} />
               <MetricRow label="Completion" value={completionTokens.toLocaleString()} />
               <MetricRow label="Total" value={totalTokens.toLocaleString()} />
+              <MetricRow
+                label="Reasoning"
+                value={
+                  reasoningCalls.length > 0 ? (
+                    totalReasoning.toLocaleString()
+                  ) : (
+                    <span className="text-muted-foreground">not reported</span>
+                  )
+                }
+                hint={
+                  reasoningCalls.length > 0 && reasoningCalls.length < generations.length
+                    ? `${generations.length - reasoningCalls.length} call(s) did not report reasoning`
+                    : undefined
+                }
+              />
+              {deepestReasoningCall && (deepestReasoningCall.raw_usage?.reasoning ?? 0) > 0 && (
+                <MetricRow
+                  label="Max single call"
+                  value={
+                    <button
+                      type="button"
+                      className="underline-offset-2 hover:underline"
+                      onClick={() => selectCall(deepestReasoningCall.id)}
+                    >
+                      {deepestReasoningCall.raw_usage!.reasoning!.toLocaleString()}
+                    </button>
+                  }
+                />
+              )}
             </div>
           </Section>
 
@@ -290,6 +360,25 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
                 label="Avg latency"
                 value={avgLatency > 0 ? `${avgLatency.toFixed(0)}ms` : "—"}
               />
+              <MetricRow
+                label="Model time"
+                value={totalLatency > 0 ? `${(totalLatency / 1000).toFixed(1)}s` : "—"}
+                hint="sum of call latencies — excludes tool/harness time"
+              />
+              {slowestCall && slowestCall.latency_ms != null && (
+                <MetricRow
+                  label="Slowest call"
+                  value={
+                    <button
+                      type="button"
+                      className="underline-offset-2 hover:underline"
+                      onClick={() => selectCall(slowestCall.id)}
+                    >
+                      {`${(slowestCall.latency_ms / 1000).toFixed(1)}s`}
+                    </button>
+                  }
+                />
+              )}
             </div>
           </Section>
 

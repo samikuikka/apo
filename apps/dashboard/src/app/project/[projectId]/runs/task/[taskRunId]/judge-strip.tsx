@@ -151,6 +151,22 @@ export function JudgeStrip({ judge, checkPass }: { judge: JudgeMetadata; checkPa
 
 //─ Second judge (typed-decision second grader)─────────────────────────
 
+function ProbBar({ value, tone }: { value: number; tone: "verdict" | "conf" }) {
+  return (
+    <span className="inline-flex h-1.5 w-16 overflow-hidden bg-muted align-middle">
+      <span
+        className={cn("h-full", tone === "verdict" ? "bg-foreground/70" : "bg-muted-foreground")}
+        style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }}
+      />
+    </span>
+  );
+}
+
+/**
+ * The second judge's evidence as facts: verdict, probability distribution,
+ * confidence, latency, cost. What a decision-model score *is* — a choice
+ * over a distribution — rendered instead of described.
+ */
 function SecondJudgeRow({
   second,
   checkPass,
@@ -158,8 +174,8 @@ function SecondJudgeRow({
   second: SecondJudgeEvidence;
   checkPass?: boolean;
 }) {
-  // The second grader never changes the verdict — this chip is the signal:
-  // agreement corroborates the check, disagreement flags it for review.
+  // The second grader never changes the verdict — agreement corroborates
+  // the check, disagreement flags it for review.
   const agrees =
     second.choice != null && checkPass != null && (second.choice === "pass") === checkPass;
 
@@ -181,13 +197,16 @@ function SecondJudgeRow({
             verdict <span className="text-foreground">{second.choice}</span>
           </span>
           {second.passProbability != null && (
-            <span>
-              p(pass) <span className="text-foreground">{second.passProbability.toFixed(2)}</span>
+            <span className="inline-flex items-center gap-1.5">
+              p(pass){" "}
+              <ProbBar value={second.passProbability} tone="verdict" />{" "}
+              <span className="text-foreground">{second.passProbability.toFixed(2)}</span>
             </span>
           )}
           {second.confidence != null && (
-            <span>
+            <span className="inline-flex items-center gap-1.5">
               confidence{" "}
+              <ProbBar value={second.confidence} tone="conf" />{" "}
               <span className="text-foreground">{second.confidence.toFixed(2)}</span>
             </span>
           )}

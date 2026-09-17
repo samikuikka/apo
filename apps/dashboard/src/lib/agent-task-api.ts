@@ -133,6 +133,16 @@ export interface AgentTaskRunSummary {
   generation_execution?: GenerationExecutionSummary | null;
   generation_usage?: GenerationUsageSummary | null;
   total_tokens: number | null;
+  /** Issue #309 reasoning + timing rollups. Null reasoning = no call in the
+   * trace reported the reasoning usage dimension (unknown, NOT zero). The
+   * `*_call_id` refs point at the winning call's span for deep links into
+   * the trace (`/traces/{trace_run_id}?observation={call_id}`). */
+  total_reasoning_tokens?: number | null;
+  max_call_reasoning_tokens?: number | null;
+  max_call_reasoning_call_id?: string | null;
+  max_call_latency_ms?: number | null;
+  max_call_latency_call_id?: string | null;
+  total_model_time_ms?: number | null;
   total_checks: number;
   passed_checks: number;
   failed_checks: number;

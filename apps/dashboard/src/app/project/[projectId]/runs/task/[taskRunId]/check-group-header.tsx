@@ -20,6 +20,7 @@ export function CheckGroupHeader({
   cost,
   open,
   onToggle,
+  splitCount = 0,
 }: {
   groupName: string;
   passed: number;
@@ -27,6 +28,8 @@ export function CheckGroupHeader({
   cost: number;
   open: boolean;
   onToggle: () => void;
+  /** Checks in this group where the second judge's verdict differs. */
+  splitCount?: number;
 }) {
   const failed = total - passed;
   const allPass = failed === 0;
@@ -62,6 +65,14 @@ export function CheckGroupHeader({
           {passed}
         </span>
         <span className="text-muted-foreground/60">/{total}</span>
+        {splitCount > 0 && (
+          <span
+            className="ml-2 text-warning"
+            title={`${splitCount} check${splitCount === 1 ? "" : "s"} where the judges' verdicts differ`}
+          >
+            ⇄ {splitCount}
+          </span>
+        )}
       </span>
       <div className="h-1 w-12 shrink-0 overflow-hidden rounded-full bg-border">
         <div

@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The submitted answer is a direct list of fee IDs corresponding to the requested filter (account_type = R and aci = B). It responds to the question as asked and is not a different slice or unrelated quantity. The specific, non-exhaustive list of IDs is consistent with a filtered database query result.",
+  "steps": 1,
+  "cost_usd": 0.00458355,
+  "latency_ms": 30283,
+  "tokens": {
+    "input": 1465,
+    "output": 7273
+  }
+}

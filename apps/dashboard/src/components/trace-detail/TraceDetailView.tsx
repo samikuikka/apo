@@ -17,7 +17,7 @@ import { taskDetailHref } from "@/lib/task-routes";
 import { Star, X, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { formatCostMicro, formatDuration, formatTokenTotal } from "@/lib/format";
+import { formatCostMicro, formatDuration, formatTokenTotal, tokenFormat } from "@/lib/format";
 
 export function TraceDetailView({
   mode,
@@ -67,10 +67,26 @@ function TraceDetailRootView({
   const [bookmarked, setBookmarked] = useState<boolean>(run.run.bookmarked ?? false);
   const totalCost = run.calls.reduce((sum: number, c) => sum + (c.cost || 0), 0);
   const totalTokens = run.calls.reduce((sum: number, c) => sum + (c.total_tokens || 0), 0);
+  // Reasoning total (issue #309): a model-call fact, like every reasoning
+  // surface — GENERATION observations only, and errored generations skip
+  // usage (their projected usage is not a measurement). No reporting call
+  // anywhere → unknown, and the pill is omitted rather than shown as zero.
+  const reasoningCalls = run.calls.filter(
+    (c) =>
+      c.observation_type === "GENERATION" &&
+      c.level !== "ERROR" &&
+      c.raw_usage?.reasoning != null,
+  );
+  const totalReasoning = reasoningCalls.length
+    ? reasoningCalls.reduce((sum, c) => sum + (c.raw_usage?.reasoning ?? 0), 0)
+    : null;
   const summaryParts = formatMetaParts([
     run.run.duration_ms != null ? formatDuration(run.run.duration_ms) : null,
     totalCost > 0 ? formatCostMicro(totalCost) : null,
     totalTokens > 0 ? formatTokenTotal(totalTokens) : null,
+    totalReasoning != null && totalReasoning > 0
+      ? `${tokenFormat(totalReasoning)} reasoning`
+      : null,
     `${run.run.call_count} calls`,
     run.run.project ? `project ${run.run.project}` : null,
   ]);
@@ -134,7 +150,7 @@ function TraceDetailRootView({
           {summaryParts.map((part) => {
             const isCost = part.startsWith("$");
             const pill = (
-              <HeaderPill key={part} mono={isCost || part.includes("tok")}>
+              <HeaderPill key={part} mono={isCost || part.includes("tok") || part.includes("reasoning")}>
                 {part}
               </HeaderPill>
             );

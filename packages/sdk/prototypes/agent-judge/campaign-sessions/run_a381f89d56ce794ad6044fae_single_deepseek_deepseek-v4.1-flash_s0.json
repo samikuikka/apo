@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The submitted answer is a comma-separated list of Fee IDs, which directly matches the question's request for Fee IDs applicable to Belles_cookbook_store on the specified date. The phrasing '10th of the year 2023' most naturally refers to the 10th month (October) of 2023, and the answer is a specific set of IDs consistent with a query filtering by that month and store. There is no evidence in the answer that it computes a different slice or is unsupported.",
+  "steps": 1,
+  "cost_usd": 0.0031674,
+  "latency_ms": 27565,
+  "tokens": {
+    "input": 252,
+    "output": 5216
+  }
+}

@@ -49,6 +49,8 @@ export function emitGenerationAndTools(
     text?: string;
     promptTokens?: number;
     completionTokens?: number;
+    /** Reasoning tokens, when the provider reports the dimension. */
+    reasoningTokens?: number;
     toolCalls?: Array<{ name: string; input?: unknown }>;
     taskId?: string;
     turnNumber?: number;
@@ -63,6 +65,7 @@ export function emitGenerationAndTools(
     latency_ms: latency,
     prompt_tokens: opts.promptTokens,
     completion_tokens: opts.completionTokens,
+    reasoning_tokens: opts.reasoningTokens,
     output: {
       ...(opts.text !== undefined ? { text: opts.text } : {}),
       ...(opts.error ? { error: opts.error.message } : {}),

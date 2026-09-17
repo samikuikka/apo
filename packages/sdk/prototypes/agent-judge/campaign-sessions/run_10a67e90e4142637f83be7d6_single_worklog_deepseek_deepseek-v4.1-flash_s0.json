@@ -1,0 +1,10 @@
+{
+  "judge": "single_worklog",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The task asks for the average fee GlobalCard would charge for a credit transaction of 10 EUR. The submitted answer is 0.120132. The run's work shows the agent computed the average fee at 10 EUR across GlobalCard rules applicable to credit (is_credit True or null), yielding 0.120132. This directly matches the question's requested quantity. The tool log supports the computation, and the final answer is consistent with the work shown.",
+  "steps": 1,
+  "cost_usd": 0.00071712,
+  "latency_ms": 17426
+}

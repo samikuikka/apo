@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "google/gemini-2.5-flash-lite",
+  "outcome": "verdict",
+  "pass": false,
+  "reasoning": "The user is asking if Martinis_Fine_Steakhouse is in danger of getting a high-fraud rate fine. The provided answer is 'yes'. However, there is no information in the provided 'submitted' value that supports this answer. The 'submitted' value only contains 'submitted:true' and 'value:yes', which does not include any analysis or data to justify the conclusion.",
+  "steps": 1,
+  "cost_usd": 0.000057,
+  "latency_ms": 1084,
+  "tokens": {
+    "input": 190,
+    "output": 95
+  }
+}

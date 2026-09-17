@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The task asks for the average fee that GlobalCard would charge for a credit transaction valued at 10 EUR. The submitted value 0.120132 is a precise fee amount in EUR and matches the requested slice: card scheme GlobalCard, credit transactions, and transaction value 10 EUR. There is no indication that it computes a different transaction type, card scheme, or amount.",
+  "steps": 1,
+  "cost_usd": 0.0013013,
+  "latency_ms": 79426,
+  "tokens": {
+    "input": 229,
+    "output": 3022
+  }
+}

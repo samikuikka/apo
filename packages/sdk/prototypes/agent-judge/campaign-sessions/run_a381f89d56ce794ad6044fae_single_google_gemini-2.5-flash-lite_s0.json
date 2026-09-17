@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "google/gemini-2.5-flash-lite",
+  "outcome": "verdict",
+  "pass": false,
+  "reasoning": "The user asked for Fee IDs applicable to Belles_cookbook_store for the 10th of the year 2023. The provided answer lists several Fee IDs. However, the tool log does not contain any information about Belles_cookbook_store or any Fee IDs. Therefore, the answer is not supported by the provided work.",
+  "steps": 1,
+  "cost_usd": 0.0000596,
+  "latency_ms": 9132,
+  "tokens": {
+    "input": 248,
+    "output": 87
+  }
+}

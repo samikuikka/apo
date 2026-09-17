@@ -1,15 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Brain,
   ChevronRight,
   Clock,
+  Folder,
   Gauge,
   GitCompare,
   Hash,
 } from "lucide-react";
+import { useEffect } from "react";
 
 import {
   type AgentTaskBatchRunDetail,
@@ -18,13 +21,15 @@ import {
   type AgentTaskSummary,
 } from "@/lib/agent-task-api";
 import { cn } from "@/lib/utils";
-import { formatDuration, formatRelativeTime, runDurationMs, formatCostMicro, formatTokenTotal } from "@/lib/format";
-import { formatBatchExecution } from "@/lib/run-configuration";
+import { formatDuration, formatRelativeTime, runDurationMs, formatCostMicro, tokenFormat, formatTokenTotal } from "@/lib/format";
+import { formatBatchExecution, shortModel } from "@/lib/run-configuration";
 import { useUrlParamSet } from "@/hooks/use-url-state";
 import { conclusionStyle } from "@/components/run-outcome";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useComparison, tallyChecks, type CheckTally } from "./use-comparison";
 import { FlowSection } from "./components/FlowSection";
+import { TaskColumns } from "./components/TaskColumns";
 
 interface CompareClientProps {
   projectId: string;
@@ -33,6 +38,9 @@ interface CompareClientProps {
   inventory: AgentTaskSummary[];
   leftRuns: AgentTaskRunSummary[];
   rightRuns: AgentTaskRunSummary[];
+  /** PROTOTYPE — ?aggregate=1 enables the Tasks/Summary tab split. */
+  showAggregate?: boolean;
+  tab?: "tasks" | "summary";
 }
 
 /** A meaningful identity for a batch in lists where the model may be
@@ -82,6 +90,8 @@ export function CompareClient({
   inventory,
   leftRuns,
   rightRuns,
+  showAggregate = false,
+  tab = "tasks",
 }: CompareClientProps) {
   const [expanded, toggleExpanded] = useUrlParamSet("expand");
 
@@ -92,23 +102,47 @@ export function CompareClient({
   // in output, judge reasoning, trace shape, latency, tokens, and cost.
   const foldersToShow = comparison.folders;
 
+  // The working view (Tasks) stays exactly as it has always been; the
+  // aggregate lives on its own tab so neither competes for the same pixels.
+  const summaryActive = showAggregate && tab === "summary" && batchA && batchB;
+  const tabsActive = Boolean(showAggregate && batchA && batchB);
+
   return (
     <div className="mx-auto w-full max-w-6xl">
       <CompareHeader projectId={projectId} />
 
       <div className="border-b border-border bg-background px-6 py-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <BatchSlot
-            label="Run A"
-            batch={batchA}
+        {tabsActive ? <CompareTabs tab={tab} /> : null}
+
+        {summaryActive ? (
+          <SummaryView
+            batchA={batchA}
+            batchB={batchB}
             projectId={projectId}
+            tasks={comparison.tasks}
+            leftChecks={comparison.leftChecks}
+            rightChecks={comparison.rightChecks}
+            leftRuns={leftRuns}
+            rightRuns={rightRuns}
           />
-          <BatchSlot
-            label="Run B"
-            batch={batchB}
-            projectId={projectId}
-          />
-        </div>
+        ) : (
+          <>
+        {tabsActive && batchA && batchB ? (
+          <MinimalPickers batchA={batchA} batchB={batchB} projectId={projectId} />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <BatchSlot
+              label="Run A"
+              batch={batchA}
+              projectId={projectId}
+            />
+            <BatchSlot
+              label="Run B"
+              batch={batchB}
+              projectId={projectId}
+            />
+          </div>
+        )}
 
         {batchA && batchB && (
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground">
@@ -118,7 +152,18 @@ export function CompareClient({
                 {configurationDelta(batchA, batchB)}
               </span>
             )}
-            {comparison.totalDiffers > 0 ? (
+            {tabsActive ? (
+              comparison.totalDiffers > 0 ? (
+                <span>
+                  <span className="font-mono tabular-nums text-foreground">{comparison.totalDiffers}</span>{" "}
+                  of{" "}
+                  <span className="font-mono tabular-nums text-foreground">{comparison.tasks.length}</span>{" "}
+                  tasks changed
+                </span>
+              ) : (
+                <span>No tasks changed between these runs</span>
+              )
+            ) : comparison.totalDiffers > 0 ? (
               <span>
                 <span className="font-mono tabular-nums text-foreground">{comparison.totalDiffers}</span>{" "}
                 of{" "}
@@ -137,14 +182,18 @@ export function CompareClient({
             {/* Graded signal (belief #5): the check tally delta is what tells
                 you whether things improved or regressed, even when every task
                 failed on both sides. Surfaced as a fact (the numbers), never
-                a directional verdict — the reader judges the trajectory. */}
-            {comparison.leftChecks.total > 0 && comparison.rightChecks.total > 0 && (
+                a directional verdict — the reader judges the trajectory.
+                Prototype mode keeps this off the working view — the Summary
+                tab carries the tallies. */}
+            {!tabsActive && comparison.leftChecks.total > 0 && comparison.rightChecks.total > 0 && (
               <CheckDelta
                 left={comparison.leftChecks}
                 right={comparison.rightChecks}
               />
             )}
           </div>
+        )}
+          </>
         )}
       </div>
 
@@ -159,7 +208,7 @@ export function CompareClient({
         <div className="m-6 rounded-md border border-dashed border-border bg-card/40 p-10 text-center text-[13px] text-muted-foreground">
           These runs share no tasks — there is nothing to compare.
         </div>
-      ) : (
+      ) : summaryActive ? null : (
         <>
           <div className="divide-y divide-border">
             {foldersToShow.map((f) => (
@@ -174,6 +223,7 @@ export function CompareClient({
                 expanded={expanded}
                 onToggleExpand={toggleExpanded}
                 projectId={projectId}
+                compact={tabsActive}
               />
             ))}
           </div>
@@ -193,6 +243,28 @@ function CompareHeader({ projectId }: { projectId: string }) {
         <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
         <span className="text-foreground">Compare</span>
       </div>
+    </div>
+  );
+}
+
+/** PROTOTYPE — the Tasks/Summary split. The working view keeps its density;
+ *  aggregate stats live on their own tab so neither competes for pixels
+ *  (Braintrust's List/Summary layout switcher is the precedent). */
+function CompareTabs({ tab }: { tab: "tasks" | "summary" }) {
+  const router = useRouter();
+  const setTab = (v: string) => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", v);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
+  return (
+    <div className="-mt-1 mb-4">
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="h-9 bg-card">
+          <TabsTrigger value="tasks" className="px-4 text-[13px]">Tasks</TabsTrigger>
+          <TabsTrigger value="summary" className="px-4 text-[13px]">Summary</TabsTrigger>
+        </TabsList>
+      </Tabs>
     </div>
   );
 }
@@ -393,3 +465,331 @@ export function CheckDelta({ left, right }: { left: CheckTally; right: CheckTall
     </span>
   );
 }
+
+
+// PROTOTYPE — aggregate strip (?aggregate=1). Pure counting over data the
+// page already loaded: column totals, flip directions, graded check signal.
+// No averaging: binary verdicts counted, errors kept separate, checks X/Y.
+type CompareTasks = { left: { run: AgentTaskRunSummary | null }; right: { run: AgentTaskRunSummary | null } }[];
+
+function verdictCounts(tasks: CompareTasks) {
+  let same = 0;
+  let fixed = 0;
+  let broke = 0;
+  let compared = 0;
+  for (const t of tasks) {
+    const l = t.left.run;
+    const r = t.right.run;
+    if (!l || !r) continue;
+    compared += 1;
+    const lp = l.status === "passed";
+    const rp = r.status === "passed";
+    if (lp === rp) same += 1;
+    else if (rp) fixed += 1;
+    else broke += 1;
+  }
+  return { same, fixed, broke, compared };
+}
+
+/** The one-line pair verdict shared by the prototype headers: what B did,
+ *  what didn't change, how far the work moved, what it cost. Says only
+ *  things true of the PAIR — per-side facts live in the side columns. */
+function VerdictSentence({
+  tasks,
+  leftChecks,
+  rightChecks,
+  costA,
+  costB,
+  onlyInOne = 0,
+  configDelta = null,
+}: {
+  tasks: CompareTasks;
+  leftChecks: { passed: number; total: number };
+  rightChecks: { passed: number; total: number };
+  costA: number;
+  costB: number;
+  onlyInOne?: number;
+  configDelta?: string | null;
+}) {
+  const { same, fixed, broke, compared } = verdictCounts(tasks);
+  const showCost = costA > 0 && costB > 0;
+  return (
+    <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[12px]">
+      {configDelta ? (
+        <span className="font-mono text-foreground">{configDelta}</span>
+      ) : null}
+      {fixed === 0 && broke === 0 ? (
+        <span>
+          all <span className="font-mono tabular-nums text-foreground">{compared}</span> verdicts unchanged
+        </span>
+      ) : (
+        <span>
+          Run B fixes <span className="font-mono tabular-nums text-success">{fixed}</span>
+          {broke > 0 ? (
+            <>
+              ,{" "}
+              <span className="font-mono tabular-nums text-destructive">{broke}</span>{" "}
+              <span className="text-destructive">regress</span>
+            </>
+          ) : (
+            ", nothing regresses"
+          )}
+          <span className="text-muted-foreground"> · {same} unchanged</span>
+        </span>
+      )}
+      {leftChecks.total > 0 && rightChecks.total > 0 ? (
+        <CheckDelta left={leftChecks} right={rightChecks} />
+      ) : null}
+      {showCost ? (
+        <span className="font-mono tabular-nums text-muted-foreground">
+          · cost {formatCostMicro(costA)} → {formatCostMicro(costB)}
+        </span>
+      ) : null}
+      {onlyInOne > 0 ? (
+        <span className="text-muted-foreground/60">
+          · {onlyInOne} task{onlyInOne > 1 ? "s" : ""} only in one run
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Everything a metric row needs from one side of the comparison. */
+function batchStats(batch: AgentTaskBatchRunDetail) {
+  const checkTotal = Math.max(batch.total_checks, 1);
+  return {
+    passRate: batch.total_checks > 0 ? Math.round((batch.passed_checks / checkTotal) * 100) : null,
+    checks: batch.total_checks > 0 ? `${batch.passed_checks}/${batch.total_checks}` : "—",
+    tasks: `${batch.passed_tasks}/${batch.total_tasks}`,
+    duration: runDurationMs(batch.started_at, batch.completed_at),
+    cost: batch.total_cost != null && batch.total_cost > 0 ? batch.total_cost : null,
+    tokens: batch.total_tokens != null && batch.total_tokens > 0 ? batch.total_tokens : null,
+    // Issue #309: null means unknown (nobody reported), rendered as absent —
+    // never as zero.
+    reasoning: batch.total_reasoning_tokens ?? null,
+    modelTime: batch.total_model_time_ms ?? null,
+  };
+}
+
+function sideDot(batch: AgentTaskBatchRunDetail) {
+  return conclusionStyle({
+    status: batch.status,
+    passed: batch.passed_tasks,
+    failed: batch.failed_tasks,
+    errored: batch.errored_tasks,
+    total: batch.total_tasks,
+  }).dot;
+}
+
+/** Run identity that leads with the model when the reported runs agree —
+ *  "Partial · 10/12 reported" hides the one fact you identify a run by. */
+function runIdentity(batch: AgentTaskBatchRunDetail): string {
+  const c = batch.configuration;
+  if (c.state === "partial" && c.configurations.length === 1) {
+    const pair = c.configurations[0];
+    if (pair) {
+      return `${shortModel(pair.model)} · ${c.reported_task_runs}/${c.total_task_runs} runs`;
+    }
+  }
+  return formatBatchExecution(c);
+}
+
+/** Hover-only detail for a run: its per-side facts live on the Summary tab —
+ *  the working view's pickers stay name-only. */
+function runStatTooltip(batch: AgentTaskBatchRunDetail): string {
+  const s = batchStats(batch);
+  return [
+    s.passRate != null ? `${s.passRate}%` : null,
+    s.checks !== "—" ? `${s.checks} checks` : null,
+    `${s.tasks} tasks passed`,
+    s.duration != null ? formatDuration(s.duration) : null,
+    s.cost != null ? formatCostMicro(s.cost) : null,
+    s.tokens != null ? `${tokenFormat(s.tokens)} tokens` : null,
+    runIdentity(batch),
+    formatRelativeTime(batch.created_at),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** PROTOTYPE — Tasks-tab pickers: identity + swap only (GitHub's compare
+ *  selectors `base ⌄ … compare ⌄` carry names, never metrics). One line per
+ *  run; all numbers live on the Summary tab or on hover. */
+function MinimalPickers({
+  batchA,
+  batchB,
+  projectId,
+}: {
+  batchA: AgentTaskBatchRunDetail;
+  batchB: AgentTaskBatchRunDetail;
+  projectId: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      {[batchA, batchB].map((batch, i) => {
+        const label = i === 0 ? "Run A" : "Run B";
+        return (
+          <div key={label} className="flex min-w-0 items-center gap-2" title={runStatTooltip(batch)}>
+            {i === 1 && <span className="font-mono text-[11px] text-muted-foreground/50">vs</span>}
+            <span className={cn("h-2 w-2 shrink-0 rounded-full", sideDot(batch))} aria-hidden />
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+            <span className="truncate text-[13px] font-medium text-foreground">
+              {batchLabel(batch)}{" "}
+              <span className="font-mono text-[11px] font-normal text-muted-foreground/60">
+                #{batch.id.slice(0, 8)}
+              </span>
+            </span>
+            <Link
+              href={`/project/${projectId}/runs`}
+              className="shrink-0 text-[11px] text-muted-foreground/70 hover:text-foreground"
+            >
+              Change
+            </Link>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Summary tab — the aggregate on its own surface, ordered answer-first:
+ *  who ran (identity, model-led) → the plain-numbers verdict → the per-task
+ *  dumbbell chart (which run wins each task, visually) → exact numbers last. */
+function SummaryView({
+  batchA,
+  batchB,
+  projectId,
+  tasks,
+  leftChecks,
+  rightChecks,
+  leftRuns,
+  rightRuns,
+}: {
+  batchA: AgentTaskBatchRunDetail;
+  batchB: AgentTaskBatchRunDetail;
+  projectId: string;
+  tasks: CompareTasks;
+  leftChecks: { passed: number; total: number };
+  rightChecks: { passed: number; total: number };
+  leftRuns: AgentTaskRunSummary[];
+  rightRuns: AgentTaskRunSummary[];
+}) {
+  const a = batchStats(batchA);
+  const b = batchStats(batchB);
+  const checksDelta = rightChecks.passed - leftChecks.passed;
+  const tasksDelta = batchB.passed_tasks - batchA.passed_tasks;
+  const ratio = (x: number | null, y: number | null): string | null =>
+    x && y && x > 0 ? `×${(y / x).toFixed(1)}` : null;
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {[batchA, batchB].map((batch, i) => {
+          const label = i === 0 ? "Run A" : "Run B";
+          return (
+            <div key={label} className="flex min-w-0 items-center gap-2" title={runStatTooltip(batch)}>
+              {i === 1 && <span className="font-mono text-[11px] text-muted-foreground/50">vs</span>}
+              <span className={cn("h-2 w-2 shrink-0 rounded-full", sideDot(batch))} aria-hidden />
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+              <span className="truncate text-[13px] font-medium text-foreground">
+                {batchLabel(batch)}{" "}
+                <span className="font-mono text-[11px] font-normal text-muted-foreground/60">
+                  #{batch.id.slice(0, 8)}
+                </span>
+              </span>
+              <span className="hidden truncate font-mono text-[11px] text-muted-foreground/70 sm:inline">
+                {runIdentity(batch)} · {formatRelativeTime(batch.created_at)}
+              </span>
+              <Link
+                href={`/project/${projectId}/runs`}
+                className="shrink-0 text-[11px] text-muted-foreground/70 hover:text-foreground"
+              >
+                Change
+              </Link>
+            </div>
+          );
+        })}
+      </div>
+
+      <VerdictSentence
+        tasks={tasks}
+        leftChecks={leftChecks}
+        rightChecks={rightChecks}
+        costA={a.cost ?? 0}
+        costB={b.cost ?? 0}
+        configDelta={configurationDelta(batchA, batchB)}
+      />
+
+      <div className="mt-3">
+        <TaskColumns leftRuns={leftRuns} rightRuns={rightRuns} projectId={projectId} />
+      </div>
+
+      <div className="mt-3 overflow-x-auto rounded-md border border-border bg-card">
+        <div className="min-w-[420px]">
+          <div className="grid grid-cols-[92px_minmax(0,1fr)_minmax(0,1fr)_64px] gap-x-3 border-b border-border px-4 py-2">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground/60">totals</div>
+            <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Run A</div>
+            <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Run B</div>
+            <div className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">Δ</div>
+          </div>
+          {(
+            [
+              {
+                label: "checks",
+                a: a.checks,
+                b: b.checks,
+                delta: checksDelta === 0 ? null : (
+                  <span className={checksDelta > 0 ? "text-success" : "text-destructive"}>
+                    {checksDelta > 0 ? "+" : ""}
+                    {checksDelta}
+                  </span>
+                ),
+              },
+              {
+                label: "tasks",
+                a: a.tasks,
+                b: b.tasks,
+                delta: tasksDelta === 0 ? null : (
+                  <span className={tasksDelta > 0 ? "text-success" : "text-destructive"}>
+                    {tasksDelta > 0 ? "+" : ""}
+                    {tasksDelta}
+                  </span>
+                ),
+              },
+              {
+                label: "duration",
+                a: a.duration != null ? formatDuration(a.duration) : "—",
+                b: b.duration != null ? formatDuration(b.duration) : "—",
+                delta: ratio(a.duration, b.duration) ?? null,
+              },
+              {
+                label: "cost",
+                a: a.cost != null ? formatCostMicro(a.cost) : "—",
+                b: b.cost != null ? formatCostMicro(b.cost) : "—",
+                delta: ratio(a.cost, b.cost) ?? null,
+              },
+              {
+                label: "tokens",
+                a: a.tokens != null ? tokenFormat(a.tokens) : "—",
+                b: b.tokens != null ? tokenFormat(b.tokens) : "—",
+                delta: ratio(a.tokens, b.tokens) ?? null,
+              },
+            ] as const
+          ).map((row) => (
+            <div
+              key={row.label}
+              className="grid grid-cols-[92px_minmax(0,1fr)_minmax(0,1fr)_64px] items-baseline gap-x-3 border-b border-border/60 px-4 py-1.5 last:border-b-0"
+            >
+              <div className="sticky left-0 bg-card text-[11px] uppercase tracking-wider text-muted-foreground/70">{row.label}</div>
+              <div className="whitespace-nowrap font-mono text-[13px] tabular-nums text-foreground">{row.a}</div>
+              <div className="whitespace-nowrap font-mono text-[13px] tabular-nums text-foreground">{row.b}</div>
+              <div className="whitespace-nowrap text-right font-mono text-[12px] tabular-nums text-muted-foreground">
+                {row.delta}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+

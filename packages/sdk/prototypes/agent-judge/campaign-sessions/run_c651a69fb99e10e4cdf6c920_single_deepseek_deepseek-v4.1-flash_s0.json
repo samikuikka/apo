@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "no_verdict",
+  "pass": false,
+  "reasoning": "UNPARSEABLE: ",
+  "steps": 1,
+  "cost_usd": 0,
+  "latency_ms": 254267,
+  "tokens": {
+    "input": 232,
+    "output": 34794
+  }
+}

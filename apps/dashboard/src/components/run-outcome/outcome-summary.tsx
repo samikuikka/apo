@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export interface OutcomeCounts {
@@ -11,10 +12,15 @@ export interface OutcomeCounts {
 
 export interface OutcomeMetadataItem {
   icon?: LucideIcon;
-  value: string;
+  /** Usually a string; may be a link (e.g. to the trace observation behind
+   * a max metric) — pass a stable `key` alongside link values. */
+  value: ReactNode;
   label?: string;
   /** Makes the value a link, e.g. to the call it summarizes. */
   href?: string;
+  /** Stable identity when `value` is a ReactNode (keying off the value
+   * itself would stringify to [object Object]). */
+  key?: string;
 }
 
 interface OutcomeSummaryProps {
@@ -123,7 +129,7 @@ export function OutcomeSummary({
         {metadata && metadata.length > 0 && (
           <div className="mt-1.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-muted-foreground">
             {metadata.map((item) => (
-              <span key={`${item.label ?? ""}-${item.value}`} className="inline-flex items-center gap-1">
+              <span key={item.key ?? `${item.label ?? ""}-${String(item.value)}`} className="inline-flex items-center gap-1">
                 {item.icon && <item.icon className="h-3 w-3 text-muted-foreground/50" />}
                 {item.href ? (
                   <Link

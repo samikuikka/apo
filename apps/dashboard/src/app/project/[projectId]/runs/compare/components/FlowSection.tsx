@@ -22,9 +22,13 @@ interface FlowSectionProps {
   expanded: Set<string>;
   onToggleExpand: (value: string, open?: boolean) => void;
   projectId: string;
+  /** PROTOTYPE (compact rows): name · task count · changed count only —
+   *  no per-folder check tallies; the numbers live in the task rows and
+   *  on the Summary tab. */
+  compact?: boolean;
   /** Optional progressive evidence loader. When provided,
-   * CompareTaskRow fetches full details lazily on expand instead of
-   * receiving them in bulk from SSR. */
+   *  CompareTaskRow fetches full details lazily on expand instead of
+   *  receiving them in bulk from SSR. */
   evidenceLoader?: TaskComparisonEvidenceLoader;
 }
 
@@ -44,6 +48,7 @@ export function FlowSection({
   expanded,
   onToggleExpand,
   projectId,
+  compact = false,
   evidenceLoader,
 }: FlowSectionProps) {
   const [forcedOpen, setForcedOpen] = useState<boolean | null>(null);
@@ -73,11 +78,14 @@ export function FlowSection({
           {tasks.length} task{tasks.length === 1 ? "" : "s"}
         </span>
         {hasChange && (
-          <span className="rounded bg-foreground/10 px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground">
-            {differsCount} differ{differsCount === 1 ? "" : "s"}
+          <span
+            className="rounded bg-foreground/10 px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground"
+            title={compact ? "tasks whose results changed between the two runs" : undefined}
+          >
+            {differsCount} {compact ? "changed" : `differ${differsCount === 1 ? "" : "s"}`}
           </span>
         )}
-        {hasChecks && (
+        {!compact && hasChecks && (
           <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
             · checks {leftChecks.passed}/{leftChecks.total}
             <span className="text-muted-foreground/40"> → </span>

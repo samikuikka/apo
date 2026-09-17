@@ -1316,8 +1316,8 @@ def _migrate_to_v3() -> None:
 def _migrate_to_v45() -> None:
     """Version 45: encrypted Slack webhook URL column on ``automations``.
 
-    The incoming-webhook URL embeds its secret token in the path, so it is
-    stored encrypted like the GitHub PAT. New DBs get the column from
+    The incoming-webhook URL embeds its secret token in the path, so it
+    is stored encrypted like the GitHub PAT. New DBs get the column from
     ``create_all``; existing DBs add it here, idempotently.
     """
     with engine.begin() as conn:
@@ -1338,6 +1338,101 @@ def _migrate_to_v46() -> None:
     """
     with engine.begin() as conn:
         _migrate_generation_usage_schema(conn)
+
+
+def _migrate_to_v47() -> None:
+    """Version 47 (issue #309): reasoning + per-call timing rollups on task runs.
+
+    Adds ``total_reasoning_tokens`` / ``max_call_reasoning_tokens`` /
+    ``max_call_reasoning_call_id`` / ``max_call_latency_ms`` /
+    ``max_call_latency_call_id`` / ``total_model_time_ms`` so a run can show
+    that a model's reasoning changed shape without opening traces call by
+    call. New DBs get the columns from ``create_all``.
+
+    Historical runs are backfilled from their logged calls (the same
+    ``compute_generation_rollups`` the trace backend runs at finalize),
+    restricted to terminal runs so a live run's rollups are never written by
+    a migration racing the runner. The backfill writes ONLY the new columns —
+    stored historical ``total_cost`` / ``total_tokens`` are never rewritten by
+    a schema migration (a run whose trace rows were purged by retention must
+    keep its recorded totals). It is resumable across crashes: the version
+    stamp is written only after a full pass, and re-entry selects runs whose
+    value rollups are still all-null, so a kill mid-backfill costs only the
+    unprocessed remainder. Runs that legitimately have no generation facts
+    stay all-null and are re-examined (cheaply, as no-ops) until the pass
+    completes. Backfill runs chunked (a commit every 100 runs) so a large
+    install doesn't hold one open transaction for the whole table, and logs
+    progress because this runs at boot.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(conn, "agent_task_runs", "total_reasoning_tokens", "INTEGER")
+        _add_column_if_missing(conn, "agent_task_runs", "max_call_reasoning_tokens", "INTEGER")
+        _add_column_if_missing(conn, "agent_task_runs", "max_call_reasoning_call_id", "VARCHAR")
+        _add_column_if_missing(conn, "agent_task_runs", "max_call_latency_ms", "FLOAT")
+        _add_column_if_missing(conn, "agent_task_runs", "max_call_latency_call_id", "VARCHAR")
+        _add_column_if_missing(conn, "agent_task_runs", "total_model_time_ms", "FLOAT")
+
+    import logging
+
+    from sqlmodel import select as sqlmodel_select
+
+    from .models.db import AgentTaskRunDB, LoggedCallDB, OtlpSpanDB
+    from .services.trace_backend import (
+        generation_execution_facts,
+        apply_generation_rollups,
+        compute_generation_rollups,
+    )
+
+    logger = logging.getLogger(__name__)
+    # Fetch (id, project) pairs only — full rows would hold every task run
+    # (and its check transcript payload) in memory at once. The all-null
+    # value gate is what makes a crash mid-backfill resumable.
+    with engine.connect() as conn:
+        run_refs = conn.exec_driver_sql(
+            "SELECT r.id, b.project FROM agent_task_runs r "
+            "JOIN agent_task_batch_runs b ON b.id = r.batch_run_id "
+            "WHERE r.trace_run_id IS NOT NULL "
+            "AND r.status NOT IN ('pending', 'running') "
+            "AND r.total_reasoning_tokens IS NULL "
+            "AND r.max_call_latency_ms IS NULL "
+            "AND r.total_model_time_ms IS NULL"
+        ).fetchall()
+    processed = 0
+    with Session(engine) as session:
+        for run_id, project in run_refs:
+            task_run = session.get(AgentTaskRunDB, run_id)
+            if task_run is None or not task_run.trace_run_id:
+                continue
+            calls = session.exec(
+                sqlmodel_select(LoggedCallDB).where(
+                    LoggedCallDB.run_id == task_run.trace_run_id,
+                    LoggedCallDB.project == project,
+                )
+            ).all()
+            spans = session.exec(
+                sqlmodel_select(OtlpSpanDB).where(
+                    OtlpSpanDB.trace_id == task_run.trace_run_id,
+                    OtlpSpanDB.project_id == project,
+                )
+            ).all()
+            _, errored_span_ids = generation_execution_facts(calls, spans)
+            apply_generation_rollups(
+                task_run, compute_generation_rollups(calls, errored_span_ids)
+            )
+            # Expunge after the write so the identity map never accumulates
+            # full rows (transcript payloads included) across the whole table.
+            session.flush()
+            session.expunge(task_run)
+            processed += 1
+            if processed % 100 == 0:
+                session.commit()
+                logger.info(
+                    "Schema v47 backfill: recomputed %d/%d task runs",
+                    processed,
+                    len(run_refs),
+                )
+        session.commit()
+    logger.info("Schema v47 backfill complete: %d task runs recomputed", processed)
 
 
 def _migrate_to_v4() -> None:
@@ -2659,7 +2754,7 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 46
+LATEST_SCHEMA_VERSION = 47
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -2708,6 +2803,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     44: _migrate_to_v44,
     45: _migrate_to_v45,
     46: _migrate_to_v46,
+    47: _migrate_to_v47,
 }
 
 

@@ -1,0 +1,10 @@
+{
+  "judge": "single_worklog",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The task asks for the average fee GlobalCard would charge for a 10 EUR transaction, given account type H and MCC 'Eating Places and Restaurants' (5812). The run's own work shows the agent computed the average across all GlobalCard rules matching account_type H (or empty wildcard) and MCC 5812 (or empty wildcard), yielding 0.123217. The agent explicitly considered multiple interpretations and settled on the wildcard interpretation. The submitted answer 0.123217 matches the computed average from the run's final calculation. The work supports the answer as the average fee for a 10 EUR transaction under the stated conditions. The answer is responsive to the question and supported by the run's computation.",
+  "steps": 1,
+  "cost_usd": 0.0011297808,
+  "latency_ms": 23020
+}

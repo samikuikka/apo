@@ -408,6 +408,104 @@ describe("CompareTaskRow collapsed checks cell", () => {
   });
 });
 
+// ─── issue #309: reasoning + model-time metric rows ────────────────────────
+
+describe("CompareTaskRow reasoning and model-time rows (issue #309)", () => {
+  it("shows reasoning and model-time rows with linked max/slowest sub-lines", async () => {
+    const evidenceLoader = vi.fn().mockResolvedValue({
+      left: {
+        id: "run-a",
+        checks_json: [],
+        trace_run_id: "trace-a",
+        total_reasoning_tokens: 10_000,
+        max_call_reasoning_tokens: 4_000,
+        max_call_reasoning_call_id: "obs-a1",
+        total_model_time_ms: 300_000,
+        max_call_latency_ms: 120_000,
+        max_call_latency_call_id: "obs-a2",
+      },
+      right: {
+        id: "run-b",
+        checks_json: [],
+        trace_run_id: "trace-b",
+        total_reasoning_tokens: 2_000,
+        max_call_reasoning_tokens: 800,
+        max_call_reasoning_call_id: "obs-b1",
+        total_model_time_ms: 90_000,
+        max_call_latency_ms: 30_000,
+        max_call_latency_call_id: "obs-b2",
+      },
+    });
+    render(
+      <CompareTaskRow
+        task={makeTask({
+          left: { run: makeRun("run-a", 1, 1) },
+          right: { run: makeRun("run-b", 0, 1) },
+        })}
+        expanded={new Set(["task-1"])}
+        onToggleExpand={noopToggle}
+        projectId="p1"
+        evidenceLoader={evidenceLoader}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
+    });
+
+    // Both new rows render with their formatted totals.
+    expect(screen.getByText("reasoning")).toBeInTheDocument();
+    expect(screen.getAllByText("10.0k tok").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2.0k tok").length).toBeGreaterThan(0);
+    expect(screen.getByText("model time")).toBeInTheDocument();
+    expect(screen.getAllByText("5m 00s").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("1m 30s").length).toBeGreaterThan(0);
+
+    // The max/slowest sub-lines deep-link to the winning observation.
+    const maxLink = screen.getAllByText("max 4.0k tok")[0].closest("a");
+    expect(maxLink?.getAttribute("href")).toBe("/project/p1/traces/trace-a?observation=obs-a1");
+    const slowestLink = screen.getAllByText("slowest 2m 00s")[0].closest("a");
+    expect(slowestLink?.getAttribute("href")).toBe("/project/p1/traces/trace-a?observation=obs-a2");
+  });
+
+  it("keeps unknown reasoning visibly distinct from a reported zero", async () => {
+    const evidenceLoader = vi.fn().mockResolvedValue({
+      left: {
+        id: "run-a",
+        checks_json: [],
+        // Side A's provider reported a measurably-zero reasoning total.
+        total_reasoning_tokens: 0,
+        max_call_reasoning_tokens: 0,
+      },
+      right: {
+        id: "run-b",
+        checks_json: [],
+        // Side B never reported the dimension — must render "—", not 0.
+      },
+    });
+    render(
+      <CompareTaskRow
+        task={makeTask({
+          left: { run: makeRun("run-a", 1, 1) },
+          right: { run: makeRun("run-b", 0, 1) },
+        })}
+        expanded={new Set(["task-1"])}
+        onToggleExpand={noopToggle}
+        projectId="p1"
+        evidenceLoader={evidenceLoader}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText("reasoning")).toBeInTheDocument();
+    expect(screen.getAllByText("0 tok").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+});
+
 // ─── issue #178: generated-title checks must show their own block ────────
 
 // The file a real table-driven eval has: unrelated literal-title checks plus
@@ -508,20 +606,27 @@ describe("CompareTaskRow check source for generated-title checks (issue #178)", 
 });
 
 describe("CompareTaskRow run-level usage rows", () => {
+  // Rollup fields on the run (issue #309 discrete columns, schema v47).
+  const rollups = (
+    modelMs: number | null,
+    slowestMs: number | null,
+    slowestId: string | null,
+    reasoning: number | null,
+    maxReasoning: number | null,
+    maxReasoningId: string | null,
+  ) => ({
+    total_model_time_ms: modelMs,
+    max_call_latency_ms: slowestMs,
+    max_call_latency_call_id: slowestId,
+    total_reasoning_tokens: reasoning,
+    max_call_reasoning_tokens: maxReasoning,
+    max_call_reasoning_call_id: maxReasoningId,
+  });
+
   it("shows model time and reasoning rows with each side's values", async () => {
-    const usage = (modelMs: number, slowestMs: number, reasoning: number | null, maxReasoning: number | null) => ({
-      generations: 21,
-      model_time_ms: modelMs,
-      slowest_call_ms: slowestMs,
-      slowest_call_id: "call",
-      reasoning_tokens: reasoning,
-      reasoning_calls: reasoning == null ? 0 : 21,
-      max_call_reasoning_tokens: maxReasoning,
-      max_reasoning_call_id: maxReasoning == null ? null : "call",
-    });
     const evidenceLoader = vi.fn().mockResolvedValue({
-      left: { id: "run-a", checks_json: [], generation_usage: usage(58_538, 7_419, 5_492, 1_054) },
-      right: { id: "run-b", checks_json: [], generation_usage: usage(142_000, 61_000, 24_100, 18_300) },
+      left: { id: "run-a", checks_json: [], ...rollups(58_538, 7_419, "call-a-slow", 5_492, 1_054, "call-a-deep") },
+      right: { id: "run-b", checks_json: [], ...rollups(142_000, 61_000, "call-b-slow", 24_100, 18_300, "call-b-deep") },
     });
 
     render(
@@ -537,38 +642,30 @@ describe("CompareTaskRow run-level usage rows", () => {
     await waitFor(() => {
       expect(screen.getByText("model time")).toBeInTheDocument();
     });
-    expect(screen.getByText("slowest call")).toBeInTheDocument();
     expect(screen.getByText("reasoning")).toBeInTheDocument();
-    expect(screen.getByText("max reasoning/call")).toBeInTheDocument();
-    expect(screen.getByText("7.42s")).toBeInTheDocument();
-    expect(screen.getByText("1m 01s")).toBeInTheDocument();
-    expect(screen.getByText("1.1k tok")).toBeInTheDocument();
-    expect(screen.getByText("18.3k tok")).toBeInTheDocument();
+    expect(screen.getByText("58.54s")).toBeInTheDocument();
+    expect(screen.getByText("2m 22s")).toBeInTheDocument();
+    expect(screen.getByText("5.5k tok")).toBeInTheDocument();
+    expect(screen.getByText("24.1k tok")).toBeInTheDocument();
+    // The extremes ride as linked sub-lines, not separate rows.
+    expect(screen.getByText("slowest 7.42s")).toBeInTheDocument();
+    expect(screen.getByText("slowest 1m 01s")).toBeInTheDocument();
+    expect(screen.queryByText("max reasoning/call")).not.toBeInTheDocument();
   });
 
-  it("links the extreme rows to the call that set them", async () => {
-    const usage = (slowestId: string, maxId: string) => ({
-      generations: 2,
-      model_time_ms: 9_000,
-      slowest_call_ms: 7_000,
-      slowest_call_id: slowestId,
-      reasoning_tokens: 900,
-      reasoning_calls: 2,
-      max_call_reasoning_tokens: 600,
-      max_reasoning_call_id: maxId,
-    });
+  it("links the extreme sub-lines to the call that set them", async () => {
     const evidenceLoader = vi.fn().mockResolvedValue({
       left: {
         id: "run-a",
         trace_run_id: "trace-a",
         checks_json: [],
-        generation_usage: usage("span-left-slow", "span-left-deep"),
+        ...rollups(9_000, 7_000, "span-left-slow", 900, 600, "span-left-deep"),
       },
       right: {
         id: "run-b",
         trace_run_id: "trace-b",
         checks_json: [],
-        generation_usage: usage("span-right-slow", "span-right-deep"),
+        ...rollups(9_000, 7_000, "span-right-slow", 900, 600, "span-right-deep"),
       },
     });
 
@@ -582,10 +679,10 @@ describe("CompareTaskRow run-level usage rows", () => {
       />,
     );
 
-    // Each side's extreme rows deep-link to the observation behind the max
-    // via the trace view's selection param (issue #309).
+    // Each side's extreme sub-lines deep-link to the observation behind the
+    // max via the trace view's selection param (issue #309).
     await waitFor(() => {
-      expect(screen.getByText("slowest call")).toBeInTheDocument();
+      expect(screen.getByText("model time")).toBeInTheDocument();
     });
     const hrefs = screen
       .getAllByRole("link")
@@ -597,19 +694,9 @@ describe("CompareTaskRow run-level usage rows", () => {
   });
 
   it("leaves the reasoning rows out when neither side reported reasoning", async () => {
-    const usage = {
-      generations: 2,
-      model_time_ms: 3_000,
-      slowest_call_ms: 2_000,
-      slowest_call_id: "call",
-      reasoning_tokens: null,
-      reasoning_calls: 0,
-      max_call_reasoning_tokens: null,
-      max_reasoning_call_id: null,
-    };
     const evidenceLoader = vi.fn().mockResolvedValue({
-      left: { id: "run-a", checks_json: [], generation_usage: usage },
-      right: { id: "run-b", checks_json: [], generation_usage: usage },
+      left: { id: "run-a", checks_json: [], ...rollups(3_000, 2_000, "call", null, null, null) },
+      right: { id: "run-b", checks_json: [], ...rollups(3_000, 2_000, "call", null, null, null) },
     });
 
     render(
@@ -626,6 +713,5 @@ describe("CompareTaskRow run-level usage rows", () => {
       expect(screen.getByText("model time")).toBeInTheDocument();
     });
     expect(screen.queryByText("reasoning")).not.toBeInTheDocument();
-    expect(screen.queryByText("max reasoning/call")).not.toBeInTheDocument();
   });
 });

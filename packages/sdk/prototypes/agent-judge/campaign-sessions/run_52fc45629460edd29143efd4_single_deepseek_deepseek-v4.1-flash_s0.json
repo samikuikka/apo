@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The submitted value is a list of fee IDs, which directly matches the requested output for the condition account_type = R and aci = B. There is no evidence that it computes a different slice or variant of the question. The format and content are consistent with a filtered query result for the asked columns.",
+  "steps": 1,
+  "cost_usd": 0.0030222,
+  "latency_ms": 18040,
+  "tokens": {
+    "input": 366,
+    "output": 2427
+  }
+}

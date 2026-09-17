@@ -315,6 +315,16 @@ def _load_batches(
                 transcript_json=run_spec.get("transcript_json"),
                 total_cost=run_spec.get("total_cost"),
                 total_tokens=run_spec.get("total_tokens"),
+                # Issue #309 rollups: optional in the fixture document; runs
+                # without an otel_trace replay never get them recomputed, so
+                # the document is the only source. Absent keys stay None
+                # (unknown), never zero.
+                total_reasoning_tokens=run_spec.get("total_reasoning_tokens"),
+                max_call_reasoning_tokens=run_spec.get("max_call_reasoning_tokens"),
+                max_call_reasoning_call_id=run_spec.get("max_call_reasoning_call_id"),
+                max_call_latency_ms=run_spec.get("max_call_latency_ms"),
+                max_call_latency_call_id=run_spec.get("max_call_latency_call_id"),
+                total_model_time_ms=run_spec.get("total_model_time_ms"),
                 configured_model=run_spec.get("configured_model"),
                 configured_effort=run_spec.get("configured_effort"),
                 task_definition_revision_id=revisions.get(str(run_spec["task_id"])),
@@ -572,6 +582,34 @@ def _replay_traces(
         _roll_up_counts(session, batch)
         for run in runs:
             run.trace_persistence_status = "persisted"
+            # Replay leaves the usage/timing rollups null (the fixture's
+            # pre-#309 payloads predate them). Compute ONLY the rollups from
+            # the projected calls so demo task runs match live-run surfaces;
+            # the documented cost/token totals stay as authored.
+            if run.trace_run_id:
+                from ..models.db import LoggedCallDB, OtlpSpanDB
+                from .trace_backend import (
+                    apply_generation_rollups,
+                    compute_generation_rollups,
+                    generation_execution_facts,
+                )
+
+                calls = session.exec(
+                    select(LoggedCallDB).where(
+                        LoggedCallDB.run_id == run.trace_run_id,
+                        LoggedCallDB.project == DEMO_PROJECT_ID,
+                    )
+                ).all()
+                spans = session.exec(
+                    select(OtlpSpanDB).where(
+                        OtlpSpanDB.trace_id == run.trace_run_id,
+                        OtlpSpanDB.project_id == DEMO_PROJECT_ID,
+                    )
+                ).all()
+                _, errored_span_ids = generation_execution_facts(calls, spans)
+                apply_generation_rollups(
+                    run, compute_generation_rollups(calls, errored_span_ids)
+                )
             session.add(run)
         batch.trace_persistence_status = "persisted"
         session.add(batch)

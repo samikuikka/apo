@@ -217,12 +217,22 @@ def create_batch_run(
                 error_message=random.choice(ERROR_MESSAGES),
                 total_cost=round(random.uniform(0.001, 0.02), 4),
                 total_tokens=random.randint(100, 500),
+                # Issue #309 rollups: error runs get timing but no usage
+                # facts worth inventing, so reasoning stays unknown (null).
+                max_call_latency_ms=float(random.randint(2_000, 9_000)),
+                total_model_time_ms=float(random.randint(5_000, 20_000)),
             )
         else:
             passed = outcome == "passed"
             checks = make_checks(task["id"], passed)
             cost = round(random.uniform(0.01, 0.15), 4)
             tokens = random.randint(1500, 12000)
+            # Reasoning-heavy demo facts (issue #309): a thinking model's
+            # totals, one deep call, and model time well under wall duration.
+            reasoning = random.randint(0, tokens // 3) if passed else random.randint(tokens // 3, tokens)
+            max_reasoning = random.randint(reasoning // 2 or 0, reasoning) if reasoning else 0
+            max_latency = float(random.randint(4_000, 45_000))
+            model_time = float(random.randint(15_000, 120_000))
 
             run = AgentTaskRunDB(
                 id=uid(),
@@ -237,6 +247,12 @@ def create_batch_run(
                 transcript_json=make_transcript(task["id"], passed),
                 total_cost=cost,
                 total_tokens=tokens,
+                total_reasoning_tokens=reasoning,
+                max_call_reasoning_tokens=max_reasoning,
+                max_call_reasoning_call_id=uid(),
+                max_call_latency_ms=max_latency,
+                max_call_latency_call_id=uid(),
+                total_model_time_ms=model_time,
             )
         session.add(run)
         # seed the scalar verdict + the off-row check report so the

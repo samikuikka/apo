@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": false,
+  "reasoning": "The submitted final answer is empty and marked as not submitted. There is no value provided to evaluate against the task question, and no evidence in the run's work that an answer was computed. Therefore the run fails to respond to the task.",
+  "steps": 1,
+  "cost_usd": 0.0000425808,
+  "latency_ms": 9502,
+  "tokens": {
+    "input": 243,
+    "output": 59
+  }
+}

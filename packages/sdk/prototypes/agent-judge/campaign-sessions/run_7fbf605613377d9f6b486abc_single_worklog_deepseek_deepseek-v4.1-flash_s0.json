@@ -1,0 +1,10 @@
+{
+  "judge": "single_worklog",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": false,
+  "reasoning": "The task asks for the average fee GlobalCard would charge for a 10 EUR transaction given only account type H and the MCC 'Eating Places and Restaurants'. The submitted answer 0.071000 matches a single fee rule (ID 456: immediate capture, credit, ACI F, international, no other conditions): fee = 0.03 + 41*10/10000 = 0.071. However, the run's own work shows that this rule was selected after filtering on additional conditions not specified in the question (credit, ACI F, international, immediate capture, and excluding rules with monthly volume/fraud conditions). The question does not mention these extra attributes, so the correct average should likely be computed over all fee rules matching GlobalCard, account type H/empty, and MCC 5812/empty, regardless of other conditions. The final answer is therefore a plausible but different slice of the problem, not the requested average across the specified criteria.",
+  "steps": 1,
+  "cost_usd": 0.0091992,
+  "latency_ms": 66916
+}

@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "google/gemini-2.5-flash-lite",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The user is asking for the top country (ip_country) for fraud. The provided answer is 'A. NL'. The tool log shows a query that counts the occurrences of 'ip_country' where 'is_fraud' is true, and then orders them by count in descending order, limiting the result to 1. The top result is 'NL' with a count of 100. This directly answers the question.",
+  "steps": 1,
+  "cost_usd": 0.000062,
+  "latency_ms": 7371,
+  "tokens": {
+    "input": 200,
+    "output": 105
+  }
+}

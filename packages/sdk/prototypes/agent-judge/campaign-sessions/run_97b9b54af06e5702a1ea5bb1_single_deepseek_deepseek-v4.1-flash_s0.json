@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The task asks a yes/no question: whether Martinis_Fine_Steakhouse is in danger of a high-fraud-rate fine. The submitted final answer is 'yes', which directly answers the question. In the DABstep context for this task, the merchant's fraud rate exceeds the relevant threshold, so 'yes' is the expected answer. There is no indication that the run computed a different quantity or answered an unrelated variant.",
+  "steps": 1,
+  "cost_usd": 0.0093888,
+  "latency_ms": 121802,
+  "tokens": {
+    "input": 240,
+    "output": 7764
+  }
+}

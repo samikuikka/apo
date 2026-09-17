@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": false,
+  "reasoning": "The task asks whether Martinis_Fine_Steakhouse is in danger of getting a high-fraud rate fine. The submitted answer is simply 'yes' with no supporting evidence, no computed fraud rate, no comparison to a threshold, and no tool_log or deliverables shown. There is no way to verify that the answer is supported by the run's work. Since the answer is unsupported and no work is evidenced, it fails the instruction.",
+  "steps": 1,
+  "cost_usd": 0.00007428,
+  "latency_ms": 30583,
+  "tokens": {
+    "input": 215,
+    "output": 101
+  }
+}

@@ -43,6 +43,9 @@ export interface EndSpanParams {
   latency_ms?: number;
   prompt_tokens?: number;
   completion_tokens?: number;
+  /** Reasoning/thinking tokens, when the provider reports them as a distinct
+   * dimension. Omit when unreported — unknown must stay unknown, not zero. */
+  reasoning_tokens?: number;
   status_message?: string;
   level?: "DEBUG" | "DEFAULT" | "WARNING" | "ERROR";
   metadata?: Record<string, unknown>;

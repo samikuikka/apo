@@ -5,6 +5,7 @@ import type { CheckResult, TaskFileContentResponse } from "@/lib/agent-task-api"
 import { CheckGroupHeader } from "./check-group-header";
 import { ExpandableCheckItem } from "./expandable-check-item";
 import { groupChecksByDescribe, groupVerdict, groupCost } from "./group-by-describe";
+import { secondJudgeFacts } from "@/lib/second-judge";
 
 // Renders the checks panel, nesting checks declared inside a `describe()`
 // under a collapsible {@link CheckGroupHeader} with a roll-up verdict. Bare
@@ -65,6 +66,9 @@ export function ChecksList({
         }
         const { passed, total } = groupVerdict(segment.checks);
         const cost = groupCost(segment.checks);
+        const splitCount = segment.checks.filter(
+          (c) => secondJudgeFacts(c).kind === "split",
+        ).length;
         const isOpen = !collapsedGroups.has(segment.groupId);
         return (
           <div
@@ -78,6 +82,7 @@ export function ChecksList({
               cost={cost}
               open={isOpen}
               onToggle={() => toggleGroup(segment.groupId)}
+              splitCount={splitCount}
             />
             {isOpen && (
               <div className="ml-4 border-l border-border/50">

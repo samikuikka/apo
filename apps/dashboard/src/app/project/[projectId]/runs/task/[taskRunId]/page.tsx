@@ -6,12 +6,15 @@ import { Suspense, cache } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  Brain,
   ChevronRight,
   Clock,
   DollarSign,
+  Gauge,
   Layers3,
   ListChecks,
   PenLine,
+  Timer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { taskDetailHref } from "@/lib/task-routes";
@@ -20,8 +23,8 @@ import { TriggerInline } from "@/components/trigger-badge";
 import { DeleteRunButton } from "@/components/runs/DeleteRunButton";
 import { TaskRunDetailBody } from "./task-run-detail-body";
 import { TaskRunAutoRefresh } from "@/components/agent-task-execution/task-run-auto-refresh";
-import { OutcomeSummary, generationUsageMetadata } from "@/components/run-outcome";
-import { formatTokenTotal, formatCostMicro } from "@/lib/format";
+import { OutcomeSummary } from "@/components/run-outcome";
+import { formatInterval, formatTokenTotal, formatCostMicro } from "@/lib/format";
 import { getProject } from "@/lib/projects-api";
 import GenerationExecutionNotice from "@/components/generation-execution-notice";
 import { RunJudgmentsSection } from "./run-judgments-section";
@@ -69,6 +72,28 @@ function formatDuration(start: string | null, end: string | null) {
   const mins = Math.floor(ms / 60000);
   const secs = Math.round((ms % 60000) / 1000);
   return `${mins}m ${secs}s`;
+}
+
+/** Chip value that deep-links into the trace observation behind a max
+ * metric (issue #309) — "slowest call" / "max reasoning" jump straight to
+ * the winning span. Plain text when the run has no trace to link into. */
+function observationValue(
+  projectId: string,
+  traceRunId: string | null,
+  callId: string | null | undefined,
+  text: string,
+  title: string | undefined,
+) {
+  if (!traceRunId || !callId) return text;
+  return (
+    <Link
+      href={`/project/${projectId}/traces/${traceRunId}?observation=${callId}`}
+      title={title}
+      className="underline-offset-2 hover:underline"
+    >
+      {text}
+    </Link>
+  );
 }
 
 const STATUS_DOT: Record<string, { dot: string; text: string }> = {
@@ -307,10 +332,49 @@ export default async function TaskRunDetailPage({
                   ? `${formatTokenTotal(taskRun.total_tokens)}${generationErrors > 0 ? " partial" : ""}`
                   : "cost",
               },
-              ...generationUsageMetadata(
-                taskRun.generation_usage,
-                taskRun.trace_run_id ? `/project/${projectId}/traces/${taskRun.trace_run_id}` : null,
-              ),
+              // Reasoning rollup (issue #309): unknown renders as unknown —
+              // a provider that never sent the reasoning dimension must not
+              // read as "the model didn't think". Linked to the deepest call.
+              ...(taskRun.total_reasoning_tokens != null
+                ? [{
+                    icon: Brain,
+                    key: "reasoning",
+                    value: observationValue(
+                      projectId,
+                      taskRun.trace_run_id,
+                      taskRun.max_call_reasoning_call_id,
+                      formatTokenTotal(taskRun.total_reasoning_tokens),
+                      taskRun.max_call_reasoning_tokens != null
+                        ? `max ${formatTokenTotal(taskRun.max_call_reasoning_tokens)} in a single call`
+                        : undefined,
+                    ),
+                    label: "reasoning",
+                  }]
+                : (taskRun.total_tokens ?? 0) > 0
+                  ? [{ icon: Brain, key: "reasoning", value: "not reported", label: "reasoning" }]
+                  : []),
+              ...(taskRun.max_call_latency_ms != null
+                ? [{
+                    icon: Timer,
+                    key: "slowest-call",
+                    value: observationValue(
+                      projectId,
+                      taskRun.trace_run_id,
+                      taskRun.max_call_latency_call_id,
+                      formatInterval(taskRun.max_call_latency_ms),
+                      "The slowest single model call",
+                    ),
+                    label: "slowest call",
+                  }]
+                : []),
+              ...(taskRun.total_model_time_ms != null
+                ? [{
+                    icon: Gauge,
+                    key: "model-time",
+                    value: formatInterval(taskRun.total_model_time_ms),
+                    label: "model time",
+                  }]
+                : []),
               ...(taskRun.adapter_name
                 ? [{ value: taskRun.adapter_name, label: "adapter" }]
                 : []),

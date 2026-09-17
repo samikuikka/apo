@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "google/gemini-2.5-flash-lite",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The user asked for the average fee charged by GlobalCard for a transaction of 10 EUR for account type H and MCC Eating Places and Restaurants. The provided answer is 0.071000 EUR. The tool log shows a query for 'average fee for GlobalCard, account type H, MCC Eating Places and Restaurants, transaction value 10 EUR'. The result of this query is 0.071000 EUR. Therefore, the submitted answer directly matches the requested information and the tool's output.",
+  "steps": 1,
+  "cost_usd": 0.000073,
+  "latency_ms": 803,
+  "tokens": {
+    "input": 226,
+    "output": 126
+  }
+}

@@ -540,7 +540,7 @@ class TestTraceProjectorTaskRunCostRefresh:
             span_id="call-cost-1",
             parent_span_id="root-cost-1",
             name="agent-llm-call",
-            attributes={"apo.observation.cost.amount": 0.2568},
+            attributes={"apo.observation.cost.amount": 0.2568, "apo.observation.type": "GENERATION"},
         )
 
         projector = TraceProjector()
@@ -570,13 +570,13 @@ class TestTraceProjectorTaskRunCostRefresh:
             trace_id="trace-cost-2",
             span_id="call-2a",
             parent_span_id="root-cost-2",
-            attributes={"apo.observation.cost.amount": 0.2000},
+            attributes={"apo.observation.cost.amount": 0.2000, "apo.observation.type": "GENERATION"},
         )
         call_b = _make_canonical_span(
             trace_id="trace-cost-2",
             span_id="call-2b",
             parent_span_id="root-cost-2",
-            attributes={"apo.observation.cost.amount": 0.0500},
+            attributes={"apo.observation.cost.amount": 0.0500, "apo.observation.type": "GENERATION"},
         )
 
         projector = TraceProjector()
@@ -597,7 +597,7 @@ class TestTraceProjectorTaskRunCostRefresh:
         span = _make_canonical_span(
             trace_id="trace-unlinked-41",
             span_id="span-unlinked-41",
-            attributes={"apo.observation.cost.amount": 0.01},
+            attributes={"apo.observation.cost.amount": 0.01, "apo.observation.type": "GENERATION"},
         )
         projector = TraceProjector()
         with Session(engine) as session:

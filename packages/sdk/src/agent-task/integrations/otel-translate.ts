@@ -65,6 +65,8 @@ export interface TranslatedSpan {
   text?: string;
   promptTokens?: number;
   completionTokens?: number;
+  /** Reasoning/thinking tokens, when the provider reports the dimension. */
+  reasoningTokens?: number;
   error?: boolean;
   errorMessage?: string;
 }

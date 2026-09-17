@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "google/gemini-2.5-flash-lite",
+  "outcome": "verdict",
+  "pass": false,
+  "reasoning": "The user is asking for applicable fee IDs for a specific store in a specific month. The submitted answer indicates that no answer was submitted and the value is empty. This means the agent did not find any applicable fee IDs or failed to retrieve them. Since the task requires a specific output, and no output was provided, the agent has failed to complete the task.",
+  "steps": 1,
+  "cost_usd": 0.0000521,
+  "latency_ms": 2899,
+  "tokens": {
+    "input": 193,
+    "output": 82
+  }
+}

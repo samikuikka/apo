@@ -707,6 +707,17 @@ class AgentTaskRunSummary(SQLModel):
     generation_usage: GenerationUsageSummary | None = None
     # Total tokens (prompt + completion) across all calls in the run.
     total_tokens: int | None = None
+    # Reasoning + per-call timing rollups (issue #309). Null reasoning means
+    # no call in the trace reported the ``reasoning`` usage dimension —
+    # unknown, not zero. The ``*_call_id`` soft references point at the
+    # winning call's span so surfaces can deep-link into the trace.
+    total_reasoning_tokens: int | None = None
+    max_call_reasoning_tokens: int | None = None
+    max_call_reasoning_call_id: str | None = None
+    max_call_latency_ms: float | None = None
+    max_call_latency_call_id: str | None = None
+    # Sum of call latencies — model time only; tool/harness time excluded.
+    total_model_time_ms: float | None = None
     total_checks: int = 0
     passed_checks: int = 0
     failed_checks: int = 0
@@ -743,6 +754,13 @@ class AgentTaskRunDetail(SQLModel):
     generation_execution: GenerationExecutionSummary | None = None
     generation_usage: GenerationUsageSummary | None = None
     total_tokens: int | None = None
+    # Issue #309 reasoning + timing rollups; see AgentTaskRunSummary.
+    total_reasoning_tokens: int | None = None
+    max_call_reasoning_tokens: int | None = None
+    max_call_reasoning_call_id: str | None = None
+    max_call_latency_ms: float | None = None
+    max_call_latency_call_id: str | None = None
+    total_model_time_ms: float | None = None
     total_checks: int = 0
     passed_checks: int = 0
     failed_checks: int = 0

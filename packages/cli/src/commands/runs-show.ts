@@ -1,6 +1,6 @@
 import { parseArgs, getFlagValue } from "../lib/args.ts";
 import { resolveConfig } from "../lib/config.ts";
-import { bold, dim, formatCost, formatJson, formatMs, formatTime, passFail, yellow } from "../lib/format.ts";
+import { bold, dim, formatCost, formatJson, formatTime, passFail, yellow } from "../lib/format.ts";
 import { apiGet } from "../lib/api.ts";
 import type { CheckResult, DeliverableSummary } from "../lib/agent-task-types.ts";
 import { formatChecks, NO_CHECKS_REGISTERED_MESSAGE, secondJudgeSummary } from "../lib/checks-format.ts";
@@ -25,6 +25,14 @@ type RunDetail = {
   generation_execution?: GenerationExecution | null;
   generation_usage?: GenerationUsage | null;
   total_tokens: number | null;
+  /** Issue #309: reasoning + per-call timing rollups. Null reasoning = no
+   * call reported the reasoning usage dimension (unknown, not zero). */
+  total_reasoning_tokens?: number | null;
+  max_call_reasoning_tokens?: number | null;
+  max_call_reasoning_call_id?: string | null;
+  max_call_latency_ms?: number | null;
+  max_call_latency_call_id?: string | null;
+  total_model_time_ms?: number | null;
   total_checks: number;
   passed_checks: number;
   failed_checks: number;
@@ -199,7 +207,29 @@ function printRunDetail(run: RunDetail, verbose: boolean): void {
       `  Tokens:   ${run.total_tokens.toLocaleString()}${formatErroredGenerationSuffix(run.generation_execution)}`,
     );
   }
-  for (const line of formatGenerationUsage(run.generation_usage)) console.log(line);
+  if (run.total_reasoning_tokens != null) {
+    const maxPart =
+      run.max_call_reasoning_tokens != null
+        ? dim(` · max ${run.max_call_reasoning_tokens.toLocaleString()} in one call${callSuffix(run.max_call_reasoning_call_id)}`)
+        : "";
+    console.log(
+      `  Reasoning: ${run.total_reasoning_tokens.toLocaleString()} tok${maxPart}${formatErroredGenerationSuffix(run.generation_execution)}`,
+    );
+  } else if (run.total_tokens != null && run.total_tokens > 0) {
+    // Unknown, not zero: the provider never reported the reasoning
+    // dimension, which reads differently from "the model didn't think".
+    console.log(dim("  Reasoning: not reported (provider did not send reasoning usage)"));
+  }
+  if (run.max_call_latency_ms != null) {
+    console.log(
+      `  Slowest call: ${formatMs(run.max_call_latency_ms)}${callSuffix(run.max_call_latency_call_id)}`,
+    );
+  }
+  if (run.total_model_time_ms != null) {
+    console.log(
+      `  Model time: ${formatMs(run.total_model_time_ms)} ${dim("(sum of call latencies — excludes tool/harness time)")}`,
+    );
+  }
   if (run.trace_run_id) {
     console.log(`  Trace:    ${run.trace_run_id} ${dim("(apo traces show " + run.trace_run_id + ")")}`);
   }
@@ -277,12 +307,24 @@ function formatHeartbeatLine(run: RunDetail): string | null {
 }
 
 function formatAge(ms: number): string {
+  return formatMs(Math.max(0, ms));
+}
+
+/** Milliseconds as a compact duration — `45s`, `4m 12s`, `1h 03m`. */
+function formatMs(ms: number): string {
   const seconds = Math.max(0, Math.round(ms / 1000));
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   if (minutes < 60) return rest > 0 ? `${minutes}m ${rest}s` : `${minutes}m`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/** Dimmed pointer to the observation behind a max metric, so the winning
+ * call can be found in the trace without a dashboard. */
+function callSuffix(callId: string | null | undefined): string {
+  if (!callId) return "";
+  return dim(` (observation ${callId})`);
 }
 
 function printTranscript(transcript: Record<string, unknown>): void {  const turns = transcript.turns ?? transcript.messages ?? transcript;
@@ -341,32 +383,6 @@ function formatErroredGenerationSuffix(execution?: GenerationExecution | null): 
   return dim(
     ` (partial — ${execution.errored} errored generation${execution.errored === 1 ? "" : "s"})`,
   );
-}
-
-/** Model time and reasoning, with the one call that dominates each. */
-function formatGenerationUsage(usage?: GenerationUsage | null): string[] {
-  if (!usage) return [];
-  const lines: string[] = [];
-  const plural = (n: number, word: string): string => `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
-  if (usage.model_time_ms != null) {
-    const slowest =
-      usage.slowest_call_ms != null
-        ? ` · slowest ${formatMs(usage.slowest_call_ms)}${usage.slowest_call_id ? dim(` (${usage.slowest_call_id})`) : ""}`
-        : "";
-    lines.push(`  Model time: ${formatMs(usage.model_time_ms)} over ${plural(usage.generations, "generation")}${slowest}`);
-  }
-  if (usage.reasoning_tokens != null) {
-    const largest =
-      usage.max_call_reasoning_tokens != null
-        ? ` · largest call ${usage.max_call_reasoning_tokens.toLocaleString()}${usage.max_reasoning_call_id ? dim(` (${usage.max_reasoning_call_id})`) : ""}`
-        : "";
-    const partial =
-      usage.reasoning_calls < usage.generations
-        ? dim(` (partial — ${usage.reasoning_calls} of ${plural(usage.generations, "generation")} reported reasoning)`)
-        : "";
-    lines.push(`  Reasoning: ${plural(usage.reasoning_tokens, "token")}${largest}${partial}`);
-  }
-  return lines;
 }
 
 function formatFinishReasons(execution: GenerationExecution): string {

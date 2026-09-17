@@ -219,14 +219,26 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   }
 
   // Set the AI SDK's response.text span attribute so the trace shows the
-  // agent's actual response as the generation's output.
+  // agent's actual response as the generation's output. The same active
+  // span also carries the reasoning usage the model reported: the AI SDK's
+  // generateText telemetry path drops reasoning tokens (only streamText
+  // emits them), and without the stamp apo's reasoning rollups (issue #309)
+  // would correctly read the run as "not reported".
   if (telemetryEnabled && responseText) {
     try {
       // @ts-ignore — @opentelemetry/api is a transitive dep of `ai`;
       // resolves in some environments but not others.
       const { trace } = await import("@opentelemetry/api");
       const activeSpan = trace.getActiveSpan();
-      if (activeSpan) activeSpan.setAttribute("ai.response.text", responseText);
+      if (activeSpan) {
+        activeSpan.setAttribute("ai.response.text", responseText);
+        const reasoningTokens =
+          result.usage?.outputTokenDetails?.reasoningTokens ??
+          result.usage?.reasoningTokens;
+        if (typeof reasoningTokens === "number") {
+          activeSpan.setAttribute("ai.usage.reasoningTokens", reasoningTokens);
+        }
+      }
     } catch {
       // opentelemetry/api not available — tracing is optional
     }

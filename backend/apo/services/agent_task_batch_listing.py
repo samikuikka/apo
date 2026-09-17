@@ -251,6 +251,12 @@ def _hydrate_batch_summaries(
     cost_by_batch: dict[str, float] = {}
     tokens_by_batch: dict[str, int] = {}
     unpriced_by_batch: dict[str, int] = {}
+    reasoning_by_batch: dict[str, int] = {}
+    model_time_by_batch: dict[str, float] = {}
+    # Batches with at least one child that reported the reasoning dimension —
+    # a batch where every child is unknown stays unknown (None), not 0.
+    reasoning_known_by_batch: set[str] = set()
+    timed_known_by_batch: set[str] = set()
     for tr in all_task_runs:
         cost_by_batch[tr.batch_run_id] = cost_by_batch.get(tr.batch_run_id, 0.0) + (
             tr.total_cost or 0.0
@@ -261,6 +267,18 @@ def _hydrate_batch_summaries(
         unpriced_by_batch[tr.batch_run_id] = unpriced_by_batch.get(tr.batch_run_id, 0) + (
             tr.unpriced_call_count or 0
         )
+        if tr.total_reasoning_tokens is not None:
+            reasoning_known_by_batch.add(tr.batch_run_id)
+            reasoning_by_batch[tr.batch_run_id] = (
+                reasoning_by_batch.get(tr.batch_run_id, 0)
+                + tr.total_reasoning_tokens
+            )
+        if tr.total_model_time_ms is not None:
+            timed_known_by_batch.add(tr.batch_run_id)
+            model_time_by_batch[tr.batch_run_id] = (
+                model_time_by_batch.get(tr.batch_run_id, 0.0)
+                + tr.total_model_time_ms
+            )
     configuration_by_batch = group_batch_configuration_summaries(all_task_runs)
     task_ids_by_batch = {
         bid: child_task_ids([tr for tr in all_task_runs if tr.batch_run_id == bid])
@@ -275,6 +293,16 @@ def _hydrate_batch_summaries(
             unpriced_call_count=unpriced_by_batch.get(br.id, 0),
             configuration=configuration_by_batch.get(br.id),
             derived_task_ids=task_ids_by_batch.get(br.id, ()),
+            total_reasoning_tokens=(
+                reasoning_by_batch.get(br.id)
+                if br.id in reasoning_known_by_batch
+                else None
+            ),
+            total_model_time_ms=(
+                model_time_by_batch.get(br.id)
+                if br.id in timed_known_by_batch
+                else None
+            ),
         )
         for br in batches
     ]

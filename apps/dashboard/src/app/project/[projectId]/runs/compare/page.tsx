@@ -52,6 +52,8 @@ export default async function ComparePage({
           inventory={inventory}
           leftRuns={batchA?.task_runs ?? ([] as AgentTaskRunSummary[])}
           rightRuns={batchB?.task_runs ?? ([] as AgentTaskRunSummary[])}
+          showAggregate={query.aggregate === "1"}
+          tab={query.tab === "summary" ? "summary" : "tasks"}
         />
       </Suspense>
     </main>

@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": false,
+  "reasoning": "The run under judgment did not submit any final answer (submitted=false, value=\"\"). Since the task asks for specific Fee IDs for Belles_cookbook_store on the 10th day of 2023, an empty/missing answer does not respond to the question. Therefore the run fails.",
+  "steps": 1,
+  "cost_usd": 0.0001824,
+  "latency_ms": 2757,
+  "tokens": {
+    "input": 224,
+    "output": 248
+  }
+}

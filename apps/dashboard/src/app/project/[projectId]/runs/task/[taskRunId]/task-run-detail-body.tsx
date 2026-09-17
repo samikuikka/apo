@@ -7,6 +7,7 @@ import { DeliverablesPanel } from "@/components/agent-task-execution/deliverable
 import type { DeliverableSummary } from "@/lib/agent-task-deliverables-api";
 import type { CheckResult, TaskDefinitionRevisionSummary } from "@/lib/agent-task-api";
 import { ChecksList } from "./checks-list";
+import { secondJudgeSummary } from "@/lib/second-judge";
 import { DeliverablesView } from "./deliverables-view";
 import { useLazyConversation } from "./use-lazy-conversation";
 import { useCheckSource } from "./use-check-source";
@@ -99,6 +100,21 @@ export function TaskRunDetailBody({
                       {failedCount} failed
                     </span>
                   )}
+                  {(() => {
+                    // Fact line — only when a second judge ran on any check.
+                    const sj = secondJudgeSummary(checks);
+                    const judged = sj.corroborated + sj.split + sj.unsure;
+                    if (judged === 0) return null;
+                    return (
+                      <span className="text-muted-foreground">
+                        Second judge: <span className="text-foreground">{sj.corroborated}</span> corroborated
+                        {sj.split > 0 && (
+                          <span className="text-warning"> · judges split on {sj.split}</span>
+                        )}
+                        {sj.unsure > 0 && <> · {sj.unsure} unsure</>}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <span className="text-muted-foreground/60">Click to expand</span>
               </div>

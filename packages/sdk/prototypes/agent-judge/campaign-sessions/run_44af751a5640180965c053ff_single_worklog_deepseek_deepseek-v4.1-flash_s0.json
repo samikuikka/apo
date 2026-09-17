@@ -1,0 +1,10 @@
+{
+  "judge": "single_worklog",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The submitted answer is the result of a calculation that filters GlobalCard fee rules by account type H (including wildcard rules) and MCC 5812 (Eating Places and Restaurants, including wildcard rules), computes the fee for a 10 EUR transaction for each applicable rule, and averages them. This directly addresses the question's request for the average fee for that account type and MCC for a 10 EUR transaction. The work shown supports this calculation, and the answer is formatted to 6 decimals as required. While there is ambiguity about including wildcard rules and whether a transaction-weighted average is expected, the run's own work explicitly chose to include wildcard rules and computed the average over rules, which is a reasonable interpretation of the question as phrased.",
+  "steps": 1,
+  "cost_usd": 0.0206736,
+  "latency_ms": 154470
+}

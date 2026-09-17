@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { ChevronRight, ExternalLink } from "lucide-react";
 
@@ -18,7 +17,7 @@ import {
 import { loadCheckSource, type DefinitionRef } from "@/lib/load-check-source";
 import type { TaskComparisonEvidenceLoader } from "@/lib/agent-task-view-api";
 import { cn } from "@/lib/utils";
-import { formatDuration, formatInterval, runDurationMs, formatCostMicro, formatTokenTotal } from "@/lib/format";
+import { formatDuration, formatInterval, runDurationMs, formatCostMicro, formatTokenTotal, tokenFormat } from "@/lib/format";
 import { extractJudgeReasoning } from "@/lib/judge-reasoning";
 import { resolveCheckBlock } from "@/lib/extract-check-block";
 import { locateAssertionsInBlock } from "@/lib/locate-assertion";
@@ -302,6 +301,51 @@ function shortModel(model: string): string {
  *  Bars are neutral (no winner coloring): a slower run might be doing more
  *  work, so "slower = bad" would moralize wrongly. Length carries the signal;
  *  color stays out of it. */
+/** Deep link into the trace observation behind a max metric (issue #309).
+ *  Null when the run has no trace or no winning call to point at. */
+function observationHref(
+  projectId: string,
+  run: AgentTaskRunSummary | null | undefined,
+  callId: string | null | undefined,
+): string | null {
+  if (!run?.trace_run_id || !callId) return null;
+  return `/project/${projectId}/traces/${run.trace_run_id}?observation=${callId}`;
+}
+
+/** Sub-line for the reasoning row: the deepest single call, linked. */
+function maxReasoningSub(
+  projectId: string,
+  run: AgentTaskRunSummary | null | undefined,
+): ReactNode {
+  if (!run || run.max_call_reasoning_tokens == null) return null;
+  const text = `max ${tokenFormat(run.max_call_reasoning_tokens)} tok`;
+  const href = observationHref(projectId, run, run.max_call_reasoning_call_id);
+  return href ? (
+    <Link href={href} className="underline-offset-2 hover:underline">
+      {text}
+    </Link>
+  ) : (
+    <span>{text}</span>
+  );
+}
+
+/** Sub-line for the model-time row: the slowest single call, linked. */
+function slowestCallSub(
+  projectId: string,
+  run: AgentTaskRunSummary | null | undefined,
+): ReactNode {
+  if (!run || run.max_call_latency_ms == null) return null;
+  const text = `slowest ${formatInterval(run.max_call_latency_ms)}`;
+  const href = observationHref(projectId, run, run.max_call_latency_call_id);
+  return href ? (
+    <Link href={href} className="underline-offset-2 hover:underline">
+      {text}
+    </Link>
+  ) : (
+    <span>{text}</span>
+  );
+}
+
 /** One metric row (cost or time) that drops into the SAME grid as the checks
  *  below — `[label · Run A cell · Run B cell]`. Sharing the grid means Run A's
  *  cost bar aligns directly under Run A's check column, so the eye scans one
@@ -317,29 +361,6 @@ function shortModel(model: string): string {
  *  (which on a per-row-scaled bar would misread as "free/instant"). Bars are
  *  neutral — a slower run might be doing more work, so "slower = red" would
  *  moralize wrongly. Length carries the signal; color stays out of it. */
-/** Muted jump-to-observation link under an extreme metric row (issue #309):
- *  "the slowest call" and "max reasoning/call" point straight at the span that
- *  set the extreme, via the trace view's `?observation=` selection param.
- *  Null when the run has no trace or the summary carries no winning call. */
-function usageSub(
-  projectId: string,
-  run: AgentTaskRunSummary | null | undefined,
-  field: "slowest_call_id" | "max_reasoning_call_id" | undefined,
-): ReactNode {
-  if (!field || !run?.trace_run_id) return null;
-  const callId = run.generation_usage?.[field];
-  if (!callId) return null;
-  return (
-    <Link
-      href={`/project/${projectId}/traces/${run.trace_run_id}?observation=${callId}`}
-      className="shrink-0 text-[10px] text-muted-foreground/70 underline-offset-2 hover:underline"
-      title="Open the call that set this value"
-    >
-      call
-    </Link>
-  );
-}
-
 function MetricRow({
   label,
   leftValue,
@@ -405,24 +426,30 @@ function MetricSide({
   const pct = hasData && max > 0 ? (value / max) * 100 : 0;
   const width = value === 0 ? 2 : pct;
   return (
-    <div className={cn("flex items-center gap-2.5 px-3 py-2", className)}>
-      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
-        {hasData && (
-          <div
-            className="h-full rounded-full bg-foreground/40"
-            style={{ width: `${width}%` }}
-          />
-        )}
+    <div className={cn("flex flex-col justify-center px-3 py-2", className)}>
+      <div className="flex items-center gap-2.5">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+          {hasData && (
+            <div
+              className="h-full rounded-full bg-foreground/40"
+              style={{ width: `${width}%` }}
+            />
+          )}
+        </div>
+        <span
+          className={cn(
+            "w-16 shrink-0 text-right font-mono text-[11px] tabular-nums",
+            hasData ? "text-foreground" : "text-muted-foreground/50",
+          )}
+        >
+          {hasData ? formatted : "—"}
+        </span>
       </div>
-      <span
-        className={cn(
-          "w-16 shrink-0 text-right font-mono text-[11px] tabular-nums",
-          hasData ? "text-foreground" : "text-muted-foreground/50",
-        )}
-      >
-        {hasData ? formatted : "—"}
-      </span>
-      {sub}
+      {sub && (
+        <div className="mt-0.5 self-end text-[10px] text-muted-foreground/70">
+          {sub}
+        </div>
+      )}
     </div>
   );
 }
@@ -825,29 +852,19 @@ function CheckDiff({
   const rightTime = runDurationMs(right?.started_at ?? null, right?.completed_at ?? null);
   const leftTokens = left?.total_tokens != null && left.total_tokens > 0 ? left.total_tokens : null;
   const rightTokens = right?.total_tokens != null && right.total_tokens > 0 ? right.total_tokens : null;
-  // Model time and reasoning (issue #309): the totals plus the single largest
-  // call, so a change that makes one call slow or verbose shows as a number.
-  // `sub` names the usage field holding the winning call's span id, so the
-  // extreme rows can link straight to that observation in the trace.
-  const leftUsage = left?.generation_usage ?? null;
-  const rightUsage = right?.generation_usage ?? null;
-  const usageRows: {
-    label: string;
-    left: number | null;
-    right: number | null;
-    format: (v: number) => string;
-    sub?: "slowest_call_id" | "max_reasoning_call_id";
-  }[] = [
-    { label: "model time", left: leftUsage?.model_time_ms ?? null, right: rightUsage?.model_time_ms ?? null, format: formatInterval },
-    { label: "slowest call", left: leftUsage?.slowest_call_ms ?? null, right: rightUsage?.slowest_call_ms ?? null, format: formatInterval, sub: "slowest_call_id" as const },
-    { label: "reasoning", left: leftUsage?.reasoning_tokens ?? null, right: rightUsage?.reasoning_tokens ?? null, format: formatTokenTotal },
-    { label: "max reasoning/call", left: leftUsage?.max_call_reasoning_tokens ?? null, right: rightUsage?.max_call_reasoning_tokens ?? null, format: formatTokenTotal, sub: "max_reasoning_call_id" as const },
-  ].filter((row) => row.left != null || row.right != null);
+  // Reasoning totals (issue #309): null is UNKNOWN (provider never reported
+  // the dimension) and stays null — distinct from a reported zero, which
+  // renders as "0 tok" with a hairline bar. Never collapsed to 0.
+  const leftReasoning = left?.total_reasoning_tokens ?? null;
+  const rightReasoning = right?.total_reasoning_tokens ?? null;
+  const leftModelTime = left?.total_model_time_ms ?? null;
+  const rightModelTime = right?.total_model_time_ms ?? null;
   const hasMetrics =
     (leftCost ?? rightCost) != null ||
     (leftTime ?? rightTime) != null ||
     (leftTokens ?? rightTokens) != null ||
-    usageRows.length > 0;
+    (leftReasoning ?? rightReasoning) != null ||
+    (leftModelTime ?? rightModelTime) != null;
 
   // The grid is the single container for header + metrics + checks. Columns
   // are wide enough that cost/time values (e.g. "$0.0122") don't ellipsize —
@@ -924,18 +941,34 @@ function CheckDiff({
                   formatRight={rightTokens != null ? formatTokenTotal(rightTokens) : "—"}
                 />
               )}
-              {usageRows.map((row) => (
+              {/* Reasoning delta (issue #309): the point of the compare view —
+                  a reasoning-budget change shows up as a number. Row only
+                  appears when at least one side reported the dimension; the
+                  sub-line links to the deepest single call. */}
+              {(leftReasoning != null || rightReasoning != null) && (
                 <MetricRow
-                  key={row.label}
-                  label={row.label}
-                  leftValue={row.left}
-                  rightValue={row.right}
-                  formatLeft={row.left != null ? row.format(row.left) : "—"}
-                  formatRight={row.right != null ? row.format(row.right) : "—"}
-                  subLeft={usageSub(projectId, left, row.sub)}
-                  subRight={usageSub(projectId, right, row.sub)}
+                  label="reasoning"
+                  leftValue={leftReasoning}
+                  rightValue={rightReasoning}
+                  formatLeft={leftReasoning != null ? formatTokenTotal(leftReasoning) : "—"}
+                  formatRight={rightReasoning != null ? formatTokenTotal(rightReasoning) : "—"}
+                  subLeft={maxReasoningSub(projectId, left)}
+                  subRight={maxReasoningSub(projectId, right)}
                 />
-              ))}
+              )}
+              {/* Model time vs wall time: same sub-line carries the slowest
+                  single call, linked to its observation. */}
+              {(leftModelTime != null || rightModelTime != null) && (
+                <MetricRow
+                  label="model time"
+                  leftValue={leftModelTime}
+                  rightValue={rightModelTime}
+                  formatLeft={leftModelTime != null ? formatInterval(leftModelTime) : "—"}
+                  formatRight={rightModelTime != null ? formatInterval(rightModelTime) : "—"}
+                  subLeft={slowestCallSub(projectId, left)}
+                  subRight={slowestCallSub(projectId, right)}
+                />
+              )}
             </div>
           )}
 

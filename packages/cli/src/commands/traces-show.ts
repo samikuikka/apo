@@ -234,8 +234,11 @@ function printTraceDetail(trace: TraceDetail, calls: TraceCall[], view: CallView
   // would crown a tool as the "slowest model call".
   const generations = trace.calls.filter((c) => c.observation_type === "GENERATION");
   // Reasoning reads the normalized raw_usage dimension; absent means the
-  // provider never reported it — unknown, not zero.
-  const reporting = generations.filter((c) => c.raw_usage && "reasoning" in c.raw_usage);
+  // provider never reported it — unknown, not zero. Errored generations
+  // skip usage: their projected usage is not a measurement.
+  const reporting = generations.filter(
+    (c) => c.level !== "ERROR" && c.raw_usage?.reasoning != null,
+  );
   const timed = generations.filter((c) => c.latency_ms != null);
 
   console.log(bold(`Trace: ${run.id}`));
@@ -250,7 +253,7 @@ function printTraceDetail(trace: TraceDetail, calls: TraceCall[], view: CallView
     const deepest = reporting.reduce((a, b) =>
       (b.raw_usage!.reasoning ?? 0) > (a.raw_usage!.reasoning ?? 0) ? b : a);
     console.log(
-      `  Reasoning: ${totalReasoning.toLocaleString()} tok ${dim(`· max ${deepest.raw_usage!.reasoning.toLocaleString()} in one call (observation ${deepest.id})`)}`,
+      `  Reasoning: ${totalReasoning.toLocaleString()} tok ${dim(`· max ${(deepest.raw_usage!.reasoning ?? 0).toLocaleString()} in one call (observation ${deepest.id})`)}`,
     );
   }
   if (timed.length > 0) {

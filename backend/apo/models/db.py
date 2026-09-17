@@ -527,6 +527,20 @@ class AgentTaskRunDB(SQLModel, table=True):
     # complete total — the unpriced calls silently contributed 0. Rolled up by
     # ``NativeTraceBackend.aggregate_costs`` from per-call ``cost_provenance``.
     unpriced_call_count: int = Field(default=0)
+    # Reasoning and per-call timing rollups (issue #309). Reasoning reads the
+    # normalized ``raw_usage["reasoning"]`` dimension: NULL means no call in
+    # the trace reported the dimension (render as unknown, never zero). The
+    # ``*_call_id`` soft references point at the winning LoggedCall span so
+    # surfaces can link straight to it
+    # (``/traces/{trace_run_id}?observation={call_id}``).
+    total_reasoning_tokens: int | None = Field(default=None)
+    max_call_reasoning_tokens: int | None = Field(default=None)
+    max_call_reasoning_call_id: str | None = Field(default=None)
+    max_call_latency_ms: float | None = Field(default=None)
+    max_call_latency_call_id: str | None = Field(default=None)
+    # Sum of call latencies — time spent in the model, distinct from wall
+    # ``duration_ms`` because tool and harness time between calls is excluded.
+    total_model_time_ms: float | None = Field(default=None)
     # Bounded execution provenance derived from canonical OTel Generation
     # Observations. Null means APO has no canonical generation evidence for the
     # run (for example, a legacy trace), not that zero generations errored.
