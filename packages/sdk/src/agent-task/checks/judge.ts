@@ -5,7 +5,7 @@
  */
 
 import type { JudgeMetadata } from "../run/types.ts";
-import { callSecondJudge, resolveSecondJudgeModel } from "./second-judge.ts";
+import { callSecondJudge, resolveSecondJudgeAPIKey, resolveSecondJudgeBaseURL, resolveSecondJudgeModel } from "./second-judge.ts";
 
 export type JudgeCallResult = {
   pass: boolean;
@@ -280,8 +280,8 @@ export async function callJudge(args: {
     ? callSecondJudge({
         state: `${systemPromptText}\n\n${instructionText}`,
         model: secondJudgeModel,
-        baseURL,
-        apiKey,
+        baseURL: resolveSecondJudgeBaseURL(baseURL),
+        apiKey: resolveSecondJudgeAPIKey(apiKey),
       })
     : undefined;
 

@@ -36,6 +36,22 @@ export function resolveSecondJudgeModel(): string | undefined {
 }
 
 /**
+ * The second judge talks to an OpenRouter-style decisions endpoint, which the
+ * primary judge's host often is not: a proxied primary (LiteLLM, a gateway, a
+ * direct provider) neither serves `/alpha/decisions` nor accepts an OpenRouter
+ * key. These overrides let the second opinion reach OpenRouter regardless of
+ * where the primary judge is routed; unset, they fall back to the primary's
+ * connection so the simple setup stays one set of variables.
+ */
+export function resolveSecondJudgeBaseURL(primaryBaseURL: string): string {
+  return process.env.APO_SECOND_JUDGE_BASE_URL?.trim() || primaryBaseURL;
+}
+
+export function resolveSecondJudgeAPIKey(primaryAPIKey?: string): string | undefined {
+  return process.env.APO_SECOND_JUDGE_API_KEY?.trim() || primaryAPIKey;
+}
+
+/**
  * OpenRouter serves decision models at `<origin>/api/alpha/decisions` while
  * the chat base is `<origin>/api/v1` — strip only the trailing `/v1` and
  * append the decisions path (verified live: without the `/api` segment the

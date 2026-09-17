@@ -91,6 +91,13 @@ One judge gives you a verdict. Two judges of different kinds give you an error b
 export APO_SECOND_JUDGE_MODEL=typesafe/jev-1.13
 ```
 
+The second judge needs an OpenRouter-style decisions endpoint. When your primary judge talks to OpenRouter directly, that's automatic. When it's routed through a proxy (LiteLLM, a gateway, a direct provider), give the second judge its own connection — it cannot ride a chat proxy:
+
+```bash
+export APO_SECOND_JUDGE_BASE_URL=https://openrouter.ai/api/v1
+export APO_SECOND_JUDGE_API_KEY=sk-or-...
+```
+
 Why a *non-generative* second opinion: text judges sometimes fabricate evidence in their reasoning — quoting findings that aren't in the deliverable — and then verdict off their own fabrication. A decision model can't write a quote, so it can't do that. Measured against production data (2,094 judged checks re-played through the second judge): 96% agreement, and the disagreements clustered exactly where judges contradicted rubric text or rubrics couldn't decide the case.
 
 The marks state **measurements, not diagnoses** — they never claim *why* the judges differ, only that they did, and how confident the second one was:

@@ -120,6 +120,8 @@ services:
       - CLAUDE_MODEL=${CLAUDE_MODEL:-}
       - AGENT_TASK_JUDGE_MODEL=${AGENT_TASK_JUDGE_MODEL:-}
       - APO_SECOND_JUDGE_MODEL=${APO_SECOND_JUDGE_MODEL:-}
+      - APO_SECOND_JUDGE_BASE_URL=${APO_SECOND_JUDGE_BASE_URL:-}
+      - APO_SECOND_JUDGE_API_KEY=${APO_SECOND_JUDGE_API_KEY:-}
     # NOTE: Single uvicorn worker is intentional. The in-memory rate limiter
     # and SSE broadcaster require a single process. Horizontal scaling needs Redis.
     deploy:

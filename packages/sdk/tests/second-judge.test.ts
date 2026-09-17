@@ -120,6 +120,44 @@ describe("second judge wiring", () => {
   });
 });
 
+describe("second judge connection overrides (proxied primary)", () => {
+  it("base URL override: decisions call goes to the override, not the primary's host", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    vi.stubEnv("APO_SECOND_JUDGE_BASE_URL", "https://openrouter.ai/api/v1");
+    const { calls } = stubBoth(async () => jevResponse());
+    await callJudge(judgeArgs); // primary base is https://judge.test/v1
+    const decCall = calls.mock.calls.find((c) => String(c[0]).includes("alpha/decisions"));
+    expect(String(decCall?.[0])).toBe("https://openrouter.ai/api/alpha/decisions");
+    // the primary judge still uses its own base
+    expect(calls.mock.calls.some((c) => String(c[0]) === "https://judge.test/v1/chat/completions")).toBe(true);
+  });
+
+  it("API key override: the decisions call bears it, the primary keeps its own", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    vi.stubEnv("APO_SECOND_JUDGE_API_KEY", "sk-or-second");
+    const { calls } = stubBoth(async () => jevResponse());
+    await callJudge(judgeArgs); // primary key is "secret"
+    const decCall = calls.mock.calls.find((c) => String(c[0]).includes("alpha/decisions"));
+    const decHeaders = (decCall?.[1]?.headers ?? {}) as Record<string, string>;
+    expect(decHeaders.Authorization).toBe("Bearer sk-or-second");
+    const primaryCall = calls.mock.calls.find(
+      (c) => String(c[0]).endsWith("/chat/completions"),
+    );
+    const primaryHeaders = (primaryCall?.[1]?.headers ?? {}) as Record<string, string>;
+    expect(primaryHeaders.Authorization).toBe("Bearer secret");
+  });
+
+  it("overrides unset: falls back to the primary judge's base and key", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    const { calls } = stubBoth(async () => jevResponse());
+    await callJudge(judgeArgs);
+    const decCall = calls.mock.calls.find((c) => String(c[0]).includes("alpha/decisions"));
+    expect(String(decCall?.[0])).toBe("https://judge.test/alpha/decisions");
+    const decHeaders = (decCall?.[1]?.headers ?? {}) as Record<string, string>;
+    expect(decHeaders.Authorization).toBe("Bearer secret");
+  });
+});
+
 describe("decisionsEndpoint URL derivation", () => {
   it.each([
     ["https://openrouter.ai/api/v1", "https://openrouter.ai/api/alpha/decisions"],
