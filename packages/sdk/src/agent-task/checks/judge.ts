@@ -5,6 +5,7 @@
  */
 
 import type { JudgeMetadata } from "../run/types.ts";
+import { callSecondJudge, resolveSecondJudgeModel } from "./second-judge.ts";
 
 export type JudgeCallResult = {
   pass: boolean;
@@ -270,6 +271,20 @@ export async function callJudge(args: {
 
   const systemPromptText = `${briefingText}\n\n${deliverableText}`;
 
+  // Second grader (opt-in): dispatch alongside the primary call so its
+  // sub-second latency adds nothing to the check. The state is exactly what
+  // the primary judge sees. It can never change the verdict — the evidence
+  // is attached and the check moves on regardless of its outcome.
+  const secondJudgeModel = resolveSecondJudgeModel();
+  const secondJudgePromise = secondJudgeModel
+    ? callSecondJudge({
+        state: `${systemPromptText}\n\n${instructionText}`,
+        model: secondJudgeModel,
+        baseURL,
+        apiKey,
+      })
+    : undefined;
+
   // The cached prefix is model + briefing + system blocks; the varying
   // instruction lives in the user message, so it's excluded from the key.
   // The briefing must be part of the key: once prompts vary per task, two
@@ -341,11 +356,12 @@ export async function callJudge(args: {
           contract: judgeContractInUse(),
           prompt: { system: systemPromptText, user: instructionText },
           response: text,
-        tokens: parseJudgeUsage(data.usage),
-        latency_ms: Date.now() - startedAt,
-      },
-    };
-  }
+          tokens: parseJudgeUsage(data.usage),
+          latency_ms: Date.now() - startedAt,
+          secondJudge: await secondJudgePromise,
+        },
+      };
+    }
 
   // Models routinely wrap their JSON in markdown fences (```json … ```) or
     // add prose around it despite the json_object response_format. Parse
@@ -363,6 +379,7 @@ export async function callJudge(args: {
         response: text,
         tokens: parseJudgeUsage(data.usage),
         latency_ms: Date.now() - startedAt,
+        secondJudge: await secondJudgePromise,
       },
     };
   });

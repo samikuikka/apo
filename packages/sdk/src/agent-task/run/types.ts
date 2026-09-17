@@ -52,6 +52,38 @@ export type JudgeMetadata = {
    * content-hashed evidence manifest (replay audit backbone).
    */
   session?: AgentJudgeSession;
+  /**
+   * Second-grader evidence: a typed-decision model (Jev via OpenRouter's
+   * `/alpha/decisions`) graded the same deliverable + instruction alongside
+   * the primary judge. Opt-in via `APO_SECOND_JUDGE_MODEL`. The primary
+   * verdict is never changed by it — the point is agreement and confidence
+   * as extra signals per check, not a second vote.
+   */
+  secondJudge?: SecondJudgeEvidence;
+};
+
+/**
+ * Evidence from the second grader. `error` is set when the decisions
+ * endpoint could not be reached — a failed second opinion must never
+ * affect the check's verdict.
+ */
+export type SecondJudgeEvidence = {
+  /** Decision-model id that graded, e.g. `typesafe/jev-1.13`. */
+  model: string;
+  /** The typed verdict the model returned. */
+  choice?: "pass" | "fail";
+  /** P(pass) from the model's probability distribution over the choice. */
+  passProbability?: number;
+  /** The model's own confidence in its choice (0-1). */
+  confidence?: number;
+  /** Input tokens billed for the decision, when the provider reports usage. */
+  inputTokens?: number;
+  /** Cost in USD, when the provider reports it. */
+  costUsd?: number;
+  /** Wall-clock latency of the decision call in milliseconds. */
+  latencyMs?: number;
+  /** Why no verdict was recorded (transport/HTTP/parse failure). */
+  error?: string;
 };
 
 /**
