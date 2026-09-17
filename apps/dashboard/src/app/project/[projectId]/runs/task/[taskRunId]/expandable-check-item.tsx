@@ -265,7 +265,7 @@ export function ExpandableCheckItem({
                     {reasoning}
                   </p>
                 )}
-                {judgeMeta && <JudgeStrip judge={judgeMeta} />}
+                {judgeMeta && <JudgeStrip judge={judgeMeta} checkPass={passed} />}
                 {!reasoning && !judgeMeta && (
                   <p className="text-[12px] text-muted-foreground">No additional details</p>
                 )}

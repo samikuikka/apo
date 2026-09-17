@@ -190,6 +190,17 @@ export interface AgentJudgeSession {
   usage?: { steps?: number; input_tokens?: number; output_tokens?: number };
 }
 
+export interface SecondJudgeEvidence {
+  model: string;
+  choice?: "pass" | "fail";
+  passProbability?: number;
+  confidence?: number;
+  inputTokens?: number;
+  costUsd?: number;
+  latencyMs?: number;
+  error?: string;
+}
+
 export interface JudgeMetadata {
   model?: string;
   /** Agentic session transcript; only with evaluator_type "agent". */
@@ -203,6 +214,8 @@ export interface JudgeMetadata {
   cost?: number;
   latency_ms?: number;
   temperature?: number;
+  /** Opt-in second grader (typed-decision model) evidence; never affects the verdict. */
+  secondJudge?: SecondJudgeEvidence;
 }
 
 export interface CheckAssertionResult {
