@@ -17,7 +17,7 @@ export function prefersReducedMotion(): boolean {
 export type VisibleState = "entering" | "visible" | "leaving" | "hidden";
 
 export interface OnVisibleOptions {
-  /** Fraction of the element that must be visible to count (default 0.4). */
+  /** Fraction of the element that must be visible to count (default 0). */
   threshold?: number;
 }
 
@@ -28,12 +28,19 @@ export interface OnVisibleOptions {
  * fires once as "visible" and the disposer is a no-op — the demo runs but
  * never pauses (older browsers, rare in practice).
  *
+ * The default threshold is 0 (any pixel on screen counts), not a fraction of
+ * the element: landing sections and demos are routinely taller than a phone
+ * viewport, and with a positive threshold the observer reports "not
+ * intersecting" while the element's visible bottom is still on screen —
+ * un-revealing exactly the content the reader is scrolled to (e.g. the
+ * landing page's regression bars vanished on mobile).
+ *
  * @param onTransition receives the new visibility state
  */
 export function onVisible(
   element: HTMLElement,
   onTransition: (state: VisibleState) => void,
-  { threshold = 0.4 }: OnVisibleOptions = {},
+  { threshold = 0 }: OnVisibleOptions = {},
 ): () => void {
   if (!("IntersectionObserver" in window)) {
     onTransition("visible");
