@@ -22,6 +22,7 @@ import type {
 } from "../run/types.ts";
 import type { Recorder } from "./recorder.ts";
 import type { JudgeConfig, JudgeScope } from "./t.ts";
+import type { JudgeTracer } from "../tracing.ts";
 import { resolveJudgeConfig } from "./t.ts";
 import type { AgentHistoryPlane } from "./agent-history.ts";
 
@@ -213,8 +214,10 @@ function buildEvidenceTools(args: {
   ledger: Ledger;
   stepIndexOf: () => number;
   includeTrace: boolean;
+  includeHistory: boolean;
+  tracer?: JudgeTracer;
 }): Record<string, unknown> {
-  const { z, tool, evidence, scope, budget, ledger, stepIndexOf, includeTrace } = args;
+  const { z, tool, evidence, scope, budget, ledger, stepIndexOf, includeTrace, includeHistory, tracer } = args;
 
   const budgetGuard = (): string | null => {
     ledger.toolCallsUsed += 1;
@@ -241,6 +244,11 @@ function buildEvidenceTools(args: {
     return ledger.readBytesUsed > budget.maxReadBytes ? overflow() : null;
   };
 
+  // An agentic judge is an agent (issue #288): every tool execution is a
+  // TOOL child span under the session span, exactly like the main agent's.
+  const span = <T>(name: string, input: unknown, fn: () => Promise<T>): Promise<T> =>
+    tracer ? tracer.traceTool(name, input as Record<string, unknown>, fn) : fn();
+
   const tools: Record<string, unknown> = {
     read_deliverable: tool({
       description:
@@ -253,6 +261,7 @@ function buildEvidenceTools(args: {
       }),
       execute: async (input: never) => {
         const { name, offset, limit } = input as { name: string; offset: number; limit: number };
+        return span("read_deliverable", input, async () => {
         const guard = budgetGuard();
         if (guard) return { error: guard };
         if (!Object.prototype.hasOwnProperty.call(evidence.deliverables, name)) {
@@ -266,6 +275,7 @@ function buildEvidenceTools(args: {
         );
         if (overflow) return { error: overflow };
         return { name, total_bytes: content.length, offset, returned: slice.length, content: slice };
+        });
       },
     }),
 
@@ -276,6 +286,7 @@ function buildEvidenceTools(args: {
       inputSchema: z.object({ name: z.string(), pattern: z.string() }),
       execute: async (input: never) => {
         const { name, pattern } = input as { name: string; pattern: string };
+        return span("search_deliverable", input, async () => {
         const guard = budgetGuard();
         if (guard) return { error: guard };
         if (!Object.prototype.hasOwnProperty.call(evidence.deliverables, name)) {
@@ -307,10 +318,11 @@ function buildEvidenceTools(args: {
         );
         if (overflow) return { error: overflow };
         return { total_bytes: content.length, match_count: hits.length, matches: hits };
+        });
       },
     }),
 
-    ...(evidence.history
+    ...(includeHistory && evidence.history
       ? {
           list_runs: tool({
             description:
@@ -318,9 +330,11 @@ function buildEvidenceTools(args: {
               "The run under judgment is flagged; use get_run for a prior run's full check report.",
             inputSchema: z.object({}),
             execute: async () => {
-              const guard = budgetGuard();
-              if (guard) return { error: guard };
-              return evidence.history!.runs;
+              return span("list_runs", {}, async () => {
+                const guard = budgetGuard();
+                if (guard) return { error: guard };
+                return evidence.history!.runs;
+              });
             },
           }),
 
@@ -332,6 +346,7 @@ function buildEvidenceTools(args: {
             inputSchema: z.object({ run_id: z.string() }),
             execute: async (input: never) => {
               const { run_id } = input as { run_id: string };
+              return span("get_run", input, async () => {
               const guard = budgetGuard();
               if (guard) return { error: guard };
               const detail = await evidence.history!.getRun(run_id);
@@ -342,6 +357,7 @@ function buildEvidenceTools(args: {
               );
               if (overflow) return { error: overflow };
               return detail;
+              });
             },
           }),
         }
@@ -351,6 +367,7 @@ function buildEvidenceTools(args: {
       description: "The task this run executed: id, description, deliverable names.",
       inputSchema: z.object({}),
       execute: async () => {
+        return span("get_task_definition", {}, async () => {
         const guard = budgetGuard();
         if (guard) return { error: guard };
         return {
@@ -358,6 +375,7 @@ function buildEvidenceTools(args: {
           description: scope?.taskDescription ?? "(unavailable)",
           deliverables: Object.keys(evidence.deliverables),
         };
+        });
       },
     }),
   };
@@ -369,6 +387,7 @@ function buildEvidenceTools(args: {
       inputSchema: z.object({ query: z.string().describe("substring filter on tool names; empty = all") }),
       execute: async (input: never) => {
         const { query } = input as { query: string };
+        return span("get_trace", input, async () => {
         const guard = budgetGuard();
         if (guard) return { error: guard };
         const view = evidence.view;
@@ -390,6 +409,7 @@ function buildEvidenceTools(args: {
             ? view.reply.slice(0, 1500)
             : undefined;
         return { turns: view.turnCount, tool_calls: calls, ...(reply !== undefined ? { final_reply: reply } : {}) };
+        });
       },
     });
   }
@@ -515,8 +535,9 @@ export async function runAgentSession(spec: {
   evidence: AgentEvidence;
   scope?: JudgeScope;
   exhibits?: unknown[];
-  tools?: { trace?: boolean };
+  tools?: { trace?: boolean; history?: boolean };
   budget?: AgentBudget;
+  tracer?: JudgeTracer;
 }): Promise<AgentSessionResult> {
   const budget = { ...DEFAULT_BUDGET, ...spec.budget };
   const started = Date.now();
@@ -582,6 +603,8 @@ export async function runAgentSession(spec: {
     z, tool, evidence: spec.evidence, scope: spec.scope, budget, ledger,
     stepIndexOf: () => liveSteps.length,
     includeTrace: spec.tools?.trace !== false,
+    includeHistory: spec.tools?.history !== false,
+    tracer: spec.tracer,
   });
   const system = buildBriefing(spec.scope, spec.evidence, budget);
 
@@ -658,6 +681,7 @@ export function createAgentMethod(
   judgeConfig: JudgeConfig | undefined,
   judgeScope?: JudgeScope,
   evidence?: AgentEvidence,
+  judgeTracer?: JudgeTracer,
 ): (instruction: string, opts?: AgentJudgeOptions) => Promise<void> {
   return async (instruction, opts) => {
     const label = opts?.label ?? "agent";
@@ -680,8 +704,8 @@ export function createAgentMethod(
       return;
     }
 
-    try {
-      const result = await runAgentSession({
+    const run = () =>
+      runAgentSession({
         instruction,
         model: effective.model,
         baseURL: effective.baseURL,
@@ -691,7 +715,40 @@ export function createAgentMethod(
         exhibits,
         tools: opts?.tools,
         budget: opts?.budget,
+        tracer: judgeTracer,
       });
+    try {
+      // Issue #288: the judge's investigation is part of the run's trace —
+      // one span under checks.run, verdict summarized post-hoc.
+      const result = await (judgeTracer
+        ? judgeTracer.step(
+            {
+              step_name: `t.agent:${judgeScope?.checkName ?? label}`,
+              observation_type: "AGENT",
+              input: { model: effective.model, instruction },
+              summarize: (r: unknown) => {
+                const res = r as AgentSessionResult;
+                // The span output is the verdict, same shape as t.judge:
+                // pass + reasoning. Session internals (steps, manifest) live
+                // in the check report; a failed session just explains itself.
+                const reasoning = res?.verdict?.reasoning?.slice(0, 2000)
+                  ?? `session ended without a verdict (${res?.outcome ?? "unknown"})`;
+                // text = readable prose; verdict = the JSON the trace view
+                // renders as a structured tree (pass first, visible).
+                return {
+                  text: reasoning,
+                  // reasoning-first, matching the judge response
+                  // contract's default order (#163).
+                  verdict: {
+                    reasoning,
+                    pass: res?.verdict?.pass ?? null,
+                  },
+                };
+              },
+            },
+            run,
+          )
+        : run());
 
       const judge: JudgeMetadata = {
         model: effective.model,

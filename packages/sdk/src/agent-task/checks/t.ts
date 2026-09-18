@@ -17,6 +17,7 @@ import type { Matcher, ValueMatcher } from "./matchers.ts";
 import { describeValue, matchValue } from "./matchers.ts";
 import { callJudge, type JudgeCallContext, type JudgePromptBuilder } from "./judge.ts";
 import { createAgentMethod, type AgentEvidence, type AgentJudgeOptions } from "./agent-session.ts";
+import type { JudgeTracer } from "../tracing.ts";
 
 /** A tool/agent name matcher: literal (exact), RegExp, or predicate. */
 export type NameMatcher = string | RegExp | ((name: string) => boolean);
@@ -378,6 +379,7 @@ function createJudgeMethod(
   rec: Recorder,
   judgeConfig: JudgeConfig | undefined,
   judgeScope?: JudgeScope,
+  judgeTracer?: JudgeTracer,
 ): TestContext["judge"] {
   return async (values, instruction, opts) => {
     const label = opts?.label ?? "judge";
@@ -401,8 +403,8 @@ function createJudgeMethod(
       return;
     }
     const context = judgeScopeToContext(judgeScope);
-    try {
-      const { pass, reasoning, judge } = await callJudge({
+    const call = () =>
+      callJudge({
         values: valueArray,
         instruction,
         model: effective.model,
@@ -411,6 +413,30 @@ function createJudgeMethod(
         prompt: effective.prompt,
         ...(context ? { context } : {}),
       });
+    const traced: Promise<Awaited<ReturnType<typeof callJudge>>> = judgeTracer
+      ? judgeTracer.step(
+          {
+            step_name: `judge:${judgeScope?.checkName ?? label}`,
+            // A single-shot judge call is an LLM generation — project it
+            // with the same observation semantics as the main agent's.
+            observation_type: "GENERATION",
+            input: { model: effective.model, instruction },
+            summarize: (r: unknown) => {
+              const res = r as { pass?: boolean; reasoning?: string };
+              return {
+                text: res?.reasoning?.slice(0, 2000) ?? "",
+                verdict: {
+                  reasoning: res?.reasoning?.slice(0, 2000) ?? null,
+                  pass: res?.pass ?? null,
+                },
+              };
+            },
+          },
+          call as never,
+        )
+      : call();
+    try {
+      const { pass, reasoning, judge } = await traced;
       rec.record(label, pass, reasoning, {
         evaluator_type: "llm",
         judge,
@@ -476,6 +502,7 @@ export function createTraceTestContext(
   judgeConfig?: JudgeConfig,
   judgeScope?: JudgeScope,
   agentEvidence?: AgentEvidence,
+  judgeTracer?: JudgeTracer,
 ): TestContext {
   const unsupported = (
     id: string,
@@ -694,8 +721,8 @@ export function createTraceTestContext(
 
     // judge does not consult trace capabilities; the scope carries the
     // task/check frame for prompt builders (#161).
-    judge: createJudgeMethod(rec, judgeConfig, judgeScope),
-    agent: createAgentMethod(rec, judgeConfig, judgeScope, agentEvidence ?? { deliverables: {}, view }),
+    judge: createJudgeMethod(rec, judgeConfig, judgeScope, judgeTracer),
+    agent: createAgentMethod(rec, judgeConfig, judgeScope, agentEvidence ?? { deliverables: {}, view }, judgeTracer),
   };
 }
 

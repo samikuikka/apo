@@ -164,6 +164,18 @@ export function createOtelAgentTaskTraceClient(
           : { value: params.output };
         active.span.setAttribute("gen_ai.tool.call.result", JSON.stringify(payload));
       } else if (params.output.text) {
+        // gen_ai.output.messages has never mapped at ingestion (only tool
+        // results do); gen_ai.response.text is on the normalizer's fallback
+        // chain and demonstrably lands — set both so step outputs survive.
+        active.span.setAttribute("gen_ai.response.text", String(params.output.text));
+        // A structured verdict (judge spans) rides the tool-result channel:
+        // it is the one output channel the trace view renders as a JSON tree.
+        if (params.output.verdict !== undefined) {
+          active.span.setAttribute(
+            "gen_ai.tool.call.result",
+            JSON.stringify(params.output.verdict),
+          );
+        }
         // Use gen_ai.output.messages so the normalizer routes it to the call's
         // structured output field (rendered as chat bubbles + "Correct" button).
         active.span.setAttribute("gen_ai.output.messages", JSON.stringify([{

@@ -73,3 +73,11 @@ export function createNoopAgentTaskTraceContext(): AgentTaskTraceContext {
     endSpan(_spanId, _params) {},
   };
 }
+
+/**
+ * The slice of the trace context judges use (issue #288): every t.judge call
+ * and t.agent session becomes a step span under checks.run, with the verdict
+ * summarized post-hoc — the judge's work shows up in the trace view, not
+ * only in the check report.
+ */
+export type JudgeTracer = Pick<AgentTaskTraceContext, "step" | "traceTool">;

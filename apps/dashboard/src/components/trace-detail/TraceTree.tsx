@@ -4,6 +4,13 @@ import { useSelection } from "./contexts/SelectionContext";
 import { useTraceData } from "./contexts/TraceDataContext";
 import { useViewPreferences } from "./contexts/ViewPreferencesContext";
 import type { TraceObservation } from "./contexts";
+import { getCallDetail } from "@/lib/traces-api";
+import {
+  findEvaluationGroup,
+  isEvaluationRoot,
+  parseVerdict,
+  partitionEvaluation,
+} from "./trace-evaluation";
 import { getSemanticType, getEventType } from "./trace-utils";
 // getDisplayName lives in trace-display (shared with gantt + graph + detail
 // views) and is imported here for local use; import it directly from
@@ -21,6 +28,7 @@ import {
   FileText,
   Workflow,
   Fan,
+  Scale,
 } from "lucide-react";
 import { useState, useMemo, useRef, useEffect, useCallback, type MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -29,6 +37,11 @@ import type { CumulativeMetrics } from "@/lib/cumulative-metrics";
 import { formatCostMicro, formatDuration, formatTokenBreakdown, formatTokenTotal } from "@/lib/format";
 import { CommentCountIcon } from "./CommentCountIcon";
 import { getHeatmapColor } from "./trace-heatmap";
+
+// ── Evaluation phase (#302): judge roots (judge:* / t.agent:*) and their
+// descendants collapse into one "Evaluation" row with pass/fail counts.
+// Grouping lives in ./trace-evaluation (pure, tested); searching suspends it
+// so matching judge rows surface like any other row.
 
 interface TraceTreeProps {
   calls: TraceObservation[];
@@ -487,10 +500,42 @@ export function TraceTree({
   runLabel = "Trace",
   commentCounts,
 }: TraceTreeProps) {
+  // The evaluation phase collapses by default; the chevron on the group row
+  // expands it in place.
+  const [evalExpanded, setEvalExpanded] = useState(false);
+  const evaluation = useMemo(() => findEvaluationGroup(calls), [calls]);
+  const judgeRoots = evaluation?.roots ?? [];
+
   const { selectCall, selectedCallId } = useSelection();
-  const { cumulativeMetrics, prefetchObservation, isSimplifiedTree } = useTraceData();
+  const { run, cumulativeMetrics, prefetchObservation, isSimplifiedTree } = useTraceData();
   const { preferences } = useViewPreferences();
   const [levelFilter, setLevelFilter] = useState<string>("all");
+  // PROTOTYPE: verdict map keyed by judge root id. The slim payload carries
+  // no tool_result, so each judge root's full call is fetched once (they are
+  // few per run) to color the pass/fail badges and the Evaluation counts.
+  const [judgeVerdicts, setJudgeVerdicts] = useState<Record<string, boolean | undefined>>({});
+  useEffect(() => {
+    const trace = run?.run;
+    if (!trace || judgeRoots.length === 0) return;
+    const missing = judgeRoots.filter((j) => !(j.id in judgeVerdicts));
+    if (missing.length === 0) return;
+    const controller = new AbortController();
+    let active = true;
+    Promise.all(
+      missing.map((j) =>
+        getCallDetail(trace.id, j.id, trace.project, controller.signal)
+          .then((full) => [j.id, parseVerdict(full.tool_result)] as const)
+          .catch(() => [j.id, undefined] as const),
+      ),
+    ).then((pairs) => {
+      if (!active) return;
+      setJudgeVerdicts((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
+    });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [run, judgeRoots, judgeVerdicts]);
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     const s = new Set<string>(["root-run"]);
     calls.forEach((c) => s.add(c.id));
@@ -514,7 +559,29 @@ export function TraceTree({
     }
   }, [allExpanded, calls]);
 
-  const flatTree = useMemo(() => flattenTree(calls, expanded, searchQuery), [calls, expanded, searchQuery]);
+  const flatTree = useMemo(() => {
+    const tree = flattenTree(calls, expanded, searchQuery);
+    // Search suspends grouping: matching judge rows surface like any other row.
+    if (!evaluation || searchQuery.trim().length > 0) return tree;
+    const split = partitionEvaluation(tree, evaluation);
+    if (!split) return tree;
+    const judgeSubtree = tree.filter(
+      (n) => n.node.call !== null && evaluation.memberIds.has(n.node.call.id),
+    );
+    return [
+      ...split.kept.slice(0, split.insertAt),
+      {
+        node: { id: "evaluation-group", type: "call" as const, call: judgeRoots[0], level: 1, isLastSibling: true, hasChildren: true },
+        treeLines: [],
+        isEvalGroup: true,
+        evalOpen: evalExpanded,
+        evalPassed: judgeRoots.filter((j) => judgeVerdicts[j.id] === true).length,
+        evalFailed: judgeRoots.filter((j) => judgeVerdicts[j.id] === false).length,
+      },
+      ...(evalExpanded ? judgeSubtree : []),
+      ...split.kept.slice(split.insertAt),
+    ];
+  }, [calls, expanded, searchQuery, evaluation, judgeRoots, evalExpanded, judgeVerdicts]);
   const timingBounds = useMemo(() => computeTimingBounds(calls), [calls]);
   const totalCost = useMemo(() => calls.reduce((sum, c) => sum + (c.cost ?? 0), 0), [calls]);
 
@@ -684,7 +751,78 @@ export function TraceTree({
       <div ref={parentRef} className="min-h-0 flex-1 overflow-auto">
       <div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative" }}>
         {virtualizer.getVirtualItems().map((virtualRow) => {
-          const { node, treeLines } = filteredTree[virtualRow.index];
+          const row = filteredTree[virtualRow.index];
+          const { node, treeLines } = row;
+          // The synthetic group row carries judgeRoots[0] as its call (so
+          // keyboard nav can select it) — it must be matched BEFORE the
+          // judge-row branch below, or it renders as a plain judge row.
+          if ("isEvalGroup" in row && row.isEvalGroup) {
+            return (
+              <div
+                key={node.id}
+                ref={virtualizer.measureElement}
+                data-index={virtualRow.index}
+                style={{ position: "absolute", top: virtualRow.start, left: 0, width: "100%" }}
+              >
+                <div className="flex h-7 items-center gap-1.5 overflow-hidden whitespace-nowrap px-3 text-xs text-muted-foreground">
+                  <button
+                    type="button"
+                    onClick={() => setEvalExpanded((v) => !v)}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm hover:bg-accent"
+                    aria-label={row.evalOpen ? "Collapse evaluation" : "Expand evaluation"}
+                  >
+                    <ChevronRight
+                      className={cn("h-3.5 w-3.5 transition-transform", row.evalOpen && "rotate-90")}
+                    />
+                  </button>
+                  <Scale className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  <span className="shrink-0 font-medium text-foreground">Evaluation</span>
+                  <span className="shrink-0 text-success">{row.evalPassed} pass</span>
+                  <span className={cn("shrink-0", row.evalFailed > 0 ? "text-destructive" : "text-muted-foreground")}>
+                    {row.evalFailed} fail
+                  </span>
+                </div>
+              </div>
+            );
+          }
+          if (
+            node.call &&
+            evaluation !== null &&
+            isEvaluationRoot(node.call.step_name ?? "") &&
+            evaluation.memberIds.has(node.call.id) &&
+            judgeRoots.some((j) => j.id === node.call!.id)
+          ) {
+            const pass = judgeVerdicts[node.call.id];
+            return (
+              <div
+                key={node.id}
+                ref={virtualizer.measureElement}
+                data-index={virtualRow.index}
+                style={{ position: "absolute", top: virtualRow.start, left: 0, width: "100%" }}
+              >
+                <button
+                  type="button"
+                  onClick={() => selectCall(node.id)}
+                  className="flex h-7 w-full items-center gap-1.5 overflow-hidden whitespace-nowrap px-3 pl-7 text-left text-xs hover:bg-accent/50"
+                >
+                  <span className={cn(
+                    "shrink-0 rounded-sm px-1 py-0.5 text-[10px] font-semibold uppercase",
+                    pass === true && "bg-success/15 text-success",
+                    pass === false && "bg-destructive/15 text-destructive",
+                    pass === undefined && "bg-muted text-muted-foreground",
+                  )}>
+                    {pass === true ? "pass" : pass === false ? "fail" : "—"}
+                  </span>
+                  <span className={cn("truncate", pass === false ? "text-destructive" : "text-foreground")}>
+                    {node.call.step_name}
+                  </span>
+                  <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
+                    {formatDuration(node.call.latency_ms ?? undefined)}
+                  </span>
+                </button>
+              </div>
+            );
+          }
           return (
             <div
               key={node.id}

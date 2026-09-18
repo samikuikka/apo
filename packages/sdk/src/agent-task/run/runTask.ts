@@ -31,6 +31,7 @@ import type { TraceProjectionSnapshot } from "../trace-projection/types.ts";
 import { readTaskRunProjection } from "../trace-projection/remote-capture.ts";
 import { resolveJudgeConfig, type JudgeConfig } from "../checks/t.ts";
 import { freezeHistoryPlaneFromEnv } from "../checks/agent-history.ts";
+import type { JudgeTracer } from "../tracing.ts";
 import { APO_TASK_ID, APO_TASK_RUN_ID } from "../../semconv.ts";
 import { aggregateResult } from "./aggregate.ts";
 import type { AgentTaskTraceContext, AgentTaskTraceOptions } from "../tracing.ts";
@@ -128,26 +129,31 @@ export async function runTask(
     );
   }
 
-  // Phase 1 (capture) runs inside the traceRun
-  // callback; Phase 2 (evaluate) runs AFTER the root span ends and the trace
-  // flushes, so checks/deliverable-validation cannot contaminate the trace.
-  const phase1 = await trace.client.traceRun(
+  // Both phases run inside the traceRun callback so evaluation-phase spans
+  // (checks.run, judge calls, t.agent sessions — issue #288) export before
+  // the root ends. Contamination is impossible by construction: the frozen
+  // snapshot Phase 2 evaluates against was captured in Phase 1, before any
+  // check ran; evaluation spans only enrich the trace view.
+  return trace.client.traceRun(
     buildTraceRunOptions(loaded, trace),
-    async (traceContext) => captureExecution(loaded, options, traceContext),
+    async (traceContext) => {
+      const phase1 = await captureExecution(loaded, options, traceContext);
+
+      // when this run is backend-launched (has a taskRunId),
+      // read the canonical projection snapshot back from the backend instead of
+      // the local tee. The backend's projection is the single source of truth —
+      // it includes spans the subprocess exported natively over OTLP (which the
+      // in-process tee can never see, since they're created in another process).
+      // Falls back to the local snapshot on any failure (offline runs, unreachable
+      // backend, projection timeout) so evaluation still runs.
+      const canonical = await readCanonicalSnapshot(trace);
+      if (canonical) phase1.snapshot = canonical;
+
+      // Phase 2: evaluate against the frozen snapshot, inside the export
+      // window, with the live context as the judge tracer.
+      return evaluate(loaded, options, phase1, traceContext);
+    },
   );
-
-  // when this run is backend-launched (has a taskRunId),
-  // read the canonical projection snapshot back from the backend instead of
-  // the local tee. The backend's projection is the single source of truth —
-  // it includes spans the subprocess exported natively over OTLP (which the
-  // in-process tee can never see, since they're created in another process).
-  // Falls back to the local snapshot on any failure (offline runs, unreachable
-  // backend, projection timeout) so evaluation still runs.
-  const canonical = await readCanonicalSnapshot(trace);
-  if (canonical) phase1.snapshot = canonical;
-
-  // Phase 2: evaluate against the frozen snapshot. The trace is now closed.
-  return evaluate(loaded, options, phase1);
 }
 
 /**
@@ -445,6 +451,7 @@ async function executeLoadedTask(
               files,
               task,
               ...(judgeConfig ? { judgeConfig } : {}),
+              judgeTracer: trace,
               ...(historyPlane ? { historyPlane } : {}),
             },
             validationResults.brokenDeliverables,
@@ -459,6 +466,7 @@ async function executeLoadedTask(
           files,
           task,
           ...(judgeConfig ? { judgeConfig } : {}),
+          judgeTracer: trace,
           ...(historyPlane ? { historyPlane } : {}),
           moduleUrl,
           displayFile: evalFileName,
@@ -509,6 +517,7 @@ async function evaluate(
   loaded: LoadedTask,
   options: RunTaskOptions | undefined,
   phase1: CapturedExecution,
+  judgeTracer?: JudgeTracer,
 ): Promise<TaskRunResult> {
   const {
     task,
@@ -541,6 +550,7 @@ async function evaluate(
         files,
         task,
         ...(judgeConfig ? { judgeConfig } : {}),
+        ...(judgeTracer ? { judgeTracer } : {}),
         ...(historyPlane ? { historyPlane } : {}),
         moduleUrl,
         displayFile: evalFileName,
@@ -553,6 +563,7 @@ async function evaluate(
           files,
           task,
           ...(judgeConfig ? { judgeConfig } : {}),
+          ...(judgeTracer ? { judgeTracer } : {}),
           ...(historyPlane ? { historyPlane } : {}),
         },
         validationResults.brokenDeliverables,

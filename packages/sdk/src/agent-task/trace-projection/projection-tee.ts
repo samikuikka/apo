@@ -273,7 +273,33 @@ export function createProjectionTee(
     },
 
     async traceTool(name, params, fn) {
-      return real.traceTool(name, params, fn);
+      // The tee must observe tool calls, not just delegate them — the
+      // frozen snapshot Phase 2 evaluates against is built from these
+      // observations, and without recording here the judge's get_trace
+      // reports tools unavailable even though the spans exported.
+      const obsSpanId = recordStart({
+        step_name: `tool ${name}`,
+        observation_type: "TOOL",
+        tool_name: name,
+        input: params,
+      } as Parameters<typeof recordStart>[0]);
+      const start = monotonicNowMs();
+      try {
+        const result = await real.traceTool(name, params, fn);
+        complete(obsSpanId, {
+          latency_ms: round3(monotonicNowMs() - start),
+          output: result as Record<string, unknown>,
+        });
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        complete(obsSpanId, {
+          latency_ms: round3(monotonicNowMs() - start),
+          status_message: message,
+          level: "ERROR",
+        });
+        throw error;
+      }
     },
     async traceRetriever(query, fn) {
       return real.traceRetriever(query, fn);
