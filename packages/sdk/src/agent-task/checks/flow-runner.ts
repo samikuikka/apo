@@ -9,6 +9,7 @@ import type { TraceProjectionSnapshot } from "../trace-projection/types.ts";
 import type { CheckLocation, EvaluationItemResult } from "../run/types.ts";
 import { createTraceTestContext, type TestContext, type JudgeConfig } from "./t.ts";
 import type { AgentHistoryPlane } from "./agent-history.ts";
+import type { JudgeTracer } from "../tracing.ts";
 import { Recorder, type LocateFn } from "./recorder.ts";
 import { parseCheckLocation } from "./location.ts";
 import { copyFileSync, existsSync, unlinkSync } from "fs";
@@ -187,7 +188,9 @@ export async function runTraceChecks(args: {
   files?: unknown;
   task?: unknown;
   judgeConfig?: JudgeConfig;
+  judgeTracer?: JudgeTracer;
   historyPlane?: AgentHistoryPlane;
+  historyUnavailableReason?: string;
   moduleUrl?: string;
   displayFile?: string;
 }): Promise<EvaluationItemResult[]> {
@@ -223,7 +226,9 @@ export async function runTraceChecks(args: {
           deliverables: args.deliverables,
           view,
           ...(args.historyPlane ? { history: args.historyPlane } : {}),
+          ...(args.historyUnavailableReason ? { historyUnavailable: args.historyUnavailableReason } : {}),
         },
+        args.judgeTracer,
       );
       let thrownLocation: CheckLocation | undefined;
       try {
@@ -290,6 +295,7 @@ export async function loadAndRunFlowChecks(
     files?: unknown;
     task?: unknown;
     judgeConfig?: JudgeConfig;
+    judgeTracer?: JudgeTracer;
     historyPlane?: AgentHistoryPlane;
   },
   brokenDeliverables: Record<string, string> = {},
@@ -307,6 +313,7 @@ export async function loadAndRunFlowChecks(
     task: args.task,
     judgeConfig: args.judgeConfig,
     ...(args.historyPlane ? { historyPlane: args.historyPlane } : {}),
+    ...(args.judgeTracer ? { judgeTracer: args.judgeTracer } : {}),
     moduleUrl,
     displayFile: basename(checksPath),
   });
