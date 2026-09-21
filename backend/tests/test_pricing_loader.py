@@ -13,6 +13,7 @@ from typing import ClassVar
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from apo.models.db import LoggedCallDB
 from apo.models.pricing import ModelRowDB, PriceDB, PricingTierDB
 from apo.models.usage_keys import UsageKey
 from apo.services.pricing.compute import compute_cost
@@ -89,6 +90,130 @@ class TestLoadDefaults:
         # Second load: same updated_at -> no writes (count 0 upserts).
         n = load_default_prices(session)
         assert n == 0
+
+    @pytest.mark.parametrize(
+        "start_date",
+        ["2026-09-21T10:47:14Z", "2026-09-21T10:47:14+00:00", "2026-09-21T10:47:14+05:00"],
+    )
+    def test_idempotent_reload_dated_era(
+        self, session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, start_date: str
+    ) -> None:
+        # Dated eras are keyed by start_date.isoformat(). The doc side parses
+        # tz-aware while the DB row returns naive, so without normalization
+        # every reload rewrote the row under a new models.id.
+        path = _write_defaults(
+            tmp_path,
+            [
+                {
+                    "match_pattern": "(?i)^deepseek-v4[.-]1-flash$",
+                    "provider": "fireworks",
+                    "updated_at": "2026-09-21T10:47:14Z",
+                    "start_date": start_date,
+                    "pricing_tiers": [
+                        {"name": "default", "is_default": True, "conditions": [], "prices": {"input": 0.30}}
+                    ],
+                }
+            ],
+        )
+        monkeypatch.setattr("apo.services.pricing.loader.DEFAULTS_PATH", path)
+        load_default_prices(session)
+        row = session.exec(select(ModelRowDB).where(ModelRowDB.project == "__global__")).one()
+        assert row.id is not None
+        tier_ids = sorted(
+            t.id for t in session.exec(select(PricingTierDB).where(PricingTierDB.model_id == row.id)).all()
+        )
+        n_prices = len(list(session.exec(select(PriceDB).where(PriceDB.model_id == row.id)).all()))
+
+        n = load_default_prices(session)
+
+        assert n == 0
+        # Same row survived the reload — not deleted and reinserted.
+        assert session.get(ModelRowDB, row.id) is not None
+        assert sorted(
+            t.id for t in session.exec(select(PricingTierDB).where(PricingTierDB.model_id == row.id)).all()
+        ) == tier_ids
+        assert len(list(session.exec(select(PriceDB).where(PriceDB.model_id == row.id)).all())) == n_prices
+
+    def test_bundled_defaults_reload_is_noop_and_keeps_ids(self, session: Session) -> None:
+        first = load_default_prices(session)
+        assert first > 0
+        rows = list(session.exec(select(ModelRowDB).where(ModelRowDB.project == "__global__")).all())
+        ids = {r.id for r in rows}
+        dated = next(r for r in rows if r.start_date is not None)
+        assert dated.id is not None
+        # A logged call's internal_model_id is a frozen soft reference to the
+        # matched era row; a reload that rewrote dated eras would orphan it.
+        session.add(
+            LoggedCallDB(
+                id="call-era-1",
+                project="default",
+                task_id="",
+                model="deepseek-v4.1-flash",
+                observation_type="GENERATION",
+                created_at=datetime(2026, 9, 21, 12, tzinfo=timezone.utc),
+                internal_model_id=dated.id,
+            )
+        )
+        session.commit()
+
+        n = load_default_prices(session)
+
+        assert n == 0
+        assert {r.id for r in session.exec(select(ModelRowDB).where(ModelRowDB.project == "__global__")).all()} == ids
+        call = session.exec(select(LoggedCallDB).where(LoggedCallDB.id == "call-era-1")).one()
+        assert call.internal_model_id == dated.id
+        assert session.get(ModelRowDB, dated.id) is not None
+
+    @pytest.mark.parametrize("start_date", ["2026-09-21T10:47:14Z", "2026-09-21T10:47:14+05:00"])
+    def test_reload_skips_rows_written_by_pre_fix_loader(
+        self, session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, start_date: str
+    ) -> None:
+        # Upgrade path: the pre-fix loader wrote dated eras with a tz-aware
+        # start_date (stored as naive wall time) plus their tier/price graph.
+        # The fixed loader must recognize those rows as current instead of
+        # rewriting them on the first startup after the upgrade. The +05:00
+        # case pins the wall-time strip: converting to UTC instead would
+        # miss the stored wall time and rewrite the row.
+        path = _write_defaults(
+            tmp_path,
+            [
+                {
+                    "match_pattern": "(?i)^deepseek-v4[.-]1-flash$",
+                    "provider": "fireworks",
+                    "updated_at": "2026-09-21T10:47:14Z",
+                    "start_date": start_date,
+                    "pricing_tiers": [
+                        {"name": "default", "is_default": True, "conditions": [], "prices": {"input": 0.30}}
+                    ],
+                }
+            ],
+        )
+        monkeypatch.setattr("apo.services.pricing.loader.DEFAULTS_PATH", path)
+        model = ModelRowDB(
+            project="__global__",
+            match_pattern="(?i)^deepseek-v4[.-]1-flash$",
+            provider="fireworks",
+            display_name="",
+            start_date=datetime.fromisoformat(start_date.replace("Z", "+00:00")),
+            end_date=None,
+            updated_at="2026-09-21T10:47:14Z",
+        )
+        session.add(model)
+        session.flush()
+        assert model.id is not None
+        tier = PricingTierDB(model_id=model.id, name="default", is_default=True, priority=0, conditions_json="[]")
+        session.add(tier)
+        session.flush()
+        assert tier.id is not None
+        session.add(PriceDB(model_id=model.id, tier_id=tier.id, usage_key="input", price_per_1m=300_000))
+        session.commit()
+        model_id, tier_id = model.id, tier.id
+
+        n = load_default_prices(session)
+
+        assert n == 0
+        assert session.get(ModelRowDB, model_id) is not None
+        assert session.get(PricingTierDB, tier_id) is not None
 
     def test_globals_absent_from_file_deleted(self, session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # Seed with two globals.

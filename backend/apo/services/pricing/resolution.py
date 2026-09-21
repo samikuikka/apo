@@ -22,6 +22,7 @@ from sqlmodel import Session, col, select
 
 from ...models.pricing import ModelRowDB, PriceDB, PricingTierDB
 from ...models.usage_keys import UsageKey
+from ._timeutils import naive
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +92,10 @@ def resolve_model_era(
     # start_date IS NULL -> matches any lower bound (legacy seed rows).
     def _in_era(row: ModelRowDB) -> bool:
         if row.start_date is not None:
-            if _naive(row.start_date) > _naive(at_time):
+            if naive(row.start_date) > naive(at_time):
                 return False
         if row.end_date is not None:
-            if _naive(row.end_date) <= _naive(at_time):
+            if naive(row.end_date) <= naive(at_time):
                 return False
         return True
 
@@ -109,10 +110,6 @@ def resolve_model_era(
         reverse=True,
     )
     return in_era[0]
-
-
-def _naive(dt: datetime) -> datetime:
-    return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
 
 
 def match_tier(

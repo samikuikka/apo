@@ -30,6 +30,7 @@ from ...models.pricing import (
     TierDocument,
 )
 from ...models.usage_keys import UsageKey
+from ._timeutils import naive
 from .validation import TierValidationError, validate_model_document
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ def load_default_prices(session: Session, *, path: Path | None = None) -> int:
     def _era_key(m: object) -> tuple[str, str]:
         mp = getattr(m, "match_pattern", "")
         sd = getattr(m, "start_date", None)
-        return (mp, sd.isoformat() if sd is not None else "")
+        return (mp, naive(sd).isoformat() if sd is not None else "")
 
     existing = {_era_key(m): m for m in _global_models(session)}
     seen_eras: set[tuple[str, str]] = set()
@@ -144,7 +145,10 @@ def _coerce_prices(prices_raw: dict[str, Any]) -> dict[str, float]:
 def _parse_dt(value: Any) -> datetime | None:
     if value is None or value == "":
         return None
-    return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    # Naive wall time: the era key must equal what a DB round-trip returns,
+    # and the naive DATETIME columns store wall time. Returning tz-aware here
+    # made every reload rewrite the dated eras (issue #301).
+    return naive(datetime.fromisoformat(str(value).replace("Z", "+00:00")))
 
 
 def _global_models(session: Session) -> list[ModelRowDB]:

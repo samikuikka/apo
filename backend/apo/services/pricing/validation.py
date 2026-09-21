@@ -18,6 +18,7 @@ from datetime import datetime
 from sqlmodel import Session, select
 
 from ...models.pricing import ModelDocumentCreate, ModelRowDB
+from ._timeutils import naive
 
 
 class TierValidationError(ValueError):
@@ -118,10 +119,7 @@ def _eras_overlap(
     b_hi = b_end if b_end is not None else datetime.max.replace(tzinfo=None)
 
     # Normalize tz-awareness for comparison.
-    def _naive(dt: datetime) -> datetime:
-        return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
-
-    return _naive(a_lo) < _naive(b_hi) and _naive(b_lo) < _naive(a_hi)
+    return naive(a_lo) < naive(b_hi) and naive(b_lo) < naive(a_hi)
 
 
 __all__ = [
