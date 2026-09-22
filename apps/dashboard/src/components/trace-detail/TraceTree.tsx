@@ -764,24 +764,22 @@ export function TraceTree({
                 data-index={virtualRow.index}
                 style={{ position: "absolute", top: virtualRow.start, left: 0, width: "100%" }}
               >
-                <div className="flex h-7 items-center gap-1.5 overflow-hidden whitespace-nowrap px-3 text-xs text-muted-foreground">
-                  <button
-                    type="button"
-                    onClick={() => setEvalExpanded((v) => !v)}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm hover:bg-accent"
-                    aria-label={row.evalOpen ? "Collapse evaluation" : "Expand evaluation"}
-                  >
-                    <ChevronRight
-                      className={cn("h-3.5 w-3.5 transition-transform", row.evalOpen && "rotate-90")}
-                    />
-                  </button>
+                <button
+                  type="button"
+                  onClick={() => setEvalExpanded((v) => !v)}
+                  aria-expanded={row.evalOpen}
+                  className="flex h-7 w-full items-center gap-1.5 overflow-hidden whitespace-nowrap px-3 text-left text-xs text-muted-foreground hover:bg-accent/50"
+                >
+                  <ChevronRight
+                    className={cn("h-3.5 w-3.5 shrink-0 transition-transform", row.evalOpen && "rotate-90")}
+                  />
                   <Scale className="h-3.5 w-3.5 shrink-0" aria-hidden />
                   <span className="shrink-0 font-medium text-foreground">Evaluation</span>
                   <span className="shrink-0 text-success">{row.evalPassed} pass</span>
                   <span className={cn("shrink-0", row.evalFailed > 0 ? "text-destructive" : "text-muted-foreground")}>
                     {row.evalFailed} fail
                   </span>
-                </div>
+                </button>
               </div>
             );
           }
