@@ -36,7 +36,7 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 ## Synopsis
 
 ```bash
-apo traces show <trace-id> [--verbose] [--errors-only]
+apo traces show <trace-id> [--verbose] [--errors-only] [--full | --max-chars <n>] [--call <id>]
 ```
 
 ## Description
@@ -48,8 +48,11 @@ Shows a trace's call details. The argument is a **trace id** (required, a 32-cha
 | Option | Default | Purpose |
 |---|---|---|
 | `<trace-id>` | (required) | Trace id or unique prefix. |
-| `--verbose` | off | Show per-call input/output and full messages. |
+| `--verbose` | off | Show per-call input/output and messages, as compact previews. |
 | `--errors-only` | off | Filter to ERROR and WARNING calls only. |
+| `--full` | off | Show messages/input/output without truncation (implies `--verbose`). |
+| `--max-chars <n>` | off | Cap messages/input/output at `n` chars instead of the defaults (implies `--verbose`). |
+| `--call <id>` | off | Show only this call — id or unique prefix — with messages/input/output untruncated. |
 
 ## Output
 
@@ -80,7 +83,21 @@ Shows a trace's call details. The argument is a **trace id** (required, a 32-cha
 
 Recorded task runs always contain the runtime's own spans (`apo.task.run`, `task.load`, `adapter.open-session`, `adapter.collect-deliverables`) around the agent's work, they carry no model, cost, or tokens. Model calls show their model, cost, and token split; tool calls show their arguments and results.
 
-With `--verbose`, each call expands to show its full input and output, the messages sent to the model, the tool results returned, the deliverables collected. With `--errors-only`, only calls that errored or warned are shown, for fast triage.
+With `--verbose`, each call expands to show its input and output, the messages sent to the model, the tool results returned, the deliverables collected. With `--errors-only`, only calls that errored or warned are shown, for fast triage.
+
+`--verbose` previews content, it doesn't print it whole: messages stop at 300 chars, input and output at 500. That keeps a 50-call trace scannable, but it hides the middle of a long reply — and agent reasoning runs long. Three flags lift the cap:
+
+```bash
+apo traces show f1a2b3c4 --verbose   # message preview stops at 300 chars
+      [assistant] [thinking] The summary needs Q3 revenue. The billing tool returned quarterly aggregates, so I should join on quarter and re
+                                                                                                                                        ^ stops here — no marker
+
+apo traces show f1a2b3c4 --full      # whole reply, no caps
+apo traces show f1a2b3c4 --max-chars 2000   # your cap, not ours
+apo traces show f1a2b3c4 --call 846f4f13    # one generation, whole, nothing else
+```
+
+`--call` takes a call id or a unique prefix — the ids shown at the end of each call line in verbose modes — and prints that single generation with its messages, input, and output in full: reading one reply never requires dumping the whole trace. `--max-chars` overrides `--call`'s no-cap default when you want one reply sized your way. Span attributes and tool results stay compact in all modes; `--json` prints the full raw trace, messages and span attributes included, never filtered by `--call`.
 
 ## Why the trace matters
 
@@ -97,6 +114,12 @@ apo traces show f1a2b3c4 --verbose
 
 # Show only what errored
 apo traces show f1a2b3c4 --errors-only
+
+# Read a full reply — no 300/500-char caps
+apo traces show f1a2b3c4 --full
+
+# One generation only, content untruncated (id prefix works)
+apo traces show f1a2b3c4 --call 846f
 ```
 
 ## See also
