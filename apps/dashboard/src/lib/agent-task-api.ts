@@ -376,6 +376,11 @@ export interface AgentTaskBatchRunSummary {
   /** non-zero means total_cost is a partial sum (issue #147). */
   unpriced_call_count?: number;
   total_tokens: number | null;
+  /** Issue #309: sums of the children's generation usage. Null when every
+   * child is unknown (no run reported the reasoning dimension / recorded a
+   * latency) — unknown, NOT zero. */
+  total_reasoning_tokens?: number | null;
+  total_model_time_ms?: number | null;
   /** derived configuration summary (uniform/mixed/partial/unknown). */
   configuration: AgentTaskBatchRunConfigurationSummary;
 }

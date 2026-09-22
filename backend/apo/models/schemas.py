@@ -891,6 +891,11 @@ class AgentTaskBatchRunSummary(SQLModel):
     # ``total_cost`` is a partial sum, not a complete total.
     unpriced_call_count: int = 0
     total_tokens: int | None = None
+    # Issue #309: sums of the children's generation usage. Null when every
+    # child is unknown (no generation reported the dimension / no latency
+    # was recorded) — unknown, never zero.
+    total_reasoning_tokens: int | None = None
+    total_model_time_ms: float | None = None
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -928,6 +933,10 @@ class AgentTaskBatchRunDetail(SQLModel):
     # ``total_cost`` is a partial sum, not a complete total.
     unpriced_call_count: int = 0
     total_tokens: int | None = None
+    # Issue #309: sums of the children's generation usage (unknown ≠ 0, see
+    # AgentTaskBatchRunSummary).
+    total_reasoning_tokens: int | None = None
+    total_model_time_ms: float | None = None
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None

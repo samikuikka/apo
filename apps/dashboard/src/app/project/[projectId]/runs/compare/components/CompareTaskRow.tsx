@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { ChevronRight, ExternalLink } from "lucide-react";
@@ -316,18 +317,47 @@ function shortModel(model: string): string {
  *  (which on a per-row-scaled bar would misread as "free/instant"). Bars are
  *  neutral — a slower run might be doing more work, so "slower = red" would
  *  moralize wrongly. Length carries the signal; color stays out of it. */
+/** Muted jump-to-observation link under an extreme metric row (issue #309):
+ *  "the slowest call" and "max reasoning/call" point straight at the span that
+ *  set the extreme, via the trace view's `?observation=` selection param.
+ *  Null when the run has no trace or the summary carries no winning call. */
+function usageSub(
+  projectId: string,
+  run: AgentTaskRunSummary | null | undefined,
+  field: "slowest_call_id" | "max_reasoning_call_id" | undefined,
+): ReactNode {
+  if (!field || !run?.trace_run_id) return null;
+  const callId = run.generation_usage?.[field];
+  if (!callId) return null;
+  return (
+    <Link
+      href={`/project/${projectId}/traces/${run.trace_run_id}?observation=${callId}`}
+      className="shrink-0 text-[10px] text-muted-foreground/70 underline-offset-2 hover:underline"
+      title="Open the call that set this value"
+    >
+      call
+    </Link>
+  );
+}
+
 function MetricRow({
   label,
   leftValue,
   rightValue,
   formatLeft,
   formatRight,
+  subLeft = null,
+  subRight = null,
 }: {
   label: string;
   leftValue: number | null;
   rightValue: number | null;
   formatLeft: string;
   formatRight: string;
+  /** Optional muted sub-line under a side's bar — e.g. a jump-to-observation
+   *  link for the call behind a max metric (issue #309). */
+  subLeft?: ReactNode;
+  subRight?: ReactNode;
 }) {
   const max = Math.max(leftValue ?? 0, rightValue ?? 0);
   return (
@@ -341,12 +371,14 @@ function MetricRow({
         max={max}
         formatted={formatLeft}
         className="border-l border-border bg-muted/30"
+        sub={subLeft}
       />
       <MetricSide
         value={rightValue}
         max={max}
         formatted={formatRight}
         className="border-l border-border bg-muted/30"
+        sub={subRight}
       />
     </>
   );
@@ -359,11 +391,13 @@ function MetricSide({
   max,
   formatted,
   className,
+  sub = null,
 }: {
   value: number | null;
   max: number;
   formatted: string;
   className?: string;
+  sub?: ReactNode;
 }) {
   const hasData = value != null;
   // Fill relative to the per-row max. A true zero renders as a hairline (2%)
@@ -388,6 +422,7 @@ function MetricSide({
       >
         {hasData ? formatted : "—"}
       </span>
+      {sub}
     </div>
   );
 }
@@ -792,13 +827,21 @@ function CheckDiff({
   const rightTokens = right?.total_tokens != null && right.total_tokens > 0 ? right.total_tokens : null;
   // Model time and reasoning (issue #309): the totals plus the single largest
   // call, so a change that makes one call slow or verbose shows as a number.
+  // `sub` names the usage field holding the winning call's span id, so the
+  // extreme rows can link straight to that observation in the trace.
   const leftUsage = left?.generation_usage ?? null;
   const rightUsage = right?.generation_usage ?? null;
-  const usageRows: { label: string; left: number | null; right: number | null; format: (v: number) => string }[] = [
+  const usageRows: {
+    label: string;
+    left: number | null;
+    right: number | null;
+    format: (v: number) => string;
+    sub?: "slowest_call_id" | "max_reasoning_call_id";
+  }[] = [
     { label: "model time", left: leftUsage?.model_time_ms ?? null, right: rightUsage?.model_time_ms ?? null, format: formatInterval },
-    { label: "slowest call", left: leftUsage?.slowest_call_ms ?? null, right: rightUsage?.slowest_call_ms ?? null, format: formatInterval },
+    { label: "slowest call", left: leftUsage?.slowest_call_ms ?? null, right: rightUsage?.slowest_call_ms ?? null, format: formatInterval, sub: "slowest_call_id" as const },
     { label: "reasoning", left: leftUsage?.reasoning_tokens ?? null, right: rightUsage?.reasoning_tokens ?? null, format: formatTokenTotal },
-    { label: "max reasoning/call", left: leftUsage?.max_call_reasoning_tokens ?? null, right: rightUsage?.max_call_reasoning_tokens ?? null, format: formatTokenTotal },
+    { label: "max reasoning/call", left: leftUsage?.max_call_reasoning_tokens ?? null, right: rightUsage?.max_call_reasoning_tokens ?? null, format: formatTokenTotal, sub: "max_reasoning_call_id" as const },
   ].filter((row) => row.left != null || row.right != null);
   const hasMetrics =
     (leftCost ?? rightCost) != null ||
@@ -889,6 +932,8 @@ function CheckDiff({
                   rightValue={row.right}
                   formatLeft={row.left != null ? row.format(row.left) : "—"}
                   formatRight={row.right != null ? row.format(row.right) : "—"}
+                  subLeft={usageSub(projectId, left, row.sub)}
+                  subRight={usageSub(projectId, right, row.sub)}
                 />
               ))}
             </div>

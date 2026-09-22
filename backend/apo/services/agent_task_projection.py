@@ -252,6 +252,21 @@ def to_batch_run_detail(
     total_tokens = sum(tr.total_tokens or 0 for tr in task_runs)
     total_tokens_out = total_tokens if total_tokens > 0 else None
     unpriced_call_count = sum(tr.unpriced_call_count or 0 for tr in task_runs)
+    # Issue #309 batch sums from the children's generation usage summaries.
+    # Null children are skipped, not zeroed: each total is null only when
+    # every child is unknown (nobody reported the dimension / no latency).
+    reporting = [
+        value
+        for tr in task_runs
+        if (value := _usage_number(tr, "reasoning_tokens")) is not None
+    ]
+    total_reasoning_tokens = int(sum(reporting)) if reporting else None
+    timed = [
+        value
+        for tr in task_runs
+        if (value := _usage_number(tr, "model_time_ms")) is not None
+    ]
+    total_model_time_ms = sum(timed) if timed else None
     breakdown = build_failure_breakdown(task_runs)
     execution_target = _execution_target(br.execution_target_json)
     is_source_owned = isinstance(execution_target, SourceOwnedExecutionTarget)
@@ -292,6 +307,8 @@ def to_batch_run_detail(
         total_cost=total_cost,
         unpriced_call_count=unpriced_call_count,
         total_tokens=total_tokens_out,
+        total_reasoning_tokens=total_reasoning_tokens,
+        total_model_time_ms=total_model_time_ms,
         created_at=br.created_at,
         started_at=br.started_at,
         completed_at=br.completed_at,
@@ -316,6 +333,19 @@ def to_batch_run_detail(
         ],
         configuration=configuration,
     )
+
+
+def _usage_number(tr: AgentTaskRunDB, key: str) -> float | None:
+    """Read a numeric field off a Task Run's generation usage summary JSON.
+
+    ``generation_usage_json`` is untyped (``dict[str, object]``), so every
+    read goes through an isinstance guard; anything non-numeric reads as
+    unknown, never as zero.
+    """
+    value = (tr.generation_usage_json or {}).get(key)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
 
 
 def group_batch_configuration_summaries(

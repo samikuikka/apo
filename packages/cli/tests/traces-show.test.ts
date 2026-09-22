@@ -442,3 +442,106 @@ describe("traces show content caps (issue #308)", () => {
     expect(out).toContain("bbb2");
   });
 });
+
+describe("traces show reasoning and timing rollups (issue #309)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function call(overrides: Record<string, unknown>): Record<string, unknown> {
+    return {
+      id: "call-1",
+      model: "fixture-model",
+      observation_type: "GENERATION",
+      step_name: null,
+      level: "DEFAULT",
+      latency_ms: 2_000,
+      cost: 100,
+      total_tokens: 120,
+      prompt_tokens: 100,
+      completion_tokens: 20,
+      raw_usage: null,
+      time_to_first_token_ms: null,
+      parent_call_id: "root",
+      status_message: null,
+      created_at: "2026-07-14T18:12:38Z",
+      input: {},
+      output: {},
+      messages: null,
+      tool_name: null,
+      tool_parameters: null,
+      tool_result: null,
+      metadata: null,
+      ...overrides,
+    };
+  }
+
+  it("prints reasoning totals with the deepest call, slowest call, and model time", async () => {
+    const { run } = await import("../src/commands/traces-show.ts");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse({
+        ...makeTraceDetail(),
+        calls: [
+          call({
+            id: "gen-1",
+            latency_ms: 2_000,
+            raw_usage: { input: 100, output: 20, reasoning: 500 },
+          }),
+          call({
+            id: "gen-2",
+            latency_ms: 6_500,
+            raw_usage: { input: 100, output: 20, reasoning: 7_000 },
+          }),
+          // Tool + structural rows must not win "slowest call" nor count as
+          // model time: the root span's latency is the run's wall clock.
+          call({
+            id: "tool-1",
+            observation_type: "TOOL",
+            latency_ms: 90_000,
+          }),
+          call({
+            id: "root",
+            observation_type: "SPAN",
+            model: "agent-task",
+            latency_ms: 300_000,
+          }),
+        ],
+      }),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain("Reasoning: 7,500 tok");
+    expect(out).toContain("max 7,000 in one call (observation gen-2)");
+    expect(out).toContain("Slowest call: 6.5s (observation gen-2)");
+    // Model time sums generations only (2.0s + 6.5s): the 90s tool and the
+    // 300s root span stay in the per-call list below but are not model time.
+    expect(out).toContain("Model time: 8.5s");
+  });
+
+  it("omits the rollup lines when nothing reported them", async () => {
+    const { run } = await import("../src/commands/traces-show.ts");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse({
+        ...makeTraceDetail(),
+        calls: [
+          call({ id: "gen-1", raw_usage: { input: 5, output: 5 }, latency_ms: null }),
+        ],
+      }),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    // Unknown reasoning (no call sent the dimension) and no latency → no
+    // lines at all, never a false zero.
+    expect(out).not.toContain("Reasoning:");
+    expect(out).not.toContain("Slowest call:");
+    expect(out).not.toContain("Model time:");
+  });
+});

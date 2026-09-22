@@ -208,7 +208,7 @@ const commands: Record<string, CommandEntry> = {
   },
   "runs show": {
     handler: loadCommand("runs-show"),
-    help: "Show run details (checks, failures, cost) from backend. Checks judged with a second judge carry ✓✗ marks and a split count (APO_SECOND_JUDGE_MODEL)",
+    help: "Show run details (checks, failures, cost, reasoning, timing) from backend. Reasoning totals and model time (sum of generation latencies) come with the peak/slowest single call. Checks judged with a second judge carry ✓✗ marks and a split count (APO_SECOND_JUDGE_MODEL)",
     args: [
       ["[run-id]", "Run ID, unique prefix, or 'last' (default: latest run)"],
     ],
@@ -362,7 +362,7 @@ const commands: Record<string, CommandEntry> = {
   },
   "traces show": {
     handler: loadCommand("traces-show"),
-    help: "Show trace call details (timing, cost, tokens)",
+    help: "Show trace call details (timing, cost, tokens, reasoning)",
     args: [
       ["<trace-id>", "Trace ID or unique prefix"],
     ],

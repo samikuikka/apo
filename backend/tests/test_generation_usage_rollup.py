@@ -223,3 +223,89 @@ def _tool(span_id: str, *, duration_ms: int) -> dict[str, object]:
             {"key": "gen_ai.tool.name", "value": {"stringValue": "read"}},
         ],
     }
+
+
+def test_avg_latency_metric_averages_generations_only(session: Session) -> None:
+    """The trace-run ``avg_latency`` metric must average model calls, not
+    observations: the agent-task root span's latency is the run's whole wall
+    clock and a tool's latency is tool time, not model time."""
+    from apo.metrics.aggregate import calculate_and_store_aggregate_metrics
+
+    _ingest(
+        session,
+        [
+            _generation("0000000000000011", duration_ms=1_000, reasoning=None),
+            _generation("0000000000000012", duration_ms=6_500, reasoning=None),
+            _generation("0000000000000013", duration_ms=2_500, reasoning=None),
+            _tool("0000000000000014", duration_ms=90_000),
+        ],
+    )
+
+    rows = calculate_and_store_aggregate_metrics(session, TRACE_ID, "p1")
+    avg = next(r for r in rows if r.metric_name == "avg_latency")
+
+    # (1_000 + 6_500 + 2_500) / 3 — the 90s tool and the 300s root span must
+    # not drag the average (unfiltered they would raise it to ~80s).
+    assert avg.score == pytest.approx(10_000.0 / 3)
+
+
+def test_batch_detail_sums_generation_usage_and_keeps_unknown() -> None:
+    """Batch-level reasoning/model-time sums skip unknown children instead of
+    zeroing them, and stay null only when every child is unknown."""
+    from datetime import datetime, timezone
+
+    from apo.models.db import AgentTaskBatchRunDB
+    from apo.services.agent_task_projection import to_batch_run_detail
+
+    now = datetime.now(timezone.utc)
+    batch = AgentTaskBatchRunDB(
+        id="batch-309",
+        project="p1",
+        selection_type="task",
+        status="completed",
+        total_tasks=3,
+        created_at=now,
+    )
+    runs = [
+        AgentTaskRunDB(
+            id="run-309-a",
+            batch_run_id=batch.id,
+            task_id="t",
+            task_path="t",
+            status="passed",
+            generation_usage_json={
+                "generations": 2,
+                "model_time_ms": 12_000.0,
+                "reasoning_tokens": 500,
+            },
+        ),
+        AgentTaskRunDB(
+            id="run-309-b",
+            batch_run_id=batch.id,
+            task_id="t",
+            task_path="t",
+            status="passed",
+            generation_usage_json={
+                "generations": 1,
+                "model_time_ms": 3_000.0,
+                "reasoning_tokens": None,
+            },
+        ),
+        # Legacy run: rolled up before issue #309, no summary at all.
+        AgentTaskRunDB(
+            id="run-309-c",
+            batch_run_id=batch.id,
+            task_id="t",
+            task_path="t",
+            status="passed",
+        ),
+    ]
+
+    detail = to_batch_run_detail(batch, runs)
+
+    assert detail.total_reasoning_tokens == 500
+    assert detail.total_model_time_ms == 15_000.0
+
+    all_unknown = to_batch_run_detail(batch, [runs[2]])
+    assert all_unknown.total_reasoning_tokens is None
+    assert all_unknown.total_model_time_ms is None

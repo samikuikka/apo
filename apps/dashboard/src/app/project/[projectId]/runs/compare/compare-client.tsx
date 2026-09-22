@@ -3,8 +3,10 @@
 import Link from "next/link";
 import {
   ArrowLeft,
+  Brain,
   ChevronRight,
   Clock,
+  Gauge,
   GitCompare,
   Hash,
 } from "lucide-react";
@@ -328,6 +330,27 @@ function BatchSlot({
             <span className="inline-flex items-center gap-1">
               <Hash className="h-3 w-3 text-muted-foreground/50" />
               {formatTokenTotal(batch.total_tokens)}
+            </span>
+          )}
+          {/* Issue #309: reasoning + model time beside tokens in the "what
+              did this run cost me" cluster. Null = unknown (no child
+              reported) → hidden, never rendered as zero. */}
+          {batch.total_reasoning_tokens != null && (
+            <span
+              className="inline-flex items-center gap-1"
+              title="Sum of reasoning tokens across runs that reported the dimension"
+            >
+              <Brain className="h-3 w-3 text-muted-foreground/50" />
+              {formatTokenTotal(batch.total_reasoning_tokens)}
+            </span>
+          )}
+          {batch.total_model_time_ms != null && (
+            <span
+              className="inline-flex items-center gap-1"
+              title="Sum of model-call latencies — tool and harness time excluded"
+            >
+              <Gauge className="h-3 w-3 text-muted-foreground/50" />
+              {formatDuration(batch.total_model_time_ms)}
             </span>
           )}
         </div>

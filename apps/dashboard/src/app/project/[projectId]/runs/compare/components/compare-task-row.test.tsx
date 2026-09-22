@@ -546,6 +546,56 @@ describe("CompareTaskRow run-level usage rows", () => {
     expect(screen.getByText("18.3k tok")).toBeInTheDocument();
   });
 
+  it("links the extreme rows to the call that set them", async () => {
+    const usage = (slowestId: string, maxId: string) => ({
+      generations: 2,
+      model_time_ms: 9_000,
+      slowest_call_ms: 7_000,
+      slowest_call_id: slowestId,
+      reasoning_tokens: 900,
+      reasoning_calls: 2,
+      max_call_reasoning_tokens: 600,
+      max_reasoning_call_id: maxId,
+    });
+    const evidenceLoader = vi.fn().mockResolvedValue({
+      left: {
+        id: "run-a",
+        trace_run_id: "trace-a",
+        checks_json: [],
+        generation_usage: usage("span-left-slow", "span-left-deep"),
+      },
+      right: {
+        id: "run-b",
+        trace_run_id: "trace-b",
+        checks_json: [],
+        generation_usage: usage("span-right-slow", "span-right-deep"),
+      },
+    });
+
+    render(
+      <CompareTaskRow
+        task={makeTask()}
+        expanded={new Set(["task-1"])}
+        onToggleExpand={noopToggle}
+        projectId="proj"
+        evidenceLoader={evidenceLoader}
+      />,
+    );
+
+    // Each side's extreme rows deep-link to the observation behind the max
+    // via the trace view's selection param (issue #309).
+    await waitFor(() => {
+      expect(screen.getByText("slowest call")).toBeInTheDocument();
+    });
+    const hrefs = screen
+      .getAllByRole("link")
+      .map((el) => el.getAttribute("href"));
+    expect(hrefs).toContain("/project/proj/traces/trace-a?observation=span-left-slow");
+    expect(hrefs).toContain("/project/proj/traces/trace-a?observation=span-left-deep");
+    expect(hrefs).toContain("/project/proj/traces/trace-b?observation=span-right-slow");
+    expect(hrefs).toContain("/project/proj/traces/trace-b?observation=span-right-deep");
+  });
+
   it("leaves the reasoning rows out when neither side reported reasoning", async () => {
     const usage = {
       generations: 2,

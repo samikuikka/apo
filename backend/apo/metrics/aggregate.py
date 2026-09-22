@@ -41,8 +41,15 @@ def calculate_and_store_aggregate_metrics(
             reasoning=f"Sum of {len(costs)} call costs",
         ))
 
-    # Calculate avg_latency
-    latencies = [c.latency_ms for c in calls if c.latency_ms is not None]
+    # Calculate avg_latency — over GENERATION observations only. Non-generation
+    # rows also carry latencies (tools; the agent-task root span's latency is
+    # the run's whole wall clock), and averaging those in would describe the
+    # run, not the model.
+    latencies = [
+        c.latency_ms
+        for c in calls
+        if c.observation_type == "GENERATION" and c.latency_ms is not None
+    ]
     if latencies:
         metrics.append(RunMetricDB(
             run_id=run_id,
@@ -50,7 +57,7 @@ def calculate_and_store_aggregate_metrics(
             metric_name="avg_latency",
             metric_type="aggregate",
             score=sum(latencies) / len(latencies),
-            reasoning=f"Average of {len(latencies)} call latencies",
+            reasoning=f"Average of {len(latencies)} generation latencies",
         ))
 
     # Calculate total_tokens

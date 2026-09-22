@@ -16,6 +16,9 @@ type TraceCall = {
   total_tokens: number | null;
   prompt_tokens: number | null;
   completion_tokens: number | null;
+  /** Normalized usage map (UsageKey -> token count); a missing "reasoning"
+   * key means the provider did not report the dimension. */
+  raw_usage?: Record<string, number> | null;
   time_to_first_token_ms: number | null;
   parent_call_id: string | null;
   status_message: string | null;
@@ -225,6 +228,16 @@ function printTraceDetail(trace: TraceDetail, calls: TraceCall[], view: CallView
   const errorCount = trace.calls.filter((c) => c.level === "ERROR").length;
   const warnCount = trace.calls.filter((c) => c.level === "WARNING").length;
 
+  // Issue #309 rollups — model-call facts, so GENERATION observations only:
+  // tool/structural rows carry latencies too (the agent-task root span's
+  // latency is the run's whole wall clock), and maxing or summing those
+  // would crown a tool as the "slowest model call".
+  const generations = trace.calls.filter((c) => c.observation_type === "GENERATION");
+  // Reasoning reads the normalized raw_usage dimension; absent means the
+  // provider never reported it — unknown, not zero.
+  const reporting = generations.filter((c) => c.raw_usage && "reasoning" in c.raw_usage);
+  const timed = generations.filter((c) => c.latency_ms != null);
+
   console.log(bold(`Trace: ${run.id}`));
   console.log(`  Task:      ${run.task_id ?? run.flow_name ?? "-"}`);
   console.log(`  Status:    ${run.status}`);
@@ -232,6 +245,24 @@ function printTraceDetail(trace: TraceDetail, calls: TraceCall[], view: CallView
   console.log(`  Calls:     ${trace.calls.length}${errorCount > 0 ? ` (${red(`${errorCount} errors`)})` : ""}${warnCount > 0 ? ` (${warnCount} warnings)` : ""}`);
   console.log(`  Cost:      ${formatCost(totalCost)}`);
   console.log(`  Tokens:    ${totalTokens.toLocaleString()}`);
+  if (reporting.length > 0) {
+    const totalReasoning = reporting.reduce((s, c) => s + (c.raw_usage!.reasoning ?? 0), 0);
+    const deepest = reporting.reduce((a, b) =>
+      (b.raw_usage!.reasoning ?? 0) > (a.raw_usage!.reasoning ?? 0) ? b : a);
+    console.log(
+      `  Reasoning: ${totalReasoning.toLocaleString()} tok ${dim(`· max ${deepest.raw_usage!.reasoning.toLocaleString()} in one call (observation ${deepest.id})`)}`,
+    );
+  }
+  if (timed.length > 0) {
+    const slowest = timed.reduce((a, b) => (b.latency_ms! > a.latency_ms! ? b : a));
+    const modelTime = timed.reduce((s, c) => s + c.latency_ms!, 0);
+    console.log(
+      `  Slowest call: ${(slowest.latency_ms! / 1000).toFixed(1)}s ${dim(`(observation ${slowest.id})`)}`,
+    );
+    console.log(
+      `  Model time: ${(modelTime / 1000).toFixed(1)}s ${dim("(sum of generation latencies — excludes tool/harness time)")}`,
+    );
+  }
   console.log(`  Created:   ${formatTime(run.created_at)}`);
   if (trace.capabilities) {
     // Which evidence categories this trace's projection carries — an
