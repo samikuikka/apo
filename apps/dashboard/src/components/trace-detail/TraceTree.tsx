@@ -791,6 +791,7 @@ export function TraceTree({
             judgeRoots.some((j) => j.id === node.call!.id)
           ) {
             const pass = judgeVerdicts[node.call.id];
+            const isOpen = expanded.has(node.call.id);
             return (
               <div
                 key={node.id}
@@ -798,26 +799,41 @@ export function TraceTree({
                 data-index={virtualRow.index}
                 style={{ position: "absolute", top: virtualRow.start, left: 0, width: "100%" }}
               >
-                <button
-                  type="button"
-                  onClick={() => selectCall(node.id)}
-                  className="flex h-7 w-full items-center gap-1.5 overflow-hidden whitespace-nowrap px-3 pl-7 text-left text-xs hover:bg-accent/50"
-                >
-                  <span className={cn(
-                    "shrink-0 rounded-sm px-1 py-0.5 text-[10px] font-semibold uppercase",
-                    pass === true && "bg-success/15 text-success",
-                    pass === false && "bg-destructive/15 text-destructive",
-                    pass === undefined && "bg-muted text-muted-foreground",
-                  )}>
-                    {pass === true ? "pass" : pass === false ? "fail" : "—"}
-                  </span>
-                  <span className={cn("truncate", pass === false ? "text-destructive" : "text-foreground")}>
-                    {node.call.step_name}
-                  </span>
-                  <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
-                    {formatDuration(node.call.latency_ms ?? undefined)}
-                  </span>
-                </button>
+                <div className="flex h-7 w-full items-center gap-1.5 overflow-hidden whitespace-nowrap px-3 text-left text-xs hover:bg-accent/50">
+                  {node.hasChildren && (
+                    <button
+                      type="button"
+                      onClick={() => toggleNode(node.call!.id)}
+                      aria-expanded={isOpen}
+                      aria-label={isOpen ? "Collapse judgment" : "Expand judgment"}
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm hover:bg-accent"
+                    >
+                      <ChevronRight
+                        className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-90")}
+                      />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => selectCall(node.id)}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden whitespace-nowrap text-left"
+                  >
+                    <span className={cn(
+                      "shrink-0 rounded-sm px-1 py-0.5 text-[10px] font-semibold uppercase",
+                      pass === true && "bg-success/15 text-success",
+                      pass === false && "bg-destructive/15 text-destructive",
+                      pass === undefined && "bg-muted text-muted-foreground",
+                    )}>
+                      {pass === true ? "pass" : pass === false ? "fail" : "—"}
+                    </span>
+                    <span className={cn("truncate", pass === false ? "text-destructive" : "text-foreground")}>
+                      {node.call.step_name}
+                    </span>
+                    <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
+                      {formatDuration(node.call.latency_ms ?? undefined)}
+                    </span>
+                  </button>
+                </div>
               </div>
             );
           }
