@@ -800,19 +800,23 @@ export function TraceTree({
                 style={{ position: "absolute", top: virtualRow.start, left: 0, width: "100%" }}
               >
                 <div className="flex h-7 w-full items-center gap-1.5 overflow-hidden whitespace-nowrap px-3 text-left text-xs hover:bg-accent/50">
-                  {node.hasChildren && (
-                    <button
-                      type="button"
-                      onClick={() => toggleNode(node.call!.id)}
-                      aria-expanded={isOpen}
-                      aria-label={isOpen ? "Collapse judgment" : "Expand judgment"}
-                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm hover:bg-accent"
-                    >
-                      <ChevronRight
-                        className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-90")}
-                      />
-                    </button>
-                  )}
+                  {/* Fixed chevron slot (like span rows) keeps leaf judgments
+                      aligned with expandable ones. */}
+                  <div className="flex w-5 shrink-0 items-center justify-center">
+                    {node.hasChildren && (
+                      <button
+                        type="button"
+                        onClick={() => toggleNode(node.call!.id)}
+                        aria-expanded={isOpen}
+                        aria-label={isOpen ? "Collapse judgment" : "Expand judgment"}
+                        className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                      >
+                        <span className={cn("inline-block h-4 w-4 transition-transform duration-200", isOpen ? "rotate-90" : "rotate-0")}>
+                          <ChevronRight className="h-4 w-4" />
+                        </span>
+                      </button>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => selectCall(node.id)}
