@@ -74,7 +74,10 @@ export default async function TraceDetailPage({
   const adjacent = await adjacentPromise;
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] flex-col overflow-hidden">
+    // Fill the shell's <main> exactly instead of recomputing viewport math:
+    // a calc that guesses the chrome height over/undershoots and makes main
+    // scroll even when the content fits.
+    <div className="flex h-full flex-col overflow-hidden">
       {trace.run.task_run_id && (
         <Link
           href={`/project/${projectId}/runs/task/${trace.run.task_run_id}`}

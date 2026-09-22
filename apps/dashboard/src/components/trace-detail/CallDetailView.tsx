@@ -13,6 +13,7 @@ import { saveCorrection } from "@/lib/traces-api";
 import { extractOutputText } from "./call-detail-utils";
 import { extractCallContext } from "./tool-utils";
 import { useCallPayload } from "./use-call-payload";
+import { JudgmentBrief } from "./JudgmentBrief";
 
 type CallTab = "preview" | "context" | "metadata";
 const VALID_CALL_TABS = new Set<string>(["preview", "context", "metadata"]);
@@ -118,6 +119,9 @@ export function CallDetailView({ call: slimCall }: { call: LoggedCall }) {
           )}
         </div>
       )}
+
+      {/* PROTOTYPE: judgment detail variants — see JudgmentBrief.tsx */}
+      <JudgmentBrief call={call} allCalls={run?.calls ?? []} />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Tabs value={section} onValueChange={(v) => setDetailTab(v)} className="flex flex-1 flex-col overflow-hidden">
