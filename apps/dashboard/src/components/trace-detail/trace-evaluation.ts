@@ -58,6 +58,61 @@ export interface PartitionableRow {
   node: { id: string; call: TraceObservation | null };
 }
 
+// ── Judgment facts ─────────────────────────────────────────────────────────
+// The judgment brief (detail pane) shows what was judged, by what, and why
+// it ruled — extracted from the full call payload, not raw JSON tabs.
+
+export interface JudgmentFacts {
+  /** Check name without the judge:/t.agent: prefix. */
+  name: string;
+  kind: "t.judge" | "t.agent";
+  model?: string;
+  instruction?: string;
+  reasoning?: string;
+  pass?: boolean;
+  /** Direct child calls — a t.agent session's tool calls. */
+  toolChildren: number;
+  latencyMs?: number | null;
+}
+
+/**
+ * Extract the judgment story from a judge/t.agent root call, or null for any
+ * other call. The instruction and model ride the system message as
+ * `{"model","instruction"}` JSON; the verdict ({"reasoning","pass"}) rides
+ * tool_result.
+ */
+export function judgmentFacts(
+  call: TraceObservation,
+  allCalls: TraceObservation[],
+): JudgmentFacts | null {
+  const step = call.step_name ?? "";
+  if (!isEvaluationRoot(step)) return null;
+  const sys = (call.input as { messages?: Array<{ role: string; content: unknown }> } | null)
+    ?.messages?.find((m) => m.role === "system")?.content;
+  let model: string | undefined;
+  let instruction: string | undefined;
+  if (typeof sys === "string") {
+    try {
+      const parsed = JSON.parse(sys) as { model?: string; instruction?: string };
+      model = parsed.model;
+      instruction = parsed.instruction;
+    } catch {
+      // system prompt isn't the {model, instruction} JSON — leave undefined
+    }
+  }
+  const verdict = call.tool_result as { pass?: boolean; reasoning?: string } | null;
+  return {
+    name: step.replace(/^(judge|t\.agent):/, ""),
+    kind: step.startsWith("t.agent") ? "t.agent" : "t.judge",
+    model,
+    instruction,
+    reasoning: verdict?.reasoning,
+    pass: verdict?.pass,
+    toolChildren: allCalls.filter((c) => c.parent_call_id === call.id).length,
+    latencyMs: call.latency_ms,
+  };
+}
+
 export interface EvaluationPartition<T extends PartitionableRow> {
   /** Rows outside the evaluation phase, original order. */
   kept: T[];

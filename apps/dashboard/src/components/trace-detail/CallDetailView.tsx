@@ -120,8 +120,9 @@ export function CallDetailView({ call: slimCall }: { call: LoggedCall }) {
         </div>
       )}
 
-      {/* PROTOTYPE: judgment detail variants — see JudgmentBrief.tsx */}
-      <JudgmentBrief call={call} allCalls={run?.calls ?? []} />
+      {/* Judgment brief: judge/t.agent roots get a verdict card above the
+          tabs; the raw JSON tabs remain for deep dives. */}
+      <JudgmentBrief call={call} allCalls={run?.calls ?? []} loading={payloadLoading} />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Tabs value={section} onValueChange={(v) => setDetailTab(v)} className="flex flex-1 flex-col overflow-hidden">

@@ -3,6 +3,7 @@ import type { TraceObservation } from "../contexts";
 import {
   findEvaluationGroup,
   isEvaluationRoot,
+  judgmentFacts,
   parseVerdict,
   partitionEvaluation,
   type PartitionableRow,
@@ -114,5 +115,63 @@ describe("partitionEvaluation", () => {
     const split = partitionEvaluation(rows, group)!;
     expect(split.kept.map((r) => r.node.id)).toEqual(["root-run"]);
     expect(split.insertAt).toBe(1);
+  });
+});
+
+describe("judgmentFacts", () => {
+  function judgeCall(overrides: Partial<TraceObservation> = {}): TraceObservation {
+    return {
+      id: "j1",
+      step_name: "t.agent:figures-supported-by-work",
+      parent_call_id: "run",
+      input: {
+        messages: [
+          {
+            role: "system",
+            content:
+              '{"model":"deepseek/deepseek-v4.1-flash","instruction":"PASS if figures are supported."}',
+          },
+        ],
+      },
+      tool_result: { reasoning: "All figures match.", pass: true },
+      latency_ms: 7862,
+      ...overrides,
+    } as TraceObservation;
+  }
+
+  it("returns null for non-judgment calls", () => {
+    expect(judgmentFacts(call("gen", "agent.generate"), [])).toBeNull();
+  });
+
+  it("extracts instruction, model, verdict, kind, and latency", () => {
+    const facts = judgmentFacts(judgeCall(), [call("t1", "tool read", "j1"), call("t2", "tool search", "j1"), call("x", "other", "run")]);
+    expect(facts).toEqual({
+      name: "figures-supported-by-work",
+      kind: "t.agent",
+      model: "deepseek/deepseek-v4.1-flash",
+      instruction: "PASS if figures are supported.",
+      reasoning: "All figures match.",
+      pass: true,
+      toolChildren: 2,
+      latencyMs: 7862,
+    });
+  });
+
+  it("strips the judge: prefix and keeps kind t.judge", () => {
+    const facts = judgmentFacts(judgeCall({ step_name: "judge:summary-reads-well", tool_result: null }) as TraceObservation, []);
+    expect(facts!.name).toBe("summary-reads-well");
+    expect(facts!.kind).toBe("t.judge");
+    expect(facts!.pass).toBeUndefined();
+    expect(facts!.reasoning).toBeUndefined();
+  });
+
+  it("tolerates a non-JSON system message", () => {
+    const facts = judgmentFacts(
+      judgeCall({ input: { messages: [{ role: "system", content: "free-form briefing" }] } }) as TraceObservation,
+      [],
+    );
+    expect(facts).not.toBeNull();
+    expect(facts!.model).toBeUndefined();
+    expect(facts!.instruction).toBeUndefined();
   });
 });
