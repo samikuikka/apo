@@ -11,6 +11,7 @@ from sqlmodel import Session, text
 from ..auth.deps import require_api_key_scope
 from ..db import get_session, DATA_DIR, SQLITE_FILE_NAME
 from ..models.db import UserDB
+from ..services.project_memberships import require_project_role
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
@@ -280,6 +281,11 @@ async def trigger_retention_cleanup(
 # uses the existing kick-off-then-poll pattern (see task-run.ts) to avoid the
 # 15s HTTP timeout. Job state is in-memory: re-running is idempotent, so a
 # process death mid-job just means re-running the command.
+#
+# A project-scoped reprice is also open to that project's owners and admins
+# through a browser session: it only recomputes the project's own stored costs
+# from the global price table, which they cannot edit. An unscoped reprice
+# rewrites every project and stays installation-admin only.
 
 import threading
 import uuid
@@ -305,11 +311,10 @@ async def start_reprice(
     _: object = Depends(require_api_key_scope("full")),
 ) -> dict[str, str]:
     """Kick off a reprice job. Returns ``{job_id}`` immediately."""
-    if not verify_admin(request, session):
-        raise HTTPException(status_code=401, detail="Unauthorized: Admin access required")
+    _authorize_reprice(request, session, body.project)
 
     job_id = uuid.uuid4().hex[:12]
-    _reprice_jobs[job_id] = {"status": "running", "summary": None, "error": None}
+    _reprice_jobs[job_id] = {"status": "running", "summary": None, "error": None, "project": body.project}
 
     thread = threading.Thread(
         target=_run_reprice_job,
@@ -341,9 +346,24 @@ def _run_reprice_job(job_id: str, req: RepriceRequest) -> None:
                 until=until,
                 dry_run=req.dry_run,
             )
-        _reprice_jobs[job_id] = {"status": "done", "summary": summary, "error": None}
+        _reprice_jobs[job_id] = {"status": "done", "summary": summary, "error": None, "project": req.project}
     except Exception as exc:  # noqa: BLE001 - report any failure to the poller
-        _reprice_jobs[job_id] = {"status": "error", "summary": None, "error": str(exc)}
+        _reprice_jobs[job_id] = {"status": "error", "summary": None, "error": str(exc), "project": req.project}
+
+
+def _authorize_reprice(request: Request, session: Session, project: str | None) -> None:
+    """Installation admin for any scope; a project owner/admin for their own project."""
+    if verify_admin(request, session):
+        return
+    user_id = getattr(request.state, "user_id", None)
+    if (
+        project is None
+        or getattr(request.state, "auth_method", None) != "cookie"
+        or not isinstance(user_id, str)
+        or not user_id
+    ):
+        raise HTTPException(status_code=401, detail="Unauthorized: Admin access required")
+    _ = require_project_role(session, project, user_id, minimum_role="admin")
 
 
 @router.get("/reprice/{job_id}")
@@ -354,11 +374,19 @@ async def get_reprice_status(
     _: object = Depends(require_api_key_scope("full")),
 ) -> dict[str, object]:
     """Poll a reprice job's status."""
-    if not verify_admin(request, session):
-        raise HTTPException(status_code=401, detail="Unauthorized: Admin access required")
-    if job_id not in _reprice_jobs:
+    job = _reprice_jobs.get(job_id)
+    if verify_admin(request, session):
+        if job is None:
+            raise HTTPException(status_code=404, detail="unknown reprice job")
+        return {"job_id": job_id, **job}
+    # Unknown and unscoped jobs look the same to a project admin, so polling
+    # cannot probe for other projects' job ids.
+    project = job.get("project") if job is not None else None
+    if job is None or not isinstance(project, str):
+        _authorize_reprice(request, session, None)
         raise HTTPException(status_code=404, detail="unknown reprice job")
-    return {"job_id": job_id, **_reprice_jobs[job_id]}
+    _authorize_reprice(request, session, project)
+    return {"job_id": job_id, **job}
 
 
 # ---------------------------------------------------------------------------
