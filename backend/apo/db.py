@@ -1435,6 +1435,179 @@ def _migrate_to_v47() -> None:
     logger.info("Schema v47 backfill complete: %d task runs recomputed", processed)
 
 
+def _migrate_to_v48() -> None:
+    """Version 48 (issue #307): serving provider + route columns on logged calls.
+
+    The serving host of a model was previously read only to pick a
+    token-normalization family and then dropped, so runs on different hosts
+    looked identical under one model id. New DBs get the columns from
+    ``create_all``; existing DBs add them here and backfill from the
+    canonical span attributes (``gen_ai.provider.name`` / ``gen_ai.system`` /
+    ``apo.llm.route``), which survive losslessly in ``otlp_spans``. The
+    version stamp is written only after a full pass; re-entry re-processes
+    idempotently (same values rewritten). Spans without provider attributes
+    skip the write — their calls keep NULL, which surfaces render as
+    "unknown", never a guess.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(conn, "logged_calls", "provider", "VARCHAR")
+        _add_column_if_missing(conn, "logged_calls", "route", "VARCHAR")
+
+    import logging
+
+    from sqlmodel import Session as SQLModelSession
+    from sqlmodel import col
+    from sqlmodel import select as sqlmodel_select
+    from sqlmodel import update as sqlmodel_update
+
+    from .models.db import LoggedCallDB, OtlpSpanDB
+    from .services.otel_normalization import extract_provider, extract_route
+
+    logger = logging.getLogger(__name__)
+    updated = 0
+    with SQLModelSession(engine) as session:
+        # Keyset pagination over the canonical span store keeps memory flat
+        # on installs with millions of spans.
+        last_id = 0
+        while True:
+            spans = session.exec(
+                sqlmodel_select(OtlpSpanDB)
+                .where(col(OtlpSpanDB.id) > last_id)
+                .order_by(col(OtlpSpanDB.id))
+                .limit(500)
+            ).all()
+            if not spans:
+                break
+            last_id = spans[-1].id or 0
+            for span in spans:
+                attrs = span.attributes or {}
+                provider = extract_provider(attrs)
+                route = extract_route(attrs)
+                if provider is None and route is None:
+                    continue
+                session.exec(
+                    sqlmodel_update(LoggedCallDB)
+                    .where(
+                        col(LoggedCallDB.id) == span.span_id,
+                        col(LoggedCallDB.project) == span.project_id,
+                    )
+                    .values(provider=provider, route=route)
+                )
+                updated += 1
+            session.commit()
+    if updated:
+        logger.info("Schema v48 backfill: %d calls got a serving provider", updated)
+
+
+def _migrate_to_v49() -> None:
+    """Version 49 (issue #307): (model, provider/route) rollups on runs + task runs.
+
+    Adds ``model_providers_json`` — the set of (model, provider/route) pairs
+    with call counts that the runs list, ``runs show``, and compare read.
+    New DBs get the columns from ``create_all``. Historical rows are
+    backfilled with the same ``model_providers_summary`` the projector and
+    trace backend maintain going forward. Runs whose summary is legitimately
+    null (no generation with a model) are re-examined as cheap no-ops until
+    the pass completes and the version stamp lands — the same resumability
+    trade-off as v47. Task runs reuse their linked trace's freshly written
+    summary instead of recomputing it.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(conn, "runs", "model_providers_json", "JSON")
+        _add_column_if_missing(conn, "agent_task_runs", "model_providers_json", "JSON")
+
+    import logging
+
+    from sqlmodel import Session as SQLModelSession
+    from sqlmodel import col
+    from sqlmodel import select as sqlmodel_select
+    from sqlmodel import update as sqlmodel_update
+
+    from .models.db import AgentTaskRunDB, LoggedCallDB, RunDB
+    from .services.trace_backend import model_providers_summary
+
+    logger = logging.getLogger(__name__)
+
+    with SQLModelSession(engine) as session:
+        run_refs = session.exec(
+            sqlmodel_select(RunDB.id, RunDB.project).where(
+                col(RunDB.model_providers_json).is_(None)
+            )
+        ).all()
+
+    processed_runs = 0
+    with SQLModelSession(engine) as session:
+        for run_id, project in run_refs:
+            # Full call rows one run at a time (the v47 pattern) — payloads
+            # never accumulate across the table.
+            calls = session.exec(
+                sqlmodel_select(LoggedCallDB).where(
+                    LoggedCallDB.run_id == run_id,
+                    LoggedCallDB.project == project,
+                )
+            ).all()
+            session.exec(
+                sqlmodel_update(RunDB)
+                .where(col(RunDB.id) == run_id, col(RunDB.project) == project)
+                .values(model_providers_json=model_providers_summary(calls))
+            )
+            session.expunge_all()
+            processed_runs += 1
+            if processed_runs % 100 == 0:
+                session.commit()
+                logger.info(
+                    "Schema v49 backfill: %d/%d traces", processed_runs, len(run_refs)
+                )
+        session.commit()
+
+    with engine.connect() as conn:
+        task_refs = conn.exec_driver_sql(
+            "SELECT r.id, r.trace_run_id, b.project FROM agent_task_runs r "
+            "JOIN agent_task_batch_runs b ON b.id = r.batch_run_id "
+            "WHERE r.trace_run_id IS NOT NULL "
+            "AND r.model_providers_json IS NULL"
+        ).fetchall()
+
+    processed_task_runs = 0
+    with SQLModelSession(engine) as session:
+        for task_run_id, trace_run_id, project in task_refs:
+            summary = session.exec(
+                sqlmodel_select(RunDB.model_providers_json).where(
+                    RunDB.id == trace_run_id, RunDB.project == project
+                )
+            ).first()
+            session.exec(
+                sqlmodel_update(AgentTaskRunDB)
+                .where(col(AgentTaskRunDB.id) == task_run_id)
+                .values(model_providers_json=summary)
+            )
+            processed_task_runs += 1
+            if processed_task_runs % 100 == 0:
+                session.commit()
+        session.commit()
+    logger.info(
+        "Schema v49 backfill complete: %d traces, %d task runs",
+        processed_runs,
+        processed_task_runs,
+    )
+
+
+def _migrate_to_v50() -> None:
+    """Version 50 (issue #307): optional provider qualifier on price eras.
+
+    Adds ``models.provider_pattern`` — when set, the era matches only calls
+    whose observed serving provider full-matches it, so the same model on two
+    hosts can bill at each host's rate. NULL (the default for every existing
+    row) keeps today's model-pattern-only matching; the change is opt-in per
+    pricing row.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(conn, "models", "provider_pattern", "VARCHAR")
+        _create_index_if_not_exists(
+            conn, "ix_models_provider_pattern", "models", "provider_pattern"
+        )
+
+
 def _migrate_to_v4() -> None:
     """Version 4: check-level rollup columns on agent_task_batch_runs.
 
@@ -2754,7 +2927,7 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 47
+LATEST_SCHEMA_VERSION = 50
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -2804,6 +2977,9 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     45: _migrate_to_v45,
     46: _migrate_to_v46,
     47: _migrate_to_v47,
+    48: _migrate_to_v48,
+    49: _migrate_to_v49,
+    50: _migrate_to_v50,
 }
 
 

@@ -50,16 +50,19 @@ def load_default_prices(session: Session, *, path: Path | None = None) -> int:
     raw = _read_and_parse(source)
     docs = _parse_entries(raw)
 
-    # Key by era identity (match_pattern, start_date) so multiple time-windowed
-    # eras of the same pattern coexist. start_date IS NULL is the legacy/seed
-    # era; two eras differ by their start_date.
-    def _era_key(m: object) -> tuple[str, str]:
+    # Key by era identity (match_pattern, provider_pattern, start_date) so
+    # multiple time-windowed eras of the same pattern coexist, and a
+    # provider-qualified era (issue #307) coexists with the provider-agnostic
+    # one for the same pattern. start_date IS NULL is the legacy/seed era;
+    # two eras differ by their start_date.
+    def _era_key(m: object) -> tuple[str, str, str]:
         mp = getattr(m, "match_pattern", "")
+        pp = getattr(m, "provider_pattern", None) or ""
         sd = getattr(m, "start_date", None)
-        return (mp, naive(sd).isoformat() if sd is not None else "")
+        return (mp, pp, naive(sd).isoformat() if sd is not None else "")
 
     existing = {_era_key(m): m for m in _global_models(session)}
-    seen_eras: set[tuple[str, str]] = set()
+    seen_eras: set[tuple[str, str, str]] = set()
     written = 0
 
     for doc in docs:
@@ -128,6 +131,9 @@ def _entry_to_doc(entry: dict[str, Any]) -> ModelDocumentCreate:
         project=GLOBAL_PROJECT,
         match_pattern=str(entry["match_pattern"]),
         provider=str(entry.get("provider", "generic")),
+        provider_pattern=(
+            str(entry["provider_pattern"]) if entry.get("provider_pattern") else None
+        ),
         display_name=str(entry.get("display_name", "")),
         start_date=_parse_dt(entry.get("start_date")),
         end_date=_parse_dt(entry.get("end_date")),
@@ -158,16 +164,22 @@ def _global_models(session: Session) -> list[ModelRowDB]:
 
 
 def _era_match(model_cls: type[ModelRowDB], doc: ModelDocumentCreate) -> Any:
-    """SQLAlchemy filter matching the doc's era on start_date (NULL-aware).
+    """SQLAlchemy filter matching the doc's era identity (NULL-aware).
 
-    For a NULL start_date (legacy seed era), match rows where start_date IS NULL;
-    otherwise match rows where start_date equals the doc's start_date.
+    Matches on start_date (NULL start_date = legacy seed era matches
+    ``start_date IS NULL``) and provider_pattern (NULL doc matches
+    ``provider_pattern IS NULL``) so a provider-qualified era and the
+    provider-agnostic era of one pattern coexist.
     """
     from sqlmodel import col
 
     if doc.start_date is None:
-        return col(model_cls.start_date).is_(None)
-    return col(model_cls.start_date) == doc.start_date
+        start_filter = col(model_cls.start_date).is_(None)
+    else:
+        start_filter = col(model_cls.start_date) == doc.start_date
+    if doc.provider_pattern is None:
+        return start_filter & col(model_cls.provider_pattern).is_(None)
+    return start_filter & (col(model_cls.provider_pattern) == doc.provider_pattern)
 
 
 def _upsert_global(session: Session, doc: ModelDocumentCreate) -> None:
@@ -190,6 +202,7 @@ def _upsert_global(session: Session, doc: ModelDocumentCreate) -> None:
         project=GLOBAL_PROJECT,
         match_pattern=doc.match_pattern,
         provider=doc.provider,
+        provider_pattern=doc.provider_pattern,
         display_name=doc.display_name,
         start_date=doc.start_date,
         end_date=doc.end_date,

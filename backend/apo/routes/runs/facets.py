@@ -11,6 +11,8 @@ from ...models import RunDB
 from ...models.columns import (
     LOGGED_CALL_LEVEL_COL,
     LOGGED_CALL_MODEL_COL,
+    LOGGED_CALL_PROVIDER_COL,
+    LOGGED_CALL_ROUTE_COL,
     LOGGED_CALL_RUN_ID_COL,
     RUN_CALL_COUNT_COL,
     RUN_ENVIRONMENT_COL,
@@ -136,6 +138,38 @@ def _compute_model_facets(session: Session, run_ids: list[str]) -> list[FacetBuc
     )
     rows = session.exec(stmt).all()
     return [FacetBucket(value=r[0], count=r[1]) for r in rows if r[0]]
+
+
+def _compute_provider_facets(session: Session, run_ids: list[str]) -> list[FacetBucket]:
+    """Serving-host facet: provider and route values, merged (issue #307).
+
+    Both columns feed one facet because a host identity may live in either —
+    direct emitters report ``gen_ai.provider.name``; routed ones put the real
+    host in ``apo.llm.route``. Union + re-count keeps one coherent bucket
+    list instead of two half-empty ones.
+    """
+    if not run_ids:
+        return []
+    base = select(
+        LOGGED_CALL_PROVIDER_COL, func.count(func.distinct(LOGGED_CALL_RUN_ID_COL))
+    ).where(
+        LOGGED_CALL_RUN_ID_COL.in_(run_ids),
+        LOGGED_CALL_PROVIDER_COL.is_not(None),
+    )
+    routes = select(
+        LOGGED_CALL_ROUTE_COL, func.count(func.distinct(LOGGED_CALL_RUN_ID_COL))
+    ).where(
+        LOGGED_CALL_RUN_ID_COL.in_(run_ids),
+        LOGGED_CALL_ROUTE_COL.is_not(None),
+    )
+    counts: dict[str, int] = {}
+    for value, count in [*session.exec(base).all(), *session.exec(routes).all()]:
+        if value:
+            counts[str(value)] = counts.get(str(value), 0) + int(count)
+    return [
+        FacetBucket(value=value, count=counts[value])
+        for value in sorted(counts, key=lambda v: (-counts[v], v))
+    ]
 
 
 def _compute_environment_facets(
@@ -311,6 +345,7 @@ def get_run_facets(
         models=_compute_model_facets(
             session, filtered_ids(models=None) if models else filtered_ids()
         ),
+        providers=_compute_provider_facets(session, filtered_ids()),
         environments=_compute_environment_facets(
             session,
             filtered_ids(environment=None) if environment else filtered_ids(),

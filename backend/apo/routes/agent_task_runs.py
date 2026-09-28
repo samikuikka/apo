@@ -13,7 +13,7 @@ from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
-from sqlalchemy import asc, desc, func
+from sqlalchemy import asc, desc, func, or_
 from sqlalchemy.orm import defer
 from sqlmodel import Session, col, select
 
@@ -757,6 +757,10 @@ def list_agent_task_runs(
     batch_run_id: str | None = Query(default=None),
     model: list[str] | None = Query(default=None),
     effort: list[str] | None = Query(default=None),
+    provider: list[str] | None = Query(
+        default=None,
+        description="Repeatable serving provider/route filter; matches the observed provider or route on the run's trace calls (issue #307)",
+    ),
     since: str | None = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=5000),
     session: Session = Depends(get_session),
@@ -828,6 +832,24 @@ def list_agent_task_runs(
                 [e.lower() for e in effort]
             )
         )
+    if provider:
+        # Observed serving host, unlike model/effort which filter the
+        # adapter-reported configuration. Resolved through the linked
+        # trace's calls so the JSON rollup stays display-only (issue #307).
+        provider_values = [
+            p.lower() for raw in provider for p in raw.split(",") if p.strip()
+        ]
+        matching_traces = select(col(LoggedCallDB.run_id)).where(
+            or_(
+                func.lower(as_column(cast(object, LoggedCallDB.provider))).in_(
+                    provider_values
+                ),
+                func.lower(as_column(cast(object, LoggedCallDB.route))).in_(
+                    provider_values
+                ),
+            )
+        )
+        query = query.where(col(AgentTaskRunDB.trace_run_id).in_(matching_traces))
     since_cutoff_value = since_cutoff(since)
     if since_cutoff_value is not None:
         query = query.where(col(AgentTaskRunDB.started_at) >= since_cutoff_value)

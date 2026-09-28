@@ -57,6 +57,8 @@ LOGGED_CALL_LATENCY_MS_COL: ColumnElement[float | None] = as_column(cast(object,
 LOGGED_CALL_COST_COL: ColumnElement[float | None] = as_column(cast(object, LoggedCallDB.cost))
 LOGGED_CALL_TOTAL_TOKENS_COL: ColumnElement[int | None] = as_column(cast(object, LoggedCallDB.total_tokens))
 LOGGED_CALL_MODEL_COL: ColumnElement[str] = as_column(cast(object, LoggedCallDB.model))
+LOGGED_CALL_PROVIDER_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.provider))
+LOGGED_CALL_ROUTE_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.route))
 LOGGED_CALL_OBSERVATION_TYPE_COL: ColumnElement[str] = as_column(cast(object, LoggedCallDB.observation_type))
 LOGGED_CALL_LEVEL_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.level))
 

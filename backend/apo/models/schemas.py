@@ -29,6 +29,22 @@ type JsonValue = str | int | float | bool | list[object] | dict[str, object]
 # ============================================================================
 
 
+class ModelProviderPair(SQLModel):
+    """One (model, serving provider/route) pair a run used (issue #307).
+
+    ``provider``/``route`` are null when the emitter did not report them —
+    surfaces render that as "unknown", never a guessed value. ``cost_micro``
+    is micro-USD, matching the storage convention.
+    """
+
+    model: str
+    provider: str | None = None
+    route: str | None = None
+    calls: int
+    total_tokens: int | None = None
+    cost_micro: int | None = None
+
+
 class Run(SQLModel):
     """Run model for API responses."""
 
@@ -46,6 +62,8 @@ class Run(SQLModel):
     tags: list[str] = []
     run_metadata: JsonValue | None = None  # avoid reserved word conflicts
     primary_model: str | None = None
+    # The (model, provider/route) pairs this run served through (issue #307).
+    model_providers: list[ModelProviderPair] = Field(default_factory=list)
 
     input: JsonValue | None = None
     output: JsonValue | None = None
@@ -70,7 +88,7 @@ class RunMetric(SQLModel):
     string_value: str | None = None
     data_type: str = "NUMERIC"  # NUMERIC, CATEGORICAL, BOOLEAN
     # Langfuse-inspired: Track where the score came from
-    source: str = "API"  # API, EVAL
+    source: str = "API"  # API (programmatic), EVAL (automated)
     config_id: int | None = None
     reasoning: str | None = None
     meta: JsonMap | None = None
@@ -93,6 +111,8 @@ class FacetBucket(SQLModel):
 class RunFacets(SQLModel):
     status: list[FacetBucket] = []
     models: list[FacetBucket] = []
+    # Serving-host facet (issue #307): merged provider + route values.
+    providers: list[FacetBucket] = []
     environments: list[FacetBucket] = []
     tags: list[FacetBucket] = []
     users: list[FacetBucket] = []
@@ -133,6 +153,9 @@ class RunSummary(SQLModel):
     user_id: str | None = None
     primary_model: str | None = None
     service_name: str | None = None
+    # Distinct serving-host labels (route wins over provider; issue #307) for
+    # the traces list column. Empty when no call reported a host.
+    providers: list[str] = Field(default_factory=list)
 
     bookmarked: bool = False
 
@@ -198,6 +221,12 @@ class LoggedCallBase(SQLModel):
     version: str | None = Field(default=None, index=True)
     created_at: datetime = Field(index=True)
     model: str
+    # Serving host of the model, as reported by the emitter
+    # (gen_ai.provider.name / gen_ai.system) — never guessed from the model
+    # name. ``route`` is the finer-grained serving route (apo.llm.route), e.g.
+    # "fireworks", "openrouter:nitro-><host>". Null = not reported.
+    provider: str | None = Field(default=None)
+    route: str | None = Field(default=None)
     latency_ms: float | None = Field(default=None, index=True)
     cost: int | None = Field(default=None, index=True)  # micro-USD int
 
@@ -634,6 +663,11 @@ class GenerationUsageSummary(SQLModel):
     model_time_ms: float | None = None
     slowest_call_ms: float | None = None
     slowest_call_id: str | None = None
+    # Median decode throughput across generations (output tokens / decode
+    # window; issue #307). Null when no generation had both tokens and
+    # timing. ``output_tok_s_calls`` reports the coverage of that median.
+    median_output_tok_s: float | None = None
+    output_tok_s_calls: int = 0
     reasoning_tokens: int | None = None
     # Generations that reported the reasoning dimension. Fewer than
     # ``generations`` means ``reasoning_tokens`` is a partial sum.
@@ -695,6 +729,9 @@ class AgentTaskRunSummary(SQLModel):
     # the trace_run_id link). Populated by the projection layer; absent
     # for runs whose trace has not been persisted.
     primary_model: str | None = None
+    # The (model, provider/route) pairs the run's trace served through
+    # (issue #307). Empty when the trace has no pair data.
+    model_providers: list[ModelProviderPair] = Field(default_factory=list)
     task_source_commit_sha: str | None = None
     error_message: str | None = None
     trace_persistence_status: TracePersistenceStatus = "pending"
@@ -743,6 +780,9 @@ class AgentTaskRunDetail(SQLModel):
     completed_at: datetime | None = None
     trace_run_id: str | None = None
     primary_model: str | None = None
+    # The (model, provider/route) pairs the run's trace served through
+    # (issue #307). Same shape as AgentTaskRunSummary.
+    model_providers: list[ModelProviderPair] = Field(default_factory=list)
     task_source_commit_sha: str | None = None
     error_message: str | None = None
     trace_persistence_status: TracePersistenceStatus = "pending"

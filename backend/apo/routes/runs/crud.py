@@ -29,6 +29,7 @@ from ...models import (
     RunDB,
     RunMetricDB,
     LoggedCallDB,
+    ModelProviderPair,
     Run,
     RunMetric,
     RunDetail,
@@ -40,6 +41,7 @@ from ...models import (
 from ...metrics import calculate_and_store_aggregate_metrics
 from ...services.demo_workspace import require_project_not_demo, require_run_not_demo
 from ...services.filters import split_csv_param
+from ...services.trace_backend import parse_model_providers
 from .bulk_export import BulkExportRequest, export_runs
 from ...models.columns import (
     CALL_LIGHT,
@@ -209,6 +211,7 @@ def list_runs(
     user_id: str | None = Query(None, description="Comma-separated user ID list"),
     tags: str | None = Query(None, description="Comma-separated tag list"),
     models: str | None = Query(None, description="Comma-separated model list"),
+    providers: str | None = Query(None, description="Comma-separated serving provider/route list (matches gen_ai.provider.name or apo.llm.route)"),
     metric_name: str | None = Query(None, description="Filter by metric name"),
     min_score: float | None = Query(None, description="Minimum metric score"),
     max_score: float | None = Query(None, description="Maximum metric score"),
@@ -255,6 +258,7 @@ def list_runs(
             session_ids=split_csv_param(session_id),
             user_ids=split_csv_param(user_id),
             models=split_csv_param(models),
+            providers=split_csv_param(providers),
             tags=tags,
             search=search,
             service=service,
@@ -441,7 +445,7 @@ def get_run_details(
     response: dict[str, Any]
     if effective_slim:
         response = {
-            "run": Run.model_validate(run).model_dump(by_alias=True),
+            "run": _run_response_model(run).model_dump(by_alias=True),
             "metrics": [
                 RunMetric.model_validate(m).model_dump(by_alias=True)
                 for m in all_metrics
@@ -462,7 +466,7 @@ def get_run_details(
             LoggedCall.model_validate(call, from_attributes=True) for call in calls
         ]
         response = RunDetail(
-            run=Run.model_validate(run),
+            run=_run_response_model(run),
             metrics=[RunMetric.model_validate(m) for m in all_metrics],
             calls=calls_models,
         ).model_dump(by_alias=True, exclude=exclude)
@@ -510,6 +514,20 @@ def get_run_details(
 # trace-level Preview tab stays readable, small enough that two of them never
 # matter next to the megabytes they stand in for.
 _SLIM_PREVIEW_CHARS = 8000
+
+
+def _run_response_model(run: RunDB) -> Run:
+    """Serialize a run row, decoding the (model, provider/route) rollup.
+
+    The rollup is stored as JSON (``model_providers_json``); the response
+    shape is the typed pair list (issue #307).
+    """
+    model = Run.model_validate(run)
+    model.model_providers = [
+        ModelProviderPair.model_validate(pair)
+        for pair in parse_model_providers(run.model_providers_json)
+    ]
+    return model
 
 
 def _slim_call_payload(call: LoggedCallDB) -> dict[str, object]:

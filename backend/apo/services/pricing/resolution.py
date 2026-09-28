@@ -57,6 +57,7 @@ def resolve_model_era(
     model_name: str,
     project: str,
     at_time: datetime,
+    provider: str | None = None,
 ) -> ModelRowDB | None:
     """Find the active model-era row for (model_name, project) at ``at_time``.
 
@@ -66,6 +67,13 @@ def resolve_model_era(
     (``start_date IS NULL`` matches any time, for legacy seed rows).
 
     Project overrides shadow globals per ``match_pattern``.
+
+    ``provider`` (issue #307) is the call's *observed* serving provider —
+    never a guess from the model name. A row with a non-empty
+    ``provider_pattern`` matches only when that pattern full-matches it;
+    rows without one match any provider. When qualified rows match they
+    shadow provider-agnostic ones, so the same model served by two hosts
+    bills at each host's rate.
     """
     stmt = select(ModelRowDB).where(
         col(ModelRowDB.project).in_([project, GLOBAL_PROJECT]),
@@ -88,6 +96,18 @@ def resolve_model_era(
     if not matching:
         return None
 
+    # Split by provider qualification (issue #307): a qualified row only
+    # competes when its pattern matches the observed provider; unqualified
+    # rows match any. Qualified wins so per-host rates shadow the default.
+    qualified = [
+        c
+        for c in matching
+        if c.provider_pattern and provider and _fullmatch(c.provider_pattern, provider)
+    ]
+    competing = qualified if qualified else [c for c in matching if not c.provider_pattern]
+    if not competing:
+        return None
+
     # Filter to the era whose [start_date, end_date) contains at_time.
     # start_date IS NULL -> matches any lower bound (legacy seed rows).
     def _in_era(row: ModelRowDB) -> bool:
@@ -99,7 +119,7 @@ def resolve_model_era(
                 return False
         return True
 
-    in_era = [c for c in matching if _in_era(c)]
+    in_era = [c for c in competing if _in_era(c)]
     if not in_era:
         return None
 
