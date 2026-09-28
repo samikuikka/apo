@@ -728,7 +728,19 @@ export function createAgentMethod(
             {
               step_name: `t.agent:${judgeScope?.checkName ?? label}`,
               observation_type: "AGENT",
+              // The span carries the model + tokens so the backend prices the
+              // judge session and trace rollups count its spend (issue #288).
+              model: effective.model,
               input: { model: effective.model, instruction },
+              usage: (r: unknown) => {
+                const usage = (r as AgentSessionResult)?.usage;
+                return usage
+                  ? {
+                      prompt_tokens: usage.input_tokens,
+                      completion_tokens: usage.output_tokens,
+                    }
+                  : undefined;
+              },
               summarize: (r: unknown) => {
                 const res = r as AgentSessionResult;
                 // The span output is the verdict, same shape as t.judge:

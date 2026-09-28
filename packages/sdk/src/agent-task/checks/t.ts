@@ -425,6 +425,9 @@ function createJudgeMethod(
             // A single-shot judge call is an LLM generation — project it
             // with the same observation semantics as the main agent's.
             observation_type: "GENERATION",
+            // The span carries the model + tokens so the backend prices the
+            // judge call and trace rollups count its spend (issue #288).
+            model: effective.model,
             input: { model: effective.model, instruction },
             summarize: (r: unknown) => {
               const res = r as { pass?: boolean; reasoning?: string };
@@ -435,6 +438,14 @@ function createJudgeMethod(
                   pass: res?.pass ?? null,
                 },
               };
+            },
+            usage: (r: unknown) => {
+              const tokens = (
+                r as { judge?: { tokens?: { input?: number; output?: number } } }
+              )?.judge?.tokens;
+              return tokens
+                ? { prompt_tokens: tokens.input, completion_tokens: tokens.output }
+                : undefined;
             },
           },
           async (spanId: string) => {

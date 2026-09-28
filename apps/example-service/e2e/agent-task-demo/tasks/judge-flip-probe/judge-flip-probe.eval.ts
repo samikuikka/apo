@@ -68,46 +68,46 @@ const { test } = task("judge-flip-probe", {
 
 // --- calibrated to clearly PASS against the fixed memo ---
 
-test("names-target", (t, { deliverables }) => {
-  t.judge(deliverables.memo, "The memo names the acquisition target as Project Aurora.");
+test("names-target", async (t, { deliverables }) => {
+  await t.judge(deliverables.memo, "The memo names the acquisition target as Project Aurora.");
 });
 
-test("litigation-range", (t, { deliverables }) => {
-  t.judge(deliverables.memo, "The memo states a litigation exposure range that includes $8.5M.");
+test("litigation-range", async (t, { deliverables }) => {
+  await t.judge(deliverables.memo, "The memo states a litigation exposure range that includes $8.5M.");
 });
 
-test("cites-data-room", (t, { deliverables }) => {
-  t.judge(deliverables.memo, "The memo cites the data room index URL.");
+test("cites-data-room", async (t, { deliverables }) => {
+  await t.judge(deliverables.memo, "The memo cites the data room index URL.");
 });
 
-test("three-risk-categories", (t, { deliverables }) => {
-  t.judge(deliverables.memo, "The memo lists at least three distinct risk categories with specifics.");
+test("three-risk-categories", async (t, { deliverables }) => {
+  await t.judge(deliverables.memo, "The memo lists at least three distinct risk categories with specifics.");
 });
 
-test("next-steps-section", (t, { deliverables }) => {
-  t.judge(deliverables.memo, "The memo ends with a concrete next-steps section.");
+test("next-steps-section", async (t, { deliverables }) => {
+  await t.judge(deliverables.memo, "The memo ends with a concrete next-steps section.");
 });
 
 // --- calibrated to clearly FAIL against the fixed memo ---
 
-test("recommends-proceeding", (t, { deliverables }) => {
-  t.judge(deliverables.memo, "The memo explicitly recommends proceeding with the acquisition.");
+test("recommends-proceeding", async (t, { deliverables }) => {
+  await t.judge(deliverables.memo, "The memo explicitly recommends proceeding with the acquisition.");
 });
 
-test("quantifies-synergies", (t, { deliverables }) => {
-  t.judge(deliverables.memo, "The memo quantifies expected synergies with a dollar figure.");
+test("quantifies-synergies", async (t, { deliverables }) => {
+  await t.judge(deliverables.memo, "The memo quantifies expected synergies with a dollar figure.");
 });
 
-test("regulatory-timeline", (t, { deliverables }) => {
-  t.judge(deliverables.memo, "The memo discusses the regulatory approval timeline for the deal.");
+test("regulatory-timeline", async (t, { deliverables }) => {
+  await t.judge(deliverables.memo, "The memo discusses the regulatory approval timeline for the deal.");
 });
 
 // --- borderline ---
 
-test("summary-under-100-words", (t, { deliverables }) => {
-  t.judge(deliverables.memo, "The executive summary is under 100 words.");
+test("summary-under-100-words", async (t, { deliverables }) => {
+  await t.judge(deliverables.memo, "The executive summary is under 100 words.");
 });
 
-test("iso-dates", (t, { deliverables }) => {
-  t.judge(deliverables.memo, "All dates in the memo use ISO 8601 format (YYYY-MM-DD).");
+test("iso-dates", async (t, { deliverables }) => {
+  await t.judge(deliverables.memo, "All dates in the memo use ISO 8601 format (YYYY-MM-DD).");
 });

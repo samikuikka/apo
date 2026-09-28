@@ -63,6 +63,15 @@ export interface TraceStepOptions
   extends Omit<CreateSpanParams, "project" | "task_id" | "run_id" | "output"> {
   task_id?: string;
   summarize?: (result: unknown) => Record<string, unknown> | undefined;
+  /**
+   * Post-hoc token-usage extractor — the usage sibling of `summarize`, for
+   * spans whose token counts are only known after the work (e.g. judge
+   * spans, whose usage rides the judged result). Applied when the span ends;
+   * the extracted counts become `gen_ai.usage.*` span attributes.
+   */
+  usage?: (
+    result: unknown,
+  ) => { prompt_tokens?: number; completion_tokens?: number } | undefined;
 }
 
 export interface TraceEventOptions

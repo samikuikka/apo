@@ -320,6 +320,7 @@ export function createOtelAgentTaskTraceClient(
               latency_ms: round3(monotonicNowMs() - startedAt),
               output: options.summarize?.(result),
               metadata: options.metadata,
+              ...options.usage?.(result),
             });
             callCount += 1;
             return result;
