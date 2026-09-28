@@ -57,12 +57,11 @@ describe("TraceDetailTabs preview empty states", () => {
   });
 });
 
-// Issue #309: reasoning totals + timing extremes on the Tokens/Costs tabs.
-// Unknown reasoning (no call reported the dimension) reads "not reported",
-// never a false zero. Timing facts are GENERATION-only: the agent-task root
-// span's latency is the run's whole wall clock and must never win
-// "Slowest call" (the API always sends observation_type; fixtures mirror that).
-describe("TraceDetailTabs reasoning and timing rollups", () => {
+// Issue #309: reasoning totals on the Tokens tab. Unknown reasoning (no call
+// reported the dimension) reads "not reported", never a false zero. Only
+// GENERATION observations count (the API always sends observation_type;
+// fixtures mirror that). Timing extremes stay data-only.
+describe("TraceDetailTabs reasoning rollups", () => {
   it("sums reasoning from raw_usage and shows the unknown state", () => {
     renderTabs({
       run: { ...BASE_RUN },
@@ -97,7 +96,7 @@ describe("TraceDetailTabs reasoning and timing rollups", () => {
       ],
     });
 
-    // Radix only mounts the active tab — open Tokens, then Costs.
+    // Radix only mounts the active tab — open Tokens.
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Tokens" }));
 
     // Tokens tab: total reasoning over reporting calls only (7,000 + 3,000),
@@ -108,15 +107,6 @@ describe("TraceDetailTabs reasoning and timing rollups", () => {
     expect(screen.getByText("7,000")).toBeTruthy();
     expect(screen.getByText("1 call(s) did not report reasoning")).toBeTruthy();
     expect(screen.getByText("Max single call")).toBeTruthy();
-
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Costs" }));
-
-    // Costs tab: model time + slowest call. Three generations: 1s + 3s + 2s
-    // = 6.0s model time, 3.0s slowest — distinct texts, no ambiguity.
-    expect(screen.getByText("Model time")).toBeTruthy();
-    expect(screen.getByText("Slowest call")).toBeTruthy();
-    expect(screen.getByText("3.0s")).toBeTruthy();
-    expect(screen.getByText("6.0s")).toBeTruthy();
   });
 
   it("renders reasoning as not reported when no call sent the dimension", () => {
@@ -142,7 +132,7 @@ describe("TraceDetailTabs reasoning and timing rollups", () => {
     expect(screen.queryByText("Max single call")).toBeNull();
   });
 
-  it("never lets the agent-task root span or a tool win slowest call", () => {
+  it("averages latency over model calls only — root span and tools never count", () => {
     renderTabs({
       run: { ...BASE_RUN },
       calls: [
@@ -184,14 +174,10 @@ describe("TraceDetailTabs reasoning and timing rollups", () => {
 
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Costs" }));
 
-    // The slowest MODEL call (4.0s), not the slowest observation; model time
-    // sums generations only (5.5s); the average is over generations (2750ms).
-    expect(screen.getByText("Slowest call")).toBeTruthy();
-    expect(screen.getByText("4.0s")).toBeTruthy();
-    expect(screen.getByText("5.5s")).toBeTruthy();
+    // The average is over generations ((4,000 + 1,500) / 2 = 2750ms); the
+    // root span's whole-wall-clock latency and the tool's never count.
     expect(screen.getByText("2750ms")).toBeTruthy();
-    // Neither the root span's nor the tool's latency may appear.
-    expect(screen.queryByText("600.0s")).toBeNull();
-    expect(screen.queryByText("120.0s")).toBeNull();
+    expect(screen.queryByText("Slowest call")).toBeNull();
+    expect(screen.queryByText("Model time")).toBeNull();
   });
 });

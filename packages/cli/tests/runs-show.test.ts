@@ -344,7 +344,7 @@ describe("runs show command", () => {
     expect(out).toMatch(/Tokens:.*partial/);
   });
 
-  it("prints model time and reasoning with the call that dominates each", async () => {
+  it("prints reasoning with the call that dominates it", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse(makeRun({
         total_tokens: 21_000,
@@ -363,8 +363,9 @@ describe("runs show command", () => {
 
     const out = stripAnsi(logs.join("\n"));
     expect(out).toContain("Reasoning: 5,492 tok · max 1,054 in one call (observation 2e1e24fa23cfff6c)");
-    expect(out).toContain("Slowest call: 7s (observation 8c68d098872c5aab)");
-    expect(out).toContain("Model time: 59s");
+    // Timing extremes stay data-only — not part of the summary output.
+    expect(out).not.toContain("Slowest call:");
+    expect(out).not.toContain("Model time:");
     expect(out).not.toContain("not reported");
   });
 
@@ -402,8 +403,9 @@ describe("runs show command", () => {
     restore();
 
     const out = stripAnsi(logs.join("\n"));
-    expect(out).toContain("Model time: 3s");
     expect(out).not.toContain("Reasoning:");
+    expect(out).not.toContain("Slowest call:");
+    expect(out).not.toContain("Model time:");
   });
 
   it("returns exit code 1 with --exit-status on failed run", async () => {
@@ -637,14 +639,14 @@ describe("runs show heartbeat visibility (issue #176)", () => {
   });
 });
 
-// Issue #309: run-level reasoning and per-call timing rollups — the summary
-// must surface "one call thought for 4 minutes" without opening traces.
-describe("runs show reasoning and timing rollups (issue #309)", () => {
+// Issue #309: run-level reasoning rollups — a reasoning-budget change shows
+// as a number in the summary. Timing extremes stay data-only.
+describe("runs show reasoning rollups (issue #309)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("prints reasoning total, the deepest call, slowest call, and model time", async () => {
+  it("prints reasoning total with the call that dominates it", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse(
         makeRun({
@@ -666,10 +668,8 @@ describe("runs show reasoning and timing rollups (issue #309)", () => {
     expect(out).toMatch(/Reasoning: 45,678 tok/);
     expect(out).toContain("max 12,345 in one call");
     expect(out).toContain("observation abcdef0123456789");
-    expect(out).toMatch(/Slowest call: 4m 12s/);
-    expect(out).toContain("observation fedcba9876543210");
-    expect(out).toMatch(/Model time: 12m 30s/);
-    expect(out).toContain("excludes tool/harness time");
+    expect(out).not.toContain("Slowest call:");
+    expect(out).not.toContain("Model time:");
   });
 
   it("prints unknown reasoning explicitly — never as zero", async () => {

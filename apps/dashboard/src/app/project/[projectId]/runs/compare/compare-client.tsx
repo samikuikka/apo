@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Clock,
   Folder,
-  Gauge,
   GitCompare,
   Hash,
 } from "lucide-react";
@@ -30,6 +29,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useComparison, tallyChecks, type CheckTally } from "./use-comparison";
 import { FlowSection } from "./components/FlowSection";
 import { TaskColumns } from "./components/TaskColumns";
+import { makeDemoRuns } from "./components/demo-runs";
 
 interface CompareClientProps {
   projectId: string;
@@ -41,6 +41,8 @@ interface CompareClientProps {
   /** PROTOTYPE — ?aggregate=1 enables the Tasks/Summary tab split. */
   showAggregate?: boolean;
   tab?: "tasks" | "summary";
+  /** PROTOTYPE — ?demo=1 renders the chart with synthetic density-preview runs. */
+  demo?: boolean;
 }
 
 /** A meaningful identity for a batch in lists where the model may be
@@ -92,6 +94,7 @@ export function CompareClient({
   rightRuns,
   showAggregate = false,
   tab = "tasks",
+  demo = false,
 }: CompareClientProps) {
   const [expanded, toggleExpanded] = useUrlParamSet("expand");
 
@@ -124,6 +127,7 @@ export function CompareClient({
             rightChecks={comparison.rightChecks}
             leftRuns={leftRuns}
             rightRuns={rightRuns}
+            demo={demo}
           />
         ) : (
           <>
@@ -404,9 +408,9 @@ function BatchSlot({
               {formatTokenTotal(batch.total_tokens)}
             </span>
           )}
-          {/* Issue #309: reasoning + model time beside tokens in the "what
-              did this run cost me" cluster. Null = unknown (no child
-              reported) → hidden, never rendered as zero. */}
+          {/* Issue #309: reasoning beside tokens in the "what did this run
+              cost me" cluster. Null = unknown (no child reported) → hidden,
+              never rendered as zero. */}
           {batch.total_reasoning_tokens != null && (
             <span
               className="inline-flex items-center gap-1"
@@ -414,15 +418,6 @@ function BatchSlot({
             >
               <Brain className="h-3 w-3 text-muted-foreground/50" />
               {formatTokenTotal(batch.total_reasoning_tokens)}
-            </span>
-          )}
-          {batch.total_model_time_ms != null && (
-            <span
-              className="inline-flex items-center gap-1"
-              title="Sum of model-call latencies — tool and harness time excluded"
-            >
-              <Gauge className="h-3 w-3 text-muted-foreground/50" />
-              {formatDuration(batch.total_model_time_ms)}
             </span>
           )}
         </div>
@@ -567,7 +562,6 @@ function batchStats(batch: AgentTaskBatchRunDetail) {
     // Issue #309: null means unknown (nobody reported), rendered as absent —
     // never as zero.
     reasoning: batch.total_reasoning_tokens ?? null,
-    modelTime: batch.total_model_time_ms ?? null,
   };
 }
 
@@ -664,6 +658,7 @@ function SummaryView({
   rightChecks,
   leftRuns,
   rightRuns,
+  demo = false,
 }: {
   batchA: AgentTaskBatchRunDetail;
   batchB: AgentTaskBatchRunDetail;
@@ -673,7 +668,11 @@ function SummaryView({
   rightChecks: { passed: number; total: number };
   leftRuns: AgentTaskRunSummary[];
   rightRuns: AgentTaskRunSummary[];
+  demo?: boolean;
 }) {
+  const demoRuns = demo ? makeDemoRuns() : null;
+  const chartLeft = demoRuns ? demoRuns.leftRuns : leftRuns;
+  const chartRight = demoRuns ? demoRuns.rightRuns : rightRuns;
   const a = batchStats(batchA);
   const b = batchStats(batchB);
   const checksDelta = rightChecks.passed - leftChecks.passed;
@@ -720,7 +719,7 @@ function SummaryView({
       />
 
       <div className="mt-3">
-        <TaskColumns leftRuns={leftRuns} rightRuns={rightRuns} projectId={projectId} />
+        <TaskColumns leftRuns={chartLeft} rightRuns={chartRight} projectId={projectId} demo={demo} />
       </div>
 
       <div className="mt-3 overflow-x-auto rounded-md border border-border bg-card">

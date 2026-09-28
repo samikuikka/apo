@@ -329,23 +329,6 @@ function maxReasoningSub(
   );
 }
 
-/** Sub-line for the model-time row: the slowest single call, linked. */
-function slowestCallSub(
-  projectId: string,
-  run: AgentTaskRunSummary | null | undefined,
-): ReactNode {
-  if (!run || run.max_call_latency_ms == null) return null;
-  const text = `slowest ${formatInterval(run.max_call_latency_ms)}`;
-  const href = observationHref(projectId, run, run.max_call_latency_call_id);
-  return href ? (
-    <Link href={href} className="underline-offset-2 hover:underline">
-      {text}
-    </Link>
-  ) : (
-    <span>{text}</span>
-  );
-}
-
 /** One metric row (cost or time) that drops into the SAME grid as the checks
  *  below — `[label · Run A cell · Run B cell]`. Sharing the grid means Run A's
  *  cost bar aligns directly under Run A's check column, so the eye scans one
@@ -857,14 +840,11 @@ function CheckDiff({
   // renders as "0 tok" with a hairline bar. Never collapsed to 0.
   const leftReasoning = left?.total_reasoning_tokens ?? null;
   const rightReasoning = right?.total_reasoning_tokens ?? null;
-  const leftModelTime = left?.total_model_time_ms ?? null;
-  const rightModelTime = right?.total_model_time_ms ?? null;
   const hasMetrics =
     (leftCost ?? rightCost) != null ||
     (leftTime ?? rightTime) != null ||
     (leftTokens ?? rightTokens) != null ||
-    (leftReasoning ?? rightReasoning) != null ||
-    (leftModelTime ?? rightModelTime) != null;
+    (leftReasoning ?? rightReasoning) != null;
 
   // The grid is the single container for header + metrics + checks. Columns
   // are wide enough that cost/time values (e.g. "$0.0122") don't ellipsize —
@@ -954,19 +934,6 @@ function CheckDiff({
                   formatRight={rightReasoning != null ? formatTokenTotal(rightReasoning) : "—"}
                   subLeft={maxReasoningSub(projectId, left)}
                   subRight={maxReasoningSub(projectId, right)}
-                />
-              )}
-              {/* Model time vs wall time: same sub-line carries the slowest
-                  single call, linked to its observation. */}
-              {(leftModelTime != null || rightModelTime != null) && (
-                <MetricRow
-                  label="model time"
-                  leftValue={leftModelTime}
-                  rightValue={rightModelTime}
-                  formatLeft={leftModelTime != null ? formatInterval(leftModelTime) : "—"}
-                  formatRight={rightModelTime != null ? formatInterval(rightModelTime) : "—"}
-                  subLeft={slowestCallSub(projectId, left)}
-                  subRight={slowestCallSub(projectId, right)}
                 />
               )}
             </div>

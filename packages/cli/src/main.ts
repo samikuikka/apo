@@ -208,7 +208,7 @@ const commands: Record<string, CommandEntry> = {
   },
   "runs show": {
     handler: loadCommand("runs-show"),
-    help: "Show run details (checks, failures, cost, reasoning, timing) from backend. Reasoning totals and model time (sum of generation latencies) come with the peak/slowest single call. Checks judged with a second judge carry ✓✗ marks and a split count (APO_SECOND_JUDGE_MODEL)",
+    help: "Show run details (checks, failures, cost, reasoning) from backend. Reasoning totals come with the peak single call. Checks judged with a second judge carry ✓✗ marks and a split count (APO_SECOND_JUDGE_MODEL)",
     args: [
       ["[run-id]", "Run ID, unique prefix, or 'last' (default: latest run)"],
     ],

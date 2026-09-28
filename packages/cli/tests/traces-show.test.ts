@@ -443,7 +443,7 @@ describe("traces show content caps (issue #308)", () => {
   });
 });
 
-describe("traces show reasoning and timing rollups (issue #309)", () => {
+describe("traces show reasoning rollups (issue #309)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -476,7 +476,7 @@ describe("traces show reasoning and timing rollups (issue #309)", () => {
     };
   }
 
-  it("prints reasoning totals with the deepest call, slowest call, and model time", async () => {
+  it("prints reasoning totals with the deepest call", async () => {
     const { run } = await import("../src/commands/traces-show.ts");
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse({
@@ -516,10 +516,9 @@ describe("traces show reasoning and timing rollups (issue #309)", () => {
     const out = stripAnsi(logs.join("\n"));
     expect(out).toContain("Reasoning: 7,500 tok");
     expect(out).toContain("max 7,000 in one call (observation gen-2)");
-    expect(out).toContain("Slowest call: 6.5s (observation gen-2)");
-    // Model time sums generations only (2.0s + 6.5s): the 90s tool and the
-    // 300s root span stay in the per-call list below but are not model time.
-    expect(out).toContain("Model time: 8.5s");
+    // Timing extremes stay data-only — not part of the summary output.
+    expect(out).not.toContain("Slowest call:");
+    expect(out).not.toContain("Model time:");
   });
 
   it("omits the rollup lines when nothing reported them", async () => {

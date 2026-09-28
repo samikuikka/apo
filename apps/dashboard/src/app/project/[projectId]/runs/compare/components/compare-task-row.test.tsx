@@ -408,10 +408,10 @@ describe("CompareTaskRow collapsed checks cell", () => {
   });
 });
 
-// ─── issue #309: reasoning + model-time metric rows ────────────────────────
+// ─── issue #309: reasoning metric rows ──────────────────────────────────────
 
-describe("CompareTaskRow reasoning and model-time rows (issue #309)", () => {
-  it("shows reasoning and model-time rows with linked max/slowest sub-lines", async () => {
+describe("CompareTaskRow reasoning rows (issue #309)", () => {
+  it("shows the reasoning row with its linked max sub-line", async () => {
     const evidenceLoader = vi.fn().mockResolvedValue({
       left: {
         id: "run-a",
@@ -453,19 +453,16 @@ describe("CompareTaskRow reasoning and model-time rows (issue #309)", () => {
       expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
     });
 
-    // Both new rows render with their formatted totals.
+    // The reasoning row renders with its formatted totals.
     expect(screen.getByText("reasoning")).toBeInTheDocument();
     expect(screen.getAllByText("10.0k tok").length).toBeGreaterThan(0);
     expect(screen.getAllByText("2.0k tok").length).toBeGreaterThan(0);
-    expect(screen.getByText("model time")).toBeInTheDocument();
-    expect(screen.getAllByText("5m 00s").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("1m 30s").length).toBeGreaterThan(0);
+    // Timing extremes stay data-only — no model-time row.
+    expect(screen.queryByText("model time")).not.toBeInTheDocument();
 
-    // The max/slowest sub-lines deep-link to the winning observation.
+    // The max sub-line deep-links to the deepest observation.
     const maxLink = screen.getAllByText("max 4.0k tok")[0].closest("a");
     expect(maxLink?.getAttribute("href")).toBe("/project/p1/traces/trace-a?observation=obs-a1");
-    const slowestLink = screen.getAllByText("slowest 2m 00s")[0].closest("a");
-    expect(slowestLink?.getAttribute("href")).toBe("/project/p1/traces/trace-a?observation=obs-a2");
   });
 
   it("keeps unknown reasoning visibly distinct from a reported zero", async () => {
@@ -602,116 +599,5 @@ describe("CompareTaskRow check source for generated-title checks (issue #178)", 
     expect(marker?.line).toBe(2);
     expect(marker?.left).toBe(false);
     expect(marker?.right).toBe(true);
-  });
-});
-
-describe("CompareTaskRow run-level usage rows", () => {
-  // Rollup fields on the run (issue #309 discrete columns, schema v47).
-  const rollups = (
-    modelMs: number | null,
-    slowestMs: number | null,
-    slowestId: string | null,
-    reasoning: number | null,
-    maxReasoning: number | null,
-    maxReasoningId: string | null,
-  ) => ({
-    total_model_time_ms: modelMs,
-    max_call_latency_ms: slowestMs,
-    max_call_latency_call_id: slowestId,
-    total_reasoning_tokens: reasoning,
-    max_call_reasoning_tokens: maxReasoning,
-    max_call_reasoning_call_id: maxReasoningId,
-  });
-
-  it("shows model time and reasoning rows with each side's values", async () => {
-    const evidenceLoader = vi.fn().mockResolvedValue({
-      left: { id: "run-a", checks_json: [], ...rollups(58_538, 7_419, "call-a-slow", 5_492, 1_054, "call-a-deep") },
-      right: { id: "run-b", checks_json: [], ...rollups(142_000, 61_000, "call-b-slow", 24_100, 18_300, "call-b-deep") },
-    });
-
-    render(
-      <CompareTaskRow
-        task={makeTask()}
-        expanded={new Set(["task-1"])}
-        onToggleExpand={noopToggle}
-        projectId="proj"
-        evidenceLoader={evidenceLoader}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("model time")).toBeInTheDocument();
-    });
-    expect(screen.getByText("reasoning")).toBeInTheDocument();
-    expect(screen.getByText("58.54s")).toBeInTheDocument();
-    expect(screen.getByText("2m 22s")).toBeInTheDocument();
-    expect(screen.getByText("5.5k tok")).toBeInTheDocument();
-    expect(screen.getByText("24.1k tok")).toBeInTheDocument();
-    // The extremes ride as linked sub-lines, not separate rows.
-    expect(screen.getByText("slowest 7.42s")).toBeInTheDocument();
-    expect(screen.getByText("slowest 1m 01s")).toBeInTheDocument();
-    expect(screen.queryByText("max reasoning/call")).not.toBeInTheDocument();
-  });
-
-  it("links the extreme sub-lines to the call that set them", async () => {
-    const evidenceLoader = vi.fn().mockResolvedValue({
-      left: {
-        id: "run-a",
-        trace_run_id: "trace-a",
-        checks_json: [],
-        ...rollups(9_000, 7_000, "span-left-slow", 900, 600, "span-left-deep"),
-      },
-      right: {
-        id: "run-b",
-        trace_run_id: "trace-b",
-        checks_json: [],
-        ...rollups(9_000, 7_000, "span-right-slow", 900, 600, "span-right-deep"),
-      },
-    });
-
-    render(
-      <CompareTaskRow
-        task={makeTask()}
-        expanded={new Set(["task-1"])}
-        onToggleExpand={noopToggle}
-        projectId="proj"
-        evidenceLoader={evidenceLoader}
-      />,
-    );
-
-    // Each side's extreme sub-lines deep-link to the observation behind the
-    // max via the trace view's selection param (issue #309).
-    await waitFor(() => {
-      expect(screen.getByText("model time")).toBeInTheDocument();
-    });
-    const hrefs = screen
-      .getAllByRole("link")
-      .map((el) => el.getAttribute("href"));
-    expect(hrefs).toContain("/project/proj/traces/trace-a?observation=span-left-slow");
-    expect(hrefs).toContain("/project/proj/traces/trace-a?observation=span-left-deep");
-    expect(hrefs).toContain("/project/proj/traces/trace-b?observation=span-right-slow");
-    expect(hrefs).toContain("/project/proj/traces/trace-b?observation=span-right-deep");
-  });
-
-  it("leaves the reasoning rows out when neither side reported reasoning", async () => {
-    const evidenceLoader = vi.fn().mockResolvedValue({
-      left: { id: "run-a", checks_json: [], ...rollups(3_000, 2_000, "call", null, null, null) },
-      right: { id: "run-b", checks_json: [], ...rollups(3_000, 2_000, "call", null, null, null) },
-    });
-
-    render(
-      <CompareTaskRow
-        task={makeTask()}
-        expanded={new Set(["task-1"])}
-        onToggleExpand={noopToggle}
-        projectId="proj"
-        evidenceLoader={evidenceLoader}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("model time")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("reasoning")).not.toBeInTheDocument();
   });
 });

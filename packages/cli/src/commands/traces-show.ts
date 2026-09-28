@@ -239,8 +239,6 @@ function printTraceDetail(trace: TraceDetail, calls: TraceCall[], view: CallView
   const reporting = generations.filter(
     (c) => c.level !== "ERROR" && c.raw_usage?.reasoning != null,
   );
-  const timed = generations.filter((c) => c.latency_ms != null);
-
   console.log(bold(`Trace: ${run.id}`));
   console.log(`  Task:      ${run.task_id ?? run.flow_name ?? "-"}`);
   console.log(`  Status:    ${run.status}`);
@@ -254,16 +252,6 @@ function printTraceDetail(trace: TraceDetail, calls: TraceCall[], view: CallView
       (b.raw_usage!.reasoning ?? 0) > (a.raw_usage!.reasoning ?? 0) ? b : a);
     console.log(
       `  Reasoning: ${totalReasoning.toLocaleString()} tok ${dim(`· max ${(deepest.raw_usage!.reasoning ?? 0).toLocaleString()} in one call (observation ${deepest.id})`)}`,
-    );
-  }
-  if (timed.length > 0) {
-    const slowest = timed.reduce((a, b) => (b.latency_ms! > a.latency_ms! ? b : a));
-    const modelTime = timed.reduce((s, c) => s + c.latency_ms!, 0);
-    console.log(
-      `  Slowest call: ${(slowest.latency_ms! / 1000).toFixed(1)}s ${dim(`(observation ${slowest.id})`)}`,
-    );
-    console.log(
-      `  Model time: ${(modelTime / 1000).toFixed(1)}s ${dim("(sum of generation latencies — excludes tool/harness time)")}`,
     );
   }
   console.log(`  Created:   ${formatTime(run.created_at)}`);

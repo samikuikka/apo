@@ -10,11 +10,9 @@ import {
   ChevronRight,
   Clock,
   DollarSign,
-  Gauge,
   Layers3,
   ListChecks,
   PenLine,
-  Timer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { taskDetailHref } from "@/lib/task-routes";
@@ -24,7 +22,7 @@ import { DeleteRunButton } from "@/components/runs/DeleteRunButton";
 import { TaskRunDetailBody } from "./task-run-detail-body";
 import { TaskRunAutoRefresh } from "@/components/agent-task-execution/task-run-auto-refresh";
 import { OutcomeSummary } from "@/components/run-outcome";
-import { formatInterval, formatTokenTotal, formatCostMicro } from "@/lib/format";
+import { formatTokenTotal, formatCostMicro } from "@/lib/format";
 import { getProject } from "@/lib/projects-api";
 import GenerationExecutionNotice from "@/components/generation-execution-notice";
 import { RunJudgmentsSection } from "./run-judgments-section";
@@ -353,31 +351,6 @@ export default async function TaskRunDetailPage({
                 : (taskRun.total_tokens ?? 0) > 0
                   ? [{ icon: Brain, key: "reasoning", value: "not reported", label: "reasoning" }]
                   : []),
-              ...(taskRun.max_call_latency_ms != null
-                ? [{
-                    icon: Timer,
-                    key: "slowest-call",
-                    value: observationValue(
-                      projectId,
-                      taskRun.trace_run_id,
-                      taskRun.max_call_latency_call_id,
-                      formatInterval(taskRun.max_call_latency_ms),
-                      "The slowest single model call",
-                    ),
-                    label: "slowest call",
-                  }]
-                : []),
-              ...(taskRun.total_model_time_ms != null
-                ? [{
-                    icon: Gauge,
-                    key: "model-time",
-                    value: formatInterval(taskRun.total_model_time_ms),
-                    label: "model time",
-                  }]
-                : []),
-              ...(taskRun.adapter_name
-                ? [{ value: taskRun.adapter_name, label: "adapter" }]
-                : []),
               ...((taskRun.corrected_tests ?? 0) > 0
                 ? [{ icon: PenLine, value: `${taskRun.corrected_tests} corrected`, label: "tests" }]
                 : []),

@@ -220,16 +220,6 @@ function printRunDetail(run: RunDetail, verbose: boolean): void {
     // dimension, which reads differently from "the model didn't think".
     console.log(dim("  Reasoning: not reported (provider did not send reasoning usage)"));
   }
-  if (run.max_call_latency_ms != null) {
-    console.log(
-      `  Slowest call: ${formatMs(run.max_call_latency_ms)}${callSuffix(run.max_call_latency_call_id)}`,
-    );
-  }
-  if (run.total_model_time_ms != null) {
-    console.log(
-      `  Model time: ${formatMs(run.total_model_time_ms)} ${dim("(sum of call latencies — excludes tool/harness time)")}`,
-    );
-  }
   if (run.trace_run_id) {
     console.log(`  Trace:    ${run.trace_run_id} ${dim("(apo traces show " + run.trace_run_id + ")")}`);
   }
