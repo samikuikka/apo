@@ -34,6 +34,7 @@ from .agent_task_deliverables import derive_deliverables_json_for_runs
 from .agent_task_outcome import classify_run_outcome
 from .agent_task_projection import parse_trigger
 from .check_report_storage import load_check_reports
+from .judge_span_links import annotate_judge_span_ids
 from .task_definition_revisions import to_definition_summary
 from .test_result_corrections import (
     effective_check_report,
@@ -176,19 +177,25 @@ def load_task_run_details(
     )
 
     derived = derive_deliverables_json_for_runs(session, list(run_by_id.values()))
+    # Effective checks per run first, then one bounded judge-span query for
+    # all of them (issue #288) — the annotation mutates the checks in place.
+    effective_checks = {
+        run.id: effective_check_report(
+            check_reports.get(run.id) or [],
+            corrections_by_run.get(run.id, []),
+            as_of=corrections_as_of,
+            actor_labels=labels,
+        )
+        for run in run_by_id.values()
+    }
+    annotate_judge_span_ids(session, list(run_by_id.values()), effective_checks)
     return [
         _to_detail(
             session,
             run,
             trigger=triggers.get(run.batch_run_id),
             task_definition=definitions.get(run.task_definition_revision_id),
-            checks=effective_check_report(
-                check_reports.get(run.id) or [],
-                corrections_by_run.get(run.id, []),
-                as_of=corrections_as_of,
-                actor_labels=labels,
-            )
-            or None,
+            checks=effective_checks.get(run.id) or None,
             deliverables_json=derived.get(run.id),
         )
         for run_id in unique_ids

@@ -988,3 +988,55 @@ function stubJudgeResponse(args: {
     ),
   );
 }
+
+// Issue #288: the judge metadata records the trace span the context opened
+// around the call, so check surfaces can deep-link into the judge's span in
+// the trace view. The noop context's sentinel must never be recorded.
+describe("t.judge — judge-span trace link (issue #288)", () => {
+  /** Minimal JudgeTracer: hands `spanId` to the wrapped fn, tools pass through. */
+  function stubTracer(spanId: string) {
+    return {
+      step: (_options: unknown, fn: (id: string) => Promise<unknown>) =>
+        fn(spanId),
+      traceTool: (_name: unknown, _params: unknown, fn: () => Promise<unknown>) =>
+        fn(),
+    };
+  }
+
+  it("records the tracer's span id on the judge metadata", async () => {
+    stubJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "meets the rubric" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("complete answer", "PASS when complete");
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+      judgeTracer: stubTracer("span-j1"),
+    });
+
+    expect(result?.judge?.span_id).toBe("span-j1");
+    expect(result?.assertions?.[0]?.judge?.span_id).toBe("span-j1");
+  });
+
+  it("records no span id when the tracer is the untraced sentinel", async () => {
+    stubJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "meets the rubric" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("complete answer", "PASS when complete");
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+      judgeTracer: stubTracer("agent-task-untraced-step"),
+    });
+
+    expect(result?.judge?.span_id).toBeUndefined();
+  });
+});

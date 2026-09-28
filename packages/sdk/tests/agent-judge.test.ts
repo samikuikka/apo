@@ -72,13 +72,27 @@ function scriptFetch(responses: unknown[]) {
 
 const JUDGE = { model: "test-model", apiKey: "test-key" };
 
-async function runAgentCheck(fn: Parameters<typeof defineCheck>[1]) {
+/** Minimal JudgeTracer: hands `spanId` to the wrapped fn, tools pass through. */
+function stubTracer(spanId: string) {
+  return {
+    step: (_options: unknown, fn: (id: string) => Promise<unknown>) =>
+      fn(spanId),
+    traceTool: (_name: unknown, _params: unknown, fn: () => Promise<unknown>) =>
+      fn(),
+  };
+}
+
+async function runAgentCheck(
+  fn: Parameters<typeof defineCheck>[1],
+  judgeTracer?: ReturnType<typeof stubTracer>,
+) {
   resetFlowChecks();
   defineCheck("agent-under-test", fn);
   const results = await runTraceChecks({
     snapshot,
     deliverables: { answer: "42", log: "step1\nstep2" },
     judgeConfig: JUDGE,
+    ...(judgeTracer ? { judgeTracer } : {}),
   });
   return results[0]!;
 }
@@ -285,4 +299,38 @@ describe("t.agent — module isolation and entry surface", () => {
 
     execFileSync(process.execPath, ["--import", hook, child], { stdio: "pipe" });
   }, 30_000);
+});
+
+// Issue #288: the session span's id rides the judge metadata so the check
+// surface can deep-link into the judge's investigation in the trace view.
+describe("t.agent — session span id on judge metadata (issue #288)", () => {
+  it("records the tracer's span id", async () => {
+    scriptFetch([
+      toolCallTurn("1", "finish_verdict", { reasoning: "grounded", pass: true }),
+    ]);
+
+    const result = await runAgentCheck(
+      async (t) => {
+        await t.agent("PASS if grounded.", { label: "agent-check" });
+      },
+      stubTracer("span-agent-1"),
+    );
+
+    expect(result.assertions[0]!.judge?.span_id).toBe("span-agent-1");
+  });
+
+  it("records no span id when the tracer is the untraced sentinel", async () => {
+    scriptFetch([
+      toolCallTurn("1", "finish_verdict", { reasoning: "grounded", pass: true }),
+    ]);
+
+    const result = await runAgentCheck(
+      async (t) => {
+        await t.agent("PASS if grounded.", { label: "agent-check" });
+      },
+      stubTracer("agent-task-untraced-step"),
+    );
+
+    expect(result.assertions[0]!.judge?.span_id).toBeUndefined();
+  });
 });

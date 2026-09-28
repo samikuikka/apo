@@ -138,6 +138,8 @@ export function TaskRunDetailBody({
                   checksSource={checksSource}
                   correctable={correctable}
                   taskRunId={taskRunId ?? undefined}
+                  projectId={projectId}
+                  traceRunId={traceRunId}
                 />
               </Panel>
             )}

@@ -17,12 +17,17 @@ export function ChecksList({
   checksSource,
   correctable = false,
   taskRunId,
+  projectId,
+  traceRunId,
 }: {
   checks: CheckResult[];
   checksSource?: TaskFileContentResponse | null;
   /** Whether test-result corrections are allowed on this run. */
   correctable?: boolean;
   taskRunId?: string;
+  /** For the judge-span deep link (issue #288): the run's project and trace. */
+  projectId?: string | null;
+  traceRunId?: string | null;
 }) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     () => new Set(),
@@ -61,6 +66,8 @@ export function ChecksList({
               checksSource={checksSource}
               correctable={correctable}
               taskRunId={taskRunId}
+              projectId={projectId}
+              traceRunId={traceRunId}
             />
           );
         }
@@ -94,6 +101,8 @@ export function ChecksList({
                     checksSource={checksSource}
                     correctable={correctable}
                     taskRunId={taskRunId}
+                    projectId={projectId}
+                    traceRunId={traceRunId}
                   />
                 ))}
               </div>

@@ -81,3 +81,13 @@ export function createNoopAgentTaskTraceContext(): AgentTaskTraceContext {
  * only in the check report.
  */
 export type JudgeTracer = Pick<AgentTaskTraceContext, "step" | "traceTool">;
+
+/**
+ * Whether a step-returned span id identifies a real, linkable span. The noop
+ * trace context hands out sentinel ids ("agent-task-untraced-*") so callers
+ * need no null-checks — but judge metadata must not record a sentinel as a
+ * deep-linkable `span_id` (no trace backs it; the link would 404).
+ */
+export function isTraceableSpanId(spanId: string | undefined): boolean {
+  return spanId !== undefined && !spanId.startsWith("agent-task-untraced");
+}

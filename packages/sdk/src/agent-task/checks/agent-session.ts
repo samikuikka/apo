@@ -23,6 +23,7 @@ import type {
 import type { Recorder } from "./recorder.ts";
 import type { JudgeConfig, JudgeScope } from "./t.ts";
 import type { JudgeTracer } from "../tracing.ts";
+import { isTraceableSpanId } from "../tracing.ts";
 import { resolveJudgeConfig } from "./t.ts";
 import type { AgentHistoryPlane } from "./agent-history.ts";
 
@@ -719,7 +720,9 @@ export function createAgentMethod(
       });
     try {
       // Issue #288: the judge's investigation is part of the run's trace —
-      // one span under checks.run, verdict summarized post-hoc.
+      // one span under checks.run, verdict summarized post-hoc. The span id
+      // is captured so the recorded judge metadata deep-links into it.
+      let sessionSpanId: string | undefined;
       const result = await (judgeTracer
         ? judgeTracer.step(
             {
@@ -746,7 +749,10 @@ export function createAgentMethod(
                 };
               },
             },
-            run,
+            async (spanId: string) => {
+              sessionSpanId = spanId;
+              return run();
+            },
           )
         : run());
 
@@ -763,6 +769,7 @@ export function createAgentMethod(
         ...(result.cost !== undefined ? { cost: result.cost } : {}),
         latency_ms: result.latency_ms,
         session: result.session,
+        ...(isTraceableSpanId(sessionSpanId) ? { span_id: sessionSpanId } : {}),
       };
 
       const detail =

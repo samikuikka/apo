@@ -56,6 +56,15 @@ export type JudgeMetadata = {
    */
   session?: AgentJudgeSession;
   /**
+   * Trace span id of this judgment itself (issue #288): the span the trace
+   * context opens around the judge call / agent session. Lets any surface
+   * holding this metadata deep-link into the judge's span in the trace view
+   * (`/traces/{trace_run_id}?observation={span_id}`) instead of re-finding
+   * it by name. Absent when the run is untraced or the span id can't be
+   * trusted (the noop trace context's sentinel).
+   */
+  span_id?: string;
+  /**
    * Second-grader evidence: a typed-decision model (Jev via OpenRouter's
    * `/alpha/decisions`) graded the same deliverable + instruction alongside
    * the primary judge. Opt-in via `APO_SECOND_JUDGE_MODEL`. The primary

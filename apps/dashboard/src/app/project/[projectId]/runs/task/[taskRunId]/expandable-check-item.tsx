@@ -27,6 +27,8 @@ export function ExpandableCheckItem({
   checksSource,
   correctable = false,
   taskRunId,
+  projectId,
+  traceRunId,
 }: {
   item: CheckResult;
   index: number;
@@ -34,6 +36,9 @@ export function ExpandableCheckItem({
   /** Terminal + verdict-bearing + evidence present. */
   correctable?: boolean;
   taskRunId?: string;
+  /** For the judge-span deep link (issue #288): the run's project and trace. */
+  projectId?: string | null;
+  traceRunId?: string | null;
 }) {
   const passed = item.pass === true;
   const id = String(item.id ?? `Check ${index + 1}`);
@@ -45,6 +50,10 @@ export function ExpandableCheckItem({
   const reasoning = typeof item.reasoning === "string" ? item.reasoning : "";
   const judgeAssertion = item.assertions?.find((a) => a.judge);
   const judgeMeta = judgeAssertion?.judge ?? item.judge;
+  // Deep link into this judgment's span in the trace view (issue #288);
+  // judge.span_id is recorded at emission by the SDK or joined by the
+  // backend for runs recorded before that.
+  const judgeTraceHref = judgeSpanTraceHref(projectId, traceRunId, judgeMeta?.span_id);
 
   // Shared resolver (issue #178): the anchor is derived from the check
   // result itself, so no view can forget it the way the compare view did.
@@ -268,7 +277,11 @@ export function ExpandableCheckItem({
                         onClick={() => setSelectedLine(null)}
                       />
                       <div className="fixed inset-y-0 right-0 top-12 z-50 flex w-[480px] max-w-[90vw] flex-col border-l border-border bg-card shadow-2xl">
-                        <AssertionDrawer assertion={selectedAssertion} onClose={() => setSelectedLine(null)} />
+                        <AssertionDrawer
+                          assertion={selectedAssertion}
+                          onClose={() => setSelectedLine(null)}
+                          traceHref={judgeSpanTraceHref(projectId, traceRunId, selectedAssertion.judge?.span_id)}
+                        />
                       </div>
                     </>
                   )}
@@ -286,7 +299,9 @@ export function ExpandableCheckItem({
                     {reasoning}
                   </p>
                 )}
-                {judgeMeta && <JudgeStrip judge={judgeMeta} checkPass={passed} />}
+                {judgeMeta && (
+                  <JudgeStrip judge={judgeMeta} checkPass={passed} traceHref={judgeTraceHref} />
+                )}
                 {!reasoning && !judgeMeta && (
                   <p className="text-[12px] text-muted-foreground">No additional details</p>
                 )}
@@ -309,6 +324,21 @@ export function ExpandableCheckItem({
 }
 
 //─ Second judge row mark (measurements, not diagnoses) ────────────────
+
+/**
+ * Trace-view deep link for one judgment's span (issue #288):
+ * /traces/{run}?observation={span_id}. Null when any piece is missing —
+ * untraced runs and ambiguous pre-emission names stay unlinked rather
+ * than guessed.
+ */
+function judgeSpanTraceHref(
+  projectId: string | null | undefined,
+  traceRunId: string | null | undefined,
+  spanId: string | undefined,
+): string | null {
+  if (!projectId || !traceRunId || !spanId) return null;
+  return `/project/${projectId}/traces/${traceRunId}?observation=${spanId}`;
+}
 
 /**
  * Paired verdict dots + confidence on the collapsed row: `✓✗ 0.99` amber

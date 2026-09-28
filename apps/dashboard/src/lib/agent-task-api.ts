@@ -242,6 +242,12 @@ export interface JudgeMetadata {
   cost?: number;
   latency_ms?: number;
   temperature?: number;
+  /**
+   * Trace span id of this judgment (issue #288): recorded at emission by the
+   * SDK or joined by the backend for older runs. Backs the "View in trace"
+   * deep link (`/traces/{trace_run_id}?observation={span_id}`).
+   */
+  span_id?: string;
   /** Opt-in second grader (typed-decision model) evidence; never affects the verdict. */
   secondJudge?: SecondJudgeEvidence;
 }

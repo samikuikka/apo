@@ -69,3 +69,43 @@ it("collapsed by default: the timeline is a non-open details element", () => {
   expect(details).not.toBeNull();
   expect(details!.hasAttribute("open")).toBe(false);
 });
+
+// Issue #288: a judgment with a linkable span deep-links into the judge's
+// span in the trace view; one without (untraced run, ambiguous name) shows
+// no link rather than a guess.
+it("shows the trace deep link when the judgment's span is known", () => {
+  render(
+    <AssertionDrawer
+      onClose={vi.fn()}
+      traceHref="/project/p1/traces/trace-1?observation=span-1"
+      assertion={{
+        id: "agent-check",
+        pass: false,
+        reasoning: "not grounded",
+        evaluator_type: "agent",
+        judge: { model: "z-ai/glm-5.3-flash", session: agentSession, span_id: "span-1" },
+      }}
+    />,
+  );
+  const link = screen.getByRole("link", { name: /view in trace/i });
+  expect(link).toHaveAttribute(
+    "href",
+    "/project/p1/traces/trace-1?observation=span-1",
+  );
+});
+
+it("renders no trace link when the judgment has no span", () => {
+  render(
+    <AssertionDrawer
+      onClose={vi.fn()}
+      assertion={{
+        id: "agent-check",
+        pass: true,
+        reasoning: "grounded",
+        evaluator_type: "agent",
+        judge: { model: "z-ai/glm-5.3-flash", session: agentSession },
+      }}
+    />,
+  );
+  expect(screen.queryByRole("link", { name: /view in trace/i })).toBeNull();
+});

@@ -18,6 +18,7 @@ import { describeValue, matchValue } from "./matchers.ts";
 import { callJudge, type JudgeCallContext, type JudgePromptBuilder } from "./judge.ts";
 import { createAgentMethod, type AgentEvidence, type AgentJudgeOptions } from "./agent-session.ts";
 import type { JudgeTracer } from "../tracing.ts";
+import { isTraceableSpanId } from "../tracing.ts";
 
 /** A tool/agent name matcher: literal (exact), RegExp, or predicate. */
 export type NameMatcher = string | RegExp | ((name: string) => boolean);
@@ -413,6 +414,10 @@ function createJudgeMethod(
         prompt: effective.prompt,
         ...(context ? { context } : {}),
       });
+    // The span the trace context opens around this call (issue #288) —
+    // captured so the recorded judge metadata can deep-link into the
+    // judge's span in the trace view. Stays undefined for untraced runs.
+    let judgeSpanId: string | undefined;
     const traced: Promise<Awaited<ReturnType<typeof callJudge>>> = judgeTracer
       ? judgeTracer.step(
           {
@@ -432,11 +437,15 @@ function createJudgeMethod(
               };
             },
           },
-          call as never,
+          async (spanId: string) => {
+            judgeSpanId = spanId;
+            return call();
+          },
         )
       : call();
     try {
       const { pass, reasoning, judge, unavailable } = await traced;
+      if (isTraceableSpanId(judgeSpanId)) judge.span_id = judgeSpanId;
       rec.record(label, pass, reasoning, {
         evaluator_type: "llm",
         judge,

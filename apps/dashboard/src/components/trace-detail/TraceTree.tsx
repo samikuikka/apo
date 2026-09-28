@@ -507,6 +507,14 @@ export function TraceTree({
   const judgeRoots = evaluation?.roots ?? [];
 
   const { selectCall, selectedCallId } = useSelection();
+  // A deep link (?observation=, e.g. "View in trace" on a failed check,
+  // issue #288) can select a judge span while the group is collapsed —
+  // expand it so the selected row is actually visible.
+  useEffect(() => {
+    if (selectedCallId && evaluation?.memberIds.has(selectedCallId)) {
+      setEvalExpanded(true);
+    }
+  }, [selectedCallId, evaluation]);
   const { run, cumulativeMetrics, prefetchObservation, isSimplifiedTree } = useTraceData();
   const { preferences } = useViewPreferences();
   const [levelFilter, setLevelFilter] = useState<string>("all");

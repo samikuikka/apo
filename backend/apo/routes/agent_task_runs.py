@@ -48,6 +48,7 @@ from ..services.agent_task_batch_listing import (
 )
 from ..services.agent_task_deliverables import derive_deliverables_json
 from ..services.judgments import count_judgments
+from ..services.judge_span_links import annotate_judge_span_ids
 from ..services.test_result_corrections import projected_check_report
 from ..services.agent_task_outcome import classify_run_outcome
 from ..services.agent_task_run_access import require_task_run_access
@@ -160,6 +161,22 @@ def _load_primary_models(
     return model_map
 
 
+def _checks_with_judge_span_links(
+    session: Session,
+    task_run: AgentTaskRunDB,
+) -> list[dict[str, object]] | None:
+    """Effective check report with judge-span deep links stamped on.
+
+    Issue #288: every judge metadata that can be tied to a span in the run's
+    trace carries ``span_id``, so the UI can link a failed check straight
+    into the judge's span in the trace view.
+    """
+    checks = projected_check_report(session, task_run)
+    if checks:
+        annotate_judge_span_ids(session, [task_run], {task_run.id: checks})
+    return checks
+
+
 def _build_task_run_detail(
     session: Session,
     task_run: AgentTaskRunDB,
@@ -215,7 +232,7 @@ def _build_task_run_detail(
         # Current surfaces show the effective projection —
         # recorded evidence stays inside the report, overlay adds
         # recorded_pass/correction metadata on corrected tests.
-        checks_json=projected_check_report(session, task_run),
+        checks_json=_checks_with_judge_span_links(session, task_run),
         transcript_json=task_run.transcript_json if include_transcript else None,
         deliverables_json=deliverables_json,
         error_category=classify_run_outcome(

@@ -13,7 +13,17 @@ import { AgentSessionTimeline } from "./agent-session-timeline";
 // AssertionDrawer — full-height right drawer shown when a diagnostic marker
 // is clicked in the code viewer. Header stays pinned; body scrolls as one so
 // the scrollbar appears only when content truly exceeds the viewport.
-export function AssertionDrawer({ assertion, onClose }: { assertion: CheckAssertionResult; onClose: () => void }) {
+export function AssertionDrawer({
+  assertion,
+  onClose,
+  traceHref,
+}: {
+  assertion: CheckAssertionResult;
+  onClose: () => void;
+  /** Deep link into this assertion's judgment span (issue #288); null when
+   * the judgment has no linkable span. */
+  traceHref?: string | null;
+}) {
   const judge = assertion.judge;
   const isJudge = Boolean(judge) || assertion.evaluator_type === "llm";
   const reasoning = assertion.reasoning?.trim() || (judge ? extractJudgeReasoning(judge) : undefined);
@@ -94,7 +104,7 @@ export function AssertionDrawer({ assertion, onClose }: { assertion: CheckAssert
           {judge?.session && assertion.evaluator_type === "agent" && (
             <AgentSessionTimeline session={judge.session} />
           )}
-          {judge && <JudgeStrip judge={judge} />}
+          {judge && <JudgeStrip judge={judge} traceHref={traceHref} />}
 
           {!reasoning && !judge && !isJudge && (
             <p className="text-[12px] text-muted-foreground">No additional details</p>

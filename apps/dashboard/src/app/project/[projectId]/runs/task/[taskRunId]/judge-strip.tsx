@@ -8,7 +8,9 @@ import {
   Cpu,
   Scale,
   Timer,
+  Workflow,
 } from "lucide-react";
+import Link from "next/link";
 import { ExpandableJson } from "@/components/ExpandableJson";
 import { Markdown } from "@/components/trace-detail/Markdown";
 import type { JudgeMetadata, SecondJudgeEvidence } from "@/lib/agent-task-api";
@@ -28,7 +30,20 @@ function formatTokens(tokens?: { input: number; output: number }): string | null
 
 //─ Judge details (LLM evaluator metadata)──────────────────────────────
 
-export function JudgeStrip({ judge, checkPass }: { judge: JudgeMetadata; checkPass?: boolean }) {
+export function JudgeStrip({
+  judge,
+  checkPass,
+  traceHref,
+}: {
+  judge: JudgeMetadata;
+  checkPass?: boolean;
+  /**
+   * Deep link into this judgment's span in the trace view (issue #288) —
+   * built by the caller from judge.span_id plus the run's trace. Null when
+   * the judgment has no linkable span (untraced run, ambiguous name).
+   */
+  traceHref?: string | null;
+}) {
   const [showPrompt, setShowPrompt] = useState(false);
   const [showResponse, setShowResponse] = useState(false);
 
@@ -80,6 +95,15 @@ export function JudgeStrip({ judge, checkPass }: { judge: JudgeMetadata; checkPa
         )}
         {judge.temperature != null && (
           <span>temp <span className="text-foreground">{judge.temperature}</span></span>
+        )}
+        {traceHref && (
+          <Link
+            href={traceHref}
+            className="ml-auto inline-flex items-center gap-1 border border-border px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Workflow className="h-3 w-3" />
+            View in trace
+          </Link>
         )}
       </div>
 
