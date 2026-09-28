@@ -58,7 +58,7 @@ def _get_client() -> OpenAI:
 
 
 def _get_model() -> str:
-    return os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash-lite")
+    return os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-v4.1-flash")
 
 
 def handle_chat(request: ChatRequest) -> ChatResponse:

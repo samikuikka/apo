@@ -13,7 +13,7 @@ Run a task from its directory through the full lifecycle (adapter → turns → 
 import { runTask } from "@apo-ai/sdk/agent-task";
 
 const result = await runTask("./e2e/tasks/extract-parties", {
-  judge: { model: "google/gemini-2.5-flash-lite" },
+  judge: { model: "deepseek/deepseek-v4.1-flash" },
 });
 console.log(result.result.pass);  // true | false
 ```

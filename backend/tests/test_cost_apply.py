@@ -126,8 +126,8 @@ class TestUnpricedModelSurfacing:
 
 class TestGeminiFlashLitePricing:
     def test_google_prefixed_flash_lite_is_priced(self, session: Session) -> None:
-        """The example agent's default model is google/gemini-2.5-flash-lite
-        (OpenRouter). It used to be unpriced — no flash-lite entry AND the
+        """The example agent's default model used to be google/gemini-2.5-flash-lite
+        (OpenRouter). It was unpriced — no flash-lite entry AND the
         'google/' router prefix never matched the prefix-less patterns. The
         flash-lite entry plus the prefix-stripping fallback now price it."""
         result = compute_cost(

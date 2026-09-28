@@ -14,7 +14,11 @@ from apo.models.db import (
     RunDB,
     UserDB,
 )
-from apo.services.dev_workspace import DEV_USER_EMAIL, ensure_dev_workspace
+from apo.services.dev_workspace import (
+    DEV_SEED_MODEL_DEFAULT,
+    DEV_USER_EMAIL,
+    ensure_dev_workspace,
+)
 
 
 def _set_env(monkeypatch: MonkeyPatch, enabled: str) -> None:
@@ -96,7 +100,7 @@ def test_signin_provisions_workspace_idempotently(
         assert run.status == ("passed" if run.pass_result else "failed")
         assert run.trace_persistence_status == "persisted"
     assert all(
-        run.configured_model == "deepseek/deepseek-v4-flash-0731" for run in task_runs
+        run.configured_model == DEV_SEED_MODEL_DEFAULT for run in task_runs
     )
 
     traces = session.exec(

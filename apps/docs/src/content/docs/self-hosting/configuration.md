@@ -165,14 +165,14 @@ docker compose up -d backend
 
 ## Cost-aware defaults
 
-apo never forces an expensive model. Its only built-in fallback is a deliberately cheap one (`google/gemini-2.5-flash` in the packaged task runtime; local `apo task run` / `apo connect` runs judge with the model you configured via `OPENROUTER_MODEL` or `OPENAI_MODEL`), and stronger models are always an opt-in, by env var, by `runTask({ judge })`, or per `t.judge(...)` call. You will never see an unexpected charge because apo silently swapped your judge onto a frontier model.
+apo never forces an expensive model. Its only built-in fallback is a deliberately cheap one (`deepseek/deepseek-v4.1-flash` in the packaged task runtime; local `apo task run` / `apo connect` runs judge with the model you configured via `OPENROUTER_MODEL` or `OPENAI_MODEL`), and stronger models are always an opt-in, by env var, by `runTask({ judge })`, or per `t.judge(...)` call. You will never see an unexpected charge because apo silently swapped your judge onto a frontier model.
 
 Alpha defaults are intentionally cheap across the rest of the stack too:
 
 - **One node.** Do not provision extra capacity unless you see real pressure.
 - **SQLite first.** Start with the default and move to Postgres when concurrent
   writes or your operational requirements justify the extra service.
-- **Cheap fallback model** for agent tasks (`google/gemini-2.5-flash` in the packaged task runtime; local runs judge with your own `OPENROUTER_MODEL` / `OPENAI_MODEL`).
+- **Cheap fallback model** for agent tasks (`deepseek/deepseek-v4.1-flash` in the packaged task runtime; local runs judge with your own `OPENROUTER_MODEL` / `OPENAI_MODEL`).
 - **Per-call judge escalation.** Escalate a single finicky criterion without switching the whole run: `t.judge(value, instruction, { judge: { model: "anthropic/claude-sonnet-4.5" } })`. Every other call stays on the cheap default. See [Assertions → Overriding the judge model per call](/reference/assertions/#overriding-the-judge-model-per-call).
 - **Conservative schedules**: adaptive cadence defaults to ≥ 1 day between runs.
 - **Log rotation** is configured in every Compose service (`max-size: 10m`, `max-file: 3`).

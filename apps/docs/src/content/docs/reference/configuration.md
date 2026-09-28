@@ -18,7 +18,7 @@ The backend reads these on start. Set them in `backend/.env` (or your container 
 
 ### LLM (agent-task runs)
 
-Where apo picks a model at all, it picks a deliberately cheap one (`google/gemini-2.5-flash`) —
+Where apo picks a model at all, it picks a deliberately cheap one (`deepseek/deepseek-v4.1-flash`) —
 stronger models are opt-in only. Under Source-Owned Execution, Tasks run on
 the user's machine via `apo task run` or `apo connect`, so provider
 credentials are read from the local environment:
@@ -28,7 +28,7 @@ credentials are read from the local environment:
 | `OPENROUTER_API_KEY` | - | OpenRouter API key. Required for LLM-judge checks and adapter LLM calls. |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter-compatible base URL. |
 | `OPENROUTER_MODEL` | - | Judge model for local runs (`apo task run`, `apo connect`): the model the local runner reads, with `OPENAI_MODEL` as the alternative. When both are unset, `t.judge` records a setup error instead of guessing. |
-| `AGENT_TASK_OPENROUTER_MODEL` | - | Judge model for the packaged task runtime (backend-spawned runs). Consulted after `AGENT_TASK_JUDGE_MODEL`; the final fallback is `google/gemini-2.5-flash`. Not read by local CLI runs. |
+| `AGENT_TASK_OPENROUTER_MODEL` | - | Judge model for the packaged task runtime (backend-spawned runs). Consulted after `AGENT_TASK_JUDGE_MODEL`; the final fallback is `deepseek/deepseek-v4.1-flash`. Not read by local CLI runs. |
 | `OPENAI_API_KEY` | - | OpenAI API key. Alternative to OpenRouter for local/dev judge calls. |
 | `OPENAI_BASE_URL` | - | OpenAI-compatible base URL. |
 | `OPENAI_MODEL` | - | OpenAI model for local/dev judge calls. Read when `OPENROUTER_MODEL` is unset. |
@@ -54,7 +54,7 @@ credentials are read from the local environment:
 | `APO_PUBLIC_URL` | - | The origin people and agents use to reach this installation (e.g. `https://apo.example.com`). Must be a single origin without a path. The dashboard's first-run onboarding builds its copy-paste `apo login` command from it. |
 | `DEV_SIGNIN_ENABLED` | on only when profile is unset/`development` | One-click "Sign in as dev" button that provisions a seeded demo workspace (`dev@apo.local` + the `agent-demo` project). Release profiles must set `true` explicitly to enable it; any other value disables it. |
 | `APO_DEV_PROJECT_ID` | `agent-demo` | Id of the seeded dev workspace project. |
-| `APO_DEV_SEED_MODEL` | `deepseek/deepseek-v4-flash-0731` | Model label used for the seeded demo runs. |
+| `APO_DEV_SEED_MODEL` | `deepseek/deepseek-v4.1-flash` | Model label used for the seeded demo runs. |
 
 ### URLs
 

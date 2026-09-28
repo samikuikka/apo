@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   const judgeModel =
     process.env.AGENT_TASK_JUDGE_MODEL
     ?? process.env.AGENT_TASK_OPENROUTER_MODEL
-    ?? "google/gemini-2.5-flash";
+    ?? "deepseek/deepseek-v4.1-flash";
 
   if (!taskDir) {
     throw new Error("AGENT_TASK_DIR is required");

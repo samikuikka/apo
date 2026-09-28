@@ -40,7 +40,7 @@ export const realAgentAdapter = defineAdapter({
     const state = (ctx.state ?? EMPTY_STATE) as AgentState;
     // report the same resolved model the agent uses (service.ts
     // getModel() reads OPENROUTER_MODEL with the same default).
-    const model = process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4-flash-0731";
+    const model = process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4.1-flash";
     return {
       runConfiguration: { model },
       async sendUserTurn(turn: unknown) {

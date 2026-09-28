@@ -24,7 +24,7 @@ export type AssertionOutcome = "pass" | "fail" | "unsupported" | "error";
  * evaluators can leave this undefined.
  */
 export type JudgeMetadata = {
-  /** Model identifier, e.g. ``"google/gemini-2.5-flash-lite"``. */
+  /** Model identifier, e.g. ``"deepseek/deepseek-v4.1-flash"``. */
   model?: string;
   /**
    * Which response contract elicited this judgment (#163): reasoning-first

@@ -20,7 +20,7 @@
  *     { trace, parentSpanId, taskId: ctx.task.id, turnNumber }
  *   );
  *   const response = await client.chat.completions.create({
- *     model: "google/gemini-2.5-flash-lite",
+ *     model: "deepseek/deepseek-v4.1-flash",
  *     messages: [{ role: "user", content: String(turn) }],
  *     tools: [...],
  *   });

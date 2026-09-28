@@ -44,7 +44,7 @@ DEV_PROJECT_ID_ENV = "APO_DEV_PROJECT_ID"
 DEV_SEED_MODEL_ENV = "APO_DEV_SEED_MODEL"
 # Cheap default — this is fixture data, not a real execution, so the label
 # should reflect what the deployment actually runs day-to-day.
-DEV_SEED_MODEL_DEFAULT = "deepseek/deepseek-v4-flash-0731"
+DEV_SEED_MODEL_DEFAULT = "deepseek/deepseek-v4.1-flash"
 DEV_USER_EMAIL = "dev@apo.local"
 DEV_USER_NAME = "Dev User"
 DEV_PROJECT_DEFAULT_ID = "agent-demo"

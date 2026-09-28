@@ -30,7 +30,7 @@ cp .env.example .env
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `OPENROUTER_API_KEY` | yes | — | OpenRouter API key |
-| `OPENROUTER_MODEL` | no | `google/gemini-2.5-flash-lite` | Model to call |
+| `OPENROUTER_MODEL` | no | `deepseek/deepseek-v4.1-flash` | Model to call |
 | `OPENROUTER_BASE_URL` | no | `https://openrouter.ai/api/v1` | OpenAI-compatible endpoint |
 | `APO_OTLP_ENDPOINT` | no | `http://localhost:8000/api/public/otel/v1/traces` | apo OTLP traces URL |
 | `APO_PROJECT` | **yes** | — | **Project ID** (not the name) — find via `apo project list` |

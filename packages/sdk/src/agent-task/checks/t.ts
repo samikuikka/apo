@@ -37,7 +37,7 @@ export type ToolCallOptions = {
  * `judge` layer of its own; see {@link resolveJudgeConfig} for precedence.
  */
 export type JudgeConfig = {
-  /** Model id, e.g. ``"google/gemini-2.5-flash-lite"``. */
+  /** Model id, e.g. ``"deepseek/deepseek-v4.1-flash"``. */
   model: string;
   /** Override the OpenRouter/OpenAI-compatible base URL. */
   baseURL?: string;

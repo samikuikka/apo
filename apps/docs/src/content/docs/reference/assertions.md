@@ -152,7 +152,7 @@ A purely factual criterion ("every `Finland` was replaced by `Sweden`", "the JSO
 
 #### Overriding the judge model per call
 
-apo's only built-in judge fallback is deliberately cheap (`google/gemini-2.5-flash` in the packaged task runtime; local runs use the model you configured): stronger models are always opt-in, never a surprise (see [Cost-aware defaults](/self-hosting/configuration/#cost-aware-defaults)). `opts.judge` is the most surgical opt-in: it overrides the run's judge config for **this call only**, merging field-by-field, use it to escalate one finicky criterion without switching the whole run onto an expensive model.
+apo's only built-in judge fallback is deliberately cheap (`deepseek/deepseek-v4.1-flash` in the packaged task runtime; local runs use the model you configured): stronger models are always opt-in, never a surprise (see [Cost-aware defaults](/self-hosting/configuration/#cost-aware-defaults)). `opts.judge` is the most surgical opt-in: it overrides the run's judge config for **this call only**, merging field-by-field, use it to escalate one finicky criterion without switching the whole run onto an expensive model.
 
 ```typescript title="my-task.eval.ts"
 test("answer-quality", async (t, { deliverables }) => {

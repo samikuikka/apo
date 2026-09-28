@@ -27,7 +27,7 @@ function getClient() {
 }
 
 function getModel() {
-  return process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4-flash-0731";
+  return process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4.1-flash";
 }
 
 const SYSTEM_PROMPT =
