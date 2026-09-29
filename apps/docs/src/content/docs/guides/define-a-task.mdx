@@ -89,7 +89,7 @@ test("parties-are-complete", async (t, { deliverables }) => {
 });
 ```
 
-Each `test(...)` is one assertion. Code assertions (`t.calledTool`, `t.check`) and LLM-backed assertions (`t.judge`) live side by side. See [Tests](/concepts/tests/) for the full vocabulary.
+Each `test(...)` is one assertion. Code assertions (`t.calledTool`, `t.check`) and LLM-backed assertions (`t.judge`, plus the investigating `t.agent` for rubrics that need it) live side by side. See [Tests](/concepts/tests/) for the full vocabulary.
 
 `deliverables.parties` is inferred from `legalDocumentAdapter.collectDeliverables()`. There is no separate deliverables interface to keep synchronized and no generic to repeat on each test.
 

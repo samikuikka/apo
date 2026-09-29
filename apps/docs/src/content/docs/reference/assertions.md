@@ -191,9 +191,7 @@ The repo ships a probe task for this (`apps/example-service/e2e/agent-task-demo/
 ### `t.agent(instruction, opts?)`, async
 
 - **Signature:** `(instruction: string, opts?: AgentJudgeOptions) → Promise<void>`
-- **Asserts:** an agentic judge — a tool-using LLM session — investigates the run's own evidence (the deliverables via `read_deliverable` / `search_deliverable`, the trace via `get_trace`) before verdicting with `finish_verdict`. **Must be awaited**: the check function must be `async`.
-
-Records a single assertion tagged `evaluator_type: "agent"` with the full session transcript attached. Unlike `t.judge`, you state a rubric and the judge gathers its own evidence; `opts.exhibits` optionally pre-stages values into turn 0 the way `t.judge` values are staged.
+- **Asserts:** an agentic judge — a tool-using LLM session — investigates the run's own evidence with read-only tools, then verdicts via `finish_verdict` (whose reasoning must cite the evidence it relied on). **Must be awaited**: the check function must be `async`. For when to reach for this over `t.judge`, see [Tests → The agentic judge](/concepts/tests/#the-agentic-judge).
 
 ```typescript title="my-task.eval.ts"
 test("claims-are-grounded", async (t) => {
@@ -203,7 +201,22 @@ test("claims-are-grounded", async (t) => {
 });
 ```
 
-The session is budgeted and fail-closed. Defaults: 12 turns, 24 tool calls, 300 s wall clock, 2 MiB total read — every field overridable via `opts.budget`. A session that ends without a verdict is a recorded failure, never a silent pass. `opts.tools: { trace: false }` drops the `get_trace` tool (deliverables are always readable), and `opts.judge` overrides the judge model for this call only, merging field-by-field like `t.judge`. It costs more and runs minutes, not seconds — reserve it for rubrics that genuinely need investigation.
+Records a single assertion tagged `evaluator_type: "agent"` with the session transcript (a content-hashed manifest of what was read, not a copy) attached. Unlike `t.judge`, you state a rubric and the judge gathers its own evidence; `opts.exhibits` optionally pre-stages values into turn 0 the way `t.judge` values are staged.
+
+The session's tool surface:
+
+| Tool | Serves |
+|---|---|
+| `read_deliverable` | One deliverable by name, paginated (offset/limit, max 12,000 bytes per call) |
+| `search_deliverable` | Regex search over one deliverable — up to 8 matches with surrounding context, cheaper than reading end to end |
+| `get_trace` | The run's execution trace (tool calls, turns, final reply); answers `unsupported` honestly when trace evidence is missing |
+| `list_runs` / `get_run` | This task's prior runs and their full check reports, human corrections included — frozen once per evaluation; present when the run is recorded against a backend |
+| `get_task_definition` | The task's id, description, and deliverable names |
+| `finish_verdict` | The only exit besides the budget — ends the session with the verdict |
+
+Options: `opts.budget` overrides each ceiling (defaults: 12 turns, 24 tool calls, 300 s wall clock, 2 MiB total read); `opts.tools: { trace: false }` drops `get_trace` (deliverables are always readable); `opts.judge` overrides the judge model for this call only, merging field-by-field like `t.judge`; `opts.label` names the assertion in the breakdown.
+
+The session is fail-closed: one that ends without a verdict records a **failure** with its explanation — `budget exhausted after N steps; last tool: …` — never a silent pass. Without a judge model configured, the check records a setup failure naming the env vars to set (`OPENROUTER_MODEL` + `OPENROUTER_API_KEY`, or `OPENAI_MODEL` + `OPENAI_API_KEY`); the model must be tool-calling capable.
 
 ## Matchers
 
