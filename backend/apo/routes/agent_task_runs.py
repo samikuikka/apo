@@ -30,6 +30,7 @@ from ..models import (
     GenerationExecutionSummary,
     GenerationUsageSummary,
     LoggedCallDB,
+    ModelProviderPair,
     ReportAgentTaskRunResultRequest,
     RunDB,
 )
@@ -57,6 +58,7 @@ from ..services.agent_task_projection import (
     to_batch_run_detail,
     to_task_run_summary,
 )
+from ..services.trace_backend import parse_model_providers
 from ..services.view_runs import since_cutoff
 from ..services.demo_workspace import require_project_not_demo
 from ..services.agent_task_runner import finalize_external_task_run
@@ -160,6 +162,20 @@ def _load_primary_models(
     return model_map
 
 
+def _task_run_provider_pairs(
+    task_run: AgentTaskRunDB,
+) -> list[ModelProviderPair]:
+    """Decode the run's stored (model, provider/route) rollup (issue #307).
+
+    Same tolerant read as the list projection in agent_task_run_details —
+    this route builds its detail separately and must not drift from it.
+    """
+    return [
+        ModelProviderPair.model_validate(pair)
+        for pair in parse_model_providers(task_run.model_providers_json)
+    ]
+
+
 def _build_task_run_detail(
     session: Session,
     task_run: AgentTaskRunDB,
@@ -200,6 +216,7 @@ def _build_task_run_detail(
             if task_run.generation_usage_json is not None
             else None
         ),
+        model_providers=_task_run_provider_pairs(task_run),
         total_tokens=task_run.total_tokens,
         total_reasoning_tokens=task_run.total_reasoning_tokens,
         max_call_reasoning_tokens=task_run.max_call_reasoning_tokens,

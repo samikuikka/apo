@@ -563,3 +563,45 @@ def _run(
         started_at=started_at,
         completed_at=started_at,
     )
+
+
+def test_task_run_detail_carries_model_providers(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """The single-run detail route decodes the (model, provider/route) rollup.
+
+    It builds its detail separately from the list projection — both must
+    carry the same host pairs (issue #307) or `runs show` and the run page
+    drift from the runs list.
+    """
+    now = datetime.now(timezone.utc)
+    session.add_all([_batch("batch-mp", "p", now)])
+    run = _run("mp-run", "batch-mp", "task-1", now)
+    run.model_providers_json = {
+        "pairs": [
+            {
+                "model": "deepseek-v4.1-flash",
+                "provider": "fireworks",
+                "route": "priority",
+                "calls": 2,
+                "total_tokens": 900,
+                "cost_micro": 12,
+            }
+        ]
+    }
+    session.add(run)
+    session.commit()
+
+    response = client.get("/v1/agent-task-runs/mp-run")
+    assert response.status_code == 200
+    assert response.json()["model_providers"] == [
+        {
+            "model": "deepseek-v4.1-flash",
+            "provider": "fireworks",
+            "route": "priority",
+            "calls": 2,
+            "total_tokens": 900,
+            "cost_micro": 12,
+        }
+    ]
