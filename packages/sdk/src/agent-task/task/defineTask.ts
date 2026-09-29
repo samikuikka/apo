@@ -82,15 +82,6 @@ export type TaskScope<TDeliverables> = {
  * test("reviewed-methodically", (t, { deliverables }) => {
  *   t.check(deliverables.result, includes("finding"));
  * });
- *
- * // A task that needs dev-machine resources (cloud creds, VPC, stage) can
- * // declare execution: "local" so `apo task run` runs it on the caller's
- * // machine while still recording a backend run row.
- * task("bind-e2e", {
- *   adapter: bindAdapter,
- *   deliverables: ["summary"],
- *   execution: "local",
- * });
  * ```
  */
 export function task<

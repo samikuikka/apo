@@ -224,9 +224,10 @@ apo's normalizer classifies every span through a priority chain, the first mappe
 
 1. **apo override**: an explicit `apo.observation.type` attribute.
 2. **OpenInference**: `openinference.span.kind` (LangChain / Arize Phoenix).
-3. **GenAI standard**: `gen_ai.*` (OpenAI, Anthropic, Vercel AI SDK instrumentation).
-4. **Vercel AI**: `ai.*` (the Vercel AI SDK's own span names).
-5. **Generic fallback**: always `SPAN`.
+3. **Claude Code**: `claude_code.*` span names (the Claude Agent SDK subprocess). Runs before GenAI because those spans also carry `gen_ai.*` attributes, but the Claude-specific names type them more accurately — the top-level interaction span becomes AGENT, not GENERATION.
+4. **GenAI standard**: `gen_ai.*` (OpenAI, Anthropic, Vercel AI SDK instrumentation).
+5. **Vercel AI**: `ai.*` (the Vercel AI SDK's own span names).
+6. **Generic fallback**: always `SPAN`.
 
 A span carrying attributes from more than one convention is classified by whichever matches first in that order.
 
@@ -234,14 +235,15 @@ A span carrying attributes from more than one convention is classified by whiche
 |---|---|---|
 | apo override | `apo.observation.type` | One of the valid kinds below; an unrecognized value is ignored and the span falls through. |
 | OpenInference | `openinference.span.kind` | `LLM`/`CHAT`→GENERATION, `TOOL`→TOOL, `RETRIEVER`→RETRIEVER, `RERANKER`→RETRIEVER, `AGENT`→AGENT, `CHAIN`→CHAIN, `EMBEDDING`→EMBEDDING |
+| Claude Code | `claude_code.*` span names | `interaction`→AGENT, `llm_request`→GENERATION, `tool`/`tool.execution`→TOOL, `tool.blocked_on_user`→SPAN |
 | GenAI standard | `gen_ai.*` | GENERATION (with model + token usage extracted) |
 | Vercel AI | `ai.*` | GENERATION, TOOL |
 | (fallback) | - | SPAN |
 
-Valid `apo.observation.type` values: `GENERATION`, `SPAN`, `TOOL`, `CHAIN`, `RETRIEVER`, `EVALUATOR`, `EMBEDDING`, `GUARDRAIL`, `AGENT`.
+Valid `apo.observation.type` values: `GENERATION`, `SPAN`, `TOOL`, `CHAIN`, `RETRIEVER`, `EVALUATOR`, `EMBEDDING`, `GUARDRAIL`, `AGENT`, `SKILL`.
 
-:::note[Some spans don't appear as calls]
-Each span also carries a **disposition**: `observe`, `transparent`, or `drop`. Only `observe` spans become call rows in a trace. Vercel AI SDK wrappers like `ai.generateText` are `transparent`: they don't get a row, and their children (`ai.generateText.doGenerate`) reparent to the wrapper's parent. That's why a `generateText` span "disappears" but its `doGenerate` child shows up as the GENERATION call.
+:::note[Wrapper spans vs per-step children]
+The Vercel AI SDK emits a wrapper span (`ai.generateText` / `ai.streamText`) plus per-step children (`ai.generateText.doGenerate` / `doStream`). apo classifies the wrapper as the GENERATION call — it carries the complete picture: the final assembled text and the total usage. The per-step children never become a second billed generation: with Vercel-only attributes they are not typed GENERATION at all, and when they also carry `gen_ai.*` attributes (mixed instrumentation), cost is attached to only one of the pair so a single LLM call is never double-counted.
 :::
 
 Content capture (prompt/completion text) requires setting these env vars:

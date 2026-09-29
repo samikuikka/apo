@@ -11,7 +11,7 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 <TerminalDemo
   command="apo task run extract-parties"
   lines={[
-    { parts: [{ text: "Executor: caller (recorded in a1b2c3d4)", tone: "dim" }] },
+    { parts: [{ text: "Executor: caller (recorded in project a1b2c3d4)", tone: "dim" }] },
     { parts: [{ text: "Revision: clean worktree 9f2c7d81e4b9 from github.com/acme/agent", tone: "dim" }] },
     { text: "" },
     { parts: [{ text: "FAIL", tone: "danger" }, { text: " extract-parties", tone: "bold" }] },
@@ -76,7 +76,7 @@ The result is the verdict and the per-check breakdown. The verdict is `PASS` (gr
 
 <TerminalOutput
   lines={[
-    { parts: [{ text: "Executor: caller (recorded in a1b2c3d4)", tone: "dim" }] },
+    { parts: [{ text: "Executor: caller (recorded in project a1b2c3d4)", tone: "dim" }] },
     { parts: [{ text: "Revision: clean worktree 9f2c7d81e4b9 from github.com/acme/agent", tone: "dim" }] },
     { text: "" },
     { parts: [{ text: "PASS", tone: "success" }, { text: " extract-parties", tone: "bold" }] },

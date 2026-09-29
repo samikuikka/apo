@@ -13,7 +13,7 @@ The backend reads these on start. Set them in `backend/.env` (or your container 
 
 | Variable | Purpose |
 |---|---|
-| `AUTH_SECRET` | Session signing secret. **Required for any non-dev deploy.** Empty in dev → open-dev mode (auth bypassed). Generate with `openssl rand -hex 32`. Must be ≥16 chars, not a placeholder. |
+| `AUTH_SECRET` | Session signing secret. **Required for any non-dev deploy.** Empty in dev → open-dev mode (auth bypassed). Generate with `openssl rand -hex 32`. Must be ≥32 chars, not a placeholder. |
 | `DATABASE_URL` | Database DSN. When unset, apo uses its persistent SQLite file; this is the supported default for trials and small single-node alpha teams. The optional Compose Postgres profile sets a `postgresql://...` DSN for longer-lived shared installations or heavier concurrent writes, best-effort, as the test suite runs against SQLite. |
 
 ### LLM (agent-task runs)
@@ -89,23 +89,32 @@ The `apo` CLI reads these. Precedence: flag > env > stored credentials (`~/.apo/
 
 ## SDK (`@apo-ai/sdk`)
 
-The tracing SDK reads these environment variables:
+The tracing SDK (`@apo-ai/sdk/otel`) reads these environment variables:
 
 | Variable | Purpose |
 |---|---|
-| `APO_BACKEND_URL` | Backend URL. Also `NEXT_PUBLIC_APO_BACKEND_URL`. |
-| `APO_PROJECT` | Project id. Also `NEXT_PUBLIC_APO_PROJECT`. |
+| `APO_OTLP_ENDPOINT` | OTLP traces endpoint (default `http://localhost:8000/api/public/otel/v1/traces`). |
+| `APO_PROJECT` | Project id, sent as a diagnostic resource attribute only (tenancy is auth-derived). |
 | `APO_PUBLIC_KEY` | Public identifier (`pk-apo-…`) for HTTP Basic auth. Server-side only, pair with `APO_SECRET_KEY`. |
 | `APO_SECRET_KEY` | Secret key (`sk-apo-…`) for HTTP Basic auth. Server-side only. |
-| `APO_API_KEY` | Legacy single-key auth (alternative auth). |
-
-`APO_AUTH_TOKEN` (Bearer token for short-lived task-run/attempt tokens) is **not** read by the base SDK's `readConfig`. It is read by `@apo-ai/sdk/otel` (in `buildApoAuthHeaders`) and by the task runner when it sets up the Attempt-scoped credential.
+| `APO_AUTH_TOKEN` | Bearer token, read by `buildApoAuthHeaders`: short-lived task-run/attempt tokens and secret-bearing legacy keys. Ignored when a Basic pair is provided. |
 
 `NEXT_PUBLIC_APO_PUBLIC_KEY` is intentionally **not** read. The
 public identifier does not authorize ingestion by itself, and publishing
 it in a browser bundle creates a misleading direct-browser integration.
 Telemetry submission requires both halves of an API-key pair encoded as
 HTTP Basic. There is no supported browser-public ingestion credential.
+
+### Second judge and judge behavior (optional)
+
+Read by the SDK's check engine during `apo task run` and `apo runs rejudge`:
+
+| Variable | Purpose |
+|---|---|
+| `APO_SECOND_JUDGE_MODEL` | Set to anything non-empty to arm a second judge on judged checks (different model recommended). |
+| `APO_SECOND_JUDGE_BASE_URL` | OpenAI-compatible base URL for the second judge (defaults to the primary judge's base URL). |
+| `APO_SECOND_JUDGE_API_KEY` | API key for the second judge (defaults to the primary judge's key). |
+| `APO_JUDGE_VERDICT_FIRST` | `true` makes `t.judge` ask for the verdict before the commentary, so a mid-response failure still leaves a usable verdict. |
 
 ## Task runner
 

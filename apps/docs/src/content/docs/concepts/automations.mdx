@@ -21,7 +21,7 @@ Conditions are AND-combined; an empty condition list fires on every event of tha
 
 ## Events and conditions
 
-Automations watch the same run events webhooks see: batch runs completing or failing, task runs starting, completing, or erroring. Task-run events expose the run's verdict fields (`pass_result`, `failed_checks`, `task_id`, …); batch events expose the rollup counts plus the *trigger* — so you can route scheduled runs separately from manual ones:
+Automations watch the same run events webhooks see: batch runs completing or failing, task runs starting, completing, or erroring, and task-run traces being claimed (`task_run.trace_claimed`). Task-run events expose the run's verdict fields (`pass_result`, `failed_checks`, `task_id`, …); batch events expose the rollup counts plus the *trigger* — so you can route scheduled runs separately from manual ones:
 
 | Condition | Fires on |
 |---|---|

@@ -32,7 +32,7 @@ function task<TTaskId, TAdapterName, TDeliverableDefs, TCollected, TSelected>(
     maxTurns?: number;
     description?: string;
     metadata?: Record<string, unknown>;
-    execution?: "local" | "bundled";
+    judge?: Partial<JudgeConfig>;
   },
 ): TaskScope<SelectedDeliverables<TCollected, TSelected>>;
 
@@ -81,6 +81,13 @@ Human-readable summary. Shown in the dashboard and `apo task show`.
 - **Required:** no
 
 Free-form metadata, searchable in the dashboard.
+
+### `judge`
+
+- **Type:** `Partial<JudgeConfig>`
+- **Required:** no
+
+Task-level judge layer: overrides the run-level `runTask({ judge })` config and is itself overridden per `t.judge` call. Lets a task grade differently from its suite — a stronger model, or a custom briefing via `prompt` that tells the judge what it is grading. Fields: `model`, `baseURL`, `apiKey`, `prompt` (see [Assertions API → t.judge](/reference/assertions/) for the full semantics).
 
 ## `turn(fn)`
 

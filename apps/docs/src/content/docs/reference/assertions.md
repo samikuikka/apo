@@ -168,7 +168,7 @@ test("answer-quality", async (t, { deliverables }) => {
 });
 ```
 
-Absent fields inherit from the run's judge config (`runTask({ judge })`, or the `OPENROUTER_MODEL` / `AGENT_TASK_JUDGE_MODEL` env defaults), so `{ model }` alone is usually enough, `baseURL` and `apiKey` flow through unchanged. The overridden model is stamped on the assertion metadata and shown in the dashboard breakdown.
+Absent fields inherit from the run's judge config (`runTask({ judge })`, or a task-level `judge` layer), whose env defaults depend on the runner: `OPENROUTER_MODEL` / `OPENAI_MODEL` for local runs (`apo task run`, `apo connect`), `AGENT_TASK_JUDGE_MODEL` for backend-spawned runs. So `{ model }` alone is usually enough, `baseURL` and `apiKey` flow through unchanged. The overridden model is stamped on the assertion metadata and shown in the dashboard breakdown.
 
 #### Response-contract order: reasoning-first
 
@@ -187,6 +187,23 @@ Judgments elicited before the default flip carry `contract: "verdict-first"`. Wh
 :::
 
 The repo ships a probe task for this (`apps/example-service/e2e/agent-task-demo/tasks/judge-flip-probe`, a stub agent returning one fixed memo, ten calibrated criteria); on `google/gemini-2.5-flash-lite` it measured zero flips across 10 criteria × 3 samples per arm.
+
+### `t.agent(instruction, opts?)`, async
+
+- **Signature:** `(instruction: string, opts?: AgentJudgeOptions) → Promise<void>`
+- **Asserts:** an agentic judge — a tool-using LLM session — investigates the run's own evidence (the deliverables via `read_deliverable` / `search_deliverable`, the trace via `get_trace`) before verdicting with `finish_verdict`. **Must be awaited**: the check function must be `async`.
+
+Records a single assertion tagged `evaluator_type: "agent"` with the full session transcript attached. Unlike `t.judge`, you state a rubric and the judge gathers its own evidence; `opts.exhibits` optionally pre-stages values into turn 0 the way `t.judge` values are staged.
+
+```typescript title="my-task.eval.ts"
+test("claims-are-grounded", async (t) => {
+  await t.agent(
+    "PASS when every claim in the memorandum is supported by the source documents. Read the deliverables, search them for the cited figures, and check the trace for what the agent actually read.",
+  );
+});
+```
+
+The session is budgeted and fail-closed. Defaults: 12 turns, 24 tool calls, 300 s wall clock, 2 MiB total read — every field overridable via `opts.budget`. A session that ends without a verdict is a recorded failure, never a silent pass. `opts.tools: { trace: false }` drops the `get_trace` tool (deliverables are always readable), and `opts.judge` overrides the judge model for this call only, merging field-by-field like `t.judge`. It costs more and runs minutes, not seconds — reserve it for rubrics that genuinely need investigation.
 
 ## Matchers
 
@@ -222,8 +239,8 @@ When a capability is `partial` or `unavailable`, the assertion immediately recor
 
 An `unsupported` outcome records `pass: false`, it is never a silent pass. This is why a complete `apo-agent-task-v1` run with zero tools still has `tools = available`: the projection can *prove* `usedNoTools()`, not just fail to find tools.
 
-:::note[Transparent wrappers]
-The trace projection suppresses lifecycle wrappers (`ai.generateText`, `ai.streamText`): assertions read the effective graph where children are reparented to the nearest retained ancestor. You never see a synthetic container row in `toolOrder` or `subagentCalls`.
+:::note[One generation per wrapper]
+The Vercel AI SDK emits a wrapper span (`ai.generateText` / `ai.streamText`) plus per-step children (`ai.generateText.doGenerate`). apo's translation keeps the wrapper — it carries the complete picture: the final assembled text and the total usage — as the single GENERATION row, and ignores the per-step children. Assertions never see a duplicated per-step row, and `toolOrder` reads the effective call graph.
 :::
 
 ## See also

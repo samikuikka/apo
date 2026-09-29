@@ -58,7 +58,7 @@ the alpha topology.
 `GET /health/ready` is the operator-grade probe. It returns 200 when the deployment is actually usable and 503 otherwise. Checks include:
 
 - **database**: can the backend reach the configured `DATABASE_URL`?
-- **auth_secret**: present, non-placeholder, and at least 16 characters when not in dev mode.
+- **auth_secret**: present, non-placeholder, and at least 32 characters when not in dev mode.
 - **artifact_store**: the Control Plane can persist Revision bundles and Artifacts.
 
 This endpoint is intentionally separate from the basic `/health` liveness probe, which only confirms the process booted.

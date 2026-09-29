@@ -15,7 +15,7 @@ The package you import when writing `.eval.ts` files, adapters, and assertions.
 
 ```typescript
 import {
-  task, test, turn, defineAdapter,
+  task, test, turn, describe, defineAdapter,
   createApoTracer, createApoOpenAI, createApoAnthropic, registerApoTracing,
   runTask, loadTask, discoverAgentTaskDirs,
   includes, equals, matches, satisfies, similarity,
@@ -24,7 +24,7 @@ import {
 
 | Page | What it covers |
 |---|---|
-| [Task API](/reference/task/) | `task()`, `turn()`, `test()`, the three calls in a `.eval.ts` file |
+| [Task API](/reference/task/) | `task()`, `turn()`, `test()`, `describe()`, the calls that make up a `.eval.ts` file |
 | [Adapter API](/reference/adapter/) | `defineAdapter()`, the lifecycle contract (`initialize`, `startSession`, `collectDeliverables`, `cleanup`) |
 | [Assertions API](/reference/assertions/) | the `t.*` methods and the matcher helpers |
 | [Tracing integrations](/reference/tracing-integrations/) | `createApoTracer`, `createApoOpenAI`, `createApoAnthropic`, and the OTel-native `registerApoTracing` path |
