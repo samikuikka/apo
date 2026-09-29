@@ -30,7 +30,11 @@
  */
 
 import type { AgentTaskTraceContext } from "../tracing.ts";
-import { startGeneration, emitGenerationAndTools } from "./span-helpers.ts";
+import {
+  startGeneration,
+  emitGenerationAndTools,
+  servingHostFromBaseURL,
+} from "./span-helpers.ts";
 
 export interface CreateApoAnthropicOptions {
   /** The tee'd trace context from `sendUserTurn`'s second argument. */
@@ -99,6 +103,12 @@ export function createApoAnthropic<T extends AnthropicClientLike>(
       return realCreate(params);
     }
 
+    // The Anthropic SDK can also be pointed at a gateway via baseURL —
+    // resolve the host it actually calls (issue #307).
+    const serving = servingHostFromBaseURL(
+      (client as { baseURL?: unknown }).baseURL,
+      "anthropic",
+    );
     const { spanId, startedAt } = startGeneration(trace, {
       model,
       system: typeof params.system === "string" ? params.system : undefined,
@@ -106,6 +116,7 @@ export function createApoAnthropic<T extends AnthropicClientLike>(
       parentSpanId,
       taskId,
       turnNumber,
+      ...serving,
     });
 
     try {

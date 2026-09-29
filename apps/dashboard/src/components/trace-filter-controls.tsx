@@ -551,6 +551,7 @@ export function TraceFilterControls({
               actions.setProviders(filters.providers.filter((p) => p !== provider))
             }
             hideLabel={true}
+            project={filters.project}
           />
         </FilterSection>
 

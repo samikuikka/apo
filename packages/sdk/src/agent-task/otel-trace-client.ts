@@ -112,6 +112,12 @@ export function createOtelAgentTaskTraceClient(
     if (params.model) {
       span.setAttribute("gen_ai.request.model", params.model);
     }
+    if (params.provider) {
+      span.setAttribute("gen_ai.provider.name", params.provider);
+    }
+    if (params.route) {
+      span.setAttribute("apo.llm.route", params.route);
+    }
     const isTool = params.observation_type === "TOOL";
     if (params.input) {
       if (isTool) {

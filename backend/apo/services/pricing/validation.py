@@ -78,16 +78,22 @@ def validate_era_no_overlap(
     match_pattern: str,
     start_date: datetime | None,
     end_date: datetime | None,
+    provider_pattern: str | None = None,
     exclude_model_id: int | None = None,
 ) -> None:
-    """Reject overlapping eras for the same (project, match_pattern) (ticket 04).
+    """Reject overlapping eras in the same (project, match_pattern,
+    provider_pattern) slot (ticket 04; provider slot per issue #307).
 
-    One-era-active is a data invariant: the era-resolution query relies on at
-    most one row matching any given ``at_time``.
+    One-era-active-per-slot is a data invariant: the era-resolution query
+    relies on at most one row matching any given ``at_time`` within a slot.
+    A provider-qualified era may overlap the provider-agnostic era of the
+    same model — that is the "same model, two hosts, each at its rate"
+    configuration, and resolution orders qualified over agnostic.
     """
     stmt = select(ModelRowDB).where(
         ModelRowDB.project == project,
         ModelRowDB.match_pattern == match_pattern,
+        ModelRowDB.provider_pattern == provider_pattern,
     )
     if exclude_model_id is not None:
         stmt = stmt.where(ModelRowDB.id != exclude_model_id)
@@ -97,9 +103,10 @@ def validate_era_no_overlap(
 
     for other in existing:
         if _eras_overlap(start_date, end_date, other.start_date, other.end_date):
+            slot = f" (provider {provider_pattern!r})" if provider_pattern else ""
             raise TierValidationError(
-                f"era window overlaps an existing era for {match_pattern!r} in project "
-                + f"{project!r} (existing {other.start_date}..{other.end_date})"
+                f"era window overlaps an existing era for {match_pattern!r}{slot} in "
+                + f"project {project!r} (existing {other.start_date}..{other.end_date})"
             )
 
 

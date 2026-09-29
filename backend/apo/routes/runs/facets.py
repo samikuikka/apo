@@ -141,29 +141,28 @@ def _compute_model_facets(session: Session, run_ids: list[str]) -> list[FacetBuc
 
 
 def _compute_provider_facets(session: Session, run_ids: list[str]) -> list[FacetBucket]:
-    """Serving-host facet: provider and route values, merged (issue #307).
+    """Serving-host facet over the labels the UI displays (issue #307).
 
-    Both columns feed one facet because a host identity may live in either —
-    direct emitters report ``gen_ai.provider.name``; routed ones put the real
-    host in ``apo.llm.route``. Union + re-count keeps one coherent bucket
-    list instead of two half-empty ones.
+    The label is route-wins — the same projection as the runs list column
+    (``provider_labels``) — so every facet bucket is a value the user can
+    see in the Host column. Listing raw provider values alongside would
+    offer "fireworks" for a run whose cell shows "priority": picking it
+    would look like a filter that does nothing.
     """
     if not run_ids:
         return []
-    base = select(
-        LOGGED_CALL_PROVIDER_COL, func.count(func.distinct(LOGGED_CALL_RUN_ID_COL))
-    ).where(
-        LOGGED_CALL_RUN_ID_COL.in_(run_ids),
-        LOGGED_CALL_PROVIDER_COL.is_not(None),
-    )
-    routes = select(
-        LOGGED_CALL_ROUTE_COL, func.count(func.distinct(LOGGED_CALL_RUN_ID_COL))
-    ).where(
-        LOGGED_CALL_RUN_ID_COL.in_(run_ids),
-        LOGGED_CALL_ROUTE_COL.is_not(None),
+    label = func.coalesce(func.nullif(LOGGED_CALL_ROUTE_COL, ""),
+                          func.nullif(LOGGED_CALL_PROVIDER_COL, ""))
+    stmt = (
+        select(label, func.count(func.distinct(LOGGED_CALL_RUN_ID_COL)))
+        .where(
+            LOGGED_CALL_RUN_ID_COL.in_(run_ids),
+            label.is_not(None),
+        )
+        .group_by(label)
     )
     counts: dict[str, int] = {}
-    for value, count in [*session.exec(base).all(), *session.exec(routes).all()]:
+    for value, count in session.exec(stmt).all():
         if value:
             counts[str(value)] = counts.get(str(value), 0) + int(count)
     return [

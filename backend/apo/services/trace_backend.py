@@ -107,7 +107,11 @@ def model_providers_summary(calls: Sequence[LoggedCallDB]) -> dict[str, object] 
 def parse_model_providers(
     value: dict[str, object] | None,
 ) -> list[dict[str, object]]:
-    """Read the stored rollup JSON back as a pair list (missing → [])."""
+    """Read the stored rollup JSON back as a pair list (missing → []).
+
+    Malformed pairs (hand-edited rows) are skipped, not raised — a read
+    path must not 500 on data it can degrade gracefully without.
+    """
     if not isinstance(value, dict):
         return []
     raw = value.get("pairs")
@@ -115,8 +119,15 @@ def parse_model_providers(
         return []
     pairs: list[dict[str, object]] = []
     for item in raw:
-        if isinstance(item, dict):
-            pairs.append(cast("dict[str, object]", item))
+        if not isinstance(item, dict):
+            continue
+        # A valid pair carries its identity and count; anything else is
+        # corruption, and skipping beats failing the whole endpoint.
+        if not isinstance(item.get("model"), str) or not isinstance(
+            item.get("calls"), int
+        ):
+            continue
+        pairs.append(cast("dict[str, object]", item))
     return pairs
 
 

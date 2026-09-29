@@ -317,6 +317,7 @@ async def create_model(
             match_pattern=request.match_pattern,
             start_date=request.start_date,
             end_date=request.end_date,
+            provider_pattern=request.provider_pattern,
         )
     except TierValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -359,6 +360,7 @@ async def replace_model(
             match_pattern=request.match_pattern,
             start_date=request.start_date,
             end_date=request.end_date,
+            provider_pattern=request.provider_pattern,
             exclude_model_id=model_id,
         )
     except TierValidationError as exc:

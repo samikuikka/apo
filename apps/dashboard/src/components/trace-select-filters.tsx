@@ -418,6 +418,10 @@ interface ProviderMultiSelectProps {
   onAddProvider: (provider: string) => void;
   onRemoveProvider: (provider: string) => void;
   hideLabel?: boolean;
+  /** Scope the option list to this project — the traces list itself is
+   * project-pinned, so offering other projects' hosts yields
+   * filter-then-empty confusion. */
+  project?: string | null;
 }
 
 export function TraceProviderMultiSelect({
@@ -425,6 +429,7 @@ export function TraceProviderMultiSelect({
   onAddProvider,
   onRemoveProvider,
   hideLabel = false,
+  project,
 }: ProviderMultiSelectProps) {
   const [input, setInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -436,7 +441,11 @@ export function TraceProviderMultiSelect({
       try {
         const data = await apiClient<{ providers?: { value: string }[] }>(
           "/v1/runs/facets",
-          { signal: controller.signal, cache: "no-store" },
+          {
+            signal: controller.signal,
+            cache: "no-store",
+            ...(project ? { query: { project } } : {}),
+          },
         );
         if (!controller.signal.aborted) {
           setOptions((data.providers ?? []).map((b) => b.value));

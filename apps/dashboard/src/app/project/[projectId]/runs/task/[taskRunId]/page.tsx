@@ -93,9 +93,14 @@ function hostLabels(pairs: ModelProviderPair[] | undefined): string[] {
   return labels;
 }
 
-/** Call count behind one host label (route wins over provider). */
+/** Call count behind one host label. Sums every pair the label covers —
+ * the rollup is keyed on (model, provider, route), so one host legitimately
+ * spans several pairs (task model and judge model on the same host). */
 function hostPairCalls(pairs: ModelProviderPair[] | undefined, label: string): number {
-  return pairs?.find((pair) => pair.route === label || pair.provider === label)?.calls ?? 0;
+  return (pairs ?? []).reduce(
+    (n, pair) => n + (pair.route === label || pair.provider === label ? pair.calls : 0),
+    0,
+  );
 }
 
 /** tok/s with one decimal under 100 and integers above — the precision a

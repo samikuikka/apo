@@ -405,3 +405,192 @@ class TestRunListProviderFilter:
                 pagination,
             )
             assert page.data == []
+
+
+class TestProviderFacet:
+    def test_facet_groups_by_route_wins_label(self) -> None:
+        from apo.routes.runs.facets import _compute_provider_facets
+        from sqlmodel import Session, SQLModel, create_engine
+
+        eng = create_engine("sqlite://")
+        SQLModel.metadata.create_all(eng)
+        with Session(eng) as session:
+            # Three runs: route-labeled, provider-labeled, and both-labels
+            # (route must win — the facet must not also offer the shadowed
+            # provider value), plus a no-host run that contributes nothing.
+            for run_id, provider, route in (
+                ("r1", "fireworks", "priority"),
+                ("r2", "baseten", None),
+                ("r3", None, None),
+            ):
+                session.add(
+                    _call(
+                        id=f"c-{run_id}",
+                        run_id=run_id,
+                        project="p",
+                        provider=provider,
+                        route=route,
+                    )
+                )
+            # A second call on r2 — the count is distinct RUNS, not calls.
+            session.add(
+                _call(id="c-r2b", run_id="r2", project="p", provider="baseten")
+            )
+            session.commit()
+
+            buckets = _compute_provider_facets(session, ["r1", "r2", "r3"])
+            assert [(b.value, b.count) for b in buckets] == [
+                ("baseten", 1),
+                ("priority", 1),
+            ]
+
+
+class TestProviderQualifiedPricingFixes:
+    """Regressions for the adversarial findings: the qualified-era logic is
+    only correct when rows arrive through the real write paths."""
+
+    @pytest.fixture
+    def session(self) -> Session:  # pyright: ignore[reportInvalidTypeForm]
+        eng = create_engine("sqlite://")
+        SQLModel.metadata.create_all(eng)
+        sess = Session(eng)
+        yield sess
+        sess.close()
+
+    def test_api_validation_accepts_qualified_era_next_to_agnostic(
+        self, session: Session
+    ) -> None:
+        """The two-host configuration is the feature's whole point — the
+        overlap check must scope per provider slot, not per pattern."""
+        from apo.models.pricing import ModelDocumentCreate, TierDocument
+        from apo.services.pricing.validation import (
+            TierValidationError,
+            validate_era_no_overlap,
+            validate_model_document,
+        )
+
+        def _doc(provider_pattern: str | None) -> ModelDocumentCreate:
+            return ModelDocumentCreate(
+                project="proj",
+                match_pattern=r"(?i)^model-w$",
+                provider="generic",
+                provider_pattern=provider_pattern,
+                pricing_tiers=[TierDocument(name="default", is_default=True)],
+            )
+
+        # Agnostic era first, then a fireworks-qualified era for the SAME
+        # pattern — must not raise.
+        validate_model_document(_doc(None))
+        session.add(ModelRowDB(project="proj", match_pattern=r"(?i)^model-w$", provider="generic"))
+        session.commit()
+        validate_era_no_overlap(
+            session,
+            project="proj",
+            match_pattern=r"(?i)^model-w$",
+            start_date=None,
+            end_date=None,
+            provider_pattern="fireworks",
+        )
+        # A second qualified era in the SAME provider slot must still raise.
+        session.add(
+            ModelRowDB(
+                project="proj",
+                match_pattern=r"(?i)^model-w$",
+                provider="fireworks",
+                provider_pattern="fireworks",
+            )
+        )
+        session.commit()
+        with pytest.raises(TierValidationError):
+            validate_era_no_overlap(
+                session,
+                project="proj",
+                match_pattern=r"(?i)^model-w$",
+                start_date=None,
+                end_date=None,
+                provider_pattern="fireworks",
+            )
+
+    def test_call_outside_qualified_window_falls_back_to_agnostic(
+        self, session: Session
+    ) -> None:
+        """Repricing history after adding a per-host era must not flip older
+        matching calls to unpriced."""
+        session.add(
+            ModelRowDB(
+                project="__global__",
+                match_pattern=r"(?i)^model-y$",
+                provider="generic",
+                start_date=_dt("2020-01-01T00:00:00Z"),
+                end_date=_dt("2027-01-01T00:00:00Z"),
+            )
+        )
+        session.add(
+            ModelRowDB(
+                project="__global__",
+                match_pattern=r"(?i)^model-y$",
+                provider="fireworks",
+                provider_pattern="fireworks",
+                start_date=_dt("2026-10-01T00:00:00Z"),
+                end_date=None,
+            )
+        )
+        session.commit()
+        # Before the qualified window: the agnostic era covers it.
+        era = resolve_model_era(
+            session,
+            "model-y",
+            "__global__",
+            _dt("2026-09-01T00:00:00Z"),
+            provider="fireworks",
+        )
+        assert era is not None and era.provider_pattern is None
+        # Inside the qualified window: the qualified era wins.
+        era = resolve_model_era(
+            session,
+            "model-y",
+            "__global__",
+            _dt("2026-11-01T00:00:00Z"),
+            provider="fireworks",
+        )
+        assert era is not None and era.provider_pattern == "fireworks"
+
+    def test_project_qualified_era_keeps_global_fallback_visible(
+        self, session: Session
+    ) -> None:
+        """A project adding a per-host rate must not unprice its other
+        hosts: shadowing is per (pattern, provider) slot."""
+        session.add(
+            ModelRowDB(
+                project="__global__",
+                match_pattern=r"(?i)^model-z$",
+                provider="generic",
+            )
+        )
+        session.add(
+            ModelRowDB(
+                project="proj",
+                match_pattern=r"(?i)^model-z$",
+                provider="fireworks",
+                provider_pattern="fireworks",
+            )
+        )
+        session.commit()
+        era = resolve_model_era(
+            session, "model-z", "proj", _dt("2026-09-01T00:00:00Z"), provider="fireworks"
+        )
+        assert era is not None and era.provider_pattern == "fireworks"
+        # The project's other host still bills at the global base rate.
+        era = resolve_model_era(
+            session, "model-z", "proj", _dt("2026-09-01T00:00:00Z"), provider="baseten"
+        )
+        assert era is not None and era.provider_pattern is None
+
+    def test_tolerant_pair_parsing_skips_corrupt_entries(self) -> None:
+        assert parse_model_providers(
+            {"pairs": [{"model": "m", "calls": 1}, {"model": "m"}, "junk", 5]}
+        ) == [{"model": "m", "calls": 1}]
+
+
+def _dt(iso: str) -> datetime:
+    return datetime.fromisoformat(iso.replace("Z", "+00:00"))

@@ -347,8 +347,10 @@ function printCall(call: TraceCall, view: CallView, modelWidth: number): void {
   const tokens = call.total_tokens != null ? call.total_tokens.toLocaleString().padStart(8) : "       -";
   const ttft = call.time_to_first_token_ms != null ? ` ttft:${(call.time_to_first_token_ms / 1000).toFixed(1)}s` : "";
   // Decode speed + serving host (issue #307): the numbers a host comparison
-  // needs, on the calls that actually hit a model.
-  const tokPerS = outputTokPerS(call);
+  // needs, on the calls that actually hit a model. Errored generations skip
+  // the speed — their token count is truncated, so the ratio would read as
+  // fabricated slowness (same rule as the backend's run-level median).
+  const tokPerS = call.level === "ERROR" ? null : outputTokPerS(call);
   const speed = tokPerS != null ? ` ${formatTokPerS(tokPerS)}` : "";
   const host = call.route || call.provider;
 

@@ -836,18 +836,32 @@ def list_agent_task_runs(
         # Observed serving host, unlike model/effort which filter the
         # adapter-reported configuration. Resolved through the linked
         # trace's calls so the JSON rollup stays display-only (issue #307).
+        # Project-scoped because trace ids may collide across projects
+        # (surrogate-PK design) — another project's copy of a trace must
+        # not satisfy this one's filter.
         provider_values = [
             p.lower() for raw in provider for p in raw.split(",") if p.strip()
         ]
-        matching_traces = select(col(LoggedCallDB.run_id)).where(
-            or_(
-                func.lower(as_column(cast(object, LoggedCallDB.provider))).in_(
-                    provider_values
-                ),
-                func.lower(as_column(cast(object, LoggedCallDB.route))).in_(
-                    provider_values
+        # The trace's project is the owning batch run's project — correlated
+        # against the outer row so each task run matches only its own
+        # project's copy of the trace.
+        batch_projects = select(col(AgentTaskBatchRunDB.project)).where(
+            col(AgentTaskBatchRunDB.id) == col(AgentTaskRunDB.batch_run_id)
+        )
+        matching_traces = (
+            select(col(LoggedCallDB.run_id))
+            .where(
+                col(LoggedCallDB.project).in_(batch_projects.scalar_subquery()),
+                or_(
+                    func.lower(as_column(cast(object, LoggedCallDB.provider))).in_(
+                        provider_values
+                    ),
+                    func.lower(as_column(cast(object, LoggedCallDB.route))).in_(
+                        provider_values
+                    ),
                 ),
             )
+            .correlate(AgentTaskRunDB)
         )
         query = query.where(col(AgentTaskRunDB.trace_run_id).in_(matching_traces))
     since_cutoff_value = since_cutoff(since)

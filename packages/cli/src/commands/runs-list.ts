@@ -133,13 +133,20 @@ function formatGenerationExecution(
 }
 
 /** Distinct serving-host labels (route wins over provider) for the Hosts
- * column (issue #307); dim dash when no call reported a host. */
+ * column (issue #307); dim dash when no call reported a host. Capped so a
+ * run with several long route strings (fallback chains embed hostnames)
+ * can't blow up the table — `runs show` carries the full pairs. */
 function formatHosts(pairs: ModelProviderPair[] | undefined): string {
   if (!pairs || pairs.length === 0) return dim("-");
   const labels = [
     ...new Set(pairs.map((p) => p.route || p.provider).filter((l): l is string => !!l)),
   ];
-  return labels.length > 0 ? labels.join(" · ") : dim("-");
+  if (labels.length === 0) return dim("-");
+  const shown = labels.slice(0, 2).map((l) =>
+    l.length > 24 ? `${l.slice(0, 23)}…` : l
+  );
+  const more = labels.length - shown.length;
+  return more > 0 ? `${shown.join(" · ")} ${dim(`+${more}`)}` : shown.join(" · ");
 }
 
 function formatRunCost(run: RunSummary): string {

@@ -18,6 +18,7 @@ import { describeValue, matchValue } from "./matchers.ts";
 import { callJudge, type JudgeCallContext, type JudgePromptBuilder } from "./judge.ts";
 import { createAgentMethod, type AgentEvidence, type AgentJudgeOptions } from "./agent-session.ts";
 import type { JudgeTracer } from "../tracing.ts";
+import { servingHostFromBaseURL } from "../integrations/span-helpers.ts";
 
 /** A tool/agent name matcher: literal (exact), RegExp, or predicate. */
 export type NameMatcher = string | RegExp | ((name: string) => boolean);
@@ -403,6 +404,10 @@ function createJudgeMethod(
       return;
     }
     const context = judgeScopeToContext(judgeScope);
+    // The judge call's serving host, from the endpoint it actually fetches
+    // (issue #307) — OpenRouter and friends are a different host from the
+    // model under test and must not blend into it.
+    const judgeServing = servingHostFromBaseURL(effective.baseURL);
     const call = () =>
       callJudge({
         values: valueArray,
@@ -420,6 +425,8 @@ function createJudgeMethod(
             // A single-shot judge call is an LLM generation — project it
             // with the same observation semantics as the main agent's.
             observation_type: "GENERATION",
+            model: effective.model,
+            ...judgeServing,
             input: { model: effective.model, instruction },
             summarize: (r: unknown) => {
               const res = r as { pass?: boolean; reasoning?: string };

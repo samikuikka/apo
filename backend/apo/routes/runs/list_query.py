@@ -204,13 +204,23 @@ def _apply_attribute_filters(statement: Any, filters: RunListFilters) -> Any:
     if filters.providers:
         # A provider filter matches the observed serving provider OR the
         # finer-grained route, so "openrouter:nitro" finds runs whose host
-        # identity lives in the route attribute (issue #307).
-        call_provider_ids = select(LOGGED_CALL_RUN_ID_COL).where(
-            LOGGED_CALL_RUN_ID_COL.is_not(None),
-            or_(
-                LOGGED_CALL_PROVIDER_COL.in_(filters.providers),
-                LOGGED_CALL_ROUTE_COL.in_(filters.providers),
-            ),
+        # identity lives in the route attribute (issue #307). The subquery
+        # is project-correlated because trace ids may collide across
+        # projects (surrogate-PK design) — an unscoped scan would let
+        # another project's copy of a trace satisfy this one's filter.
+        values = [v.lower() for v in filters.providers]
+        run_project = RUN_PROJECT_COL
+        call_provider_ids = (
+            select(LOGGED_CALL_RUN_ID_COL)
+            .where(
+                LOGGED_CALL_RUN_ID_COL.is_not(None),
+                LOGGED_CALL_PROJECT_COL == run_project,
+                or_(
+                    func.lower(LOGGED_CALL_PROVIDER_COL).in_(values),
+                    func.lower(LOGGED_CALL_ROUTE_COL).in_(values),
+                ),
+            )
+            .correlate(RunDB)
         )
         statement = statement.where(RUN_ID_COL.in_(call_provider_ids))
     if filters.tags:

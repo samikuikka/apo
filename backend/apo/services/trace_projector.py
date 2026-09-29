@@ -358,6 +358,10 @@ class TraceProjector:
             # stopped extracting I/O); slim mode writes no I/O at all and
             # reads always resolve fresh from the span.
             call.model = normalized.model or call.model
+            # First-wins for the serving host: a canonical OTel span is
+            # immutable, so a re-projection that lost the attributes must
+            # not erase the known host. A genuinely corrected value needs
+            # a re-ingest of the source span.
             call.provider = normalized.provider or call.provider
             call.route = normalized.route or call.route
             call.observation_type = normalized.observation_type

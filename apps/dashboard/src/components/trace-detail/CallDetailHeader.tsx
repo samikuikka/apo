@@ -69,13 +69,16 @@ export function CallDetailHeader({
   const cumulative = cumulativeMetrics.get(call.id);
   const hasDescendants = cumulative && cumulative.descendant_count > 0;
   const modelParams = extractModelParams(call);
+  // Decode throughput (issue #307): output tokens over the window after the
+  // first token. Errored generations are excluded, matching the backend's
+  // run-level median — a call that died mid-stream reports a truncated
+  // token count, and its ratio would read as fabricated slowness.
+  const tokPerS = call.level === "ERROR" ? null : outputTokPerS(call);
   const summaryParts = formatMetaParts([
     call.model && call.model !== "unknown" ? getModelShort(call.model) : null,
     call.latency_ms != null ? `${call.latency_ms.toFixed(0)}ms` : null,
     call.time_to_first_token_ms != null ? `TTFT ${call.time_to_first_token_ms.toFixed(0)}ms` : null,
-    // Decode throughput (issue #307): output tokens over the window after
-    // the first token — the number host comparisons are about.
-    outputTokPerS(call) != null ? `${formatTokPerS(outputTokPerS(call)!)} tok/s` : null,
+    tokPerS != null ? `${formatTokPerS(tokPerS)} tok/s` : null,
     call.total_tokens != null && call.total_tokens > 0 ? formatTokenTotal(call.total_tokens) : null,
     call.cost != null ? formatCostMicro(call.cost) : null,
     eventType ? formatEventLabel(eventType) : null,

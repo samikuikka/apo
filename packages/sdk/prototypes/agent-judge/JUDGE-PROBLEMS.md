@@ -49,16 +49,48 @@ Right order of magnitude, right format, wrong number. Plausibility is what
 a judge falls back on when verification isn't available — and most wrong
 answers to hard questions are precisely *plausible*.
 
-### Failure mode 3: the vacuous pass
+### Failure mode 3: style passes for substance
 
-Sometimes the rubric is the bug. If all you can ask is "is this a coherent,
-well-formed report?" — because you know the judge can't see anything else —
-then a coherent lie passes. My standing demo is an agent's Q3 summary
-claiming 12% revenue growth, improved churn, 68% enterprise share, "numbers
-taken directly from our billing extract" — while its own work log shows
-3.0% growth, churn that worsened, and a 61% share. The single-shot judge
-passed the summary on coherence. Correctly, per its rubric! The rubric just
-couldn't ask the real question.
+The subtlest one, because here the judge does everything *right* — the
+failure has moved one level up, into your rubric.
+
+Sit down to write a check for your agent's summary deliverable. You *want*
+to ask: "are these numbers true — does the summary agree with the agent's
+own computations?" But your single-shot judge can't see the computations,
+and you know it, so you write the question it can actually answer from the
+value alone:
+
+> "PASS if the summary reads like a coherent, well-formed revenue report
+> with concrete figures. FAIL only if it is incoherent, vague, or missing
+> numbers."
+
+Now the agent hands in a beautiful lie — "Revenue grew 12% to $4.2M, churn
+improved to 2.1%, enterprise ARR covers 68%, numbers taken directly from our
+billing extract" — while its own work log shows 3.0% growth, churn that got
+*worse*, and a 61% share. The judge reads the rubric, reads the summary:
+coherent ✅ well-formed ✅ concrete figures ✅ → **PASS**. And it is not
+wrong — the summary genuinely does read like a good report; that's what a
+lie is *for*. The check is what's broken: it asks a question a fabricated
+deliverable satisfies perfectly — any well-written output passes it,
+whether or not the numbers behind it are true. It grades style, not
+substance.
+
+This is distinct from modes 1 and 2: there, the rubric asked the real
+question and the judge botched it. Here the failure is systemic — the
+tool's limitation quietly reshapes *what you test*. Knowing your judge
+can't verify, you stop writing verification rubrics, and over time the
+suite degenerates into form-checks ("is it coherent", "is it
+well-structured", "does it mention the inputs") that every confident
+hallucination passes with flying colors. It's the exam where the teacher
+may only look at the last page, so the questions eventually become about
+handwriting — nobody cheated, the measurement just stopped measuring the
+thing you cared about.
+
+I keep a live side-by-side of exactly this: one recorded run, same
+deliverable, two checks — `summary-reads-well` (single-shot judge, the form
+rubric): PASS; `figures-supported-by-work` (agentic judge, the real
+question): FAIL, with per-figure forensics quoting the work log. The pair
+is the whole story on one run page.
 
 ### Failure mode 4: failing correct answers
 
