@@ -543,21 +543,9 @@ async function evaluate(
   const judgeConfig = resolveJudgeConfig(options?.judge, task.judge);
   const historyPlane = await freezeHistoryPlaneFromEnv(task.id);
 
-  const checksResults = await (inlineChecks
-    ? runTraceChecks({
-        snapshot: phase1.snapshot,
-        deliverables,
-        files,
-        task,
-        ...(judgeConfig ? { judgeConfig } : {}),
-        ...(judgeTracer ? { judgeTracer } : {}),
-        ...(historyPlane ? { historyPlane } : {}),
-        moduleUrl,
-        displayFile: evalFileName,
-      })
-    : loadAndRunFlowChecks(
-        checksPath,
-        {
+  const runChecks = async (): Promise<EvaluationItemResult[]> =>
+    inlineChecks
+      ? runTraceChecks({
           snapshot: phase1.snapshot,
           deliverables,
           files,
@@ -565,9 +553,41 @@ async function evaluate(
           ...(judgeConfig ? { judgeConfig } : {}),
           ...(judgeTracer ? { judgeTracer } : {}),
           ...(historyPlane ? { historyPlane } : {}),
+          moduleUrl,
+          displayFile: evalFileName,
+        })
+      : loadAndRunFlowChecks(
+          checksPath,
+          {
+            snapshot: phase1.snapshot,
+            deliverables,
+            files,
+            task,
+            ...(judgeConfig ? { judgeConfig } : {}),
+            ...(judgeTracer ? { judgeTracer } : {}),
+            ...(historyPlane ? { historyPlane } : {}),
+          },
+          validationResults.brokenDeliverables,
+        );
+
+  // The evaluation phase is one CHAIN span every judge span nests under
+  // (issue #302): the trace view collapses it into a single muted
+  // "Evaluation" row, so judgment work never reads as agent activity. The
+  // step's span context stays active for everything the checks execute,
+  // which is what parents t.judge/t.agent spans to it.
+  const checksResults = await (judgeTracer
+    ? judgeTracer.step(
+        {
+          step_name: "checks.run",
+          observation_type: "CHAIN",
+          input: { sourceFile: inlineChecks ? evalFileName : checksPath },
+          metadata: { sourceFile: inlineChecks ? evalFileName : checksPath },
+          summarize: (result) =>
+            summarizeEvaluationResults(result as EvaluationItemResult[]),
         },
-        validationResults.brokenDeliverables,
-      ));
+        runChecks,
+      )
+    : runChecks());
 
   const result = aggregateResult(checksResults);
 
@@ -707,25 +727,30 @@ async function cleanupAdapter(
   }
 }
 
-/** Compact summary of check evaluation results for span output.
+/** Compact summary of check evaluation results for the checks.run span output.
  *
- * Keeps the full reasoning text (not just pass/fail) so the trace view
- * is useful for debugging. Also carries evaluator_type and judge model
- * when available, so the trace shows which checks were LLM-judged.
+ * The verdict (structured counts, one line per check) rides the tool_result
+ * channel — the one channel the trace view renders as a JSON tree, same as
+ * judge verdicts — while `text` is the human-readable roll-up the collapsed
+ * Evaluation row shows. Reasoning is capped per check so a suite of hundreds
+ * of judged checks cannot bloat the span into an oversized OTLP export.
  */
 function summarizeEvaluationResults(results: EvaluationItemResult[]) {
   const passCount = results.filter((r) => r.pass).length;
   return {
-    total: results.length,
-    passCount,
-    failCount: results.length - passCount,
-    results: results.map((r) => ({
-      id: r.id,
-      pass: r.pass,
-      reasoning: r.reasoning,
-      evaluator_type: r.evaluator_type,
-      judge_model: r.judge?.model,
-    })),
+    text: `${passCount}/${results.length} checks passed`,
+    verdict: {
+      total: results.length,
+      passCount,
+      failCount: results.length - passCount,
+      results: results.map((r) => ({
+        id: r.id,
+        pass: r.pass,
+        reasoning: r.reasoning?.slice(0, 2000),
+        evaluator_type: r.evaluator_type,
+        judge_model: r.judge?.model,
+      })),
+    },
   };
 }
 
