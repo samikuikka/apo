@@ -1374,22 +1374,27 @@ def _migrate_to_v47() -> None:
 
     import logging
 
-    from sqlmodel import select as sqlmodel_select
+    from datetime import datetime, timezone
+    from typing import cast
 
+    from sqlmodel import col
+    from sqlmodel import select as sqlmodel_select
+    from sqlmodel import update as sqlmodel_update
+
+    from .db_helpers import as_column
     from .models.db import AgentTaskRunDB, LoggedCallDB, OtlpSpanDB
     from .services.trace_backend import (
         generation_execution_facts,
-        apply_generation_rollups,
         compute_generation_rollups,
     )
 
     logger = logging.getLogger(__name__)
-    # Fetch (id, project) pairs only — full rows would hold every task run
-    # (and its check transcript payload) in memory at once. The all-null
-    # value gate is what makes a crash mid-backfill resumable.
+    # Fetch (id, trace_run_id, project) tuples only — full rows would hold
+    # every task run (and its check transcript payload) in memory at once.
+    # The all-null value gate is what makes a crash mid-backfill resumable.
     with engine.connect() as conn:
         run_refs = conn.exec_driver_sql(
-            "SELECT r.id, b.project FROM agent_task_runs r "
+            "SELECT r.id, r.trace_run_id, b.project FROM agent_task_runs r "
             "JOIN agent_task_batch_runs b ON b.id = r.batch_run_id "
             "WHERE r.trace_run_id IS NOT NULL "
             "AND r.status NOT IN ('pending', 'running') "
@@ -1399,30 +1404,60 @@ def _migrate_to_v47() -> None:
         ).fetchall()
     processed = 0
     with Session(engine) as session:
-        for run_id, project in run_refs:
-            task_run = session.get(AgentTaskRunDB, run_id)
-            if task_run is None or not task_run.trace_run_id:
-                continue
-            calls = session.exec(
-                sqlmodel_select(LoggedCallDB).where(
-                    LoggedCallDB.run_id == task_run.trace_run_id,
+        for run_id, trace_run_id, project in run_refs:
+            # Column-limited reads + transient shells, never full ORM rows:
+            # the model class always knows columns from LATER migrations
+            # (e.g. v48's logged_calls.provider) that this point in the
+            # ladder hasn't added yet, and a full-row SELECT would crash on
+            # the missing column.
+            call_rows = session.exec(
+                sqlmodel_select(
+                    as_column(cast(object, LoggedCallDB.id)),
+                    as_column(cast(object, LoggedCallDB.observation_type)),
+                    as_column(cast(object, LoggedCallDB.latency_ms)),
+                    as_column(cast(object, LoggedCallDB.raw_usage)),
+                ).where(
+                    LoggedCallDB.run_id == trace_run_id,
                     LoggedCallDB.project == project,
                 )
             ).all()
+            calls = [
+                LoggedCallDB(
+                    id=call_id,
+                    run_id=trace_run_id,
+                    project=project,
+                    task_id="",
+                    created_at=datetime.now(timezone.utc),
+                    model="",
+                    input={},
+                    messages=[],
+                    output={},
+                    observation_type=obs_type,
+                    latency_ms=latency,
+                    raw_usage=raw_usage,
+                )
+                for call_id, obs_type, latency, raw_usage in call_rows
+            ]
             spans = session.exec(
                 sqlmodel_select(OtlpSpanDB).where(
-                    OtlpSpanDB.trace_id == task_run.trace_run_id,
+                    OtlpSpanDB.trace_id == trace_run_id,
                     OtlpSpanDB.project_id == project,
                 )
             ).all()
             _, errored_span_ids = generation_execution_facts(calls, spans)
-            apply_generation_rollups(
-                task_run, compute_generation_rollups(calls, errored_span_ids)
+            rollups = compute_generation_rollups(calls, errored_span_ids)
+            session.exec(
+                sqlmodel_update(AgentTaskRunDB)
+                .where(col(AgentTaskRunDB.id) == run_id)
+                .values(
+                    total_reasoning_tokens=rollups.total_reasoning_tokens,
+                    max_call_reasoning_tokens=rollups.max_call_reasoning_tokens,
+                    max_call_reasoning_call_id=rollups.max_call_reasoning_call_id,
+                    max_call_latency_ms=rollups.max_call_latency_ms,
+                    max_call_latency_call_id=rollups.max_call_latency_call_id,
+                    total_model_time_ms=rollups.total_model_time_ms,
+                )
             )
-            # Expunge after the write so the identity map never accumulates
-            # full rows (transcript payloads included) across the whole table.
-            session.flush()
-            session.expunge(task_run)
             processed += 1
             if processed % 100 == 0:
                 session.commit()
@@ -1518,11 +1553,16 @@ def _migrate_to_v49() -> None:
 
     import logging
 
+    from datetime import datetime, timezone
+    from typing import cast
+
+    from sqlalchemy import select as sa_select
     from sqlmodel import Session as SQLModelSession
     from sqlmodel import col
     from sqlmodel import select as sqlmodel_select
     from sqlmodel import update as sqlmodel_update
 
+    from .db_helpers import as_column
     from .models.db import AgentTaskRunDB, LoggedCallDB, RunDB
     from .services.trace_backend import model_providers_summary
 
@@ -1538,20 +1578,53 @@ def _migrate_to_v49() -> None:
     processed_runs = 0
     with SQLModelSession(engine) as session:
         for run_id, project in run_refs:
-            # Full call rows one run at a time (the v47 pattern) — payloads
-            # never accumulate across the table.
-            calls = session.exec(
-                sqlmodel_select(LoggedCallDB).where(
-                    LoggedCallDB.run_id == run_id,
-                    LoggedCallDB.project == project,
+            # Column-limited reads + transient shells, never full ORM rows:
+            # the model class knows columns from later migrations that this
+            # point in the ladder hasn't added yet, and a full-row SELECT
+            # would crash on the missing column. It also skips the fat I/O
+            # payloads a full row would drag in per call.
+            # sqlalchemy select: sqlmodel's overloads cap at four entities,
+            # and its exec() type only knows sqlmodel statements.
+            call_stmt = sa_select(
+                as_column(cast(object, LoggedCallDB.id)),
+                as_column(cast(object, LoggedCallDB.model)),
+                as_column(cast(object, LoggedCallDB.provider)),
+                as_column(cast(object, LoggedCallDB.route)),
+                as_column(cast(object, LoggedCallDB.observation_type)),
+                as_column(cast(object, LoggedCallDB.total_tokens)),
+                as_column(cast(object, LoggedCallDB.cost)),
+                as_column(cast(object, LoggedCallDB.provided_cost)),
+            ).where(
+                col(LoggedCallDB.run_id) == run_id,
+                col(LoggedCallDB.project) == project,
+            )
+            # sqlalchemy Select, past sqlmodel exec()'s declared statement type.
+            call_rows = session.exec(call_stmt).all()  # pyright: ignore[reportCallIssue, reportArgumentType]
+            calls = [
+                LoggedCallDB(
+                    id=call_id,
+                    run_id=run_id,
+                    project=project,
+                    task_id="",
+                    created_at=datetime.now(timezone.utc),
+                    model=model or "",
+                    input={},
+                    messages=[],
+                    output={},
+                    provider=provider,
+                    route=route,
+                    observation_type=obs_type,
+                    total_tokens=total_tokens,
+                    cost=cost,
+                    provided_cost=provided_cost,
                 )
-            ).all()
+                for call_id, model, provider, route, obs_type, total_tokens, cost, provided_cost in call_rows
+            ]
             session.exec(
                 sqlmodel_update(RunDB)
                 .where(col(RunDB.id) == run_id, col(RunDB.project) == project)
                 .values(model_providers_json=model_providers_summary(calls))
             )
-            session.expunge_all()
             processed_runs += 1
             if processed_runs % 100 == 0:
                 session.commit()
