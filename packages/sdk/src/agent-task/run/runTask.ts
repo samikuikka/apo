@@ -575,7 +575,11 @@ async function evaluate(
   // "Evaluation" row, so judgment work never reads as agent activity. The
   // step's span context stays active for everything the checks execute,
   // which is what parents t.judge/t.agent spans to it.
-  const checksResults = await (judgeTracer
+  // A task with no checks module at all emits nothing — a vacuous
+  // "0/0 checks passed" phase on a run that fails NO_CHECKS_REGISTERED would
+  // read as noise, not signal.
+  const hasChecksModule = inlineChecks || checksPath !== null;
+  const checksResults = await (judgeTracer && hasChecksModule
     ? judgeTracer.step(
         {
           step_name: "checks.run",
@@ -737,18 +741,30 @@ async function cleanupAdapter(
  */
 function summarizeEvaluationResults(results: EvaluationItemResult[]) {
   const passCount = results.filter((r) => r.pass).length;
+  // A check whose only failures are verdict-less (judge errored / evidence
+  // unsupported) is "quality unknown", not failed (issue #323) — count it
+  // separately so the collapsed Evaluation row never misreports it.
+  const noVerdictCount = results.filter(
+    (r) => !r.pass && (r.outcome === "error" || r.outcome === "unsupported"),
+  ).length;
+  const failCount = results.length - passCount - noVerdictCount;
+  const suffix = noVerdictCount > 0 ? ` (${noVerdictCount} no-verdict)` : "";
   return {
-    text: `${passCount}/${results.length} checks passed`,
+    text: `${passCount}/${results.length} checks passed${suffix}`,
     verdict: {
       total: results.length,
       passCount,
-      failCount: results.length - passCount,
+      failCount,
+      noVerdictCount,
       results: results.map((r) => ({
         id: r.id,
         pass: r.pass,
         reasoning: r.reasoning?.slice(0, 2000),
         evaluator_type: r.evaluator_type,
         judge_model: r.judge?.model,
+        ...(r.outcome ? { outcome: r.outcome } : {}),
+        ...(r.group_id ? { group_id: r.group_id } : {}),
+        ...(r.group_name ? { group_name: r.group_name } : {}),
       })),
     },
   };

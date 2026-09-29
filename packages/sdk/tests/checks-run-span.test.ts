@@ -11,8 +11,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { basename, join } from "path";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
-import { z } from "zod";
-import { defineAdapter } from "../src/agent-task/adapter/defineAdapter";
 import { runTask } from "../src/agent-task/run/runTask";
 import type { TraceStepOptions } from "../src/types.ts";
 
@@ -185,6 +183,54 @@ describe("checks.run evaluation-phase span", () => {
       failCount: 1,
     });
     expect(checksRun!.summary?.text).toContain("1/2");
+  });
+
+  it("separates no-verdict (judge-error) checks from genuine failures in the summary", async () => {
+    // The judge provider 500s on every call: the check records an error
+    // outcome — "quality unknown, not failed" (issue #323) — and the phase
+    // summary must not lump it into failCount.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("boom", { status: 500 })),
+    );
+    writeFileSync(
+      join(taskDir, "checks.ts"),
+      `
+import { equals, test } from "${LOCAL_CHECKS_IMPORT}";
+
+test("flaky-judge", async (t, { deliverables }) => {
+  await t.judge(deliverables.report.overview, "Is the overview substantive?");
+});
+
+test("title-check", (t, { deliverables }) => {
+  t.check(deliverables.report.title, equals("Deliberately Wrong"));
+});
+`,
+    );
+
+    const result = await runTask(taskDir, {
+      tracing: {
+        client: { traceRun },
+        project: "sdk-tests",
+      },
+      judge: { model: "judge-model", baseURL: "https://judge.test/v1", apiKey: "test-key" },
+    });
+
+    expect(result.result.pass).toBe(false);
+    const checksRun = steps.find((s) => s.options.step_name === "checks.run")!;
+    expect(checksRun.summary?.verdict).toMatchObject({
+      total: 2,
+      passCount: 0,
+      failCount: 1,
+      noVerdictCount: 1,
+    });
+    const verdict = checksRun.summary?.verdict as
+      | { results?: Array<{ id: string; outcome?: string }> }
+      | undefined;
+    const lines = verdict?.results ?? [];
+    expect(lines.find((l) => l.id === "flaky-judge")?.outcome).toBe("error");
+    expect(lines.find((l) => l.id === "title-check")?.outcome).toBeUndefined();
+    expect(checksRun.summary?.text).toContain("no-verdict");
   });
 
   it("emits checks.run even when no check uses a judge", async () => {
