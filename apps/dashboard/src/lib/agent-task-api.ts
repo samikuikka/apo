@@ -20,6 +20,8 @@ export interface AgentTaskRunStats {
   last_run_passed: boolean | null;
   total_checks: number;
   checks_pass_rate: number;
+  /** Checks inside total that produced no verdict (judge error), not fails. */
+  errored_checks?: number;
   avg_cost: number | null;
 }
 
@@ -146,6 +148,8 @@ export interface AgentTaskRunSummary {
   total_checks: number;
   passed_checks: number;
   failed_checks: number;
+  /** Checks inside total that produced no verdict (judge error), not fails. */
+  errored_checks?: number;
   /** Tests whose effective result differs from the recorded one. */
   corrected_tests?: number;
   trigger: AgentTaskRunTrigger | null;
@@ -252,10 +256,18 @@ export interface JudgeMetadata {
   secondJudge?: SecondJudgeEvidence;
 }
 
+export type CheckOutcome = "pass" | "fail" | "unsupported" | "error";
+
 export interface CheckAssertionResult {
   id: string;
   pass: boolean;
   reasoning: string;
+  /**
+   * "error" — the judge produced no verdict (unreachable, HTTP error, empty
+   * reply); the quality is unknown, not failed. "unsupported" — the trace
+   * projection lacked the evidence; fails closed (issue #323).
+   */
+  outcome?: CheckOutcome;
   expected?: string;
   /** Serialized scalar for code assertions; raw value for LLM judges. */
   received?: unknown;
@@ -268,6 +280,12 @@ export interface CheckResult {
   id: string;
   pass: boolean;
   reasoning: string;
+  /**
+   * Set when a failed check failed for lack of a verdict on every failing
+   * assertion — "error" (judge never answered) or "unsupported" (trace
+   * evidence missing). Absent on genuine fails (issue #323).
+   */
+  outcome?: CheckOutcome;
   instruction?: string;
   deliverable?: string;
   evaluator_type?: EvaluatorType;
@@ -359,6 +377,8 @@ export interface AgentTaskJudgmentSummary {
   total_checks: number;
   passed_checks: number;
   failed_checks: number;
+  /** Checks that produced no verdict (judge error) — apart from fails (#323). */
+  errored_checks?: number;
   created_at: string | null;
 }
 

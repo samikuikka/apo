@@ -41,6 +41,11 @@ export function ExpandableCheckItem({
   traceRunId?: string | null;
 }) {
   const passed = item.pass === true;
+  // A judge error is not a FAIL: the check's quality is unknown because the
+  // judge never answered. Warning styling + a "No verdict" chip keep it
+  // apart from genuine fails (issue #323); unsupported stays fail-closed.
+  const noVerdict = !passed && item.outcome === "error";
+  const unsupported = !passed && item.outcome === "unsupported";
   const id = String(item.id ?? `Check ${index + 1}`);
   const corrected = item.correction != null && item.recorded_pass !== undefined;
   // Which checks are expanded is bulk, ephemeral state — keep it local rather
@@ -148,10 +153,14 @@ export function ExpandableCheckItem({
           <span
             className={cn(
               "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px]",
-              passed ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
+              passed
+                ? "bg-success/15 text-success"
+                : noVerdict
+                  ? "bg-warning/15 text-warning"
+                  : "bg-destructive/15 text-destructive",
             )}
           >
-            {passed ? "✓" : "✗"}
+            {passed ? "✓" : noVerdict ? "!" : "✗"}
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -167,6 +176,22 @@ export function ExpandableCheckItem({
               {!passed && !expanded && reasoning && (
                 <span className="truncate text-[11px] text-muted-foreground">
                   {reasoning.split("\n")[0]}
+                </span>
+              )}
+              {noVerdict && (
+                <span
+                  className="shrink-0 border border-warning/40 bg-warning/10 px-1.5 py-px text-[10px] font-medium text-warning"
+                  title="The judge produced no verdict (unreachable, HTTP error, or empty reply) — the check's quality is unknown, not failed"
+                >
+                  No verdict
+                </span>
+              )}
+              {unsupported && (
+                <span
+                  className="shrink-0 border border-border bg-muted/40 px-1.5 py-px text-[10px] font-medium text-muted-foreground"
+                  title="The trace projection lacked the evidence this check needed — it fails closed"
+                >
+                  Unsupported
                 </span>
               )}
               {corrected && (
@@ -293,7 +318,7 @@ export function ExpandableCheckItem({
                   <p
                     className={cn(
                       "whitespace-pre-wrap text-[13px] leading-relaxed",
-                      passed ? "text-foreground" : "text-destructive",
+                      passed ? "text-foreground" : noVerdict ? "text-warning" : "text-destructive",
                     )}
                   >
                     {reasoning}

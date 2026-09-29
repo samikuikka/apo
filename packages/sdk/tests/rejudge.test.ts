@@ -132,7 +132,9 @@ interface BackendStub {
   deliverables?: DeliverableItem[];
   revisionOverride?: string;
   noPinnedRevision?: boolean;
-  judgeResponses?: Array<{ pass: boolean; reasoning: string }>;
+  /** Per judge HTTP call, in order. An `httpStatus` entry answers with that
+   * raw status instead of a verdict — used to drive judge transport errors. */
+  judgeResponses?: Array<{ pass: boolean; reasoning: string } | { httpStatus: number }>;
 }
 
 function stubBackend(stub: BackendStub, evalContent: string): ReturnType<typeof vi.fn> {
@@ -180,6 +182,9 @@ function stubBackend(stub: BackendStub, evalContent: string): ReturnType<typeof 
     if (url === "http://judge.test/chat/completions") {
       const verdict = judgeResponses[judgeCall] ?? { pass: true, reasoning: "ok" };
       judgeCall += 1;
+      if ("httpStatus" in verdict) {
+        return new Response("unavailable", { status: verdict.httpStatus });
+      }
       return jsonResponse({
         choices: [{ message: { content: JSON.stringify(verdict) } }],
         usage: { prompt_tokens: 5, completion_tokens: 5 },
@@ -253,6 +258,39 @@ describe("rejudgeTaskRun", () => {
     // Deterministic code checks are stable across samples.
     const title = outcome.stability.find((s) => s.check_id === "report-title");
     expect(title).toEqual({ check_id: "report-title", passes: 3, samples: 3 });
+  });
+
+  it("counts judge-errored samples apart from fails in stability (issue #323)", async () => {
+    const taskDir = makeTaskDir("samples-errored", evalModule({ withJudge: true }));
+    stubBackend(
+      {
+        // Sample 1 passes, sample 2's judge 503s on both the call and its
+        // retry (a judge error, not a verdict), sample 3 passes.
+        judgeResponses: [
+          { pass: true, reasoning: "sample 1 pass" },
+          { httpStatus: 503 },
+          { httpStatus: 503 },
+          { pass: true, reasoning: "sample 3 pass" },
+        ],
+      },
+      evalModule({ withJudge: true }),
+    );
+
+    const outcome = await rejudgeTaskRun(
+      RUN_ID,
+      { backendUrl: BACKEND, authToken: "key" },
+      { taskDir, samples: 3, judge: { model: "test/judge", baseURL: "http://judge.test" } },
+    );
+
+    const judged = outcome.stability.find((s) => s.check_id === "judged-quality");
+    // The errored sample counts as neither pass nor fail — 2 passes of 3
+    // samples with 1 no-verdict, not a flaky "2 of 3".
+    expect(judged).toEqual({
+      check_id: "judged-quality",
+      passes: 2,
+      samples: 3,
+      errored: 1,
+    });
   });
 
   it("refuses replay when a deliverable is not ready", async () => {

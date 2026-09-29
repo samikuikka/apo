@@ -5,6 +5,7 @@ import {
   runTraceChecks,
 } from "../src/agent-task/checks/flow-runner.ts";
 import { callJudge } from "../src/agent-task/checks/judge.ts";
+import { equals } from "../src/agent-task/checks/matchers.ts";
 import type { TraceProjectionSnapshot } from "../src/agent-task/trace-projection/types.ts";
 
 // An empty TraceProjectionSnapshot — judge checks don't read any trace
@@ -177,6 +178,42 @@ describe("t.judge", () => {
     });
     expect(result?.reasoning).toContain("Judge API 503");
     expect(result?.assertions?.[0]).toMatchObject({ pass: false, outcome: "error" });
+  });
+
+  it("rolls a judge-only error up to the check-level outcome (issue #323)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("unavailable", { status: 503 })));
+    defineCheck("quality", async (t) => {
+      t.check(1, equals(1));
+      await t.judge("answer", "PASS when correct");
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+    });
+
+    // The check failed only because the judge never answered — the check
+    // carries outcome "error" so scoring can tell it apart from a FAIL.
+    expect(result).toMatchObject({ pass: false, outcome: "error" });
+  });
+
+  it("keeps a genuine FAIL outcome when a real failure sits beside a judge error", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("unavailable", { status: 503 })));
+    defineCheck("quality", async (t) => {
+      t.check(1, equals(2));
+      await t.judge("answer", "PASS when correct");
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+    });
+
+    // A genuine failure must never be masked by an incidental judge error.
+    expect(result).toMatchObject({ pass: false });
+    expect(result?.outcome).toBeUndefined();
   });
 
   it("retries a gateway timeout once and keeps the second attempt's verdict", async () => {

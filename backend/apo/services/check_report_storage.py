@@ -79,18 +79,53 @@ def persist_check_report(
 ) -> None:
     """Persist the run's scalar verdict and its check evidence.
 
-    Writes ``run.total_checks`` / ``passed_checks`` / ``failed_checks``, clears
-    the legacy ``checks_json`` column (kept readable only for the compatibility
-    window), and upserts the evidence into ``agent_task_check_reports``. Stages
-    the changes on ``session`` without committing — the caller's transaction
-    owns the commit so the verdict scalars and the report body land together.
+    Writes ``run.total_checks`` / ``passed_checks`` / ``failed_checks`` /
+    ``errored_checks``, clears the legacy ``checks_json`` column (kept
+    readable only for the compatibility window), and upserts the evidence
+    into ``agent_task_check_reports``. Stages the changes on ``session``
+    without committing — the caller's transaction owns the commit so the
+    verdict scalars and the report body land together.
     """
     cleaned = normalize_check_report(checks or [])
     run.total_checks = len(cleaned)
     run.passed_checks = sum(1 for c in cleaned if c.get("pass") is True)
-    run.failed_checks = run.total_checks - run.passed_checks
+    # Errored checks failed for lack of a verdict, not on evidence — they
+    # get their own bucket so a judge outage never reads as a FAIL wave
+    # (issue #323).
+    run.errored_checks = sum(1 for c in cleaned if derive_check_outcome(c) == "error")
+    run.failed_checks = run.total_checks - run.passed_checks - run.errored_checks
     session.add(run)
     _upsert_report_row(session, run.id, cleaned)
+
+
+def derive_check_outcome(check: dict[str, object]) -> str | None:
+    """Whether a failed check failed for lack of a verdict (issue #323).
+
+    Returns ``"error"`` (the judge never answered) or ``"unsupported"``
+    (trace evidence was missing) only when *every* failing assertion failed
+    for one of those reasons — a genuine fail must never be masked by an
+    incidental judge error alongside it. Prefers rolling the assertion
+    outcomes up (the authoritative shape, derived server-side like the
+    pass counts); falls back to the check-level ``outcome`` the SDK stamps
+    for reports without assertion breakdowns.
+    """
+    if check.get("pass") is True:
+        return None
+    assertions = check.get("assertions")
+    if isinstance(assertions, list) and assertions:
+        failed_outcomes = [
+            a.get("outcome")
+            for a in assertions
+            if isinstance(a, dict) and a.get("pass") is not True
+        ]
+        if not failed_outcomes:
+            return None
+        verdictless = [o for o in failed_outcomes if o in ("error", "unsupported")]
+        if len(verdictless) < len(failed_outcomes):
+            return None
+        return "error" if "error" in verdictless else "unsupported"
+    outcome = check.get("outcome")
+    return outcome if outcome in ("error", "unsupported") else None
 
 
 def load_check_report(

@@ -107,6 +107,7 @@ def to_task_run_summary(
     # the check evidence document to count verdicts.
     total_checks = tr.total_checks
     passed_checks = tr.passed_checks
+    errored_checks = tr.errored_checks
     return AgentTaskRunSummary(
         id=tr.id,
         batch_run_id=tr.batch_run_id,
@@ -146,7 +147,8 @@ def to_task_run_summary(
         total_model_time_ms=tr.total_model_time_ms,
         total_checks=total_checks,
         passed_checks=passed_checks,
-        failed_checks=max(total_checks - passed_checks, 0),
+        errored_checks=errored_checks,
+        failed_checks=max(total_checks - passed_checks - errored_checks, 0),
         trigger=trigger,
         error_category=classify_run_outcome(
             tr.status, tr.error_message, tr.trace_persistence_status

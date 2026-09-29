@@ -45,6 +45,7 @@ class _ResolvedRun:
     pass_result: bool | None
     total_checks: int | None
     passed_checks: int | None
+    errored_checks: int
     corrected_tests: int
 
 
@@ -95,6 +96,7 @@ def _resolve_side(
             pass_result=run.pass_result,
             total_checks=run.total_checks,
             passed_checks=run.passed_checks,
+            errored_checks=run.errored_checks,
             corrected_tests=run.corrected_tests,
         )
         for task_id, run in latest_by_task.items()
@@ -175,10 +177,12 @@ def create_comparison(
                 a_pass_result=a.pass_result if a else None,
                 a_total_checks=a.total_checks if a else None,
                 a_passed_checks=a.passed_checks if a else None,
+                a_errored_checks=a.errored_checks if a else None,
                 a_corrected_tests=a.corrected_tests if a else None,
                 b_pass_result=b.pass_result if b else None,
                 b_total_checks=b.total_checks if b else None,
                 b_passed_checks=b.passed_checks if b else None,
+                b_errored_checks=b.errored_checks if b else None,
                 b_corrected_tests=b.corrected_tests if b else None,
             )
         )

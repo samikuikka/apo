@@ -26,9 +26,10 @@ interface JudgmentSummary {
   total_checks: number;
   passed_checks: number;
   failed_checks: number;
+  errored_checks?: number;
   created_at: string | null;
   checks: Array<Record<string, unknown>> | null;
-  stability: Array<{ check_id: string; passes: number; samples: number }> | null;
+  stability: Array<{ check_id: string; passes: number; samples: number; errored?: number }> | null;
 }
 
 export async function run(argv: string[]): Promise<number> {
@@ -114,9 +115,16 @@ async function showJudgment(
   if (judgment.stability && judgment.stability.length > 0) {
     console.log(bold(`\n  Stability (${judgment.samples} samples):`));
     for (const entry of judgment.stability) {
-      const stable = entry.passes === entry.samples || entry.passes === 0;
+      // Errored samples produced no verdict — they shrink the judged
+      // denominator instead of reading as flaky fails (issue #323).
+      const errored = entry.errored ?? 0;
+      const judged = entry.samples - errored;
+      const stable = entry.passes === judged || entry.passes === 0;
       const marker = stable ? "" : yellow("  ← unstable");
-      console.log(`    ${entry.check_id.padEnd(40)} ${entry.passes}/${entry.samples}${marker}`);
+      const erroredNote = errored > 0 ? yellow(` (${errored} no verdict)`) : "";
+      console.log(
+        `    ${entry.check_id.padEnd(40)} ${entry.passes}/${judged}${erroredNote}${marker}`,
+      );
     }
   }
   return 0;
@@ -125,6 +133,10 @@ async function showJudgment(
 function printSummary(judgment: JudgmentSummary, runId: string, opts: { withHint?: boolean } = {}): void {
   const judge = judgment.judge_model ?? "-";
   const score = `${judgment.passed_checks}/${judgment.total_checks}`;
+  const erroredNote =
+    judgment.errored_checks && judgment.errored_checks > 0
+      ? yellow(` · ${judgment.errored_checks} no verdict`)
+      : "";
   const samples = judgment.samples > 1 ? ` · ${judgment.samples} samples` : "";
   const label = judgment.label ? yellow(` · ${judgment.label}`) : "";
   const revision = judgment.definition_revision_matches_run === false
@@ -132,7 +144,7 @@ function printSummary(judgment: JudgmentSummary, runId: string, opts: { withHint
     : "";
   const created = judgment.created_at ? formatTime(judgment.created_at) : "-";
   console.log(
-    `\n  ${bold(judgment.id)} ${dim(`(${judgment.trigger})`)} — ${score} checks${samples}${label}${revision}`,
+    `\n  ${bold(judgment.id)} ${dim(`(${judgment.trigger})`)} — ${score} checks${erroredNote}${samples}${label}${revision}`,
   );
   console.log(`    Judge: ${judge}   Created: ${created}`);
   if (opts.withHint !== false && judgment.trigger === "original" && judgment.id === runId) {

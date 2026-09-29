@@ -77,7 +77,7 @@ apo runs judgments run_9efafa10f1c3e59647900db5 jdg_71143936fadf4d8f
 | Trigger | `original`, the run's own verdict, synthesized from its stored evidence. `rejudge`, recorded by `apo runs rejudge`. |
 | Judge | The judge model actually used, recovered from stored per-test evidence for the original, from the replay config for rejudges. |
 | Checks | Passed / total tests for that judgment. |
-| Samples | Judgments made with `--samples n` carry a per-test stability table (`2/5` = passed two of five samples). |
+| Samples | Judgments made with `--samples n` carry a per-test stability table (`2/5` = passed two of five samples; judge-errored samples are shown as `(N no verdict)` and excluded from the fraction). |
 | Revision | Judgments scored against a different definition revision than the run's pinned one say so explicitly, those scores are not comparable to the original verdict. |
 
 Supports the global `--json` flag (the bare judgment array, like `runs list --json`).

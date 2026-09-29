@@ -120,6 +120,7 @@ def _to_summary(
         total_checks=run.total_checks,
         passed_checks=run.passed_checks,
         failed_checks=run.failed_checks,
+        errored_checks=run.errored_checks,
         corrected_tests=run.corrected_tests,
         trigger=trigger,
         error_category=classify_run_outcome(
@@ -280,6 +281,7 @@ def _to_detail(
         total_checks=run.total_checks,
         passed_checks=run.passed_checks,
         failed_checks=run.failed_checks,
+        errored_checks=run.errored_checks,
         corrected_tests=run.corrected_tests,
         trigger=trigger,
         checks_json=checks,

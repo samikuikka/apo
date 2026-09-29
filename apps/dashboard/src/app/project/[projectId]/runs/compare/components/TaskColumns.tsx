@@ -21,6 +21,13 @@ interface Column {
   right: AgentTaskRunSummary;
 }
 
+/** `passed/total` plus a warning `!N` suffix for judge-errored checks (#323). */
+function checksCell(run: AgentTaskRunSummary): string {
+  const base = `${run.passed_checks}/${run.total_checks}`;
+  const errored = run.errored_checks ?? 0;
+  return errored > 0 ? `${base} · ${errored} no verdict` : base;
+}
+
 function metricValue(metric: Metric, run: AgentTaskRunSummary): number | null {
   if (metric === "cost") return run.total_cost != null && run.total_cost > 0 ? run.total_cost : null;
   if (metric === "duration") {
@@ -247,8 +254,8 @@ export function TaskColumns({
                 { label: "verdict", a: active.left.status, b: active.right.status },
                 {
                   label: "checks",
-                  a: `${active.left.passed_checks}/${active.left.total_checks}`,
-                  b: `${active.right.passed_checks}/${active.right.total_checks}`,
+                  a: checksCell(active.left),
+                  b: checksCell(active.right),
                 },
                 {
                   label: "cost",

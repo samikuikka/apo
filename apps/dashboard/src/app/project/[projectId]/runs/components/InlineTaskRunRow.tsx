@@ -94,6 +94,14 @@ export function InlineTaskRunRow({
               </span>
               <span className="text-muted-foreground/40">·</span>
               <span className="text-muted-foreground">{run.passed_checks}/{run.total_checks} checks</span>
+              {(run.errored_checks ?? 0) > 0 && (
+                <span
+                  className="text-warning"
+                  title="Checks that produced no verdict (judge error) — unknown, not failed"
+                >
+                  {" "}{run.errored_checks}!
+                </span>
+              )}
             </>
           )}
         </div>

@@ -39,7 +39,7 @@ from apo.models.schemas import (
     CorrectionAction,
     CorrectedTestResult,
 )
-from apo.services.check_report_storage import load_check_report
+from apo.services.check_report_storage import derive_check_outcome, load_check_report
 
 CORRECTABLE_RUN_STATUSES = ("passed", "failed")
 
@@ -287,12 +287,16 @@ def _derive(
     passed = sum(1 for c in effective if c.get("pass") is True)
     total = len(effective)
     corrected_count = sum(1 for c in effective if "correction" in c)
+    # A correction can flip a judge-errored check to an effective PASS —
+    # recompute the errored bucket from the effective report, not the raw one.
+    errored = sum(1 for c in effective if derive_check_outcome(c) == "error")
 
     task_run.status = "passed" if passed == total and total > 0 else "failed"
     task_run.pass_result = task_run.status == "passed"
     task_run.total_checks = total
     task_run.passed_checks = passed
-    task_run.failed_checks = total - passed
+    task_run.errored_checks = errored
+    task_run.failed_checks = total - passed - errored
     task_run.corrected_tests = corrected_count
     session.add(task_run)
     session.flush()

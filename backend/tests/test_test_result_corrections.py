@@ -225,6 +225,68 @@ class TestCorrectTestResult:
         assert flaw["pass"] is False
         assert "correction" not in flaw
 
+    def test_correcting_a_judge_errored_check_recomputes_the_errored_bucket(
+        self, session: Session
+    ) -> None:
+        """Issue #323: a human PASS on a judge-errored check empties the errored
+        bucket — the run's failed count must not keep the phantom fail."""
+        if not session.get(UserDB, "u1"):
+            session.add(UserDB(id="u1", email="u1@test.com", name="U1", password_hash="x"))
+        if not session.get(ProjectDB, "p1"):
+            session.add(ProjectDB(id="p1", name="P1", created_by="u1"))
+        session.flush()
+        batch = AgentTaskBatchRunDB(
+            id="b-err", project="p1", selection_type="task", status="completed", created_at=NOW
+        )
+        session.add(batch)
+        session.flush()
+        run = AgentTaskRunDB(
+            id="r-err",
+            batch_run_id="b-err",
+            task_id="demo",
+            task_path="/tasks/demo",
+            status="failed",
+            pass_result=False,
+            started_at=NOW,
+            completed_at=NOW,
+        )
+        session.add(run)
+        session.flush()
+        persist_check_report(
+            session,
+            run,
+            [
+                {"id": "ok", "pass": True, "reasoning": "ok"},
+                {
+                    "id": "blacked-out",
+                    "pass": False,
+                    "outcome": "error",
+                    "reasoning": "judge failed: gateway timeout",
+                    "assertions": [{"id": "judge", "pass": False, "outcome": "error"}],
+                },
+            ],
+        )
+        session.commit()
+        assert run.errored_checks == 1
+        assert run.failed_checks == 0
+
+        result = correct_test_result(
+            session,
+            task_run=run,
+            project="p1",
+            test_id="blacked-out",
+            action="set_pass",
+            reason="Judge outage, not a quality miss — accepted on review",
+            actor=ACTOR,
+        )
+
+        assert result.run_status == "passed"
+        session.refresh(run)
+        assert run.status == "passed"
+        assert run.passed_checks == 2
+        assert run.errored_checks == 0
+        assert run.failed_checks == 0
+
     def test_fail_correction_on_passing_run(
         self, session: Session, seeded_run: AgentTaskRunDB
     ) -> None:

@@ -84,6 +84,7 @@ AGENT_TASK_RUN_TOTAL_COST_COL: ColumnElement[float | None] = as_column(cast(obje
 AGENT_TASK_RUN_PASS_RESULT_COL: ColumnElement[bool | None] = as_column(cast(object, AgentTaskRunDB.pass_result))
 AGENT_TASK_RUN_TOTAL_CHECKS_COL: ColumnElement[int] = as_column(cast(object, AgentTaskRunDB.total_checks))
 AGENT_TASK_RUN_PASSED_CHECKS_COL: ColumnElement[int] = as_column(cast(object, AgentTaskRunDB.passed_checks))
+AGENT_TASK_RUN_ERRORED_CHECKS_COL: ColumnElement[int] = as_column(cast(object, AgentTaskRunDB.errored_checks))
 AGENT_TASK_RUN_CORRECTED_TESTS_COL: ColumnElement[int] = as_column(cast(object, AgentTaskRunDB.corrected_tests))
 AGENT_TASK_RUN_DEFINITION_REVISION_COL: ColumnElement[str | None] = as_column(
     cast(object, AgentTaskRunDB.task_definition_revision_id)

@@ -219,6 +219,16 @@ export type EvaluationItemResult = {
 
   // ── Enriched metadata (all optional, backward compatible) ──────────
 
+  /**
+   * The outcome category, rolled up from this check's assertions. Set only
+   * when the check failed and *every* failing assertion failed for lack of
+   * a verdict: ``"error"`` — the judge never answered (unreachable, HTTP
+   * error, empty reply), so the check's quality is unknown, not failed;
+   * ``"unsupported"`` — the trace projection lacked the evidence. Absent
+   * when the check passed or genuinely failed on evidence, so a real FAIL
+   * is never masked by an incidental judge error alongside it (issue #323).
+   */
+  outcome?: AssertionOutcome;
   /** The rubric instruction from the task definition ("PASS if …"). */
   instruction?: string;
   /** Name of the deliverable this check was evaluated against. */

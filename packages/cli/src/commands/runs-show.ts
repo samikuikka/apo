@@ -36,6 +36,7 @@ type RunDetail = {
   total_checks: number;
   passed_checks: number;
   failed_checks: number;
+  errored_checks?: number;
   trigger: {
     source: string | null;
     actor: string | null;
@@ -180,8 +181,12 @@ function printRunDetail(run: RunDetail, verbose: boolean): void {
       run.corrected_tests && run.corrected_tests > 0
         ? yellow(` · ${run.corrected_tests} corrected`)
         : "";
+    const erroredNote =
+      run.errored_checks && run.errored_checks > 0
+        ? yellow(` · ${run.errored_checks} no verdict`)
+        : "";
     console.log(
-      `  Checks:   ${run.passed_checks}/${run.total_checks} passed (${run.failed_checks} failed)${correctedNote}`,
+      `  Checks:   ${run.passed_checks}/${run.total_checks} passed (${run.failed_checks} failed)${erroredNote}${correctedNote}`,
     );
   }
   if ((run.judgments_count ?? 0) > 0) {

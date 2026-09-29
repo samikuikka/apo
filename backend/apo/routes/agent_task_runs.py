@@ -227,6 +227,7 @@ def _build_task_run_detail(
         total_checks=task_run.total_checks,
         passed_checks=task_run.passed_checks,
         failed_checks=task_run.failed_checks,
+        errored_checks=task_run.errored_checks,
         corrected_tests=task_run.corrected_tests,
         trigger=trigger,
         # Current surfaces show the effective projection —

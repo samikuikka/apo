@@ -517,6 +517,12 @@ class AgentTaskRunDB(SQLModel, table=True):
     total_checks: int = Field(default=0)
     passed_checks: int = Field(default=0)
     failed_checks: int = Field(default=0)
+    # Checks that failed for lack of a verdict (judge unreachable / empty
+    # reply) rather than on evidence — reported apart from ``failed_checks``
+    # so a judge outage never reads as a FAIL wave (issue #323). Server
+    # default mirrors the v48 migration's column add so raw-SQL writers see
+    # the same 0 the ORM default produces.
+    errored_checks: int = Field(default=0, sa_column_kwargs={"server_default": text("0")})
     transcript_json: dict[str, object] | None = Field(
         default=None, sa_column=Column("transcript_json", JSON)
     )
@@ -738,6 +744,9 @@ class AgentTaskJudgmentDB(SQLModel, table=True):
     total_checks: int = 0
     passed_checks: int = 0
     failed_checks: int = 0
+    # Checks that produced no verdict (judge error) — the same error bucket
+    # as AgentTaskRunDB.errored_checks, kept apart from failed (issue #323).
+    errored_checks: int = Field(default=0, sa_column_kwargs={"server_default": text("0")})
     # Full check evidence from the primary sample, same shape as
     # agent_task_check_reports.value_json.
     checks_json: list[dict[str, object]] | None = Field(

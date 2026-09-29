@@ -15,7 +15,11 @@ from sqlmodel import Session, col, select
 
 from apo.models.db import AgentTaskJudgmentDB, AgentTaskRunDB
 from apo.models.schemas import AgentTaskJudgmentSummary
-from apo.services.check_report_storage import load_check_report, normalize_check_report
+from apo.services.check_report_storage import (
+    derive_check_outcome,
+    load_check_report,
+    normalize_check_report,
+)
 
 MAX_JUDGMENT_SAMPLES = 50
 
@@ -39,6 +43,8 @@ def create_judgment(
     client-reported aggregates are never trusted.
     """
     passed = sum(1 for check in checks if check.get("pass") is True)
+    # Errored checks produced no verdict — their own bucket, not fails (#323).
+    errored = sum(1 for check in checks if derive_check_outcome(check) == "error")
     judgment = AgentTaskJudgmentDB(
         task_run_id=task_run.id,
         project=project,
@@ -51,7 +57,8 @@ def create_judgment(
         pass_result=passed == len(checks) and len(checks) > 0,
         total_checks=len(checks),
         passed_checks=passed,
-        failed_checks=len(checks) - passed,
+        errored_checks=errored,
+        failed_checks=len(checks) - passed - errored,
         checks_json=normalize_check_report(checks),
         stability_json=stability,
     )
@@ -108,6 +115,7 @@ def build_judgment_summary(
         total_checks=judgment.total_checks,
         passed_checks=judgment.passed_checks,
         failed_checks=judgment.failed_checks,
+        errored_checks=judgment.errored_checks,
         created_at=judgment.created_at,
         checks=judgment.checks_json if include_evidence else None,
         stability=judgment.stability_json if include_evidence else None,
@@ -129,7 +137,7 @@ def synthesize_original_judgment(
     # and verdict derive from the RAW report, never from the run's effective
     # scalars (which a later human correction may have flipped).
     recorded_pass = sum(1 for c in checks if c.get("pass") is True)
-    recorded_fail = len(checks) - recorded_pass
+    recorded_errored = sum(1 for c in checks if derive_check_outcome(c) == "error")
     return AgentTaskJudgmentSummary(
         id=task_run.id,
         task_run_id=task_run.id,
@@ -141,7 +149,8 @@ def synthesize_original_judgment(
         pass_result=recorded_pass == len(checks) and len(checks) > 0,
         total_checks=len(checks),
         passed_checks=recorded_pass,
-        failed_checks=recorded_fail,
+        errored_checks=recorded_errored,
+        failed_checks=len(checks) - recorded_pass - recorded_errored,
         created_at=task_run.completed_at or task_run.started_at,
     )
 

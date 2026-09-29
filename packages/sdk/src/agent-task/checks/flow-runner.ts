@@ -6,7 +6,12 @@
 
 import { TraceView } from "../trace-projection/view.ts";
 import type { TraceProjectionSnapshot } from "../trace-projection/types.ts";
-import type { CheckLocation, EvaluationItemResult } from "../run/types.ts";
+import type {
+  AssertionOutcome,
+  AssertionResult,
+  CheckLocation,
+  EvaluationItemResult,
+} from "../run/types.ts";
 import { createTraceTestContext, type TestContext, type JudgeConfig } from "./t.ts";
 import type { AgentHistoryPlane } from "./agent-history.ts";
 import type { JudgeTracer } from "../tracing.ts";
@@ -253,6 +258,7 @@ export async function runTraceChecks(args: {
 
       const failed = rec.all.filter((r) => !r.pass);
       const pass = failed.length === 0;
+      const outcome = rollUpCheckOutcome(failed);
       const reasoning =
         failed.length > 0
           ? failed.map((r) => r.reasoning || r.id).join("; ")
@@ -267,6 +273,7 @@ export async function runTraceChecks(args: {
         pass,
         reasoning,
         evaluator_type: "code" as const,
+        ...(outcome ? { outcome } : {}),
         ...(judge ? { judge } : {}),
         ...(location ? { location } : {}),
         ...(args.displayFile ? { source_file: args.displayFile } : {}),
@@ -285,6 +292,27 @@ export async function runTraceChecks(args: {
   );
 
   return results;
+}
+
+/**
+ * Roll a check's failing assertions up to a check-level outcome.
+ *
+ * A genuine failure — a plain assertion fail, a thrown check error, or an
+ * explicit `outcome: "fail"` — keeps the check unmarked: it failed on
+ * evidence. Only when *every* failing assertion failed for lack of a
+ * verdict does the check carry `"error"` (judge never answered) or
+ * `"unsupported"` (trace evidence missing), so scoring can tell "the judge
+ * never answered" apart from "the judge said no". `"error"` wins a mixed
+ * verdictless batch: an unreachable judge is the stronger "we know nothing"
+ * signal.
+ */
+function rollUpCheckOutcome(failed: AssertionResult[]): AssertionOutcome | undefined {
+  if (failed.length === 0) return undefined;
+  const verdictless = failed.filter(
+    (r) => r.outcome === "error" || r.outcome === "unsupported",
+  );
+  if (verdictless.length < failed.length) return undefined;
+  return verdictless.some((r) => r.outcome === "error") ? "error" : "unsupported";
 }
 
 /**

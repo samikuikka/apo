@@ -328,6 +328,9 @@ class AgentTaskRunStats(SQLModel):
     last_run_passed: bool | None = None
     total_checks: int = 0
     checks_pass_rate: float = 0.0
+    # Checks that produced no verdict (judge error) — inside total_checks
+    # but outside the pass/fail split (issue #323).
+    errored_checks: int = 0
     avg_cost: float | None = None
 
 
@@ -419,10 +422,14 @@ class ResolvedComparisonCell(SQLModel):
     a_pass_result: bool | None = None
     a_total_checks: int | None = None
     a_passed_checks: int | None = None
+    # Judge-errored checks at snapshot time — apart from fails (issue #323).
+    # Nullable: pre-#323 snapshot JSON hydrates without it.
+    a_errored_checks: int | None = None
     a_corrected_tests: int | None = None
     b_pass_result: bool | None = None
     b_total_checks: int | None = None
     b_passed_checks: int | None = None
+    b_errored_checks: int | None = None
     b_corrected_tests: int | None = None
 
 
@@ -721,6 +728,9 @@ class AgentTaskRunSummary(SQLModel):
     total_checks: int = 0
     passed_checks: int = 0
     failed_checks: int = 0
+    # Checks that produced no verdict (judge error) — reported apart from
+    # failed_checks so a judge outage never reads as a FAIL wave (#323).
+    errored_checks: int = 0
     trigger: AgentTaskRunTrigger | None = None
     error_category: str | None = None
     # adapter-reported model/effort for this Task Run. Absent when
@@ -764,6 +774,8 @@ class AgentTaskRunDetail(SQLModel):
     total_checks: int = 0
     passed_checks: int = 0
     failed_checks: int = 0
+    # Checks that produced no verdict (judge error), apart from fails (#323).
+    errored_checks: int = 0
     trigger: AgentTaskRunTrigger | None = None
     checks_json: list[dict[str, object]] | None = None
     transcript_json: dict[str, object] | None = None
@@ -830,6 +842,8 @@ class AgentTaskJudgmentSummary(SQLModel):
     total_checks: int = 0
     passed_checks: int = 0
     failed_checks: int = 0
+    # Checks that produced no verdict (judge error) — apart from fails (#323).
+    errored_checks: int = 0
     created_at: datetime | None = None
     # Full check evidence — only on the single-judgment detail endpoint.
     checks: list[dict[str, object]] | None = None

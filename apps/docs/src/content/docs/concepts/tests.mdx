@@ -83,6 +83,8 @@ A PASS/FAIL verdict claims "the agent ran, and here is what it produced." When t
 
 A minority of errored generations (the run recovered) keeps its normal PASS/FAIL verdict; the totals are still disclosed as partial. The strict rule is: silence beats a wrong signal.
 
+The same rule applies one level down, per check. When an LLM judge never answers — unreachable endpoint, HTTP error, empty or truncated reply after its one retry — the check records `outcome: "error"` (`pass: false`) instead of pretending the judge said FAIL. The dashboard badges it **No verdict** (warning, not red), the run's checks line counts it as `N no verdict` apart from failures, and rejudge stability skips the sample rather than reading it as a flaky fail. The check still fails the run — a pass can't be confirmed — but it never masquerades as evidence the agent did something wrong.
+
 ## The second judge
 
 One judge gives you a verdict. Two judges of different kinds give you an error bar. apo can grade every `t.judge` call twice: your normal LLM judge decides the verdict, and a **second judge** — a typed-decision model that cannot generate text — grades the same deliverable alongside it and reports its verdict as a probability and a confidence. It never changes the verdict; it tells you how much to trust it.

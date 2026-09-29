@@ -77,6 +77,8 @@ apo runs rejudge last --judge-model anthropic/claude-sonnet-4.5 --samples 2 --la
 
 `tone-is-executive` passing 1 of 2 samples is the honest signal: that test is decided by judge draw, not by the agent. Spend agent budget on the tests that fail every time, not the unstable ones.
 
+A sample whose judge produced no verdict (transport error, after the one retry) counts as neither pass nor fail: the fraction shows judged samples only, with a `(N no verdict)` note beside it. An unreachable judge says nothing about stability, so it must not read as a flaky fail.
+
 ## What replay can and cannot see
 
 - **Deliverable tests** (`t.check`, `t.judge` on deliverables) replay faithfully, deliverable bodies are persisted and fetched byte-for-byte.

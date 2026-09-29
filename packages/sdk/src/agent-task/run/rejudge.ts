@@ -62,11 +62,19 @@ export interface RejudgeOptions {
   onProgress?: (message: string) => void;
 }
 
-/** Per-check pass counts across samples — "fails 2 of 5", not "failed". */
+/**
+ * Per-check pass counts across samples — "fails 2 of 5", not "failed".
+ *
+ * Samples where the check errored (judge produced no verdict) are tracked
+ * in {@link errored} and count as neither pass nor fail: an unreachable
+ * judge says nothing about stability, so it must not read as a flaky fail.
+ */
 export interface RejudgeCheckStability {
   check_id: string;
   passes: number;
   samples: number;
+  /** Samples that produced no verdict (judge error) — issue #323. */
+  errored?: number;
 }
 
 export interface RejudgeOutcome {
@@ -230,6 +238,7 @@ export async function rejudgeTaskRun(
     const proxied = proxyBrokenDeliverables(deliverables, validation.brokenDeliverables);
 
     const passCounts = new Map<string, number>();
+    const errorCounts = new Map<string, number>();
     let primary: EvaluationItemResult[] = [];
     // Task-level judge config beats the caller-supplied one (#161), same as
     // a live run. The key never reaches the resolved config's report below.
@@ -240,6 +249,11 @@ export async function rejudgeTaskRun(
       if (sample === 0) primary = results;
       for (const result of results) {
         passCounts.set(result.id, (passCounts.get(result.id) ?? 0) + (result.pass ? 1 : 0));
+        // A judge error is not a fail: it must not depress the stability
+        // reading, only shrink the judged denominator (#323).
+        if (!result.pass && result.outcome === "error") {
+          errorCounts.set(result.id, (errorCounts.get(result.id) ?? 0) + 1);
+        }
       }
     }
 
@@ -247,6 +261,7 @@ export async function rejudgeTaskRun(
       check_id: result.id,
       passes: passCounts.get(result.id) ?? 0,
       samples,
+      ...(errorCounts.get(result.id) ? { errored: errorCounts.get(result.id) } : {}),
     }));
     const aggregate = aggregateResult(primary);
 

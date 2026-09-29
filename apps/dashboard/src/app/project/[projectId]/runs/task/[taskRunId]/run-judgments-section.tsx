@@ -79,6 +79,14 @@ export function RunJudgmentsSection({ taskRunId, judgments }: RunJudgmentsSectio
                 <span className={cn(judgment.passed_checks === judgment.total_checks && judgment.total_checks > 0 ? "text-success" : "text-destructive")}>
                   {judgment.passed_checks}/{judgment.total_checks}
                 </span>
+                {(judgment.errored_checks ?? 0) > 0 && (
+                  <span
+                    className="ml-1 text-warning"
+                    title="Checks that produced no verdict (judge error) — unknown, not failed"
+                  >
+                    ·{judgment.errored_checks}!
+                  </span>
+                )}
               </td>
               <td className="py-1.5 pr-3 text-muted-foreground">
                 {judgment.created_at ? new Date(judgment.created_at).toLocaleString() : "—"}

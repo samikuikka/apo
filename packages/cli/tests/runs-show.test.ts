@@ -438,6 +438,27 @@ describe("runs show command", () => {
     expect(out).toMatch(/Checks:\s+3\/3 passed \(0 failed\) · 1 corrected/);
   });
 
+  it("shows the no-verdict count in the Checks header (issue #323)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(
+        makeRun({
+          status: "failed",
+          pass_result: false,
+          passed_checks: 3,
+          total_checks: 5,
+          failed_checks: 1,
+          errored_checks: 1,
+        }),
+      ),
+    );
+    const { logs, restore } = captureLog();
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toMatch(/Checks:\s+3\/5 passed \(1 failed\) · 1 no verdict/);
+  });
+
   it("returns exit code 0 with --exit-status on passing run", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse(makeRun({ pass_result: true, status: "passed" })),

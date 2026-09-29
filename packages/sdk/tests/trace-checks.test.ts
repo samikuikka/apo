@@ -91,6 +91,34 @@ describe("runTraceChecks (projection-first API)", () => {
     expect(unsupported).toBeDefined();
   });
 
+  it("rolls an all-unsupported failure up to check-level outcome 'unsupported'", async () => {
+    resetFlowChecks();
+    defineCheck("duration-check", (t) => {
+      t.maxDurationMs(5000);
+    });
+
+    const snap = snapshot([], { timing: "unavailable" });
+    const results = await runTraceChecks({ snapshot: snap, deliverables: {} });
+
+    expect(results[0]!.pass).toBe(false);
+    expect(results[0]!.outcome).toBe("unsupported");
+  });
+
+  it("keeps a genuine fail unmarked when it sits beside an unsupported assertion", async () => {
+    resetFlowChecks();
+    defineCheck("mixed", (t) => {
+      t.maxDurationMs(5000);
+      t.calledTool("write_file");
+    });
+
+    // timing unavailable → unsupported; write_file never called → genuine fail.
+    const snap = snapshot([toolObs("read_file", { status: "ok" })], { timing: "unavailable" });
+    const results = await runTraceChecks({ snapshot: snap, deliverables: {} });
+
+    expect(results[0]!.pass).toBe(false);
+    expect(results[0]!.outcome).toBeUndefined();
+  });
+
   it("value assertions (t.check) still pass regardless of capabilities", async () => {
     resetFlowChecks();
     defineCheck("value-check", (t, { deliverables }) => {

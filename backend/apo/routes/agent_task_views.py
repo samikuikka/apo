@@ -136,6 +136,9 @@ async def get_task_view_comparison_overview(
         pass_result = cell.a_pass_result if cell.a_run_id == summary.id else cell.b_pass_result
         total = cell.a_total_checks if cell.a_run_id == summary.id else cell.b_total_checks
         passed = cell.a_passed_checks if cell.a_run_id == summary.id else cell.b_passed_checks
+        errored = (
+            cell.a_errored_checks if cell.a_run_id == summary.id else cell.b_errored_checks
+        )
         corrected = (
             cell.a_corrected_tests if cell.a_run_id == summary.id else cell.b_corrected_tests
         )
@@ -146,7 +149,9 @@ async def get_task_view_comparison_overview(
             summary.total_checks = total
         if passed is not None:
             summary.passed_checks = passed
-            summary.failed_checks = max((total or 0) - passed, 0)
+            summary.failed_checks = max((total or 0) - passed - (errored or 0), 0)
+        if errored is not None:
+            summary.errored_checks = errored
         if corrected is not None:
             summary.corrected_tests = corrected
 

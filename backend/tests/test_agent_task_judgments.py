@@ -144,10 +144,49 @@ class TestCreateJudgment:
         assert body["total_checks"] == 3
         assert body["passed_checks"] == 2
         assert body["failed_checks"] == 1
+        assert body["errored_checks"] == 0
         # The original verdict is untouched.
         session.refresh(run)
         assert run.pass_result is True
         assert run.total_checks == 4
+
+    def test_judge_errored_checks_count_apart_from_fails(
+        self, client: TestClient, session: Session
+    ) -> None:
+        """Issue #323: a judgment whose judge never answered records the check
+        in errored_checks, out of failed_checks."""
+        run = _seed_run(session)
+        revision_id = run.task_definition_revision_id
+
+        response = client.post(
+            f"/v1/agent-task-runs/{run.id}/judgments",
+            json={
+                "judge_model": "anthropic/claude-sonnet-4.5",
+                "task_definition_revision_id": revision_id,
+                "samples": 1,
+                "checks": [
+                    {"id": "ok", "pass": True, "reasoning": "passed"},
+                    {
+                        "id": "blacked-out",
+                        "pass": False,
+                        "outcome": "error",
+                        "reasoning": "judge failed: gateway timeout",
+                    },
+                ],
+                "stability": [
+                    {"check_id": "blacked-out", "passes": 0, "samples": 1, "errored": 1}
+                ],
+            },
+        )
+
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["total_checks"] == 2
+        assert body["passed_checks"] == 1
+        assert body["errored_checks"] == 1
+        assert body["failed_checks"] == 0
+        assert body["pass_result"] is False
+        assert body["stability"][0]["errored"] == 1
 
     def test_unknown_run_returns_404(self, client: TestClient, session: Session) -> None:
         _seed_run(session)

@@ -209,15 +209,25 @@ function printOutcome(
   if (outcome.samples > 1) {
     console.log(bold(`\n  Stability (${outcome.samples} samples):`));
     for (const entry of outcome.stability) {
-      const stable = entry.passes === entry.samples || entry.passes === 0;
+      // Errored samples produced no verdict — they shrink the judged
+      // denominator instead of reading as flaky fails (issue #323).
+      const errored = entry.errored ?? 0;
+      const judged = entry.samples - errored;
+      const stable = entry.passes === judged || entry.passes === 0;
       const marker = stable ? "" : yellow("  ← unstable");
-      console.log(`    ${entry.check_id.padEnd(40)} ${entry.passes}/${entry.samples}${marker}`);
+      const erroredNote = errored > 0 ? yellow(` (${errored} no verdict)`) : "";
+      console.log(
+        `    ${entry.check_id.padEnd(40)} ${entry.passes}/${judged}${erroredNote}${marker}`,
+      );
     }
   }
 
   const passed = outcome.checks.filter((c) => c.pass).length;
+  const erroredChecks = outcome.checks.filter((c) => !c.pass && c.outcome === "error").length;
+  const erroredSummary =
+    erroredChecks > 0 ? yellow(` · ${erroredChecks} no verdict`) : "";
   console.log(
-    `\n  Verdict:  ${passed}/${outcome.checks.length} checks passed — ${passFail(outcome.pass)}`,
+    `\n  Verdict:  ${passed}/${outcome.checks.length} checks passed${erroredSummary} — ${passFail(outcome.pass)}`,
   );
 
   if (meta.dryRun) {

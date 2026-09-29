@@ -104,6 +104,28 @@ describe("runs judgments command", () => {
     expect(out).toContain("not grounded");
   });
 
+  it("counts judge-errored samples apart from fails in stability (issue #323)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse(
+        judgment("jdg_newest", {
+          errored_checks: 1,
+          stability: [{ check_id: "judged-quality", passes: 2, samples: 3, errored: 1 }],
+        }),
+      ),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "jdg_newest", "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    // 2 passes of 2 judged samples; the third produced no verdict.
+    expect(out).toMatch(/2\/2 \(1 no verdict\)/);
+    expect(out).not.toContain("unstable");
+    // The summary line carries the judgment-level no-verdict count.
+    expect(out).toContain("1 no verdict");
+  });
+
   it("json output", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       jsonResponse({ task_run_id: FULL_ID, judgments: [judgment(FULL_ID)] }),

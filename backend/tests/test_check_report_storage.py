@@ -82,6 +82,116 @@ class TestPersistCheckReport:
         assert report is not None
         assert report.value_json == checks
 
+    def test_judge_errored_checks_count_apart_from_fails(self, session: Session):
+        """Issue #323: a check that failed for lack of a verdict moves out of
+        failed_checks into errored_checks instead of reading as a FAIL."""
+        run = _make_run(session)
+        checks = [
+            {"id": "a", "pass": True},
+            {
+                "id": "b",
+                "pass": False,
+                "outcome": "error",
+                "reasoning": "judge failed: gateway timeout",
+                "assertions": [{"id": "judge", "pass": False, "outcome": "error"}],
+            },
+            {"id": "c", "pass": False, "reasoning": "genuinely wrong"},
+        ]
+
+        persist_check_report(session, run, checks)
+        session.commit()
+        session.refresh(run)
+
+        assert run.total_checks == 3
+        assert run.passed_checks == 1
+        assert run.errored_checks == 1
+        assert run.failed_checks == 1
+
+    def test_genuine_fail_beside_judge_error_stays_a_fail(self, session: Session):
+        """A real failure in the same check must not be masked by an incidental
+        judge error — the roll-up only marks checks whose every failing
+        assertion failed for lack of a verdict."""
+        run = _make_run(session)
+        checks = [
+            {
+                "id": "mixed",
+                "pass": False,
+                "assertions": [
+                    {"id": "struct", "pass": False},
+                    {"id": "judge", "pass": False, "outcome": "error"},
+                ],
+            }
+        ]
+
+        persist_check_report(session, run, checks)
+        session.commit()
+        session.refresh(run)
+
+        assert run.errored_checks == 0
+        assert run.failed_checks == 1
+
+    def test_legacy_report_rolls_assertion_outcomes_up_without_check_outcome(self, session: Session):
+        """Reports recorded before the check-level outcome existed still count:
+        the roll-up derives it from the assertion outcomes."""
+        run = _make_run(session)
+        checks = [
+            {
+                "id": "legacy",
+                "pass": False,
+                "assertions": [{"id": "judge", "pass": False, "outcome": "error"}],
+            }
+        ]
+
+        persist_check_report(session, run, checks)
+        session.commit()
+        session.refresh(run)
+
+        assert run.errored_checks == 1
+        assert run.failed_checks == 0
+
+    def test_check_level_outcome_alone_is_honored_without_assertions(self, session: Session):
+        """Legacy top-level shape (no assertion breakdown) falls back to the
+        check-level outcome the SDK stamps."""
+        run = _make_run(session)
+        checks = [{"id": "b", "pass": False, "outcome": "error"}]
+
+        persist_check_report(session, run, checks)
+        session.commit()
+        session.refresh(run)
+
+        assert run.errored_checks == 1
+        assert run.failed_checks == 0
+
+    def test_passing_check_with_stale_outcome_is_not_errored(self, session: Session):
+        run = _make_run(session)
+        checks = [{"id": "a", "pass": True, "outcome": "error"}]
+
+        persist_check_report(session, run, checks)
+        session.commit()
+        session.refresh(run)
+
+        assert run.errored_checks == 0
+        assert run.passed_checks == 1
+
+    def test_unsupported_outcome_stays_counted_as_failed(self, session: Session):
+        """Unsupported assertions fail closed by design — they keep counting as
+        fails; only judge errors get the separate bucket."""
+        run = _make_run(session)
+        checks = [
+            {
+                "id": "u",
+                "pass": False,
+                "assertions": [{"id": "dur", "pass": False, "outcome": "unsupported"}],
+            }
+        ]
+
+        persist_check_report(session, run, checks)
+        session.commit()
+        session.refresh(run)
+
+        assert run.errored_checks == 0
+        assert run.failed_checks == 1
+
     def test_load_returns_report_body(self, session: Session):
         run = _make_run(session)
         checks = [{"id": "a", "pass": True, "reasoning": "because"}]

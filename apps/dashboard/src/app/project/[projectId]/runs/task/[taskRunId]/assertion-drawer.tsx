@@ -33,13 +33,23 @@ export function AssertionDrawer({
       {/* Header: assertion id + verdict + close. In normal flow (not absolute)
           so it never needs a hardcoded height. */}
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
+        {/* Errored assertions get warning styling — no verdict, not a fail (#323). */}
         <span
           className={cn(
             "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px]",
-            assertion.pass ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
+            assertion.pass
+              ? "bg-success/15 text-success"
+              : assertion.outcome === "error"
+                ? "bg-warning/15 text-warning"
+                : "bg-destructive/15 text-destructive",
           )}
+          title={
+            assertion.outcome === "error"
+              ? "The judge produced no verdict — this assertion's quality is unknown, not failed"
+              : undefined
+          }
         >
-          {assertion.pass ? "✓" : "✗"}
+          {assertion.pass ? "✓" : assertion.outcome === "error" ? "!" : "✗"}
         </span>
         <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-foreground">{assertion.id}</span>
         <button

@@ -10,6 +10,8 @@ export type AgentTaskRunStats = {
   last_run_passed: boolean | null;
   total_checks: number;
   checks_pass_rate: number;
+  /** Checks inside total that produced no verdict (judge error), not fails. */
+  errored_checks?: number;
   avg_cost: number | null;
 };
 
@@ -53,6 +55,8 @@ export type AgentTaskRunSummary = {
   total_checks: number;
   passed_checks: number;
   failed_checks: number;
+  /** Checks inside total that produced no verdict (judge error), not fails. */
+  errored_checks?: number;
   trigger: AgentTaskRunTrigger | null;
 };
 
@@ -109,10 +113,18 @@ export type CheckJudgeMetadata = {
  * so the CLI can render testing-framework-style failures (`− Expected` /
  * `+ Received`) instead of a flattened prose string.
  */
+export type CheckOutcome = "pass" | "fail" | "unsupported" | "error";
+
 export type CheckAssertionResult = {
   id: string;
   pass: boolean;
   reasoning: string;
+  /**
+   * "error" — the judge produced no verdict (unreachable, HTTP error, empty
+   * reply); the quality is unknown, not failed. "unsupported" — the trace
+   * projection lacked the evidence; fails closed (issue #323).
+   */
+  outcome?: CheckOutcome;
   expected?: string;
   /** Serialized scalar for code assertions; raw value for LLM judges. */
   received?: unknown;
@@ -130,6 +142,12 @@ export type CheckResult = {
   id: string;
   pass: boolean;
   reasoning: string;
+  /**
+   * Set when a failed check failed for lack of a verdict on every failing
+   * assertion — "error" (judge never answered) or "unsupported" (trace
+   * evidence missing). Absent on genuine fails (issue #323).
+   */
+  outcome?: CheckOutcome;
   instruction?: string;
   deliverable?: string;
   evaluator_type?: "llm" | "code" | "agent" | "regex";

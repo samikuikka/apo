@@ -59,6 +59,7 @@ class RunStatFields:
     pass_result: bool | None
     total_checks: int
     passed_checks: int
+    errored_checks: int = 0
 
 
 def compute_run_stats(runs: Sequence[RunStatFields]) -> AgentTaskRunStats:
@@ -84,6 +85,7 @@ def compute_run_stats(runs: Sequence[RunStatFields]) -> AgentTaskRunStats:
     # sum the persisted scalar verdict columns.
     total_checks = sum(r.total_checks for r in runs)
     passed_checks = sum(r.passed_checks for r in runs)
+    errored_checks = sum(r.errored_checks for r in runs)
 
     costs = [r.total_cost for r in runs if r.total_cost is not None]
     latest = runs[0] if runs else None
@@ -102,6 +104,7 @@ def compute_run_stats(runs: Sequence[RunStatFields]) -> AgentTaskRunStats:
         checks_pass_rate=round(passed_checks / total_checks, 2)
         if total_checks > 0
         else 0.0,
+        errored_checks=errored_checks,
         avg_cost=round(sum(costs) / len(costs), 4) if costs else None,
     )
 

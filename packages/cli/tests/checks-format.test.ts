@@ -63,6 +63,46 @@ describe("formatChecks", () => {
     });
   });
 
+  describe("judge-errored checks (issue #323)", () => {
+    it("renders NO VERDICT instead of FAIL for a check whose judge never answered", () => {
+      const checks: CheckResult[] = [
+        {
+          id: "quality",
+          pass: false,
+          outcome: "error",
+          reasoning: "judge failed: Judge API 503 after retry",
+          assertions: [
+            { id: "judge", pass: false, outcome: "error", reasoning: "judge failed: Judge API 503 after retry" },
+          ],
+        },
+      ];
+      const out = stripAnsi(formatChecks(checks));
+
+      expect(out).toContain("NO VERDICT quality");
+      expect(out).not.toContain("FAIL quality");
+      // The transport error stays visible below the mark.
+      expect(out).toContain("judge failed: Judge API 503");
+    });
+
+    it("keeps FAIL for a genuine failure even when a sibling assertion errored", () => {
+      const checks: CheckResult[] = [
+        {
+          id: "mixed",
+          pass: false,
+          assertions: [
+            { id: "struct", pass: false, reasoning: "expected 2" },
+            { id: "judge", pass: false, outcome: "error", reasoning: "judge failed: timeout" },
+          ],
+        },
+      ];
+      const out = stripAnsi(formatChecks(checks));
+
+      expect(out).toContain("FAIL mixed");
+      // The errored assertion itself still reads as no-verdict, not ✗.
+      expect(out).toContain("⚠ judge");
+    });
+  });
+
   describe("failing checks with assertions", () => {
     it("renders expected/received diff for failing assertions", () => {
       const checks: CheckResult[] = [

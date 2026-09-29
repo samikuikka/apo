@@ -169,6 +169,11 @@ export default async function TaskRunDetailPage({
 
   const checks = taskRun.checks_json ?? [];
   const checksPassed = checks.filter((c) => c.pass === true).length;
+  // Judge-errored checks failed for lack of a verdict, not on evidence —
+  // their own bucket, apart from genuine fails (issue #323).
+  const checksErrored = checks.filter(
+    (c) => c.pass !== true && c.outcome === "error",
+  ).length;
   const statusConf = STATUS_DOT[taskRun.status] ?? UNKNOWN_STATUS_DOT;
   const statusLabel = taskRun.status.charAt(0).toUpperCase() + taskRun.status.slice(1);
 
@@ -312,8 +317,8 @@ export default async function TaskRunDetailPage({
           <OutcomeSummary
             counts={{
               passed: checksPassed,
-              failed: Math.max(checks.length - checksPassed, 0),
-              errored: 0,
+              failed: Math.max(checks.length - checksPassed - checksErrored, 0),
+              errored: checksErrored,
               total: checks.length,
             }}
             unit="checks"

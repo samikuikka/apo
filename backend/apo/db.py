@@ -1435,6 +1435,100 @@ def _migrate_to_v47() -> None:
     logger.info("Schema v47 backfill complete: %d task runs recomputed", processed)
 
 
+def _migrate_to_v48() -> None:
+    """Version 48 (issue #323): errored-check bucket on runs and judgments.
+
+    Adds ``errored_checks`` to ``agent_task_runs`` and
+    ``agent_task_judgments`` so checks that failed for lack of a verdict
+    (judge unreachable, HTTP error, empty reply — assertion
+    ``outcome: "error"`` since the judge-error recording landed) count
+    apart from genuine fails instead of reading as a FAIL wave. New DBs get
+    the columns from ``create_all``.
+
+    Historical rows are backfilled by recomputing the check-level outcome
+    from the stored evidence (assertion roll-up, with the check-level
+    ``outcome`` field as fallback) and moving those checks out of
+    ``failed_checks``. Rows with ``failed_checks = 0`` are skipped — an
+    errored check was always counted as failed before, so they cannot hide
+    any. Resumable across crashes like v47: the version stamp is written
+    only after the full pass, and re-processing an already-fixed row is a
+    no-op. Commits every 100 rows.
+    """
+    import logging
+
+    from sqlmodel import Session, col, select as sqlmodel_select
+
+    from .models.db import (
+        AgentTaskCheckReportDB,
+        AgentTaskJudgmentDB,
+        AgentTaskRunDB,
+    )
+    from .services.check_report_storage import derive_check_outcome, normalize_check_report
+
+    logger = logging.getLogger(__name__)
+
+    with engine.begin() as conn:
+        _add_column_if_missing(
+            conn, "agent_task_runs", "errored_checks", "INTEGER NOT NULL DEFAULT 0"
+        )
+        _add_column_if_missing(
+            conn, "agent_task_judgments", "errored_checks", "INTEGER NOT NULL DEFAULT 0"
+        )
+
+    def _errored_count(checks: list[dict[str, object]] | None) -> int:
+        if not checks:
+            return 0
+        return sum(1 for c in normalize_check_report(checks) if derive_check_outcome(c) == "error")
+
+    processed = 0
+    with Session(engine) as session:
+        run_ids = session.exec(
+            sqlmodel_select(AgentTaskRunDB.id).where(col(AgentTaskRunDB.failed_checks) > 0)
+        ).all()
+        for run_id in run_ids:
+            report = session.get(AgentTaskCheckReportDB, run_id)
+            errored = _errored_count(report.value_json if report else None)
+            if errored:
+                run = session.get(AgentTaskRunDB, run_id)
+                if run is not None:
+                    run.errored_checks = errored
+                    run.failed_checks = max(
+                        run.total_checks - run.passed_checks - errored, 0
+                    )
+                    session.add(run)
+            # Flush before expunging, or the staged scalar writes detach with
+            # the row and never reach the commit.
+            session.flush()
+            session.expunge_all()
+            processed += 1
+            if processed % 100 == 0:
+                session.commit()
+                logger.info(
+                    "Schema v48 backfill: recomputed %d/%d task runs", processed, len(run_ids)
+                )
+        session.commit()
+        logger.info("Schema v48 backfill complete: %d task runs examined", processed)
+
+        judgment_ids = session.exec(
+            sqlmodel_select(AgentTaskJudgmentDB.id).where(col(AgentTaskJudgmentDB.failed_checks) > 0)
+        ).all()
+        for judgment_id in judgment_ids:
+            judgment = session.get(AgentTaskJudgmentDB, judgment_id)
+            if judgment is None:
+                continue
+            errored = _errored_count(judgment.checks_json)
+            if errored:
+                judgment.errored_checks = errored
+                judgment.failed_checks = max(
+                    judgment.total_checks - judgment.passed_checks - errored, 0
+                )
+                session.add(judgment)
+            session.flush()
+            session.expunge_all()
+        session.commit()
+    logger.info("Schema v48: %d judgments examined", len(judgment_ids))
+
+
 def _migrate_to_v4() -> None:
     """Version 4: check-level rollup columns on agent_task_batch_runs.
 
@@ -2754,7 +2848,7 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 47
+LATEST_SCHEMA_VERSION = 48
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -2804,6 +2898,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     45: _migrate_to_v45,
     46: _migrate_to_v46,
     47: _migrate_to_v47,
+    48: _migrate_to_v48,
 }
 
 

@@ -165,7 +165,9 @@ function groupChecks(checks: CheckResult[]): CheckSegment[] {
 function formatCheck(check: CheckResult, verbose: boolean): string {
   const lines: string[] = [];
   // Corrected tests carry their effective verdict with the
-  // recorded one and the correction provenance one line below.
+  // recorded one and the correction provenance one line below. A correction
+  // is a human verdict, so it never renders as NO VERDICT even when the
+  // recorded outcome was a judge error.
   if (check.correction && check.recorded_pass !== undefined) {
     lines.push(
       `    ${passFail(check.pass)} ${check.id} ${yellow("(corrected)")}${secondJudgeMark(check)}`,
@@ -178,7 +180,7 @@ function formatCheck(check: CheckResult, verbose: boolean): string {
       ),
     );
   } else {
-    lines.push(`    ${passFail(check.pass)} ${check.id}${secondJudgeMark(check)}`);
+    lines.push(`    ${verdictMark(check)} ${check.id}${secondJudgeMark(check)}`);
   }
 
   // The second-judge relation is signal, not decoration — splits and unsure
@@ -227,9 +229,21 @@ function formatCheck(check: CheckResult, verbose: boolean): string {
   return lines.join("\n");
 }
 
+/**
+ * A judge error is not a FAIL: the check's quality is unknown because the
+ * judge never answered (unreachable, HTTP error, empty reply). Yellow NO
+ * VERDICT keeps it visually apart from a red FAIL; the reasoning line below
+ * carries the transport error (issue #323).
+ */
+function verdictMark(check: CheckResult): string {
+  if (!check.pass && check.outcome === "error") return yellow("NO VERDICT");
+  return passFail(check.pass);
+}
+
 function formatAssertion(a: CheckAssertionResult): string {
   const lines: string[] = [];
-  const mark = a.pass ? green("✓") : red("✗");
+  // Errored assertions get ⚠ instead of ✗ — same "no verdict" reading.
+  const mark = !a.pass && a.outcome === "error" ? yellow("⚠") : a.pass ? green("✓") : red("✗");
   lines.push(`      ${mark} ${a.id}`);
   if (a.location) {
     lines.push(dim(`        ${formatLocation(a.location)}`));
