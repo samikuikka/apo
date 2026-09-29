@@ -368,6 +368,28 @@ export function createTraceColumns(
       },
     },
     {
+      // Serving host (route wins over provider; issue #307). No host reported
+      // renders an em dash, not "unknown" — absence is not a value here.
+      id: "providers",
+      header: "Host",
+      size: 110,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const labels = row.original.providers;
+        if (!labels || labels.length === 0) {
+          return <span className="text-muted-foreground/50">{"\u2014"}</span>;
+        }
+        return (
+          <span
+            className="block truncate text-xs text-muted-foreground"
+            title={labels.join(" \u00b7 ")}
+          >
+            {labels.join(" \u00b7 ")}
+          </span>
+        );
+      },
+    },
+    {
       id: "tags",
       header: "Tags",
       size: 120,

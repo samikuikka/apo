@@ -50,6 +50,7 @@ export default async function TracesPage({
     userId: queryParams.user_id ? String(queryParams.user_id) : undefined,
     tags: queryParams.tags ? String(queryParams.tags) : undefined,
     models: queryParams.models ? String(queryParams.models) : undefined,
+    providers: queryParams.providers ? String(queryParams.providers) : undefined,
     metricName: queryParams.metric_name ? String(queryParams.metric_name) : undefined,
     minScore: queryParams.min_score ? String(queryParams.min_score) : undefined,
     maxScore: queryParams.max_score ? String(queryParams.max_score) : undefined,

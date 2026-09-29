@@ -26,6 +26,24 @@ import {
 import type { CumulativeMetrics } from "@/lib/cumulative-metrics";
 import type { LoggedCall, TraceDetail } from "./contexts/TraceDataContext";
 
+/** Decode throughput of one generation: output tokens over (end - first
+ * token), full duration when no TTFT was recorded (issue #307). Null when
+ * tokens or timing are missing. */
+function outputTokPerS(call: LoggedCall): number | null {
+  const tokens = call.completion_tokens;
+  const latency = call.latency_ms;
+  if (!tokens || latency == null || latency <= 0) return null;
+  const ttft = call.time_to_first_token_ms;
+  const windowMs = ttft != null && ttft >= 0 && ttft < latency ? latency - ttft : latency;
+  return tokens / (windowMs / 1000);
+}
+
+/** tok/s with one decimal under 100 and integers above — the precision a
+ * host comparison can actually read (issue #307). */
+function formatTokPerS(value: number): string {
+  return value < 100 ? value.toFixed(1) : `${Math.round(value)}`;
+}
+
 interface CallDetailHeaderProps {
   call: LoggedCall;
   run: TraceDetail | null;
@@ -55,6 +73,9 @@ export function CallDetailHeader({
     call.model && call.model !== "unknown" ? getModelShort(call.model) : null,
     call.latency_ms != null ? `${call.latency_ms.toFixed(0)}ms` : null,
     call.time_to_first_token_ms != null ? `TTFT ${call.time_to_first_token_ms.toFixed(0)}ms` : null,
+    // Decode throughput (issue #307): output tokens over the window after
+    // the first token — the number host comparisons are about.
+    outputTokPerS(call) != null ? `${formatTokPerS(outputTokPerS(call)!)} tok/s` : null,
     call.total_tokens != null && call.total_tokens > 0 ? formatTokenTotal(call.total_tokens) : null,
     call.cost != null ? formatCostMicro(call.cost) : null,
     eventType ? formatEventLabel(eventType) : null,
@@ -142,6 +163,11 @@ export function CallDetailHeader({
             {key}: {formatParamValue(value)}
           </span>
         ))}
+        {(call.route || call.provider) && (
+          <HeaderPill mono title="serving host reported by the tracer">
+            @{call.route || call.provider}
+          </HeaderPill>
+        )}
         {call.version && <HeaderPill mono>{call.version}</HeaderPill>}
         {call.environment && call.environment !== "default" && <HeaderPill>env: {call.environment}</HeaderPill>}
         {call.session_id && <HeaderPill mono>session: {call.session_id.length > 12 ? `${call.session_id.slice(0, 12)}...` : call.session_id}</HeaderPill>}

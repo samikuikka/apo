@@ -96,6 +96,17 @@ export interface AgentTaskRunConfigurationCount extends AgentTaskRunConfiguratio
   task_runs: number;
 }
 
+/** One (model, serving provider/route) pair a run used (issue #307).
+ * `provider`/`route` are null when the emitter did not report them. */
+export interface ModelProviderPair {
+  model: string;
+  provider: string | null;
+  route: string | null;
+  calls: number;
+  total_tokens: number | null;
+  cost_micro: number | null;
+}
+
 export interface AgentTaskBatchRunConfigurationSummary {
   state: BatchRunConfigurationState;
   configurations: AgentTaskRunConfigurationCount[];
@@ -126,6 +137,9 @@ export interface AgentTaskRunSummary {
   trace_run_id: string | null;
   /** Primary model the run executed under (denormalized from the trace). */
   primary_model: string | null;
+  /** (model, provider/route) pairs the trace served through (issue #307).
+   * Empty when no call reported a host — render nothing, not "unknown". */
+  model_providers?: ModelProviderPair[];
   task_source_commit_sha: string | null;
   error_message: string | null;
   total_cost: number | null;
@@ -172,6 +186,10 @@ export interface GenerationUsageSummary {
   model_time_ms: number | null;
   slowest_call_ms: number | null;
   slowest_call_id: string | null;
+  /** Median decode throughput (output tokens / decode window; issue #307).
+   * Null when no generation had both tokens and timing. */
+  median_output_tok_s?: number | null;
+  output_tok_s_calls?: number;
   reasoning_tokens: number | null;
   /** Fewer than `generations` means `reasoning_tokens` is a partial sum. */
   reasoning_calls: number;

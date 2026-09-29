@@ -49,6 +49,10 @@ export interface LoggedCall {
   step_index: number | null;
   step_name: string | null;
   model: string;
+  /** Serving host as the emitter reported it (issue #307); null = not
+   * reported. `route` is the finer-grained serving route (apo.llm.route). */
+  provider?: string | null;
+  route?: string | null;
   created_at: string;
   latency_ms?: number | null;
   cost?: number | null;

@@ -22,11 +22,23 @@ type RunSummary = {
   failed_checks: number;
   adapter_name: string;
   run_configuration?: RunConfiguration;
+  /** (model, provider/route) pairs the run's trace served through
+   * (issue #307). Empty when no call reported a host. */
+  model_providers?: ModelProviderPair[];
   generation_execution?: {
     total: number;
     errored: number;
     error_finish_reasons: Record<string, number>;
   } | null;
+};
+
+type ModelProviderPair = {
+  model: string;
+  provider: string | null;
+  route: string | null;
+  calls: number;
+  total_tokens: number | null;
+  cost_micro: number | null;
 };
 
 function formatExecution(cfg: RunConfiguration | undefined): string {
@@ -52,6 +64,10 @@ export async function run(argv: string[]): Promise<number> {
   if (models.length > 0) params.model = models;
   const efforts = getFlagValues(multiFlags, "effort");
   if (efforts.length > 0) params.effort = efforts;
+  // Serving-host filter: matches the observed provider or route on the
+  // run's trace calls, so "openrouter:nitro" finds routed runs (issue #307).
+  const providers = getFlagValues(multiFlags, "provider");
+  if (providers.length > 0) params.provider = providers;
 
   let runs: RunSummary[];
   try {
@@ -93,12 +109,13 @@ export async function run(argv: string[]): Promise<number> {
     r.pass_result === null ? "-" : r.pass_result ? "PASS" : "FAIL",
     formatGenerationExecution(r.generation_execution),
     formatExecution(r.run_configuration),
+    formatHosts(r.model_providers),
     formatRunCost(r),
     formatTime(r.started_at),
   ]);
   console.log(
     formatTable(
-      ["Run ID", "Task", "Batch", "Status", "Result", "Generations", "Execution", "Cost", "Started"],
+      ["Run ID", "Task", "Batch", "Status", "Result", "Generations", "Execution", "Hosts", "Cost", "Started"],
       rows,
     ),
   );
@@ -113,6 +130,16 @@ function formatGenerationExecution(
 ): string {
   if (!execution || execution.errored <= 0) return dim("-");
   return `${execution.errored}/${execution.total} error`;
+}
+
+/** Distinct serving-host labels (route wins over provider) for the Hosts
+ * column (issue #307); dim dash when no call reported a host. */
+function formatHosts(pairs: ModelProviderPair[] | undefined): string {
+  if (!pairs || pairs.length === 0) return dim("-");
+  const labels = [
+    ...new Set(pairs.map((p) => p.route || p.provider).filter((l): l is string => !!l)),
+  ];
+  return labels.length > 0 ? labels.join(" · ") : dim("-");
 }
 
 function formatRunCost(run: RunSummary): string {

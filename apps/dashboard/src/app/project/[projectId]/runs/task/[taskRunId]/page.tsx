@@ -1,4 +1,5 @@
 import { getAgentTaskRun, listAgentTaskRunJudgments } from "@/lib/agent-task-api";
+import type { ModelProviderPair } from "@/lib/agent-task-api";
 import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
 import { TraceHomeLink } from "@/components/trace-detail";
@@ -10,6 +11,7 @@ import {
   ChevronRight,
   Clock,
   DollarSign,
+  Gauge,
   Layers3,
   ListChecks,
   PenLine,
@@ -75,6 +77,33 @@ function formatDuration(start: string | null, end: string | null) {
 /** Chip value that deep-links into the trace observation behind a max
  * metric (issue #309) — "slowest call" / "max reasoning" jump straight to
  * the winning span. Plain text when the run has no trace to link into. */
+/** Distinct serving-host labels (route wins over provider) for the run
+ * header (issue #307). Empty when nothing reported a host. */
+function hostLabels(pairs: ModelProviderPair[] | undefined): string[] {
+  if (!pairs) return [];
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const pair of pairs) {
+    const label = pair.route || pair.provider;
+    if (label && !seen.has(label)) {
+      seen.add(label);
+      labels.push(label);
+    }
+  }
+  return labels;
+}
+
+/** Call count behind one host label (route wins over provider). */
+function hostPairCalls(pairs: ModelProviderPair[] | undefined, label: string): number {
+  return pairs?.find((pair) => pair.route === label || pair.provider === label)?.calls ?? 0;
+}
+
+/** tok/s with one decimal under 100 and integers above — the precision a
+ * host comparison can actually read (issue #307). */
+function formatTokPerS(value: number): string {
+  return `${value < 100 ? value.toFixed(1) : Math.round(value)} tok/s`;
+}
+
 function observationValue(
   projectId: string,
   traceRunId: string | null,
@@ -258,6 +287,21 @@ export default async function TaskRunDetailPage({
                     <span className="font-mono text-foreground">{taskRun.primary_model}</span>
                   </>
                 )}
+              {hostLabels(taskRun.model_providers).length > 0 && (
+                <>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span className="text-muted-foreground">Hosts</span>
+                  {hostLabels(taskRun.model_providers).map((label, i) => (
+                    <span key={label} className="flex items-center gap-1">
+                      {i > 0 && <span className="text-muted-foreground/50">·</span>}
+                      <span className="font-mono text-foreground">{label}</span>
+                      <span className="text-muted-foreground">
+                        ×{hostPairCalls(taskRun.model_providers, label)}
+                      </span>
+                    </span>
+                  ))}
+                </>
+              )}
               {taskRun.trigger?.source && (
                 <>
                   <span className="text-muted-foreground/50">·</span>
@@ -351,6 +395,17 @@ export default async function TaskRunDetailPage({
                 : (taskRun.total_tokens ?? 0) > 0
                   ? [{ icon: Brain, key: "reasoning", value: "not reported", label: "reasoning" }]
                   : []),
+              // Median decode throughput (issue #307): the number host
+              // comparisons are about — output tokens over the decode
+              // window. Only shown when at least one call measured it.
+              ...(taskRun.generation_usage?.median_output_tok_s != null
+                ? [{
+                    icon: Gauge,
+                    key: "speed",
+                    value: `${formatTokPerS(taskRun.generation_usage.median_output_tok_s)} med`,
+                    label: "decode",
+                  }]
+                : []),
               ...((taskRun.corrected_tests ?? 0) > 0
                 ? [{ icon: PenLine, value: `${taskRun.corrected_tests} corrected`, label: "tests" }]
                 : []),
