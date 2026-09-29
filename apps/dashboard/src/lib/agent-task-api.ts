@@ -725,6 +725,8 @@ export interface TaskRunCohortFilter {
   model?: string | null;
   effort?: string | null;
   since?: string | null;
+  /** Observed serving host (issue #307). */
+  provider?: string | null;
   /** OR'd run statuses (repeatable `?status=`). */
   status?: string[];
 }
@@ -743,6 +745,7 @@ export const listTaskRuns = (
       model: cohort?.model,
       effort: cohort?.effort,
       since: cohort?.since,
+      provider: cohort?.provider,
       status: cohort?.status,
       limit,
     },
