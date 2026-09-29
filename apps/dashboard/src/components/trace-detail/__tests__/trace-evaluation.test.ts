@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { TraceObservation } from "../contexts";
 import {
+  canSkipJudgeFetches,
+  evaluationSubtreeRows,
   findEvaluationGroup,
   isEvaluationRoot,
   judgmentFacts,
+  parsePhaseSummary,
   parseVerdict,
   partitionEvaluation,
   type PartitionableRow,
@@ -58,6 +61,126 @@ describe("findEvaluationGroup", () => {
     ]);
     expect(group!.memberIds.has("gen")).toBe(false);
     expect(group!.memberIds.has("j1")).toBe(true);
+  });
+
+  it("groups under the checks.run span and counts it as a member", () => {
+    const group = findEvaluationGroup([
+      call("run", "apo.task.run"),
+      call("gen", "agent.generate", "run"),
+      call("cr", "checks.run", "run"),
+      call("j1", "judge:reads-well", "cr"),
+      call("ag", "t.agent:figures", "cr"),
+      call("t1", "tool read", "ag"),
+    ]);
+    expect(group).not.toBeNull();
+    expect(group!.checksRun!.id).toBe("cr");
+    expect(group!.roots.map((c) => c.id)).toEqual(["j1", "ag"]);
+    // The group row represents the span itself, so it must leave the kept
+    // rows — otherwise the tree shows both a raw checks.run row and the
+    // synthetic Evaluation row.
+    expect(group!.memberIds.has("cr")).toBe(true);
+    expect([...group!.memberIds].sort()).toEqual(["ag", "cr", "j1", "t1"]);
+    expect(group!.memberIds.has("gen")).toBe(false);
+  });
+
+  it("still groups by name prefix when judges parent to the root (legacy traces)", () => {
+    const group = findEvaluationGroup([
+      call("run", "apo.task.run"),
+      call("j1", "judge:reads-well", "run"),
+    ]);
+    expect(group!.checksRun).toBeNull();
+    expect(group!.roots.map((c) => c.id)).toEqual(["j1"]);
+    expect(group!.memberIds.has("j1")).toBe(true);
+  });
+
+  it("returns a group for a checks.run span with no judges (sync-only checks)", () => {
+    const group = findEvaluationGroup([
+      call("run", "apo.task.run"),
+      call("cr", "checks.run", "run"),
+    ]);
+    expect(group).not.toBeNull();
+    expect(group!.checksRun!.id).toBe("cr");
+    expect(group!.roots).toEqual([]);
+    expect(group!.memberIds.has("cr")).toBe(true);
+  });
+});
+
+describe("parsePhaseSummary", () => {
+  it("reads counts from the checks.run tool_result", () => {
+    expect(parsePhaseSummary({ total: 47, passCount: 45, failCount: 2, noVerdictCount: 0 })).toEqual({
+      total: 47,
+      passed: 45,
+      failed: 2,
+      noVerdict: 0,
+    });
+  });
+
+  it("keeps no-verdict checks out of the failed count", () => {
+    expect(
+      parsePhaseSummary({ total: 5, passCount: 2, failCount: 1, noVerdictCount: 2 }),
+    ).toEqual({ total: 5, passed: 2, failed: 1, noVerdict: 2 });
+  });
+
+  it("tolerates summaries without a no-verdict count (older SDKs)", () => {
+    expect(parsePhaseSummary({ total: 3, passCount: 2, failCount: 1 })).toEqual({
+      total: 3,
+      passed: 2,
+      failed: 1,
+      noVerdict: 0,
+    });
+  });
+
+  it("parses a JSON-string tool_result", () => {
+    expect(parsePhaseSummary('{"total":3,"passCount":2,"failCount":1}')).toEqual({
+      total: 3,
+      passed: 2,
+      failed: 1,
+      noVerdict: 0,
+    });
+  });
+
+  it("returns null for missing, malformed, or vacuous summaries", () => {
+    expect(parsePhaseSummary(undefined)).toBeNull();
+    expect(parsePhaseSummary(null)).toBeNull();
+    expect(parsePhaseSummary("not json")).toBeNull();
+    expect(parsePhaseSummary({ total: "47" })).toBeNull();
+    expect(parsePhaseSummary({ passCount: 1 })).toBeNull();
+    // A zero-check run carries no counts worth showing.
+    expect(parsePhaseSummary({ total: 0, passCount: 0, failCount: 0 })).toBeNull();
+  });
+});
+
+describe("canSkipJudgeFetches", () => {
+  it("skips while no judgment row is visible and the summary is usable or pending", () => {
+    expect(
+      canSkipJudgeFetches({ checksRunId: "cr", judgmentsVisible: false, phaseSummary: { total: 2, passed: 1, failed: 1, noVerdict: 0 } }),
+    ).toBe(true);
+    // Pending: wait for the one summary fetch instead of racing N judge ones.
+    expect(
+      canSkipJudgeFetches({ checksRunId: "cr", judgmentsVisible: false, phaseSummary: undefined }),
+    ).toBe(true);
+  });
+
+  it("fetches when judgment rows are visible — expanded OR surfaced by search", () => {
+    expect(
+      canSkipJudgeFetches({ checksRunId: "cr", judgmentsVisible: true, phaseSummary: { total: 2, passed: 1, failed: 1, noVerdict: 0 } }),
+    ).toBe(false);
+    // Search suspends grouping, so judge rows render even while collapsed.
+    expect(
+      canSkipJudgeFetches({ checksRunId: "cr", judgmentsVisible: true, phaseSummary: undefined }),
+    ).toBe(false);
+  });
+
+  it("fetches when the summary is unusable (counts fall back to verdicts)", () => {
+    expect(
+      canSkipJudgeFetches({ checksRunId: "cr", judgmentsVisible: false, phaseSummary: null }),
+    ).toBe(false);
+  });
+
+  it("fetches on legacy traces with no checks.run span", () => {
+    expect(
+      canSkipJudgeFetches({ checksRunId: null, judgmentsVisible: false, phaseSummary: undefined }),
+    ).toBe(false);
   });
 });
 
@@ -115,6 +238,51 @@ describe("partitionEvaluation", () => {
     const split = partitionEvaluation(rows, group)!;
     expect(split.kept.map((r) => r.node.id)).toEqual(["root-run"]);
     expect(split.insertAt).toBe(1);
+  });
+
+  it("places the group where the checks.run span sat", () => {
+    const calls = [
+      call("run", "apo.task.run"),
+      call("load", "task.load", "run"),
+      call("cr", "checks.run", "run"),
+      call("j1", "judge:reads-well", "cr"),
+    ];
+    const spanGroup = findEvaluationGroup(calls)!;
+    const rows = calls.map((c) => row(c.id, c.step_name!, c.parent_call_id));
+    const split = partitionEvaluation(rows, spanGroup)!;
+    expect(split.kept.map((r) => r.node.id)).toEqual(["run", "load"]);
+    expect(split.insertAt).toBe(2);
+  });
+});
+
+describe("evaluationSubtreeRows", () => {
+  it("renders members when expanded but never the phase span's own row", () => {
+    const calls = [
+      call("run", "apo.task.run"),
+      call("cr", "checks.run", "run"),
+      call("j1", "judge:reads-well", "cr"),
+      call("ag", "t.agent:figures", "cr"),
+      call("t1", "tool read", "ag"),
+    ];
+    const group = findEvaluationGroup(calls)!;
+    const rows = calls.map((c) => row(c.id, c.step_name!, c.parent_call_id));
+    // The group header already represents the checks.run span — rendering its
+    // raw row inside the expanded group duplicates it.
+    expect(evaluationSubtreeRows(rows, group).map((r) => r.node.id)).toEqual([
+      "j1",
+      "ag",
+      "t1",
+    ]);
+  });
+
+  it("keeps every member row on legacy traces (no span to suppress)", () => {
+    const calls = [
+      call("run", "apo.task.run"),
+      call("j1", "judge:reads-well", "run"),
+    ];
+    const group = findEvaluationGroup(calls)!;
+    const rows = calls.map((c) => row(c.id, c.step_name!, c.parent_call_id));
+    expect(evaluationSubtreeRows(rows, group).map((r) => r.node.id)).toEqual(["j1"]);
   });
 });
 

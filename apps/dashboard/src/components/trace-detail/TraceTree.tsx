@@ -6,10 +6,14 @@ import { useViewPreferences } from "./contexts/ViewPreferencesContext";
 import type { TraceObservation } from "./contexts";
 import { getCallDetail } from "@/lib/traces-api";
 import {
+  canSkipJudgeFetches,
+  evaluationSubtreeRows,
   findEvaluationGroup,
   isEvaluationRoot,
+  parsePhaseSummary,
   parseVerdict,
   partitionEvaluation,
+  type PhaseSummary,
 } from "./trace-evaluation";
 import { getSemanticType, getEventType } from "./trace-utils";
 // getDisplayName lives in trace-display (shared with gantt + graph + detail
@@ -509,22 +513,72 @@ export function TraceTree({
   const { selectCall, selectedCallId } = useSelection();
   // A deep link (?observation=, e.g. "View in trace" on a failed check,
   // issue #288) can select a judge span while the group is collapsed —
-  // expand it so the selected row is actually visible.
+  // expand it so the selected row is actually visible. Runs ONCE per
+  // selection: `evaluation` gets a fresh identity on every live-trace
+  // stream flush (~4x/s), and re-firing would keep popping the group open
+  // after the user collapses it.
+  const autoExpandedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (selectedCallId && evaluation?.memberIds.has(selectedCallId)) {
+    if (!selectedCallId || selectedCallId === autoExpandedFor.current) return;
+    if (evaluation?.memberIds.has(selectedCallId)) {
+      autoExpandedFor.current = selectedCallId;
       setEvalExpanded(true);
     }
   }, [selectedCallId, evaluation]);
   const { run, cumulativeMetrics, prefetchObservation, isSimplifiedTree } = useTraceData();
   const { preferences } = useViewPreferences();
   const [levelFilter, setLevelFilter] = useState<string>("all");
-  // PROTOTYPE: verdict map keyed by judge root id. The slim payload carries
-  // no tool_result, so each judge root's full call is fetched once (they are
-  // few per run) to color the pass/fail badges and the Evaluation counts.
+  // Verdict map keyed by judge root id — colors the judgment-row badges and,
+  // on traces without a usable checks.run summary, the Evaluation counts.
+  // The slim tree payload omits tool_result, so each judge root's full call
+  // is fetched once on demand.
   const [judgeVerdicts, setJudgeVerdicts] = useState<Record<string, boolean | undefined>>({});
+  const checksRunId = evaluation?.checksRun?.id ?? null;
+  // The phase span's own summary: one fetch that replaces the per-judge
+  // fetches for the collapsed row's counts. Keyed BY SPAN ID — adjacent-trace
+  // navigation (prev/next) reuses this component without remounting, and an
+  // unkeyed summary would render trace A's counts on trace B. undefined =
+  // not resolved yet; null = resolved but unusable (fall back to the
+  // per-judge verdicts).
+  const [summariesBySpan, setSummariesBySpan] = useState<
+    Record<string, PhaseSummary | null>
+  >({});
+  const phaseSummary = checksRunId ? summariesBySpan[checksRunId] : undefined;
+  useEffect(() => {
+    const trace = run?.run;
+    if (!trace || !checksRunId || checksRunId in summariesBySpan) return;
+    const controller = new AbortController();
+    let active = true;
+    getCallDetail(trace.id, checksRunId, trace.project, controller.signal)
+      .then((full) => {
+        if (active) {
+          setSummariesBySpan((prev) => ({
+            ...prev,
+            [checksRunId]: parsePhaseSummary(full.tool_result),
+          }));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setSummariesBySpan((prev) => ({ ...prev, [checksRunId]: null }));
+        }
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [run, checksRunId, summariesBySpan]);
+  // Judgment rows are visible when the group is expanded OR search surfaces
+  // them (search suspends grouping) — their badges need the verdicts then.
+  const judgmentsVisible =
+    evalExpanded || searchQuery.trim().length > 0;
   useEffect(() => {
     const trace = run?.run;
     if (!trace || judgeRoots.length === 0) return;
+    // While no judgment row is visible, a usable (or pending) phase summary
+    // already carries the counts — skip the per-judge fetches until the
+    // badges are on screen.
+    if (canSkipJudgeFetches({ checksRunId, judgmentsVisible, phaseSummary })) return;
     const missing = judgeRoots.filter((j) => !(j.id in judgeVerdicts));
     if (missing.length === 0) return;
     const controller = new AbortController();
@@ -543,7 +597,7 @@ export function TraceTree({
       active = false;
       controller.abort();
     };
-  }, [run, judgeRoots, judgeVerdicts]);
+  }, [run, judgeRoots, judgeVerdicts, checksRunId, judgmentsVisible, phaseSummary]);
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     const s = new Set<string>(["root-run"]);
     calls.forEach((c) => s.add(c.id));
@@ -568,28 +622,50 @@ export function TraceTree({
   }, [allExpanded, calls]);
 
   const flatTree = useMemo(() => {
-    const tree = flattenTree(calls, expanded, searchQuery);
+    // When the group is expanded, the phase span's subtree must be flattened
+    // even if "Collapse all" closed it — otherwise the expanded group shows
+    // zero rows with no handle to reopen them (the span's own row is
+    // suppressed; the group row represents it).
+    const spanId = evaluation?.checksRun?.id ?? null;
+    const effectiveExpanded =
+      evalExpanded && spanId && !expanded.has(spanId)
+        ? new Set(expanded).add(spanId)
+        : expanded;
+    const tree = flattenTree(calls, effectiveExpanded, searchQuery);
     // Search suspends grouping: matching judge rows surface like any other row.
     if (!evaluation || searchQuery.trim().length > 0) return tree;
     const split = partitionEvaluation(tree, evaluation);
     if (!split) return tree;
-    const judgeSubtree = tree.filter(
-      (n) => n.node.call !== null && evaluation.memberIds.has(n.node.call.id),
-    );
+    const judgeSubtree = evaluationSubtreeRows(tree, evaluation);
+    // The phase span's summary is the counts source of record; the per-judge
+    // verdict map is the fallback for traces without one.
+    const counts = phaseSummary ?? {
+      passed: judgeRoots.filter((j) => judgeVerdicts[j.id] === true).length,
+      failed: judgeRoots.filter((j) => judgeVerdicts[j.id] === false).length,
+      noVerdict: 0,
+    };
     return [
       ...split.kept.slice(0, split.insertAt),
       {
-        node: { id: "evaluation-group", type: "call" as const, call: judgeRoots[0], level: 1, isLastSibling: true, hasChildren: true },
+        node: {
+          id: "evaluation-group",
+          type: "call" as const,
+          call: judgeRoots[0] ?? evaluation.checksRun,
+          level: 1,
+          isLastSibling: true,
+          hasChildren: true,
+        },
         treeLines: [],
         isEvalGroup: true,
         evalOpen: evalExpanded,
-        evalPassed: judgeRoots.filter((j) => judgeVerdicts[j.id] === true).length,
-        evalFailed: judgeRoots.filter((j) => judgeVerdicts[j.id] === false).length,
+        evalPassed: counts.passed,
+        evalFailed: counts.failed,
+        evalNoVerdict: counts.noVerdict,
       },
       ...(evalExpanded ? judgeSubtree : []),
       ...split.kept.slice(split.insertAt),
     ];
-  }, [calls, expanded, searchQuery, evaluation, judgeRoots, evalExpanded, judgeVerdicts]);
+  }, [calls, expanded, searchQuery, evaluation, judgeRoots, evalExpanded, judgeVerdicts, phaseSummary]);
   const timingBounds = useMemo(() => computeTimingBounds(calls), [calls]);
   const totalCost = useMemo(() => calls.reduce((sum, c) => sum + (c.cost ?? 0), 0), [calls]);
 
@@ -787,6 +863,11 @@ export function TraceTree({
                   <span className={cn("shrink-0", row.evalFailed > 0 ? "text-destructive" : "text-muted-foreground")}>
                     {row.evalFailed} fail
                   </span>
+                  {row.evalNoVerdict > 0 && (
+                    <span className="shrink-0 text-warning" title="Checks that ended without a verdict (judge errored or evidence unsupported) — quality unknown, not failed">
+                      {row.evalNoVerdict} no-verdict
+                    </span>
+                  )}
                 </button>
               </div>
             );
