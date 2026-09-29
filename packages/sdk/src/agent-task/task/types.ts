@@ -1,5 +1,5 @@
 import type { JudgeConfig } from "../checks/t.ts";
-import type { JudgeToolsConfig } from "../checks/mcp-tools.ts";
+import type { JudgeToolsConfig, McpServerConfig } from "../checks/mcp-tools.ts";
 
 export type TaskDefinition<
   TAdapterName extends string = string,
@@ -25,6 +25,15 @@ export type TaskDefinition<
    * `t.agent(..., { tools: { mcp } })` call. Arrays replace, never concat.
    */
   judgeTools?: JudgeToolsConfig;
+  /**
+   * MCP servers declared for the AGENT UNDER TEST (the adapter plane — a
+   * separate declaration from `judgeTools`). Adapters that honor it resolve
+   * relative `command`/`args` paths against the task directory and expose
+   * the tools as `mcp__<server>__<tool>`; trace assertions can match those
+   * stable names. Declaring the harness's tool surface here keeps the task
+   * portable across harnesses.
+   */
+  mcpServers?: McpServerConfig[];
 };
 
 export type TaskConfig<TDeliverable extends string = string> = Omit<

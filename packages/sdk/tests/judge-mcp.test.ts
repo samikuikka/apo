@@ -11,6 +11,7 @@ import {
   expandSecretPlaceholders,
   resolveJudgeTools,
   resolveJudgeToolsFromEnv,
+  resolveMcpServerPaths,
   type McpServerConfig,
 } from "../src/agent-task/checks/mcp-tools.ts";
 
@@ -257,6 +258,40 @@ describe("t.agent — MCP evidence tools (real stdio server)", () => {
 
     expect(assertion.pass).toBe(true);
     expect(assertion.judge?.session?.tools).toContain("mcp__facts__get_fact");
+  });
+
+  it("serves a judge server declared with a task-relative path (P0 regression)", async () => {
+    // Reproduces the exact live failure: the eval declares "./"-relative
+    // args, the runner's cwd is somewhere else entirely, and only runTask's
+    // resolveMcpServerPaths against the task dir makes the spawn work.
+    const { copyFileSync } = await import("node:fs");
+    // Under the package tree so the copied fixture's bare imports
+    // (@modelcontextprotocol/sdk, zod) resolve from packages/sdk/node_modules.
+    const taskDir = mkdtempSync(join(__dirname, "__judge-mcp-rel-"));
+    copyFileSync(FACTS_SERVER, join(taskDir, "facts-server.mjs"));
+
+    scriptFetch([
+      toolCallTurn("1", "mcp__facts__get_fact", { topic: "relative" }),
+      toolCallTurn("2", "finish_verdict", { reasoning: "Relative path resolved to the task dir.", pass: true }),
+    ]);
+
+    const relative: McpServerConfig = {
+      name: "facts",
+      transport: { type: "stdio", command: "node", args: ["./facts-server.mjs"], env: { FACTS_PID_FILE: "${FACTS_PID_FILE}" } },
+    };
+    // Exactly what resolveJudgeToolsForTask does inside runTask.
+    const resolved = resolveMcpServerPaths([relative], taskDir);
+
+    const assertion = await runAgentCheck(
+      async (t) => {
+        await t.agent("PASS if the fact service answers.");
+      },
+      { judgeTools: { mcp: resolved } },
+    );
+
+    expect(assertion.pass).toBe(true);
+    expect(assertion.judge?.session?.tools).toContain("mcp__facts__get_fact");
+    rmSync(taskDir, { recursive: true, force: true });
   });
 
   it("applies allow/deny filtering to the exposed tool names", async () => {

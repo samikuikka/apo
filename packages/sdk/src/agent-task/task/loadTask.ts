@@ -4,6 +4,7 @@ import { pathToFileURL } from "url";
 import type { AdapterDefinition } from "../adapter/types.ts";
 import { getTaskAdapterDefinition, getRegisteredTask, resetTaskRegistry } from "./defineTask.ts";
 import { resetFlowChecks } from "../checks/flow-runner.ts";
+import { validateMcpServerConfig } from "../checks/mcp-tools.ts";
 import { resetTaskTurn } from "../turn.ts";
 import type { TaskDefinition, FileEntry } from "./types.ts";
 
@@ -192,17 +193,16 @@ function validateTaskDefinition(
       throw new Error(`Task 'judgeTools.mcp' must be an array of MCP server configs: ${taskDir}`);
     }
     for (const server of task.judgeTools.mcp) {
-      if (
-        server === null ||
-        typeof server !== "object" ||
-        typeof server.name !== "string" ||
-        server.transport === null ||
-        typeof server.transport !== "object"
-      ) {
-        throw new Error(
-          `Task 'judgeTools.mcp' entries need a string 'name' and a 'transport' object: ${taskDir}`,
-        );
-      }
+      validateMcpServerConfig(server, `task 'judgeTools.mcp' (${taskDir})`);
+    }
+  }
+
+  if (task.mcpServers !== undefined) {
+    if (!Array.isArray(task.mcpServers)) {
+      throw new Error(`Task 'mcpServers' must be an array of MCP server configs: ${taskDir}`);
+    }
+    for (const server of task.mcpServers) {
+      validateMcpServerConfig(server, `task 'mcpServers' (${taskDir})`);
     }
   }
 }

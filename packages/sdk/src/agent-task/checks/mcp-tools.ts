@@ -1,16 +1,17 @@
 /**
- * MCP evidence tools for the agentic judge — the configurable tool surface of
- * `t.agent`. Users declare their own MCP servers (stdio or HTTP) and the
- * judge session gains their tools, namespaced `mcp__<server>__<tool>`, under
- * the same budget ledger and evidence-manifest discipline as the built-in
- * evidence tools: an MCP server must not become an unbounded evidence
- * firehose, and every result keeps its content-hash identity for
- * reproducibility.
+ * MCP plumbing for apo's two tool planes. The judge's budgeted toolset
+ * (`createMcpToolset`) wraps user-declared MCP servers into `t.agent`
+ * sessions under the same budget ledger and evidence-manifest discipline as
+ * the built-in evidence tools. `connectMcpServers` is the raw connect core
+ * shared with adapters — the agent under test is not apo's to budget, so
+ * adapters merge the namespaced `mcp__<server>__<tool>` tools themselves.
  *
- * Config layers exactly like the judge model config (`resolveJudgeConfig`):
- * env/file (APO_JUDGE_MCP) ← runTask({ judgeTools }) ← task.judgeTools ←
- * per-call `t.agent(..., { tools: { mcp } })` — most specific wins, arrays
- * replace, never concat.
+ * Judge config layers exactly like the judge model config
+ * (`resolveJudgeConfig`): env/file (APO_JUDGE_MCP) ← runTask({ judgeTools })
+ * ← task.judgeTools ← per-call `t.agent(..., { tools: { mcp } })` — most
+ * specific wins, arrays replace, never concat. Task-level `mcpServers`
+ * (adapter plane) is a separate declaration honored by adapters that choose
+ * to (see TaskDefinition.mcpServers).
  *
  * The MCP client (`@ai-sdk/mcp`) is lazy-loaded: suites that never configure
  * MCP servers must never pay for the dependency (pinned by the
@@ -18,6 +19,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { isAbsolute, resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 import type { EvidenceFingerprint } from "../run/types.ts";
 import type { JudgeTracer } from "../tracing.ts";
@@ -193,7 +195,9 @@ function normalizeServerEntry(entry: unknown, where: string): McpServerConfig {
     throw new Error(`MCP server entry must have a non-empty string 'name' (${where})`);
   }
   if (record.transport !== null && typeof record.transport === "object") {
-    return record as unknown as McpServerConfig;
+    const native = record as unknown as McpServerConfig;
+    validateMcpServerConfig(native, where);
+    return native;
   }
   // Flat industry form: {command,args,env} or {url,headers}.
   if (typeof record.command === "string") {
@@ -226,6 +230,43 @@ function normalizeServerEntry(entry: unknown, where: string): McpServerConfig {
     };
   }
   throw new Error(`MCP server "${name}" needs a nested 'transport', a 'command', or a 'url' (${where})`);
+}
+
+/**
+ * Structural validation of one {@link McpServerConfig}: non-empty name
+ * without the "__" separator, a typed transport with its required field.
+ * The single enforcement point for eval-file declarations, the
+ * APO_JUDGE_MCP file layer, and adapter-side configs — a malformed entry
+ * must fail HERE with a clear message, not later as a confusing connect
+ * error.
+ */
+export function validateMcpServerConfig(server: unknown, where: string): void {
+  if (server === null || typeof server !== "object") {
+    throw new Error(`MCP server entry must be an object (${where})`);
+  }
+  const record = server as Record<string, unknown>;
+  if (typeof record.name !== "string" || record.name.length === 0) {
+    throw new Error(`MCP server entry must have a non-empty string 'name' (${where})`);
+  }
+  if (record.name.includes("__")) {
+    throw new Error(`MCP server names must not contain "__" (namespacing separator): "${record.name}" (${where})`);
+  }
+  const transport = record.transport;
+  if (transport === null || typeof transport !== "object") {
+    throw new Error(`MCP server "${record.name}" needs a 'transport' object (${where})`);
+  }
+  const t = transport as Record<string, unknown>;
+  if (t.type === "stdio") {
+    if (typeof t.command !== "string" || t.command.length === 0) {
+      throw new Error(`MCP server "${record.name}" stdio transport needs a non-empty 'command' (${where})`);
+    }
+  } else if (t.type === "http") {
+    if (typeof t.url !== "string" || t.url.length === 0) {
+      throw new Error(`MCP server "${record.name}" http transport needs a non-empty 'url' (${where})`);
+    }
+  } else {
+    throw new Error(`MCP server "${record.name}" transport.type must be "stdio" or "http" (${where})`);
+  }
 }
 
 // ── Client facade ──────────────────────────────────────────────────────────
@@ -335,11 +376,125 @@ async function defaultMcpClientFactory(args: {
   return client as unknown as McpClientLike;
 }
 
-// ── The toolset ────────────────────────────────────────────────────────────
+// ── Path resolution (one contract for both planes) ─────────────────────────
 
 /**
- * Connects one client per declared server and wraps every exposed tool with
- * the session's budget discipline: the shared tool-call guard, read-byte
+ * Resolve path-like stdio values against a base directory (the task dir):
+ * absolute values, "./" and "../" prefixes resolve; bare names stay bare so
+ * the spawn resolves them from PATH. Applied to TaskDefinition.mcpServers
+ * by adapters AND to layered judgeTools by runTask — "./mcp/server.mjs"
+ * means the same thing on both planes, independent of the runner's cwd.
+ */
+export function resolveMcpServerPaths(
+  servers: McpServerConfig[],
+  baseDir: string,
+): McpServerConfig[] {
+  const resolveIfPathlike = (value: string): string =>
+    isAbsolute(value) || value.startsWith("./") || value.startsWith("../")
+      ? resolve(baseDir, value)
+      : value;
+
+  return servers.map((server) => {
+    if (server.transport.type !== "stdio") return server;
+    return {
+      ...server,
+      transport: {
+        ...server.transport,
+        command: resolveIfPathlike(server.transport.command),
+        ...(server.transport.args
+          ? { args: server.transport.args.map(resolveIfPathlike) }
+          : {}),
+      },
+    };
+  });
+}
+
+// ── The connect core (shared by the judge toolset and adapters) ────────────
+
+/**
+ * Connects one client per declared server and returns the RAW namespaced
+ * tools — no budget wrapping, because the agent under test is not apo's to
+ * budget (that discipline is judge-only, in `createMcpToolset` below).
+ * Adapters that drive an AI-SDK agent loop merge `tools` into their own tool
+ * record; `byServer` maps each server name to its exposed raw tool names.
+ *
+ * Connect failures throw naming the server after closing what already
+ * connected. Duplicate server names throw before anything spawns.
+ */
+export async function connectMcpServers(
+  servers: McpServerConfig[],
+  opts?: { clientFactory?: McpClientFactory },
+): Promise<{
+  tools: Record<string, unknown>;
+  byServer: Record<string, string[]>;
+  cleanup: () => Promise<void>;
+}> {
+  const seen = new Set<string>();
+  for (const server of servers) {
+    // Single enforcement point: shape, non-empty name without the "__"
+    // namespacing separator, typed transport with its required field.
+    validateMcpServerConfig(server, "connectMcpServers");
+    if (seen.has(server.name)) {
+      throw new Error(`MCP servers have duplicate names: "${server.name}"`);
+    }
+    seen.add(server.name);
+  }
+
+  const factory = opts?.clientFactory ?? defaultMcpClientFactory;
+  const clients: McpClientLike[] = [];
+  const tools: Record<string, unknown> = {};
+  const byServer: Record<string, string[]> = {};
+
+  for (const server of servers) {
+    const timeoutMs = server.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
+    let client: McpClientLike;
+    let raw: Record<string, McpRawTool>;
+    try {
+      client = await factory({ server, timeoutMs });
+      clients.push(client);
+      raw = await client.tools();
+    } catch (error) {
+      // Close what already connected before surfacing the failure.
+      await Promise.allSettled(clients.map((c) => c.close()));
+      throw new Error(
+        `MCP server "${server.name}" failed to connect: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    const exposed: string[] = [];
+    for (const rawName of filterToolNames(Object.keys(raw), server)) {
+      const def = raw[rawName];
+      if (!def) continue;
+      const toolName = namespaceToolName(server.name, rawName);
+      // Backstop for exotic raw tool names: "__" collisions must not
+      // silently drop a tool from either plane.
+      if (toolName in tools) {
+        throw new Error(
+          `MCP tool name collision on "${toolName}" — two servers/tools namespaced to the same key`,
+        );
+      }
+      tools[toolName] = def;
+      exposed.push(rawName);
+    }
+    byServer[server.name] = exposed;
+  }
+
+  return {
+    tools,
+    byServer,
+    cleanup: async () => {
+      await Promise.allSettled(clients.map((c) => c.close()));
+    },
+  };
+}
+
+// ── The judge toolset ──────────────────────────────────────────────────────
+
+/**
+ * The judge's budgeted view of the user's MCP servers: connects via
+ * {@link connectMcpServers}, then wraps every exposed tool with the
+ * session's budget discipline — the shared tool-call guard, read-byte
  * accounting (the FULL result is fingerprinted; only the capped slice is
  * served to the model), and a TOOL span per execution. Transport config,
  * headers, and env values never appear in any recorded surface — only server
@@ -360,60 +515,36 @@ export async function createMcpToolset(args: {
 }> {
   const { servers, ops } = args;
 
-  const seen = new Set<string>();
-  for (const server of servers) {
-    if (seen.has(server.name)) {
-      throw new Error(`MCP judge servers have duplicate names: "${server.name}"`);
-    }
-    seen.add(server.name);
-  }
+  const connected = await connectMcpServers(
+    servers,
+    args.clientFactory ? { clientFactory: args.clientFactory } : undefined,
+  );
 
-  const factory = args.clientFactory ?? defaultMcpClientFactory;
-  const clients: McpClientLike[] = [];
+  const timeoutByServer = new Map(
+    servers.map((s) => [s.name, s.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS] as const),
+  );
   const tools: Record<string, unknown> = {};
-  const briefingLines: string[] = [];
-
-  for (const server of servers) {
-    const timeoutMs = server.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
-    let client: McpClientLike;
-    try {
-      client = await factory({ server, timeoutMs });
-    } catch (error) {
-      // Close what already connected before surfacing the failure.
-      await Promise.allSettled(clients.map((c) => c.close()));
-      throw new Error(
-        `MCP judge server "${server.name}" failed to connect: ` +
-          `${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    clients.push(client);
-
-    const raw = await client.tools();
-    const exposed: string[] = [];
-    for (const rawName of filterToolNames(Object.keys(raw), server)) {
-      const def = raw[rawName];
-      if (!def) continue;
-      const toolName = namespaceToolName(server.name, rawName);
+  // Iterate byServer (exact server → tool names), never re-derive the server
+  // from the namespaced tool name — names can contain "__"-adjacent shapes
+  // that would misattribute the per-server timeout.
+  for (const [serverName, rawNames] of Object.entries(connected.byServer)) {
+    const timeoutMs = timeoutByServer.get(serverName) ?? DEFAULT_TOOL_TIMEOUT_MS;
+    for (const rawName of rawNames) {
+      const toolName = namespaceToolName(serverName, rawName);
       tools[toolName] = wrapMcpTool({
         toolName,
-        def,
+        def: connected.tools[toolName] as McpRawTool,
         timeoutMs,
         ops,
       });
-      exposed.push(toolName);
-    }
-    if (exposed.length > 0) {
-      briefingLines.push(`${server.name}: ${exposed.join(", ")}`);
     }
   }
 
-  return {
-    tools,
-    briefingLines,
-    cleanup: async () => {
-      await Promise.allSettled(clients.map((c) => c.close()));
-    },
-  };
+  const briefingLines = Object.entries(connected.byServer)
+    .filter(([, toolNames]) => toolNames.length > 0)
+    .map(([name, toolNames]) => `${name}: ${toolNames.map((t) => namespaceToolName(name, t)).join(", ")}`);
+
+  return { tools, briefingLines, cleanup: connected.cleanup };
 }
 
 /** Budget-guarded, byte-accounted, spanned execution around one MCP tool. */
