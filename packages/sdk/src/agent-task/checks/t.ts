@@ -17,6 +17,7 @@ import type { Matcher, ValueMatcher } from "./matchers.ts";
 import { describeValue, matchValue } from "./matchers.ts";
 import { callJudge, type JudgeCallContext, type JudgePromptBuilder } from "./judge.ts";
 import { createAgentMethod, type AgentEvidence, type AgentJudgeOptions } from "./agent-session.ts";
+import type { JudgeToolsConfig } from "./mcp-tools.ts";
 import type { JudgeTracer } from "../tracing.ts";
 import { servingHostFromBaseURL } from "../integrations/span-helpers.ts";
 
@@ -510,6 +511,7 @@ export function createTraceTestContext(
   judgeScope?: JudgeScope,
   agentEvidence?: AgentEvidence,
   judgeTracer?: JudgeTracer,
+  judgeTools?: JudgeToolsConfig,
 ): TestContext {
   const unsupported = (
     id: string,
@@ -729,7 +731,7 @@ export function createTraceTestContext(
     // judge does not consult trace capabilities; the scope carries the
     // task/check frame for prompt builders (#161).
     judge: createJudgeMethod(rec, judgeConfig, judgeScope, judgeTracer),
-    agent: createAgentMethod(rec, judgeConfig, judgeScope, agentEvidence ?? { deliverables: {}, view }, judgeTracer),
+    agent: createAgentMethod(rec, judgeConfig, judgeScope, agentEvidence ?? { deliverables: {}, view }, judgeTracer, judgeTools),
   };
 }
 

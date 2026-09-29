@@ -24,6 +24,8 @@ const external = [
   "@opentelemetry/api",
   "ai",
   "@ai-sdk/openai-compatible",
+  "@ai-sdk/mcp",
+  "@ai-sdk/mcp/mcp-stdio",
   "zod",
   "@opentelemetry/context-async-hooks",
   "@opentelemetry/core",

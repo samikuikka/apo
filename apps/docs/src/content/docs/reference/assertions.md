@@ -218,6 +218,44 @@ Options: `opts.budget` overrides each ceiling (defaults: 12 turns, 24 tool calls
 
 The session is fail-closed: one that ends without a verdict records a **failure** with its explanation — `budget exhausted after N steps; last tool: …` — never a silent pass. Without a judge model configured, the check records a setup failure naming the env vars to set (`OPENROUTER_MODEL` + `OPENROUTER_API_KEY`, or `OPENAI_MODEL` + `OPENAI_API_KEY`); the model must be tool-calling capable.
 
+#### MCP evidence tools
+
+The judge's tool surface is not closed. `opts.tools.mcp` attaches your own MCP servers, so a rubric can be verified against your systems, not just the run's artifacts:
+
+```typescript title="my-task.eval.ts"
+test("deploy-actually-live", async (t) => {
+  await t.agent(
+    "PASS when the ops tools confirm the service endpoint returns 200 and the reported version matches the deliverable.",
+    {
+      tools: {
+        mcp: [
+          {
+            name: "ops",
+            transport: { type: "http", url: "https://ops.internal/mcp", headers: { Authorization: "Bearer ${OPS_TOKEN}" } },
+            tools: ["check_endpoint", "get_version"],   // allowlist
+          },
+        ],
+      },
+    },
+  );
+});
+```
+
+Exposed as `mcp__<server>__<tool>` — stable names your trace assertions can also match. Config layers like the judge model: file/env ← `runTask({ judgeTools })` ← task `judgeTools` ← per-call `tools.mcp`, most specific wins. `APO_JUDGE_MCP=/path/to/mcp.json` points at the industry `.mcp.json` shape (`{"mcpServers": {"<name>": {command, args, env} | {url, headers}}}`), so an existing file works as-is.
+
+| Field | Meaning |
+|---|---|
+| `name` | Unique; prefixes the tool names. |
+| `transport` | `{ type: "stdio", command, args?, env? }` or `{ type: "http", url, headers? }`. |
+| `tools` / `excludeTools` | Allowlist then denylist of raw server tool names. |
+| `timeoutMs` | Per-tool-call timeout (default 30 s; connect gets its own 10 s budget). |
+
+MCP calls draw down the **same session budget** as `read_deliverable` (tool calls, read bytes — one result serves at most 64 KiB to the model; the manifest fingerprints the full payload), and every result lands in the content-hashed evidence manifest like any other read.
+
+:::caution[Trust and secrets]
+A stdio server is a process the eval file told apo to spawn — the same trust as any adapter code. Secret-bearing values (`env`, `headers`) expand `${VAR}` from the environment at connect time; an unset variable is a visible load error, and the values themselves never appear in the recorded session. A configured server that fails to connect fails the check closed, naming the server.
+:::
+
 ## Matchers
 
 Imported from `@apo-ai/sdk/agent-task` and passed to `t.check(value, matcher)`:

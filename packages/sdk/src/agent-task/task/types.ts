@@ -1,4 +1,5 @@
 import type { JudgeConfig } from "../checks/t.ts";
+import type { JudgeToolsConfig } from "../checks/mcp-tools.ts";
 
 export type TaskDefinition<
   TAdapterName extends string = string,
@@ -18,6 +19,12 @@ export type TaskDefinition<
    * `prompt` that tells the judge what it is grading.
    */
   judge?: Partial<JudgeConfig>;
+  /**
+   * Task-level judge-tools layer: MCP evidence servers for `t.agent` sessions
+   * in this task. Overrides `runTask({ judgeTools })`, is overridden per
+   * `t.agent(..., { tools: { mcp } })` call. Arrays replace, never concat.
+   */
+  judgeTools?: JudgeToolsConfig;
 };
 
 export type TaskConfig<TDeliverable extends string = string> = Omit<
