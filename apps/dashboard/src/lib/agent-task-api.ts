@@ -75,6 +75,11 @@ export interface EffortFacetOption {
   count: number;
 }
 
+export interface ProviderFacetOption {
+  label: string;
+  count: number;
+}
+
 export interface ModelFacetOption {
   model: string;
   count: number;
@@ -90,6 +95,7 @@ export interface PaginatedBatchRunSummary {
   page_size: number;
   total_pages: number;
   model_facets: ModelFacetOption[];
+  provider_facets: ProviderFacetOption[];
 }
 
 export interface AgentTaskRunConfigurationCount extends AgentTaskRunConfiguration {
@@ -105,6 +111,18 @@ export interface ModelProviderPair {
   calls: number;
   total_tokens: number | null;
   cost_micro: number | null;
+}
+
+/** Distinct serving-host labels (route wins over provider; issue #307) for
+ * a compact table cell. Empty when no call reported a host. */
+export function providerLabels(pairs: ModelProviderPair[] | undefined): string[] {
+  if (!pairs) return [];
+  const labels: string[] = [];
+  for (const pair of pairs) {
+    const label = pair.route || pair.provider;
+    if (label && !labels.includes(label)) labels.push(label);
+  }
+  return labels;
 }
 
 export interface AgentTaskBatchRunConfigurationSummary {
@@ -742,6 +760,8 @@ export const listAgentTaskBatchRuns = (
     q?: string;
     model?: string[];
     effort?: string[];
+    /** Observed serving hosts (issue #307). */
+    provider?: string[];
     since?: string;
     page?: number;
     page_size?: number;
@@ -755,6 +775,7 @@ export const listAgentTaskBatchRuns = (
       q: opts?.q,
       model: opts?.model?.join(",") || undefined,
       effort: opts?.effort?.join(",") || undefined,
+      provider: opts?.provider?.join(",") || undefined,
       since: opts?.since,
       page: opts?.page,
       page_size: opts?.page_size,

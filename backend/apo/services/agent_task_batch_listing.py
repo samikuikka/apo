@@ -12,7 +12,7 @@ parses query params and delegates; everything from the base
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel
-from sqlalchemy import desc, func, or_
+from sqlalchemy import and_, desc, func, or_
 from sqlmodel import Session, col, select
 from sqlmodel.sql.expression import SelectOfScalar
 
@@ -20,6 +20,7 @@ from ..models import (
     AgentTaskBatchRunDB,
     AgentTaskBatchRunSummary,
     AgentTaskRunDB,
+    LoggedCallDB,
 )
 from ..models.columns import (
     AGENT_TASK_BATCH_CREATED_AT_COL,
@@ -36,6 +37,14 @@ from ..services.view_runs import since_cutoff
 
 class EffortFacetOption(BaseModel):
     effort: str
+    count: int
+
+
+class ProviderFacetOption(BaseModel):
+    """A serving-host label (route wins over provider; issue #307) and how
+    many task runs in the listing's scope used it."""
+
+    label: str
     count: int
 
 
@@ -56,6 +65,7 @@ class PaginatedBatchRunSummary(BaseModel):
     page_size: int
     total_pages: int
     model_facets: list[ModelFacetOption] = []
+    provider_facets: list[ProviderFacetOption] = []
 
 
 @dataclass
@@ -67,6 +77,8 @@ class BatchRunListFilters:
     since: str | None = None
     models: list[str] = field(default_factory=list)
     efforts: list[str] = field(default_factory=list)
+    # Observed serving hosts (provider or route; issue #307).
+    providers: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -93,7 +105,9 @@ def list_batch_run_summaries(
     """
     base = _apply_base_filters(select(AgentTaskBatchRunDB), filters)
     model_facets = _compute_model_facets(session, base, _single_project(filters))
+    provider_facets = _compute_provider_facets(session, base)
     filtered = _apply_config_filters(base, filters.models, filters.efforts)
+    filtered = _apply_provider_filter(filtered, filters.providers)
 
     total_count = session.exec(
         select(func.count()).select_from(filtered.subquery())
@@ -118,6 +132,7 @@ def list_batch_run_summaries(
         page_size=pagination.page_size,
         total_pages=total_pages,
         model_facets=model_facets,
+        provider_facets=provider_facets,
     )
 
 
@@ -181,6 +196,84 @@ def _apply_config_filters(
     if efforts:
         matching = matching.where(col(AgentTaskRunDB.configured_effort).in_(efforts))
     return base.where(col(AgentTaskBatchRunDB.id).in_(matching))
+
+
+def _apply_provider_filter(
+    base: SelectOfScalar[AgentTaskBatchRunDB],
+    providers: list[str],
+) -> SelectOfScalar[AgentTaskBatchRunDB]:
+    """Keep batches with a child task run whose trace was served by a
+    matching host (provider or route column, case-insensitive; issue #307).
+
+    The trace lookup is project-correlated — trace ids may collide across
+    projects, so another project's copy of a trace must not satisfy this
+    batch's filter.
+    """
+    if not providers:
+        return base
+    values = [v.lower() for v in providers]
+    matching = (
+        select(col(AgentTaskRunDB.batch_run_id))
+        .join(
+            LoggedCallDB,
+            and_(
+                col(LoggedCallDB.run_id) == col(AgentTaskRunDB.trace_run_id),
+                col(LoggedCallDB.project) == col(AgentTaskBatchRunDB.project),
+            ),
+        )
+        .where(
+            col(AgentTaskRunDB.trace_run_id).isnot(None),
+            or_(
+                func.lower(col(LoggedCallDB.provider)).in_(values),
+                func.lower(col(LoggedCallDB.route)).in_(values),
+            ),
+        )
+        .correlate(AgentTaskBatchRunDB)
+    )
+    return base.where(col(AgentTaskBatchRunDB.id).in_(matching))
+
+
+def _compute_provider_facets(
+    session: Session,
+    base: SelectOfScalar[AgentTaskBatchRunDB],
+) -> list[ProviderFacetOption]:
+    """Distinct serving-host labels over the base-filtered batches' task runs.
+
+    The label is route-wins — the same projection the traces list and the
+    run rows display — so every facet value is one the user can see and
+    click. Counts are task runs, the unit the Runs page compares.
+    """
+    facet_ids = base.with_only_columns(col(AgentTaskBatchRunDB.id))
+    label = func.coalesce(
+        func.nullif(col(LoggedCallDB.route), ""),
+        func.nullif(col(LoggedCallDB.provider), ""),
+    )
+    stmt = (
+        select(label, func.count(func.distinct(AgentTaskRunDB.id)))
+        .select_from(AgentTaskRunDB)
+        .join(
+            AgentTaskBatchRunDB,
+            col(AgentTaskBatchRunDB.id) == col(AgentTaskRunDB.batch_run_id),
+        )
+        .join(
+            LoggedCallDB,
+            and_(
+                col(LoggedCallDB.run_id) == col(AgentTaskRunDB.trace_run_id),
+                col(LoggedCallDB.project) == col(AgentTaskBatchRunDB.project),
+            ),
+        )
+        .where(
+            col(AgentTaskRunDB.batch_run_id).in_(facet_ids),
+            col(AgentTaskRunDB.trace_run_id).isnot(None),
+            label.isnot(None),
+        )
+        .group_by(label)
+    )
+    rows = session.exec(stmt).all()
+    return [
+        ProviderFacetOption(label=str(value), count=int(count))
+        for value, count in sorted(rows, key=lambda r: (-int(r[1]), str(r[0])))
+    ]
 
 
 # ---------------------------------------------------------------------------

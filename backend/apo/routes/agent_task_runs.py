@@ -651,6 +651,10 @@ async def list_agent_task_batch_runs(
     q: str | None = Query(default=None),
     model: str | None = Query(default=None),
     effort: str | None = Query(default=None),
+    provider: str | None = Query(
+        default=None,
+        description="Comma-separated serving host filter; matches the observed provider or route on a child run's trace (issue #307)",
+    ),
     since: str | None = Query(default=None),
     page: int = Query(0, ge=0),
     page_size: int = Query(20, ge=1, le=100),
@@ -686,6 +690,11 @@ async def list_agent_task_batch_runs(
             since=since,
             models=model_list,
             efforts=effort_list,
+            providers=(
+                [p.strip() for p in provider.split(",") if p.strip()]
+                if provider
+                else []
+            ),
         ),
         BatchRunListPagination(page=page, page_size=page_size),
     )
