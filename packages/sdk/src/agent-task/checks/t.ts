@@ -365,9 +365,26 @@ export function createTestContext(
       });
     },
 
-    judge: createJudgeMethod(rec, judgeConfig),
-    agent: createAgentMethod(rec, judgeConfig, undefined, agentEvidence ?? { deliverables: {}, view }),
+    judge: trackPending(rec, createJudgeMethod(rec, judgeConfig)),
+    agent: trackPending(rec, createAgentMethod(rec, judgeConfig, undefined, agentEvidence ?? { deliverables: {}, view })),
   };
+}
+
+/**
+ * Wrap ``t.judge`` / ``t.agent`` so their promise is registered on the
+ * check's recorder. A check that returns without awaiting the call would
+ * otherwise end with "no assertions recorded" while its verdict is still in
+ * flight — the runner settles tracked promises before collecting results.
+ */
+function trackPending<T extends (...args: never[]) => Promise<unknown>>(
+  rec: Recorder,
+  method: T,
+): T {
+  return ((...args: Parameters<T>) => {
+    const promise = method(...args);
+    rec.track(promise);
+    return promise;
+  }) as T;
 }
 
 /**
@@ -745,8 +762,8 @@ export function createTraceTestContext(
 
     // judge does not consult trace capabilities; the scope carries the
     // task/check frame for prompt builders (#161).
-    judge: createJudgeMethod(rec, judgeConfig, judgeScope, judgeTracer),
-    agent: createAgentMethod(rec, judgeConfig, judgeScope, agentEvidence ?? { deliverables: {}, view }, judgeTracer),
+    judge: trackPending(rec, createJudgeMethod(rec, judgeConfig, judgeScope, judgeTracer)),
+    agent: trackPending(rec, createAgentMethod(rec, judgeConfig, judgeScope, agentEvidence ?? { deliverables: {}, view }, judgeTracer)),
   };
 }
 

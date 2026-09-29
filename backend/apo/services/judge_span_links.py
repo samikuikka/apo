@@ -81,8 +81,9 @@ def _annotate_run_checks(
     checks: list[dict[str, object]],
     spans_by_name: dict[str, list[str]],
 ) -> None:
-    if not spans_by_name:
-        return
+    # No spans at all still runs the loop: emission-time span ids must be
+    # dropped when the trace holds none of them (all-failed persistence), or
+    # the UI would link into a missing observation.
     known_span_ids = {
         span_id for ids in spans_by_name.values() for span_id in ids
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Coins, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,6 +23,10 @@ export function ProjectRepriceSection() {
   const [since, setSince] = useState("");
   const [running, setRunning] = useState<"dry" | "apply" | null>(null);
   const [result, setResult] = useState<{ dryRun: boolean; summary: RepriceSummary } | null>(null);
+  // Aborted on unmount so a poll in flight (up to MAX_POLLS × POLL_MS) does
+  // not keep hitting the API after the page is gone.
+  const pollAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => pollAbort.current?.abort(), []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -49,6 +53,9 @@ export function ProjectRepriceSection() {
 
   async function run(dryRun: boolean) {
     if (!selected || !canReprice) return;
+    pollAbort.current?.abort();
+    const controller = new AbortController();
+    pollAbort.current = controller;
     setRunning(dryRun ? "dry" : "apply");
     setResult(null);
     try {
@@ -58,7 +65,8 @@ export function ProjectRepriceSection() {
       });
       for (let i = 0; i < MAX_POLLS; i++) {
         await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-        const job = await getRepriceJob(job_id);
+        if (controller.signal.aborted) return;
+        const job = await getRepriceJob(job_id, controller.signal);
         if (job.status === "error") throw new Error(job.error ?? "Reprice failed");
         if (job.status === "done" && job.summary) {
           setResult({ dryRun, summary: job.summary });
@@ -68,9 +76,14 @@ export function ProjectRepriceSection() {
       }
       throw new Error("Reprice is still running — check back later");
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Reprice failed");
+      if (!controller.signal.aborted) {
+        toast.error(e instanceof Error ? e.message : "Reprice failed");
+      }
     } finally {
-      setRunning(null);
+      if (pollAbort.current === controller) {
+        pollAbort.current = null;
+        setRunning(null);
+      }
     }
   }
 

@@ -16,19 +16,12 @@ export type LocateFn = (stack: string) => CheckLocation | undefined;
 export class Recorder {
   private records: AssertionResult[] = [];
   private readonly locate?: LocateFn;
+  private pending: Promise<unknown>[] = [];
 
   constructor(locate?: LocateFn) {
     this.locate = locate;
   }
 
-  /**
-   * Record an assertion.
-   *
-   * - ``extra.location`` overrides auto-capture (used by the runner for thrown
-   *   errors, whose relevant stack is the error's own, not the call site).
-   * - ``extra.expected`` / ``extra.received`` carry the structured values for
-   *   testing-framework-style display.
-   */
   /**
    * Capture the call site location synchronously. Use this when a record will
    * happen AFTER an `await` (e.g. `t.judge`): once an async function resumes,
@@ -41,6 +34,30 @@ export class Recorder {
     return this.locate ? this.locate(new Error().stack ?? "") : undefined;
   }
 
+  /**
+   * Register an async evaluation (``t.judge`` / ``t.agent``) started by this
+   * check. If the check returns without awaiting it, the runner still waits
+   * for its record via ``settlePending`` — a dropped await must not let the
+   * check vacuously pass ("no assertions recorded") while the verdict is
+   * still in flight.
+   */
+  track(promise: Promise<unknown>): void {
+    this.pending.push(promise);
+  }
+
+  /** Wait until every tracked evaluation has settled (and recorded). */
+  async settlePending(): Promise<void> {
+    await Promise.allSettled(this.pending);
+  }
+
+  /**
+   * Record an assertion.
+   *
+   * - ``extra.location`` overrides auto-capture (used by the runner for thrown
+   *   errors, whose relevant stack is the error's own, not the call site).
+   * - ``extra.expected`` / ``extra.received`` carry the structured values for
+   *   testing-framework-style display.
+   */
   record(
     id: string,
     pass: boolean,

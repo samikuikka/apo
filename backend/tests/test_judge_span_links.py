@@ -173,3 +173,28 @@ def test_run_without_trace_is_untouched(session: Session) -> None:
     judge = checks["run-1"][0]["judge"]
     assert isinstance(judge, dict)
     assert "span_id" not in judge
+
+
+def test_stale_span_id_dropped_when_trace_has_no_judge_spans(session: Session) -> None:
+    # Every judge-span persistence failed: the emission-time id points at a
+    # span the trace doesn't have, and with no spans at all there is no
+    # fallback join either — the id must drop so the UI never links into a
+    # missing observation.
+    _make_project(session)
+    run = _make_run(session, "run-1", "trace-1")
+    checks = {
+        "run-1": [
+            {
+                "id": "quality",
+                "pass": True,
+                "reasoning": "",
+                "judge": {"model": "m", "span_id": "span-vanished"},
+            }
+        ],
+    }
+
+    annotate_judge_span_ids(session, [run], checks)
+
+    judge = checks["run-1"][0]["judge"]
+    assert isinstance(judge, dict)
+    assert "span_id" not in judge

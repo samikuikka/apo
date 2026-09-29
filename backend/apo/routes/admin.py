@@ -380,7 +380,9 @@ async def get_reprice_status(
             raise HTTPException(status_code=404, detail="unknown reprice job")
         return {"job_id": job_id, **job}
     # Unknown and unscoped jobs look the same to a project admin, so polling
-    # cannot probe for other projects' job ids.
+    # cannot probe for other projects' job ids. The 404 is admin-only (they
+    # returned above); for everyone else _authorize_reprice raises first,
+    # and the raise also narrows job/project for the type checker.
     project = job.get("project") if job is not None else None
     if job is None or not isinstance(project, str):
         _authorize_reprice(request, session, None)

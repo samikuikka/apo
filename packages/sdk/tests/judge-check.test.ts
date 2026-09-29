@@ -1040,3 +1040,32 @@ describe("t.judge — judge-span trace link (issue #288)", () => {
     expect(result?.judge?.span_id).toBeUndefined();
   });
 });
+
+// A check that fires t.judge without awaiting used to end the check before
+// the verdict landed — "no assertions recorded", a vacuous pass while the
+// judge was still talking. The runner settles tracked judge promises before
+// collecting, so the dropped call still counts.
+describe("t.judge — un-awaited calls still count", () => {
+  it("settles a dropped t.judge promise instead of vacuously passing", async () => {
+    stubJudgeResponse({
+      content: JSON.stringify({ pass: false, reasoning: "the judge said no" }),
+    });
+    defineCheck("quality", (t) => {
+      // No await — the promise is dropped on purpose.
+      void t.judge("answer", "PASS when correct");
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+    });
+
+    expect(result?.pass).toBe(false);
+    expect(result?.reasoning).toContain("the judge said no");
+    expect(result?.assertions?.[0]).toMatchObject({
+      pass: false,
+      reasoning: "the judge said no",
+    });
+  });
+});

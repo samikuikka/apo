@@ -246,6 +246,11 @@ export async function runTraceChecks(args: {
         });
       }
 
+      // An un-awaited t.judge/t.agent call still owns a verdict — settle it
+      // before collecting, so a dropped await can't end the check early with
+      // a vacuous "no assertions recorded" pass.
+      await rec.settlePending();
+
       const failed = rec.all.filter((r) => !r.pass);
       const pass = failed.length === 0;
       const reasoning =

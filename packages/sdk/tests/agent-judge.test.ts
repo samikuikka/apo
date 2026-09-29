@@ -334,3 +334,22 @@ describe("t.agent — session span id on judge metadata (issue #288)", () => {
     expect(result.assertions[0]!.judge?.span_id).toBeUndefined();
   });
 });
+
+// Same guard as t.judge: an un-awaited t.agent call must not let the check
+// vacuously pass while the judge session is still running — the runner
+// settles the tracked promise and the verdict lands.
+describe("t.agent — un-awaited calls still count", () => {
+  it("settles a dropped t.agent promise instead of vacuously passing", async () => {
+    scriptFetch([
+      toolCallTurn("1", "finish_verdict", { reasoning: "not grounded", pass: false }),
+    ]);
+
+    const result = await runAgentCheck((t) => {
+      // No await — the promise is dropped on purpose.
+      void t.agent("PASS if grounded.");
+    });
+
+    expect(result.pass).toBe(false);
+    expect(result.reasoning).toContain("not grounded");
+  });
+});
