@@ -84,7 +84,10 @@ export type CheckLocation = {
  * Evidence from the second grader — a typed-decision model that graded the
  * same deliverable alongside the primary judge (opt-in via
  * `APO_SECOND_JUDGE_MODEL`). Never affects the verdict; `error` is set when
- * the second opinion failed to arrive.
+ * the second opinion failed to arrive, `skipped` when no verdict was
+ * possible because the input exceeded the model's context limit, and
+ * `projected` when it graded a `secondJudgeValue` view instead of the
+ * full value.
  */
 export type SecondJudgeEvidence = {
   model: string;
@@ -94,7 +97,9 @@ export type SecondJudgeEvidence = {
   inputTokens?: number;
   costUsd?: number;
   latencyMs?: number;
+  skipped?: string;
   error?: string;
+  projected?: boolean;
 };
 
 /**

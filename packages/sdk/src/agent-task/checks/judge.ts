@@ -416,6 +416,13 @@ export async function callJudge(args: {
   prompt?: JudgePromptBuilder;
   /** What is being graded — threaded to the builder. */
   context?: JudgeCallContext;
+  /**
+   * A smaller view for the second judge, when the primary value does not
+   * fit its context (issue #311): the primary judge still grades `values`
+   * in full; the second judge grades this projection instead. Absent, the
+   * second judge sees exactly what the primary sees.
+   */
+  secondJudgeValue?: unknown[];
 }): Promise<JudgeCallResult> {
   const baseURL = args.baseURL ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
   const apiKey = args.apiKey ?? process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY;
@@ -438,15 +445,22 @@ export async function callJudge(args: {
 
   // Second grader (opt-in): dispatch alongside the primary call so its
   // sub-second latency adds nothing to the check. The state is exactly what
-  // the primary judge sees. It can never change the verdict — the evidence
-  // is attached and the check moves on regardless of its outcome.
+  // the primary judge sees — unless the call projected a `secondJudgeValue`
+  // because the full value exceeds the second judge's context; then the
+  // second judge grades the projection and the evidence says so. It can
+  // never change the verdict — the evidence is attached and the check
+  // moves on regardless of its outcome.
   const secondJudgeModel = resolveSecondJudgeModel();
+  const secondJudgeProjected = args.secondJudgeValue !== undefined;
+  const secondJudgeValues = args.secondJudgeValue ?? args.values;
+  const secondJudgeDeliverableText = `Values to evaluate:\n${formatJudgeValues(secondJudgeValues)}`;
   const secondJudgePromise = secondJudgeModel
     ? callSecondJudge({
-        state: `${systemPromptText}\n\n${instructionText}`,
+        state: `${briefingText}\n\n${secondJudgeDeliverableText}\n\n${instructionText}`,
         model: secondJudgeModel,
         baseURL: resolveSecondJudgeBaseURL(baseURL),
         apiKey: resolveSecondJudgeAPIKey(apiKey),
+        ...(secondJudgeProjected ? { projected: true } : {}),
       })
     : undefined;
 

@@ -111,6 +111,57 @@ describe("second judge wiring", () => {
     expect(result.judge.secondJudge?.choice).toBeUndefined();
   });
 
+  it("input too large for the second judge: skipped, not error (issue #311)", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    // The shape OpenRouter's decisions endpoint returns for an oversized
+    // state (seen live: a 351 KB redline deliverable, ~97k tokens).
+    stubBoth(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              message:
+                'HTTP 400: {"detail":{"error_type":"max_tokens_exceeded"}}',
+              code: 400,
+            },
+          }),
+          { status: 400 },
+        ),
+    );
+    const result = await callJudge(judgeArgs);
+    expect(result.pass).toBe(true); // the check itself is unaffected
+    const evidence = result.judge.secondJudge;
+    expect(evidence?.skipped).toContain("exceeds typesafe/jev-1.13's context limit");
+    expect(evidence?.skipped).toContain("secondJudgeValue");
+    expect(evidence?.skipped).toMatch(/~\d[\d,]* tokens/);
+    expect(evidence?.error).toBeUndefined();
+    expect(evidence?.choice).toBeUndefined();
+  });
+
+  it("OpenAI-style context_length_exceeded is classified as skipped too", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "openai/gpt-4o-mini");
+    stubBoth(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: "context_length_exceeded", message: "maximum context length is 8192 tokens" },
+          }),
+          { status: 400 },
+        ),
+    );
+    const result = await callJudge(judgeArgs);
+    expect(result.judge.secondJudge?.skipped).toBeDefined();
+    expect(result.judge.secondJudge?.error).toBeUndefined();
+  });
+
+  it("a plain 400 that is not an oversize rejection stays an error", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    stubBoth(async () => new Response('{"error":{"message":"bad model id"}}', { status: 400 }));
+    const result = await callJudge(judgeArgs);
+    expect(result.judge.secondJudge?.error).toContain("400");
+    expect(result.judge.secondJudge?.skipped).toBeUndefined();
+  });
+
   it("malformed decisions answer: error recorded, verdict untouched", async () => {
     vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
     stubBoth(async () => Response.json({ answers: {} }));
@@ -176,6 +227,44 @@ describe("second judge connection overrides (proxied primary)", () => {
     expect(String(decCall?.[0])).toBe("https://judge.test/alpha/decisions");
     const decHeaders = (decCall?.[1]?.headers ?? {}) as Record<string, string>;
     expect(decHeaders.Authorization).toBe("Bearer secret");
+  });
+});
+
+describe("secondJudgeValue projection (issue #311)", () => {
+  // The bind redline shape: the primary judge needs the full marked-up
+  // document, the second judge only the tracked-changes section.
+  const projectedArgs = {
+    ...judgeArgs,
+    values: [{ trackedChanges: "15% -> 30%", fullText: "x".repeat(50_000) }],
+    secondJudgeValue: [{ trackedChanges: "15% -> 30%" }],
+  };
+
+  it("the second judge grades the projection, the primary judge the full value", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    const { calls } = stubBoth(async () => jevResponse());
+    const result = await callJudge(projectedArgs);
+
+    const decCall = calls.mock.calls.find((c) => String(c[0]).includes("alpha/decisions"));
+    const decBody = JSON.parse(decCall![1].body as string) as { state: string };
+    expect(decBody.state).toContain("trackedChanges");
+    expect(decBody.state).not.toContain("xxxx"); // the full text stayed out
+
+    const chatCall = calls.mock.calls.find((c) => String(c[0]).endsWith("/chat/completions"));
+    const chatBody = JSON.parse(chatCall![1].body as string) as {
+      messages: Array<{ content: unknown }>;
+    };
+    const chatSystem = JSON.stringify(chatBody.messages[0].content);
+    expect(chatSystem).toContain("xxxx"); // the primary judge saw all of it
+
+    expect(result.judge.secondJudge?.projected).toBe(true);
+    expect(result.pass).toBe(true);
+  });
+
+  it("without a projection the evidence carries no projected flag", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    stubBoth(async () => jevResponse());
+    const result = await callJudge(judgeArgs);
+    expect(result.judge.secondJudge?.projected).toBeUndefined();
   });
 });
 

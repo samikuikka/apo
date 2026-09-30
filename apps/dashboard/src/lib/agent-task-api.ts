@@ -237,7 +237,12 @@ export interface SecondJudgeEvidence {
   inputTokens?: number;
   costUsd?: number;
   latencyMs?: number;
+  /** Why no verdict was possible: the input exceeded the model's context limit. */
+  skipped?: string;
+  /** Why no verdict was recorded (transport/HTTP/parse failure). */
   error?: string;
+  /** Graded a `secondJudgeValue` projection instead of the full value. */
+  projected?: boolean;
 }
 
 export interface JudgeMetadata {

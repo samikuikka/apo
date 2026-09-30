@@ -369,7 +369,8 @@ function judgeSpanTraceHref(
  * Paired verdict dots + confidence on the collapsed row: `✓✗ 0.99` amber
  * when the judges split (first dot = the judge's verdict, second = the
  * second judge's, number = its confidence), dim `✓✓ ·0.31` when they
- * agreed weakly, `2nd ✕` when the opinion never arrived. Corroborated
+ * agreed weakly, `2nd ✕` when the opinion never arrived, `2nd ⊘` when the
+ * value was too large for the second judge to read. Corroborated
  * checks are silent — absence is the trust signal.
  */
 function SecondJudgeMark({ check }: { check: CheckResult }) {
@@ -383,6 +384,16 @@ function SecondJudgeMark({ check }: { check: CheckResult }) {
           title="The second opinion failed to arrive"
         >
           2nd ✕
+        </span>
+      );
+    }
+    if (facts.kind === "skipped") {
+      return (
+        <span
+          className="shrink-0 font-mono text-[10px] text-muted-foreground/50"
+          title={sj?.skipped ?? "The value was too large for the second judge to read"}
+        >
+          2nd ⊘
         </span>
       );
     }

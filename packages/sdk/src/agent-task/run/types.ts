@@ -77,7 +77,11 @@ export type JudgeMetadata = {
 /**
  * Evidence from the second grader. `error` is set when the decisions
  * endpoint could not be reached — a failed second opinion must never
- * affect the check's verdict.
+ * affect the check's verdict. `skipped` is set when no verdict was
+ * attempted or possible because the second judge could not read the
+ * input — a different fact from a transport failure, and rendered
+ * distinctly so a run can say "N checks had no second opinion because
+ * the value was too large" without grepping error strings (issue #311).
  */
 export type SecondJudgeEvidence = {
   /** Decision-model id that graded, e.g. `typesafe/jev-1.13`. */
@@ -94,8 +98,20 @@ export type SecondJudgeEvidence = {
   costUsd?: number;
   /** Wall-clock latency of the decision call in milliseconds. */
   latencyMs?: number;
+  /**
+   * Why no verdict was possible (as opposed to attempted): the input
+   * exceeded the second judge model's context limit, so the provider
+   * rejected it before judging.
+   */
+  skipped?: string;
   /** Why no verdict was recorded (transport/HTTP/parse failure). */
   error?: string;
+  /**
+   * True when the second judge graded a `secondJudgeValue` projection
+   * instead of the full value the primary judge saw — the verdict
+   * corroborates the projection, not the whole deliverable.
+   */
+  projected?: boolean;
 };
 
 /**

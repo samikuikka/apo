@@ -152,11 +152,26 @@ export interface TestContext {
    * merging field-by-field onto the config threaded in via ``runTask({ judge })``
    * — set ``{ model }`` to escalate a finicky criterion to a stronger model
    * without switching the whole run. Absent fields inherit from the base config.
+   *
+   * ``opts.secondJudgeValue`` grades a smaller view with the second judge
+   * only, when the full value exceeds its context limit: the primary judge
+   * still sees all of ``value``, so other criteria that need the complete
+   * deliverable are unaffected.
    */
   judge(
     values: unknown | unknown[],
     instruction: string,
-    opts?: { label?: string; judge?: Partial<JudgeConfig> },
+    opts?: {
+      label?: string;
+      judge?: Partial<JudgeConfig>;
+      /**
+       * What the second judge reads instead of ``values`` — e.g. the
+       * tracked-changes section of a redline when the whole marked-up
+       * document is too large for the second judge's context. Absent,
+       * the second judge sees exactly what the primary judge sees.
+       */
+      secondJudgeValue?: unknown | unknown[];
+    },
   ): Promise<void>;
 
   /**
@@ -458,6 +473,7 @@ function createJudgeMethod(
       return;
     }
     const context = judgeScopeToContext(judgeScope);
+    const secondJudgeValue = opts?.secondJudgeValue;
     const call = () =>
       callJudge({
         values: valueArray,
@@ -467,6 +483,13 @@ function createJudgeMethod(
         apiKey: effective.apiKey,
         prompt: effective.prompt,
         ...(context ? { context } : {}),
+        ...(secondJudgeValue !== undefined
+          ? {
+              secondJudgeValue: Array.isArray(secondJudgeValue)
+                ? secondJudgeValue
+                : [secondJudgeValue],
+            }
+          : {}),
       });
     // The span the trace context opens around this call (issue #288) —
     // captured so the recorded judge metadata can deep-link into the

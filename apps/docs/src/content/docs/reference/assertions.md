@@ -163,7 +163,7 @@ t.check(deliverables.answer, includes("acme-corp"), "answer names acme");
 
 ### `t.judge(value, instruction, opts?)`, async
 
-- **Signature:** `(value: unknown | unknown[], instruction: string, opts?: { label?: string; judge?: Partial<JudgeConfig> }) → Promise<void>`
+- **Signature:** `(value: unknown | unknown[], instruction: string, opts?: { label?: string; judge?: Partial<JudgeConfig>; secondJudgeValue?: unknown | unknown[] }) → Promise<void>`
 - **Asserts:** the configured judge model grades `value` against `instruction` (a natural-language rubric). **Must be awaited**: the check function must be `async`.
 
 ```typescript title="my-task.eval.ts"
@@ -200,6 +200,22 @@ test("answer-quality", async (t, { deliverables }) => {
 ```
 
 Absent fields inherit from the run's judge config (`runTask({ judge })`, or the `OPENROUTER_MODEL` / `AGENT_TASK_JUDGE_MODEL` env defaults), so `{ model }` alone is usually enough, `baseURL` and `apiKey` flow through unchanged. The overridden model is stamped on the assertion metadata and shown in the dashboard breakdown.
+
+#### Projecting a smaller view for the second judge
+
+`opts.secondJudgeValue` applies only when the [second judge](/concepts/tests/#the-second-judge) is armed and the full value doesn't fit its context: the primary judge still grades all of `value`, the second judge grades the projection. The evidence records `projected: true`, and without a second judge the option changes nothing.
+
+```typescript title="my-task.eval.ts"
+test("sla-credit-cap-redlined", async (t, { deliverables }) => {
+  await t.judge(
+    deliverables.redlinedDocument,
+    "PASS when the SLA credit cap is marked up from 15% to 30%.",
+    // The tracked-changes section answers this criterion; the whole
+    // marked-up document exceeds the second judge's context limit.
+    { secondJudgeValue: deliverables.redlinedDocument.trackedChanges },
+  );
+});
+```
 
 #### Response-contract order: reasoning-first
 

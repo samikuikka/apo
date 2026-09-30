@@ -116,6 +116,7 @@ The marks state **measurements, not diagnoses** — they never claim *why* the j
 | `✓✗ 0.99` | The judges' verdicts differ; 0.99 is the second judge's confidence |
 | `✓✓ ·0.31` | They agree, but the second judge was low-confidence — weak corroboration |
 | `2nd ✕` | The second opinion failed to arrive (transport error, not a verdict) |
+| `2nd ⊘` | No second opinion was possible: the value exceeded the second judge's context limit — not an outage |
 
 In the CLI they sit at the end of the check line, with one sentence under contested checks, and one fact line after the checks:
 
@@ -129,6 +130,28 @@ In the CLI they sit at the end of the check line, with one sentence under contes
 
   Second judge: 12 corroborated · judges split on 1 · 1 unsure
 ```
+
+### When the value is too large for the second judge
+
+A deliverable can fit the primary judge's context and not the second judge's — a full redlined document with tracked changes, margin comments, and the complete marked-up text is hundreds of KB. The provider rejects the state before judging, and apo records it as a skip (`2nd ⊘`, `skipped` on the evidence, counted in the run's fact line as `N skipped (value too large)`) — an honest "no second opinion for this check", never "failed to arrive", so an oversized deliverable can't masquerade as an outage.
+
+When the check only needs part of the value, give the second judge that part: `opts.secondJudgeValue` grades a smaller view with the second judge only, while the primary judge still sees the full value — so other criteria that need the complete document (e.g. "terms the counterparty never touched must survive") are unaffected.
+
+```typescript title="my-task.eval.ts"
+test("sla-credit-cap-redlined", async (t, { deliverables }) => {
+  await t.judge(
+    deliverables.redlinedDocument,
+    "PASS when the SLA credit cap is marked up from 15% to 30%.",
+    {
+      // The tracked-changes section answers this criterion; the second
+      // judge can't read the whole 351 KB document.
+      secondJudgeValue: deliverables.redlinedDocument.trackedChanges,
+    },
+  );
+});
+```
+
+The evidence records `projected: true` when the second judge graded a projection — its verdict corroborates the projection, not the whole deliverable, and the dashboard says so.
 
 Agents reading `--json` get the raw evidence instead of marks: every check carries `judge.secondJudge` with `choice`, `passProbability`, and `confidence` — branch on the numbers, not on ANSI.
 

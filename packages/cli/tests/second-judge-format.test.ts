@@ -36,6 +36,13 @@ describe("secondJudgeFacts", () => {
     expect(secondJudgeFacts(c).kind).toBe("error");
   });
 
+  it("oversize input → skipped, distinct from error", () => {
+    const c = check({
+      judge: { secondJudge: sj({ skipped: "input ~97,000 tokens exceeds the model's context limit" }) },
+    });
+    expect(secondJudgeFacts(c).kind).toBe("skipped");
+  });
+
   it("verdicts differ → split with confidence", () => {
     const c = check({ pass: true, judge: { secondJudge: sj({ choice: "fail", confidence: 0.99 }) } });
     expect(secondJudgeFacts(c)).toEqual({ kind: "split", confidence: 0.99 });
@@ -98,6 +105,42 @@ describe("formatChecks second-judge rendering", () => {
     expect(out).toContain("Second opinion failed to arrive (HTTP 429).");
   });
 
+  it("oversize input renders 2nd ⊘ and the skip takeaway, never 'failed to arrive'", () => {
+    const out = plain(
+      formatChecks([
+        check({
+          judge: {
+            secondJudge: sj({
+              skipped: "input ~97,000 tokens exceeds typesafe/jev-1.13's context limit",
+            }),
+          },
+        }),
+      ]),
+    );
+    expect(out).toContain("2nd ⊘");
+    expect(out).toContain(
+      "Second opinion skipped — input ~97,000 tokens exceeds typesafe/jev-1.13's context limit.",
+    );
+    expect(out).not.toContain("failed to arrive");
+  });
+
+  it("verbose marks a projected second-judge verdict", () => {
+    const out = plain(
+      formatChecks(
+        [
+          check({
+            pass: true,
+            judge: {
+              secondJudge: sj({ choice: "pass", confidence: 0.98, projected: true }),
+            },
+          }),
+        ],
+        true,
+      ),
+    );
+    expect(out).toContain("graded a projected value");
+  });
+
   it("verbose adds the facts line", () => {
     const out = plain(
       formatChecks(
@@ -144,5 +187,25 @@ describe("secondJudgeSummary", () => {
       check({ id: "a", judge: { secondJudge: sj({ choice: "pass", confidence: 0.98 }) } }),
     ];
     expect(secondJudgeSummary(checks)).toBe("Second judge: 1 corroborated");
+  });
+
+  it("counts skipped separately from judged checks", () => {
+    const checks = [
+      check({ id: "a", judge: { secondJudge: sj({ choice: "pass", confidence: 0.98 }) } }),
+      check({ id: "b", judge: { secondJudge: sj({ skipped: "input ~97,000 tokens exceeds the limit" }) } }),
+      check({ id: "c", judge: { secondJudge: sj({ skipped: "input ~97,000 tokens exceeds the limit" }) } }),
+    ];
+    expect(secondJudgeSummary(checks)).toBe(
+      "Second judge: 1 corroborated · 2 skipped (value too large)",
+    );
+  });
+
+  it("a run where every second opinion was skipped still gets the fact line", () => {
+    const checks = [
+      check({ id: "b", judge: { secondJudge: sj({ skipped: "input ~97,000 tokens exceeds the limit" }) } }),
+    ];
+    expect(secondJudgeSummary(checks)).toBe(
+      "Second judge: 0 corroborated · 1 skipped (value too large)",
+    );
   });
 });

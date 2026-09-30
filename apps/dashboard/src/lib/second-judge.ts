@@ -9,6 +9,7 @@ import type { CheckResult, SecondJudgeEvidence } from "@/lib/agent-task-api";
 export type SecondJudgeFacts =
   | { kind: "none" } // no second judge ran (code/agentic check, or feature off)
   | { kind: "error" } // second opinion failed to arrive
+  | { kind: "skipped" } // no verdict possible — the value exceeded the model's context
   | { kind: "split"; confidence: number } // verdicts differ — look closer
   | { kind: "agree"; confidence: number } // corroborated
   | { kind: "unsure"; confidence: number }; // agreed, but weakly (conf < 0.6)
@@ -16,6 +17,7 @@ export type SecondJudgeFacts =
 export function secondJudgeFacts(check: CheckResult): SecondJudgeFacts {
   const sj = check.judge?.secondJudge;
   if (!sj) return { kind: "none" };
+  if (sj.skipped) return { kind: "skipped" };
   if (sj.error || sj.choice == null) return { kind: "error" };
   const conf = sj.confidence ?? 0;
   if ((sj.choice === "pass") !== (check.pass === true)) {
@@ -35,6 +37,8 @@ export function secondJudgeTakeaway(check: CheckResult): string | null {
       return `Second judge unsure (${facts.confidence.toFixed(2)}) — weak corroboration.`;
     case "error":
       return `Second opinion failed to arrive${check.judge?.secondJudge?.error ? ` (${check.judge.secondJudge.error})` : ""}.`;
+    case "skipped":
+      return `Second opinion skipped${check.judge?.secondJudge?.skipped ? ` — ${check.judge.secondJudge.skipped}` : ""}.`;
     default:
       return null;
   }
@@ -42,17 +46,19 @@ export function secondJudgeTakeaway(check: CheckResult): string | null {
 
 /** The corroborated-agreement sentence shown inside the expand. */
 export function secondJudgeAgreementLine(sj: SecondJudgeEvidence | undefined): string | null {
-  if (!sj || sj.error || sj.choice == null) return null;
+  if (!sj || sj.error || sj.skipped || sj.choice == null) return null;
   const conf = sj.confidence ?? 0;
+  const projectionNote = sj.projected ? " (a projected value, not the full deliverable)" : "";
   return conf < 0.6
     ? `Second judge unsure (${conf.toFixed(2)}) — weak corroboration.`
-    : `Verdicts agree — corroborated at ${conf.toFixed(2)}.`;
+    : `Verdicts agree — corroborated at ${conf.toFixed(2)}${projectionNote}.`;
 }
 
 export type SecondJudgeSummary = {
   corroborated: number;
   split: number;
   unsure: number;
+  skipped: number;
 };
 
 /** Run-level tallies; all zero when no second judge ran at all. */
@@ -60,11 +66,13 @@ export function secondJudgeSummary(checks: CheckResult[]): SecondJudgeSummary {
   let corroborated = 0;
   let split = 0;
   let unsure = 0;
+  let skipped = 0;
   for (const c of checks) {
     const f = secondJudgeFacts(c);
     if (f.kind === "split") split++;
     else if (f.kind === "unsure") unsure++;
     else if (f.kind === "agree") corroborated++;
+    else if (f.kind === "skipped") skipped++;
   }
-  return { corroborated, split, unsure };
+  return { corroborated, split, unsure, skipped };
 }

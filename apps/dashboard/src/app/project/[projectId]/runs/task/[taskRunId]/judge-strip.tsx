@@ -220,6 +220,14 @@ function SecondJudgeRow({
           <span>
             verdict <span className="text-foreground">{second.choice}</span>
           </span>
+          {second.projected && (
+            <span
+              className="border border-border px-1.5 py-0.5 text-[10px]"
+              title="The second judge graded a secondJudgeValue projection, not the full deliverable"
+            >
+              projected value
+            </span>
+          )}
           {second.passProbability != null && (
             <span className="inline-flex items-center gap-1.5">
               p(pass){" "}
@@ -235,6 +243,10 @@ function SecondJudgeRow({
             </span>
           )}
         </>
+      ) : second.skipped ? (
+        // An unreadable input is not a failure — muted, not destructive, so
+        // "could not read this" never reads as "the second judge was down".
+        <span>skipped — {second.skipped}</span>
       ) : (
         <span className="text-destructive">{second.error ?? "no verdict"}</span>
       )}

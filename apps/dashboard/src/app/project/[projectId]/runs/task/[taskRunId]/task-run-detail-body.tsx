@@ -103,7 +103,7 @@ export function TaskRunDetailBody({
                   {(() => {
                     // Fact line — only when a second judge ran on any check.
                     const sj = secondJudgeSummary(checks);
-                    const judged = sj.corroborated + sj.split + sj.unsure;
+                    const judged = sj.corroborated + sj.split + sj.unsure + sj.skipped;
                     if (judged === 0) return null;
                     return (
                       <span className="text-muted-foreground">
@@ -112,6 +112,7 @@ export function TaskRunDetailBody({
                           <span className="text-warning"> · judges split on {sj.split}</span>
                         )}
                         {sj.unsure > 0 && <> · {sj.unsure} unsure</>}
+                        {sj.skipped > 0 && <> · {sj.skipped} skipped (value too large)</>}
                       </span>
                     );
                   })()}

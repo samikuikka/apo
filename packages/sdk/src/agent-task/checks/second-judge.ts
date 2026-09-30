@@ -12,7 +12,8 @@
  * The second opinion NEVER changes the verdict. It is opt-in
  * (`APO_SECOND_JUDGE_MODEL`), runs on OpenRouter's decisions endpoint (not
  * chat/completions — decision models reject it), and any failure is
- * recorded as `error` on the evidence instead of affecting the check.
+ * recorded as `error` (transport/HTTP/parse) or `skipped` (input the
+ * model cannot read) on the evidence instead of affecting the check.
  */
 
 import type { SecondJudgeEvidence } from "../run/types.ts";
@@ -65,19 +66,59 @@ export function decisionsEndpoint(chatBaseURL: string): string {
 }
 
 /**
+ * OpenRouter's decisions endpoint reports an input that exceeds the
+ * model's context limit as `error_type: "max_tokens_exceeded"` (wrapped
+ * in an HTTP 400); OpenAI-style providers say `context_length_exceeded`.
+ * Both mean the same thing here: the second judge could not read the
+ * state — a different fact from a transport failure.
+ */
+const INPUT_TOO_LARGE_MARKERS = [
+  "max_tokens_exceeded",
+  "context_length_exceeded",
+  "maximum context length",
+] as const;
+
+function isInputTooLargeRejection(status: number, body: string): boolean {
+  if (status !== 400 && status !== 413) return false;
+  return INPUT_TOO_LARGE_MARKERS.some((marker) => body.includes(marker));
+}
+
+/**
+ * Rough token estimate (chars/4) for the skip message only. The provider
+ * already told us the input doesn't fit — this number explains the
+ * magnitude, it decides nothing.
+ */
+function estimateTokens(text: string): number {
+  return Math.round(text.length / 4 / 1000) * 1000;
+}
+
+/**
  * Ask the decision model for a pass/fail verdict on the same state the
  * primary judge saw (briefing + values + instruction). Never throws —
- * every failure mode becomes `error` on the returned evidence so a broken
- * second opinion cannot break the check it accompanies.
+ * every failure mode becomes `error` (or `skipped`, for an input the
+ * model cannot read) on the returned evidence so a broken second
+ * opinion cannot break the check it accompanies.
+ *
+ * Oversize inputs are classified from the provider's own rejection
+ * rather than estimated before the call: the second judge can be any
+ * OpenRouter model, the SDK holds no per-model limit catalog to
+ * pre-flight against, and a rejected request is turned away before
+ * inference (unbilled) — detection stays exact where an estimate
+ * would drift.
  */
 export async function callSecondJudge(args: {
   state: string;
   model: string;
   baseURL: string;
   apiKey?: string;
+  /** Set when the state was built from a `secondJudgeValue` projection. */
+  projected?: boolean;
 }): Promise<SecondJudgeEvidence> {
   const startedAt = Date.now();
-  const evidence: SecondJudgeEvidence = { model: args.model };
+  const evidence: SecondJudgeEvidence = {
+    model: args.model,
+    ...(args.projected ? { projected: true } : {}),
+  };
   try {
     const response = await fetch(decisionsEndpoint(args.baseURL), {
       method: "POST",
@@ -109,6 +150,17 @@ export async function callSecondJudge(args: {
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
+      // An input the second judge cannot read is a skip, not a transport
+      // error: distinct state, distinct rendering, never "failed to
+      // arrive" (issue #311). The estimate is chars/4 — close enough to
+      // say "~97k tokens", honest enough to keep the "~".
+      if (isInputTooLargeRejection(response.status, body)) {
+        evidence.skipped =
+          `input ~${estimateTokens(args.state).toLocaleString("en-US")} tokens ` +
+          `exceeds ${args.model}'s context limit — project a smaller view ` +
+          `with t.judge(value, instruction, { secondJudgeValue })`;
+        return evidence;
+      }
       evidence.error = `Second judge API ${response.status}: ${body.slice(0, 200)}`;
       return evidence;
     }

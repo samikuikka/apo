@@ -15,6 +15,7 @@ import { RECEIVED_PREVIEW_CHARS, previewString, segmentText } from "./runs-trunc
 type SecondJudgeFacts =
   | { kind: "none" }
   | { kind: "error" }
+  | { kind: "skipped" }
   | { kind: "split"; confidence: number }
   | { kind: "agree"; confidence: number }
   | { kind: "unsure"; confidence: number };
@@ -22,6 +23,7 @@ type SecondJudgeFacts =
 export function secondJudgeFacts(check: CheckResult): SecondJudgeFacts {
   const sj = check.judge?.secondJudge;
   if (!sj) return { kind: "none" };
+  if (sj.skipped) return { kind: "skipped" };
   if (sj.error || sj.choice == null) return { kind: "error" };
   const conf = sj.confidence ?? 0;
   if ((sj.choice === "pass") !== check.pass) return { kind: "split", confidence: conf };
@@ -30,7 +32,8 @@ export function secondJudgeFacts(check: CheckResult): SecondJudgeFacts {
 }
 
 /** Row suffix: `✓✗ 0.99` (amber) for splits, `✓✓ ·0.31` (dim) for unsure,
- *  `2nd ✕` for a failed second opinion, empty when corroborated. */
+ *  `2nd ✕` for a failed second opinion, `2nd ⊘` for one that could not read
+ *  the value, empty when corroborated. */
 function secondJudgeMark(check: CheckResult): string {
   const sj = check.judge?.secondJudge;
   const facts = secondJudgeFacts(check);
@@ -43,6 +46,7 @@ function secondJudgeMark(check: CheckResult): string {
       : ` ${dim(`${check.pass ? "✓" : "✗"}${sj!.choice === "pass" ? "✓" : "✗"} ·${num}`)}`;
   }
   if (facts.kind === "error") return ` ${dim("2nd ✕")}`;
+  if (facts.kind === "skipped") return ` ${dim("2nd ⊘")}`;
   return "";
 }
 
@@ -56,6 +60,8 @@ function secondJudgeTakeaway(check: CheckResult): string | null {
       return `Second judge unsure (${facts.confidence.toFixed(2)}) — weak corroboration.`;
     case "error":
       return `Second opinion failed to arrive${check.judge?.secondJudge?.error ? ` (${check.judge.secondJudge.error})` : ""}.`;
+    case "skipped":
+      return `Second opinion skipped${check.judge?.secondJudge?.skipped ? ` — ${check.judge.secondJudge.skipped}` : ""}.`;
     default:
       return null;
   }
@@ -66,17 +72,19 @@ export function secondJudgeSummary(checks: CheckResult[]): string | null {
   let split = 0;
   let unsure = 0;
   let corroborated = 0;
+  let skipped = 0;
   for (const c of checks) {
     const f = secondJudgeFacts(c);
     if (f.kind === "split") split++;
     else if (f.kind === "unsure") unsure++;
     else if (f.kind === "agree") corroborated++;
+    else if (f.kind === "skipped") skipped++;
   }
-  const judged = split + unsure + corroborated;
-  if (judged === 0) return null;
+  if (split + unsure + corroborated + skipped === 0) return null;
   const parts = [`${corroborated} corroborated`];
   if (split > 0) parts.push(`judges split on ${split}`);
   if (unsure > 0) parts.push(`${unsure} unsure`);
+  if (skipped > 0) parts.push(`${skipped} skipped (value too large)`);
   return `Second judge: ${parts.join(" · ")}`;
 }
 
@@ -199,6 +207,9 @@ function formatCheck(check: CheckResult, verbose: boolean): string {
       sj.confidence != null ? `conf ${sj.confidence.toFixed(2)}` : null,
       sj.latencyMs != null ? `${sj.latencyMs}ms` : null,
       sj.costUsd != null ? `$${sj.costUsd.toFixed(6)}` : null,
+      // A projected verdict corroborates the secondJudgeValue view, not the
+      // whole deliverable — worth saying when the raw facts are shown.
+      sj.projected ? "graded a projected value" : null,
     ].filter((p): p is string => p != null);
     lines.push(dim(`      2nd judge (${sj.model}): ${parts.join(" · ")}`));
   }
