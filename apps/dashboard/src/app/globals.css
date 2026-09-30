@@ -59,6 +59,10 @@
 :root {
   color-scheme: dark;
 
+  /* Height reserved for the fixed bottom status bar; the shell subtracts
+     it from its column heights so the bar never covers page content. */
+  --status-bar-h: 1.75rem;
+
   /* Main background - pure black */
   --background: oklch(0 0 0);               /* #000000 - pure black */
   --foreground: oklch(1 0 0);               /* #FFFFFF - pure white */

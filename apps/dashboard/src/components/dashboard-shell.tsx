@@ -19,6 +19,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Toaster } from "@/components/ui/sonner";
 import { ProjectSwitcher } from "@/components/project-switcher";
+import { StatusBar } from "@/components/status-bar";
 import {
   dashboardAllItems,
   dashboardPrimaryNavGroups,
@@ -62,16 +63,17 @@ function DashboardChrome({
     dashboardAllItems[0];
 
   return (
+    <>
     <SidebarProvider
       style={
         {
           "--sidebar-width": "16rem",
           top: "3.5rem",
-          height: "calc(100svh - 3.5rem)",
+          height: "calc(100svh - 3.5rem - var(--status-bar-h))",
         } as any
       }
     >
-      <Sidebar variant="inset" collapsible="icon" className="top-14 h-[calc(100svh-3.5rem)]">
+      <Sidebar variant="inset" collapsible="icon" className="top-14 h-[calc(100svh_-_3.5rem_-_var(--status-bar-h))]">
         <SidebarContent>
           {dashboardPrimaryNavGroups.map((group) => (
             <SidebarGroup key={group.label}>
@@ -106,7 +108,7 @@ function DashboardChrome({
         </SidebarContent>
       </Sidebar>
       <SidebarInset>
-        <div className="flex h-[calc(100svh-3.5rem)] flex-col overflow-hidden bg-background text-foreground">
+        <div className="flex h-[calc(100svh_-_3.5rem_-_var(--status-bar-h))] flex-col overflow-hidden bg-background text-foreground">
           <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-4 md:px-6">
             <SidebarTrigger />
             <Separator orientation="vertical" className="mr-1 h-5!" />
@@ -132,5 +134,7 @@ function DashboardChrome({
         </div>
       </SidebarInset>
     </SidebarProvider>
+    <StatusBar />
+    </>
   );
 }
