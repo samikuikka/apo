@@ -62,10 +62,11 @@ export interface RunHostFacet {
 export const fetchTaskHostFacets = (
   projectId: string,
   signal?: AbortSignal,
+  model?: string | null,
 ): Promise<RunHostFacet[]> =>
   apiClient(
     `/v1/projects/${encodeURIComponent(projectId)}/agent-task-run-host-facets`,
-    { ...NO_CACHE, signal },
+    { ...NO_CACHE, signal, query: { model: model ?? undefined } },
   );
 
 /**

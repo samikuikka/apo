@@ -217,23 +217,34 @@ def compute_run_config_facets(
     return facets
 
 def compute_run_host_facets(
-    session: Session, project_id: str
+    session: Session, project_id: str, model: str | None = None
 ) -> list[RunHostFacet]:
     """Distinct serving-host labels over a project's task runs (issue #307).
 
     Route-wins per call (the projection the run rows display), counted in
-    distinct task runs. Scalar columns only — OOM-safe like the model facets.
+    distinct task runs. ``model`` scopes the facet to one model's runs — the
+    Hosts filter appears after a model is picked (like the effort tiers), so
+    its counts must reflect that cohort, not the whole project. Scalar
+    columns only — OOM-safe like the model facets.
     """
     from sqlalchemy import and_, func as sa_func
     from sqlalchemy import select as sa_sel
 
     from ..db_helpers import as_column
+    from ..models.columns import AGENT_TASK_RUN_CONFIGURED_MODEL_COL
     from ..models.db import AgentTaskRunDB, LoggedCallDB
 
     label = sa_func.coalesce(
         sa_func.nullif(as_column(LoggedCallDB.route), ""),
         sa_func.nullif(as_column(LoggedCallDB.provider), ""),
     )
+    conditions = [
+        as_column(AgentTaskBatchRunDB.project) == project_id,
+        as_column(AgentTaskRunDB.trace_run_id).is_not(None),
+        label.is_not(None),
+    ]
+    if model is not None:
+        conditions.append(AGENT_TASK_RUN_CONFIGURED_MODEL_COL == model)
     stmt = (
         sa_sel(label, sa_func.count(sa_func.distinct(as_column(AgentTaskRunDB.id))))
         .select_from(AgentTaskRunDB)
@@ -248,11 +259,7 @@ def compute_run_host_facets(
                 as_column(LoggedCallDB.project) == as_column(AgentTaskBatchRunDB.project),
             ),
         )
-        .where(
-            as_column(AgentTaskBatchRunDB.project) == project_id,
-            as_column(AgentTaskRunDB.trace_run_id).is_not(None),
-            label.is_not(None),
-        )
+        .where(*conditions)
         .group_by(label)
     )
     rows = session.execute(stmt).all()

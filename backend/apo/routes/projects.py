@@ -590,6 +590,10 @@ async def list_project_agent_task_run_config_facets(
 async def list_project_agent_task_run_host_facets(
     project_id: str,
     request: Request,
+    model: str | None = Query(
+        default=None,
+        description="Scope the facet to one model's runs — the Hosts filter appears after a model is picked, so its counts follow that cohort (issue #307)",
+    ),
     session: Session = Depends(get_session),
 ) -> list[RunHostFacet]:
     """Distinct serving-host labels over the project's task runs (issue #307).
@@ -598,7 +602,7 @@ async def list_project_agent_task_run_host_facets(
     per-label task-run counts. Feeds the Tasks page's Hosts view filter.
     """
     _project, _role = _load_project_for_request(session, project_id, request)
-    return compute_run_host_facets(session, project_id)
+    return compute_run_host_facets(session, project_id, model)
 
 
 @router.get("/{project_id}/onboarding-status")
