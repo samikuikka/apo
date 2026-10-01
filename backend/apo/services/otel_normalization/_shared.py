@@ -22,7 +22,11 @@ VALID_OBSERVATION_TYPES = frozenset({
 # v7: gen_ai.tool.definitions / gen_ai.system_instructions kept in metadata.
 # v8: serving provider (gen_ai.provider.name / gen_ai.system) and route
 # (apo.llm.route) extracted as first-class fields (issue #307).
-NORMALIZER_VERSION = 8
+# v9: Claude Code's bare usage attributes (input_tokens / output_tokens /
+# cache_read_tokens / cache_creation_tokens) translated onto the canonical
+# gen_ai.usage.* keys in usage normalization — claude_code.llm_request spans
+# previously projected with no tokens and no cost despite carrying usage.
+NORMALIZER_VERSION = 9
 
 
 @final

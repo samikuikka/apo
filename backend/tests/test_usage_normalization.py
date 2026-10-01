@@ -143,6 +143,57 @@ class TestBareModelCacheCreation:
         assert result.get("cache_read") == 21773
 
 
+class TestClaudeCodeBareUsage:
+    """Claude Code's ``claude_code.llm_request`` spans carry usage under bare
+    attribute names. Previously no normalizer read them, so claude-agent runs
+    showed no tokens and no cost despite the span carrying full usage."""
+
+    def test_bare_keys_normalized(self) -> None:
+        result = normalize_usage(
+            {
+                "span.type": "llm_request",
+                "gen_ai.system": "anthropic",
+                "gen_ai.request.model": "claude-haiku-4-5-20251001",
+                "input_tokens": 9,
+                "output_tokens": 220,
+                "cache_read_tokens": 0,
+                "cache_creation_tokens": 19635,
+            },
+            None,
+            model_name="claude-haiku-4-5-20251001",
+        )
+        # Input exclusive of cache, no TTL split -> whole creation in 5m tier.
+        assert result == {
+            "input": 9,
+            "output": 220,
+            "cache_read": 0,
+            "cache_write_5m": 19635,
+        }
+
+    def test_canonical_keys_win_over_bare(self) -> None:
+        """A span carrying both dialects must use the canonical keys only —
+        the bare translation never overrides a standard emitter."""
+        result = normalize_usage(
+            {
+                "gen_ai.usage.input_tokens": 100,
+                "gen_ai.usage.output_tokens": 50,
+                "input_tokens": 999,
+                "output_tokens": 999,
+            },
+            "anthropic",
+        )
+        assert result == {"input": 100, "output": 50}
+
+    def test_bare_keys_without_usage_stay_empty(self) -> None:
+        """A Claude Code span that reported no usage normalizes to {}."""
+        result = normalize_usage(
+            {"gen_ai.system": "anthropic", "gen_ai.request.model": "claude-haiku-4-5"},
+            None,
+            model_name="claude-haiku-4-5",
+        )
+        assert result == {}
+
+
 class TestPlainUsage:
     def test_genai_semconv_input_output(self) -> None:
         result = normalize_usage(
