@@ -342,6 +342,24 @@ const commands: Record<string, CommandEntry> = {
     ],
     note: "The original verdict is the first row (trigger=original). Re-judge with `apo runs rejudge <run-id>`. Supports --json.",
   },
+  "traces import": {
+    handler: loadCommand("traces-import"),
+    help: "Import a harness session transcript (Claude Code / Codex JSONL) as a trace",
+    args: [
+      ["<path…>", "One or more session transcript files"],
+    ],
+    options: [
+      ["--source <s>", "Transcript source: auto (default), claude-code, or codex"],
+      ["--name <name>", "Run label shown in the runs list (default: \"<source> session <id>\")"],
+      ["--tag <tag>", "Run tag, repeatable"],
+    ],
+    examples: [
+      "apo traces import ~/.claude/projects/-home-me-app/2f9c….jsonl",
+      "apo traces import rollout-2026-10-01.jsonl --source codex --tag production",
+      "apo traces import session-a.jsonl session-b.jsonl --name \"invoice incident\"",
+    ],
+    note: "Requires backend auth (apo login or --api-key). The imported run is one step away from becoming a task seed. Supports --json.",
+  },
   "traces list": {
     handler: loadCommand("traces-list"),
     help: "List recent traces from backend",

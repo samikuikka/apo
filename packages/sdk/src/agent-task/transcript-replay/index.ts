@@ -12,6 +12,7 @@
 
 export { parseClaudeCodeTranscript } from "./claude-code.ts";
 export { parseCodexTranscript } from "./codex.ts";
+export { detectTranscriptSource } from "./detect.ts";
 export {
   transcriptSessionToOtlp,
   type OtlpAttribute,

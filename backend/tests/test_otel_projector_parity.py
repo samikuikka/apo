@@ -335,6 +335,49 @@ class TestProjectorCostAndAggregates:
             assert run.call_count == 2
             assert run.primary_model == "gpt-4o"
 
+    def test_later_unnamed_root_does_not_clobber_flow_name(self):
+        """Replay-imported multi-turn sessions have several root spans and
+        only the first carries the run metadata. The span-name fallback must
+        fill an unnamed run, never overwrite an attr-derived name."""
+        named_root = _make_span(
+            span_id="aaaaaaaaaaaaaaaa",
+            name="claude_code.interaction",
+            attributes={
+                "apo.observation.type": "AGENT",
+                "apo.run.flow_name": "claude-code session abc",
+            },
+        )
+        _ingest_span(named_root)
+        # A later root of the same trace with no trace-level name at all.
+        _ingest_span(
+            _make_span(span_id="bbbbbbbbbbbbbbbb", name="claude_code.interaction")
+        )
+
+        with Session(engine) as session:
+            run = session.exec(
+                select(RunDB).where(
+                    RunDB.id == _TRACE,
+                    RunDB.project == _PROJECT,
+                )
+            ).first()
+            assert run is not None
+            assert run.flow_name == "claude-code session abc"
+
+    def test_unnamed_run_falls_back_to_root_span_name(self):
+        """With no trace-level name on any root, the first root's span name
+        still labels the run (no "Untitled")."""
+        _ingest_span(_make_span(span_id=_ROOT_SPAN, name="agent.session"))
+
+        with Session(engine) as session:
+            run = session.exec(
+                select(RunDB).where(
+                    RunDB.id == _TRACE,
+                    RunDB.project == _PROJECT,
+                )
+            ).first()
+            assert run is not None
+            assert run.flow_name == "agent.session"
+
     def test_projected_run_has_call_count_and_primary_model(self):
         """The projector must populate run.call_count and run.primary_model
         from the child spans, so the traces list shows real values instead

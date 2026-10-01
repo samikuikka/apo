@@ -195,16 +195,17 @@ class TraceProjector:
             attrs = span.attributes or {}
             # prefer canonical apo.trace.* attributes; fall back to
             # legacy apo.run.* for compatibility with older senders.
-            # If neither is present, use the root span's own name — it is
-            # always set in OTLP and prevents the run from rendering as
-            # "Untitled" when the source had no trace-level name.
-            flow_name = (
-                attrs.get("apo.trace.name")
-                or attrs.get("apo.run.flow_name")
-                or span.span_name
-            )
-            if flow_name:
-                run.flow_name = str(flow_name)
+            named_flow = attrs.get("apo.trace.name") or attrs.get("apo.run.flow_name")
+            if named_flow:
+                run.flow_name = str(named_flow)
+            elif not run.flow_name:
+                # No trace-level name anywhere; the root span's own name is the
+                # last resort and prevents the run rendering as "Untitled".
+                # Fill-only, never overwrite: traces with several root spans
+                # (e.g. replay-imported multi-turn sessions, where only the
+                # first root carries the run metadata) must not have their
+                # attr-derived name clobbered by later roots' span names.
+                run.flow_name = span.span_name
             if attrs.get("apo.run.task_id"):
                 run.task_id = str(attrs["apo.run.task_id"])
             if attrs.get("apo.run.version"):

@@ -20,14 +20,18 @@
  */
 import { describe, expect, it } from "vitest";
 import { basename, join } from "path";
+import { tmpdir } from "os";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 
 import { runTaskDir } from "../src/agent-task/public.ts";
 
 const SMOKE = process.env.TRANSCRIPT_REPLAY_SMOKE === "1";
-const TMP_ROOT = join(import.meta.dirname, "__transcript_live_smoke__");
+// OS tmpdir, not tests/: a hard-killed run (vitest timeout) cannot run its
+// finally-cleanup, and stray task dirs must never land in the repo.
+const TMP_ROOT = join(tmpdir(), "apo-transcript-live-smoke");
 const LOCAL_DEFINE_TASK_IMPORT = "../../../src/agent-task/task/defineTask";
-const LOCAL_DEFINE_ADAPTER_IMPORT = "../../../src/agent-task/adapter/defineAdapter";
+const LOCAL_DEFINE_ADAPTER_IMPORT =
+  "../../../src/agent-task/adapter/defineAdapter";
 
 // One real-format Claude Code turn: Read tool call + result + final answer.
 const TRANSCRIPT_FIXTURE = [
@@ -36,7 +40,10 @@ const TRANSCRIPT_FIXTURE = [
     sessionId: "live-smoke-sess-1",
     cwd: "/tmp/live-smoke",
     timestamp: "2026-10-01T15:00:00Z",
-    message: { role: "user", content: "Read the invoice and report the total." },
+    message: {
+      role: "user",
+      content: "Read the invoice and report the total.",
+    },
   }),
   JSON.stringify({
     type: "assistant",
@@ -46,9 +53,18 @@ const TRANSCRIPT_FIXTURE = [
       role: "assistant",
       model: "claude-sonnet-5",
       stop_reason: "tool_use",
-      usage: { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 40 },
+      usage: {
+        input_tokens: 100,
+        output_tokens: 10,
+        cache_read_input_tokens: 40,
+      },
       content: [
-        { type: "tool_use", id: "t1", name: "Read", input: { file_path: "invoice.txt" } },
+        {
+          type: "tool_use",
+          id: "t1",
+          name: "Read",
+          input: { file_path: "invoice.txt" },
+        },
       ],
     },
   }),
@@ -74,23 +90,30 @@ const TRANSCRIPT_FIXTURE = [
       role: "assistant",
       model: "claude-sonnet-5",
       stop_reason: "end_turn",
-      usage: { input_tokens: 150, output_tokens: 20, cache_read_input_tokens: 60 },
+      usage: {
+        input_tokens: 150,
+        output_tokens: 20,
+        cache_read_input_tokens: 60,
+      },
       content: [{ type: "text", text: "The total is 100 EUR." }],
     },
   }),
 ].join("\n");
 
 describe("transcript-replay live smoke (real OTel client + backend)", () => {
-  it.skipIf(!SMOKE)("runs a task whose only trace source is a replayed transcript", async () => {
-    expect(process.env.AGENT_TASK_TRACE_ENDPOINT).toBeDefined();
-    expect(process.env.AGENT_TASK_PROJECT).toBeDefined();
+  it.skipIf(!SMOKE)(
+    "runs a task whose only trace source is a replayed transcript",
+    { timeout: 60_000 },
+    async () => {
+      expect(process.env.AGENT_TASK_TRACE_ENDPOINT).toBeDefined();
+      expect(process.env.AGENT_TASK_PROJECT).toBeDefined();
 
-    const taskDir = join(TMP_ROOT, `live-${Date.now()}`);
-    mkdirSync(taskDir, { recursive: true });
-    try {
-      writeFileSync(
-        join(taskDir, "adapter.ts"),
-        `
+      const taskDir = join(TMP_ROOT, `live-${Date.now()}`);
+      mkdirSync(taskDir, { recursive: true });
+      try {
+        writeFileSync(
+          join(taskDir, "adapter.ts"),
+          `
 import { writeFileSync } from "fs";
 import { join } from "path";
 import { z } from "zod";
@@ -115,10 +138,10 @@ export const testAdapter = defineAdapter({
   },
 });
 `,
-      );
-      writeFileSync(
-        join(taskDir, `${basename(taskDir)}.eval.ts`),
-        `
+        );
+        writeFileSync(
+          join(taskDir, `${basename(taskDir)}.eval.ts`),
+          `
 import { task } from "${LOCAL_DEFINE_TASK_IMPORT}";
 import { testAdapter } from "./adapter";
 
@@ -131,15 +154,16 @@ const { test } = task("live-replay-task", {
 test("called-read", (t) => { t.calledTool("Read"); });
 test("no-failed-actions", (t) => { t.noFailedActions(); });
 `,
-      );
+        );
 
-      const summary = await runTaskDir(taskDir);
-      // Printed for the operator; the DB assertions live outside this test.
-      console.log("[live-smoke] traceRunId:", summary.traceRunId);
-      expect(summary.pass).toBe(true);
-      expect(summary.traceRunId).toMatch(/^[0-9a-f]{32}$/);
-    } finally {
-      rmSync(taskDir, { recursive: true, force: true });
-    }
-  });
+        const summary = await runTaskDir(taskDir);
+        // Printed for the operator; the DB assertions live outside this test.
+        console.log("[live-smoke] traceRunId:", summary.traceRunId);
+        expect(summary.pass).toBe(true);
+        expect(summary.traceRunId).toMatch(/^[0-9a-f]{32}$/);
+      } finally {
+        rmSync(taskDir, { recursive: true, force: true });
+      }
+    },
+  );
 });

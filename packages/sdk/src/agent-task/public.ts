@@ -226,6 +226,7 @@ export {
 export {
   parseClaudeCodeTranscript,
   parseCodexTranscript,
+  detectTranscriptSource,
   replayAdapterTranscript,
   transcriptSessionToOtlp,
   exportOtlpTraces,
