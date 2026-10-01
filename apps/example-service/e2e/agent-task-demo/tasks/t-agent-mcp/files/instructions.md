@@ -11,4 +11,5 @@ then write a short report (a few sentences) that states:
 2. The elevation of Tallinn, in meters.
 3. How many meters higher Helsinki is than Tallinn.
 
-Write the report as your final answer.
+Write the report as your final answer. Keep it under 60 words — state the
+three numbers plainly, no preamble.

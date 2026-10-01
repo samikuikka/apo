@@ -14,13 +14,15 @@
  * so a run that skips mcp__geo__get_elevation fails Layer 1 regardless of
  * how correct its report reads.
  *
- *   apo task run ./apps/example-service/e2e/agent-task-demo/tasks/t-agent-mcp
+ * Runs entirely on cheap OpenRouter models — agent and judge both come from
+ * OPENROUTER_MODEL (deepseek/deepseek-v4.1-flash by default). Never point
+ * this demo at Anthropic models; the claude-adapter MCP path exists as a
+ * second reference but is not the demo default.
  *
- * Env: the agent is the Claude Agent SDK (CLAUDE_MODEL + ANTHROPIC_API_KEY);
- * the judge comes from OPENROUTER_MODEL + OPENROUTER_API_KEY.
+ *   apo task run --dir apps/example-service/e2e agent-task-demo/tasks/t-agent-mcp
  */
 import { task, includes, satisfies } from "@apo-ai/sdk/agent-task";
-import { claudeAdapter } from "../../claude-adapter.ts";
+import { aiSdkAdapter } from "../../ai-sdk-adapter.ts";
 
 /** Task-declared MCP server — one declaration, consumed by the adapter. */
 const GEO_MCP = {
@@ -35,12 +37,12 @@ const GEO_MCP = {
 };
 
 const { test: check } = task("t-agent-mcp", {
-  adapter: claudeAdapter,
+  adapter: aiSdkAdapter,
   description:
     "MCP demo: the agent must fetch authoritative elevations from a task-declared MCP server, and the judge verifies through its own copy of the server.",
   metadata: { category: "demo", probe: "mcp" },
   maxTurns: 2,
-  deliverables: ["result", "stats"],
+  deliverables: ["result", "tool_log", "stats"],
   mcpServers: [GEO_MCP],
   // Judge-plane config (Track A): the agentic judge below gets the same
   // server and must call it before verdicting.

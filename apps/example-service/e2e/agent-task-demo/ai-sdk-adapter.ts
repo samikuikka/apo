@@ -16,10 +16,11 @@
  * For a full-featured example (multi-turn conversation, custom prompt, richer
  * deliverable parsing), see `real-agent-adapter.ts`.
  */
-import { defineAdapter, registerApoTracing } from "@apo-ai/sdk/agent-task";
+import { defineAdapter, registerApoTracing, connectMcpServers } from "@apo-ai/sdk/agent-task";
 import { handleChat, type ChatRequest } from "../../app/lib/agent/service.ts";
 import { loadFiles } from "./lib/files.ts";
 import { deliverableSchemas, collectDeliverablesFromState } from "./lib/deliverables.ts";
+import { resolveMcpServerPaths } from "./lib/mcp.ts";
 import type { AgentState } from "./agent/types.ts";
 
 await registerApoTracing();
@@ -45,8 +46,18 @@ export const aiSdkAdapter = defineAdapter({
     // getModel() reads OPENROUTER_MODEL with the same default). apo never
     // picks the model — the adapter resolves and reports the truth.
     const model = process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4.1-flash";
+
+    // Task-declared MCP servers (TaskDefinition.mcpServers): connect once
+    // per session, merge the raw namespaced tools into the agent's tool
+    // record, close when the session ends — same pattern as the real-agent
+    // adapter; no budget wrapping on the agent plane.
+    const mcp = ctx.task.mcpServers?.length
+      ? await connectMcpServers(resolveMcpServerPaths(ctx.task.mcpServers, ctx.taskDir))
+      : undefined;
+
     return {
       runConfiguration: { model },
+      ...(mcp ? { close: () => mcp.cleanup() } : {}),
       async sendUserTurn(turn: unknown) {
         state.turnCount++;
         const messages: ChatRequest["messages"] = [
@@ -57,6 +68,7 @@ export const aiSdkAdapter = defineAdapter({
           messages,
           files: state.fileContents,
           taskDir: ctx.taskDir,
+          ...(mcp ? { extraTools: mcp.tools } : {}),
         });
         state.agentResponses.push(result.response);
         state.allToolCalls.push(...result.tool_calls);
