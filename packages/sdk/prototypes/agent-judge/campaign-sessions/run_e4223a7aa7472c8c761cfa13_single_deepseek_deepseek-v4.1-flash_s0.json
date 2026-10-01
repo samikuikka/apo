@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The task asks for the Fee IDs applicable to Belles_cookbook_store on the 10th day of 2023. The submitted answer is a comma-separated list of numeric Fee IDs, which directly matches the requested quantity and format. There is no indication that it answers a different date, merchant, or metric. Therefore, the answer responds to the question as asked.",
+  "steps": 1,
+  "cost_usd": 0.001739142,
+  "latency_ms": 60475,
+  "tokens": {
+    "input": 318,
+    "output": 3816
+  }
+}

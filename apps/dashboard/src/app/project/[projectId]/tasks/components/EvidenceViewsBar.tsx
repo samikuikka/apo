@@ -13,10 +13,18 @@ const ALL_MODELS_VALUE = "__all__";
 
 /** A short, human-readable config line for a tab chip (e.g. "Opus · high"). */
 function viewConfigLabel(view: ViewTab): string {
-  if (view.model === null && view.effort === null && view.since === null) return "everything";
+  if (
+    view.model === null &&
+    view.effort === null &&
+    view.since === null &&
+    view.provider === null
+  ) {
+    return "everything";
+  }
   const parts: string[] = [view.model ?? "all models"];
   if (view.effort) parts.push(view.effort);
   if (view.since) parts.push(view.since);
+    if (view.provider) parts.push(view.provider);
   return parts.join(" · ");
 }
 
@@ -24,6 +32,7 @@ export function EvidenceViewsBar({
   views,
   activeViewId,
   facets,
+  hostFacets = [],
   loading,
   isDerived,
   viewsActive,
@@ -46,6 +55,8 @@ export function EvidenceViewsBar({
   views: ViewTab[];
   activeViewId: string;
   facets: RunConfigModelFacet[];
+  /** Serving-host palette for the Hosts view filter (issue #307). */
+  hostFacets?: { label: string; count: number }[];
   loading: boolean;
   isDerived: boolean;
   viewsActive: boolean;
@@ -61,7 +72,9 @@ export function EvidenceViewsBar({
   status: Set<string>;
   onStatusChange: (next: Set<string>) => void;
   onSelect: (id: string) => void;
-  onChange: (patch: Partial<Pick<ViewTab, "model" | "effort" | "since" | "label">>) => void;
+  onChange: (
+    patch: Partial<Pick<ViewTab, "model" | "effort" | "since" | "provider" | "label">>,
+  ) => void;
   /** Retire a model from the palette, or bring it back. */
   onSetArchived: (model: string, archived: boolean) => void;
   onDuplicate: () => void;
@@ -197,6 +210,16 @@ export function EvidenceViewsBar({
           selectedModels={viewsActive && active.model ? new Set([active.model]) : new Set()}
           onSelectModel={(model) => changeModel(model === null ? ALL_MODELS_VALUE : model)}
           onSetArchived={onSetArchived}
+          hostOptions={
+            viewsActive && (active.model !== null || active.provider !== null)
+              ? hostFacets
+              : []
+          }
+          selectedHosts={viewsActive && active.provider ? new Set([active.provider]) : new Set()}
+          onToggleHost={(host) =>
+            onChange({ provider: active.provider === host ? null : host })
+          }
+          onClearHosts={() => onChange({ provider: null })}
           effortOptions={viewsActive ? effortOptions.map((e) => ({ value: e.effort, label: e.effort })) : []}
           effort={viewsActive ? active.effort : null}
           onEffortChange={(effort) => onChange({ effort })}

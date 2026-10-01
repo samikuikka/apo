@@ -15,6 +15,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { FolderOpen } from "lucide-react";
 import { parseRunCohort, withViewId } from "@/lib/run-cohort";
+import { providerLabels } from "@/lib/agent-task-api";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,7 @@ function parseScope(query: Record<string, string | string[] | undefined>): {
     cohort.model !== null ||
     cohort.effort !== null ||
     cohort.since !== null ||
+    cohort.provider !== null ||
     statusList.length > 0;
   return {
     cohort: statusList.length > 0 ? { ...cohort, status: statusList } : cohort,
@@ -76,6 +78,22 @@ const EMPTY_TASK_RUNS: Awaited<ReturnType<typeof listTaskRuns>> = [];
 // bounded list call serves the page; the unfiltered "N of M" twin fetch is
 // gone). API consumers can still ask for up to 5,000 explicitly.
 const TASK_RUN_HISTORY_LIMIT = 200;
+
+/** Serving-host facet over this task's runs (issue #307): route-wins labels
+ * with per-label run counts, feeding the run-history Hosts filter. */
+function hostOptionsFromRuns(
+  runs: Awaited<ReturnType<typeof listTaskRuns>>,
+): { label: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const run of runs) {
+    for (const label of providerLabels(run.model_providers)) {
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
 
 export default async function TaskDetailPage({
   params,
@@ -176,7 +194,11 @@ export default async function TaskDetailPage({
           Next.js would force the whole page into client-side rendering. */}
       <div className="border-b border-border bg-muted/10 px-6 py-2.5">
         <Suspense fallback={null}>
-          <RunHistoryScopeBar projectId={projectId} facets={facets} />
+          <RunHistoryScopeBar
+            projectId={projectId}
+            facets={facets}
+            hostOptions={hostOptionsFromRuns(taskRuns)}
+          />
         </Suspense>
       </div>
 

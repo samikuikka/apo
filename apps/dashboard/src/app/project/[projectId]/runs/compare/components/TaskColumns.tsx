@@ -17,6 +17,13 @@ import { cn } from "@/lib/utils";
  */
 type Metric = "cost" | "duration" | "checks";
 
+/** `passed/total` plus a warning suffix for judge-errored checks (#323). */
+function checksCell(run: AgentTaskRunSummary): string {
+  const base = `${run.passed_checks}/${run.total_checks}`;
+  const errored = run.errored_checks ?? 0;
+  return errored > 0 ? `${base} · ${errored} no verdict` : base;
+}
+
 function metricValue(metric: Metric, run: AgentTaskRunSummary): number | null {
   if (metric === "cost") return run.total_cost != null && run.total_cost > 0 ? run.total_cost : null;
   if (metric === "duration") {
@@ -48,15 +55,18 @@ const folderOf = (taskPath: string) => {
   return idx > 0 ? taskPath.slice(0, idx) : "";
 };
 
-/** One rendered column: a task, or a collapsed folder aggregated. */
+/** One rendered column: a task, or a collapsed folder aggregated.
+ *  Columns exist for EVERY shared task regardless of the selected metric —
+ *  the X axis never reshuffles when the metric changes; tasks that don't
+ *  report the metric show a dash instead of vanishing. */
 interface RenderedColumn {
   key: string;
   label: string;
   folder: string;
   left: AgentTaskRunSummary | null;
   right: AgentTaskRunSummary | null;
-  aggA: number;
-  aggB: number;
+  aggA: number | null;
+  aggB: number | null;
   isFolder: boolean;
   taskCount: number;
 }
@@ -73,7 +83,6 @@ function buildColumns(
   for (const left of leftRuns) {
     const right = rightByPath.get(left.task_path);
     if (!right) continue;
-    if (metricValue(metric, left) == null || metricValue(metric, right) == null) continue;
     const label = left.task_path.split("/").pop() ?? left.task_path;
     const folder = folderOf(left.task_path);
     if (!tasks.has(folder)) tasks.set(folder, []);
@@ -82,12 +91,9 @@ function buildColumns(
   const folderOrder = [...tasks.keys()].sort((a, b) => b.localeCompare(a)); // deepest first reads naturally
   const columns: RenderedColumn[] = [];
   for (const folder of folderOrder) {
-    const group = tasks.get(folder)!;
-    group.sort(
-      (x, y) =>
-        Math.max(metricValue(metric, y.left) ?? 0, metricValue(metric, y.right) ?? 0) -
-        Math.max(metricValue(metric, x.left) ?? 0, metricValue(metric, x.right) ?? 0),
-    );
+    // alphabetical inside a folder: the same order for every metric, so
+    // toggling cost/duration/checks never reshuffles the axis
+    const group = (tasks.get(folder)!).slice().sort((x, y) => x.label.localeCompare(y.label));
     if (collapsed.has(folder)) {
       const sum = (side: "left" | "right") =>
         group.reduce((s, t) => s + (metricValue(metric, t[side]) ?? 0), 0);
@@ -110,8 +116,8 @@ function buildColumns(
           folder: t.folder,
           left: t.left,
           right: t.right,
-          aggA: metricValue(metric, t.left) ?? 0,
-          aggB: metricValue(metric, t.right) ?? 0,
+          aggA: metricValue(metric, t.left),
+          aggB: metricValue(metric, t.right),
           isFolder: false,
           taskCount: 1,
         });
@@ -136,9 +142,10 @@ export function TaskColumns({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [pinnedKey, setPinnedKey] = useState<string | null>(null);
+  // viewport-fixed tooltip coords — never part of the scrollable content
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
 
-  const { columns, folderOrder } = useMemo(
+  const { columns } = useMemo(
     () => buildColumns(leftRuns, rightRuns, metric, collapsed),
     [leftRuns, rightRuns, metric, collapsed],
   );
@@ -153,20 +160,17 @@ export function TaskColumns({
   };
 
   const L = 60;
-  const R = 12;
+  const R = 8;
   const T = 34; // folder band labels
   const B = 66;
   const H = 350;
   const COL = 56;
   const FOLDER_GAP = 6;
-  const width = Math.max(560, L + R + columns.length * COL + folderOrder.length * FOLDER_GAP);
-  const maxY = Math.max(1, ...columns.map((c) => Math.max(c.aggA, c.aggB)));
-  const sy = (v: number) => H - B - (v / maxY) * (H - T - B);
-  const bBetter = (c: RenderedColumn) => (metric === "checks" ? c.aggB > c.aggA : c.aggB < c.aggA);
-  const bWorse = (c: RenderedColumn) => (metric === "checks" ? c.aggB < c.aggA : c.aggB > c.aggA);
 
-  // x positions with folder gaps
+  // x positions with folder gaps; the plot width hugs the actual content so
+  // the scroll container never guards a sliver of empty space
   const xOf: number[] = [];
+  let contentRight = L;
   {
     let x = L;
     let prevFolder: string | null = null;
@@ -174,10 +178,20 @@ export function TaskColumns({
       if (prevFolder !== null && c.folder !== prevFolder) x += FOLDER_GAP;
       xOf.push(x + COL / 2);
       x += COL;
+      contentRight = x;
       prevFolder = c.folder;
     }
   }
-  // folder band extents (folder, xStart, xEnd, collapsed?)
+  const width = Math.max(560, contentRight + R);
+
+  const maxY = Math.max(1, ...columns.map((c) => Math.max(c.aggA ?? 0, c.aggB ?? 0)));
+  const sy = (v: number) => H - B - (v / maxY) * (H - T - B);
+  const bBetter = (c: RenderedColumn) =>
+    c.aggA != null && c.aggB != null && (metric === "checks" ? c.aggB > c.aggA : c.aggB < c.aggA);
+  const bWorse = (c: RenderedColumn) =>
+    c.aggA != null && c.aggB != null && (metric === "checks" ? c.aggB < c.aggA : c.aggB > c.aggA);
+
+  // folder band extents
   const bands: { folder: string; x1: number; x2: number; collapsed: boolean; count: number }[] = [];
   columns.forEach((c, i) => {
     const last = bands[bands.length - 1];
@@ -197,9 +211,11 @@ export function TaskColumns({
   ];
 
   const hoveredColumn = hoveredKey != null ? columns.find((c) => c.key === hoveredKey) ?? null : null;
+  // hover highlights the column in-place (SVG only, no reflow) and drives
+  // the cursor tooltip; the detail card is click-pinned — hovering must
+  // never change page height or rewrite content below the chart.
   const activeKey = pinnedKey ?? hoveredKey;
-  const active = columns.find((c) => c.key === activeKey) ?? null;
-  const activeIdx = active ? columns.indexOf(active) : -1;
+  const active = pinnedKey != null ? columns.find((c) => c.key === pinnedKey) ?? null : null;
 
   return (
     <div className="rounded-md border border-border bg-card px-4 py-3">
@@ -244,103 +260,122 @@ export function TaskColumns({
         <>
           <div
             className="mt-2 overflow-x-auto"
-          onMouseMove={(e) => {
-            if (hoveredKey == null) return; // no re-render storms while just scrolling
-            setCursor({
-              x: Math.min(Math.max(e.clientX, 110), typeof window === "undefined" ? 9999 : window.innerWidth - 110),
-              y: Math.max(e.clientY, 70),
-            });
-          }}
-          onMouseLeave={() => setHoveredKey(null)}
-        >
-          <svg
-            viewBox={`0 0 ${width} ${H}`}
-            width={width}
-            height={H}
-            role="img"
-            aria-label={`Per-task ${metricName} comparison`}
-            onClick={() => setPinnedKey(null)}
+            onMouseMove={(e) => {
+              if (hoveredKey == null) return; // no re-render storms while just scrolling
+              setCursor({
+                x: Math.min(Math.max(e.clientX, 110), typeof window === "undefined" ? 9999 : window.innerWidth - 110),
+                y: Math.max(e.clientY, 70),
+              });
+            }}
+            onMouseLeave={() => setHoveredKey(null)}
           >
-            {yTicks.map((t, i) => (
-              <g key={i}>
-                <line x1={L} x2={width - R} y1={sy(t)} y2={sy(t)} stroke="currentColor" strokeWidth="1" className="text-border/60" />
-                <text x={L - 6} y={sy(t) + 3} textAnchor="end" className="fill-current font-mono text-[10px] text-muted-foreground/60">
-                  {t === 0 ? (metric === "cost" ? "$0" : "0") : fmtMetric(metric, Math.round(t))}
-                </text>
-              </g>
-            ))}
-            <text x={4} y={T - 8} className="fill-current text-[10px] text-muted-foreground/70">
-              {metricName} ↑
-            </text>
-
-            {/* folder bands — alternate shading, label toggles collapse */}
-            {bands.map((b, i) => (
-              <g key={b.folder || "(root)"} className="group cursor-pointer" onClick={(e) => { e.stopPropagation(); toggleFolder(b.folder); }}>
-                <title>{b.folder || "(root)"} — {b.collapsed ? "expand" : "collapse"} ({b.count} task{b.count === 1 ? "" : "s"})</title>
-                <rect
-                  x={b.x1 - 2}
-                  y={T - 20}
-                  width={b.x2 - b.x1 + 4}
-                  height={H - T - B + 22}
-                  rx="3"
-                  fill="currentColor"
-                  className={cn(
-                    "group-hover:text-foreground/[0.09]",
-                    i % 2 === 0 ? "text-foreground/[0.06]" : "text-foreground/[0.025]",
-                  )}
-                />
-                <rect
-                  x={(b.x1 + b.x2) / 2 - 34}
-                  y={T - 30}
-                  width="68"
-                  height="15"
-                  rx="7.5"
-                  className="fill-current stroke-current text-card text-border"
-                  strokeWidth="1"
-                />
-                <text x={(b.x1 + b.x2) / 2} y={T - 19} textAnchor="middle" className="fill-current font-mono text-[10px] font-medium text-muted-foreground group-hover:fill-foreground">
-                  {(b.folder ? b.folder.split("/").pop()! : "(root)") + (b.collapsed ? " ▸" : " ▾")}
-                </text>
-              </g>
-            ))}
-
-            {columns.map((c, i) => {
-              const x = xOf[i];
-              const top = sy(Math.max(c.aggA, c.aggB));
-              const bottom = sy(Math.min(c.aggA, c.aggB));
-              const isActive = activeKey === c.key;
-              const line = c.aggA === c.aggB ? "text-border" : bBetter(c) ? "text-success/80" : bWorse(c) ? "text-destructive/80" : "text-muted-foreground/40";
-              return (
-                <g
-                  key={c.key}
-                  className="cursor-pointer"
-                  onMouseEnter={() => setHoveredKey(c.key)}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPinnedKey(pinnedKey === c.key ? null : c.key);
-                  }}
-                >
-                  <title>{`${c.label}${c.isFolder ? ` (${c.taskCount} tasks)` : ""}: A ${fmtMetric(metric, c.aggA)} → B ${fmtMetric(metric, c.aggB)} — click for detail`}</title>
-                  {isActive && (
-                    <rect x={x - COL / 2 + 2} y={T - 6} width={COL - 4} height={H - T - B + 10} rx="3" className="fill-current text-foreground/[0.05]" />
-                  )}
-                  <rect x={x - COL / 2 + 4} y={T} width={COL - 8} height={H - T - B} fill="transparent" />
-                  <line x1={x} x2={x} y1={top} y2={bottom} stroke="currentColor" strokeWidth="2" className={line} />
-                  <circle cx={x} cy={sy(c.aggA)} r="4.5" fill="var(--color-card, #18181b)" strokeWidth="1.5" className="stroke-current text-muted-foreground" />
-                  <circle cx={x} cy={sy(c.aggB)} r="4.5" className="fill-current text-foreground" />
-                  <text
-                    x={x}
-                    y={H - B + 14}
-                    textAnchor="end"
-                    transform={`rotate(-32 ${x} ${H - B + 14})`}
-                    className={cn("fill-current font-mono text-[10px]", isActive ? "text-foreground" : "text-muted-foreground/80")}
-                  >
-                    {(c.label.length > 16 ? `${c.label.slice(0, 15)}…` : c.label) + (c.isFolder ? ` (${c.taskCount})` : "")}
+            <svg
+              viewBox={`0 0 ${width} ${H}`}
+              width={width}
+              height={H}
+              className="block"
+              role="img"
+              aria-label={`Per-task ${metricName} comparison`}
+              onClick={() => setPinnedKey(null)}
+            >
+              {yTicks.map((t, i) => (
+                <g key={i}>
+                  <line x1={L} x2={contentRight} y1={sy(t)} y2={sy(t)} stroke="currentColor" strokeWidth="1" className="text-border/60" />
+                  <text x={L - 6} y={sy(t) + 3} textAnchor="end" className="fill-current font-mono text-[10px] text-muted-foreground/60">
+                    {t === 0 ? (metric === "cost" ? "$0" : "0") : fmtMetric(metric, Math.round(t))}
                   </text>
                 </g>
-              );
-            })}
-          </svg>
+              ))}
+              <text x={4} y={T - 8} className="fill-current text-[10px] text-muted-foreground/70">
+                {metricName} ↑
+              </text>
+
+              {/* folder bands — alternate shading, label toggles collapse */}
+              {bands.map((b, i) => (
+                <g key={b.folder || "(root)"} className="group cursor-pointer" onClick={(e) => { e.stopPropagation(); toggleFolder(b.folder); }}>
+                  <title>{`${b.folder || "(root)"} — ${b.collapsed ? "expand" : "collapse"} (${b.count} task${b.count === 1 ? "" : "s"})`}</title>
+                  <rect
+                    x={b.x1 - 2}
+                    y={T - 20}
+                    width={b.x2 - b.x1 + 4}
+                    height={H - T - B + 22}
+                    rx="3"
+                    fill="currentColor"
+                    className={cn(
+                      "group-hover:text-foreground/[0.09]",
+                      i % 2 === 0 ? "text-foreground/[0.06]" : "text-foreground/[0.025]",
+                    )}
+                  />
+                  <rect
+                    x={(b.x1 + b.x2) / 2 - 34}
+                    y={T - 30}
+                    width="68"
+                    height="15"
+                    rx="7.5"
+                    className="fill-current stroke-current text-card text-border"
+                    strokeWidth="1"
+                  />
+                  <text x={(b.x1 + b.x2) / 2} y={T - 19} textAnchor="middle" className="fill-current font-mono text-[10px] font-medium text-muted-foreground group-hover:fill-foreground">
+                    {(b.folder ? b.folder.split("/").pop()! : "(root)") + (b.collapsed ? " ▸" : " ▾")}
+                  </text>
+                </g>
+              ))}
+
+              {columns.map((c, i) => {
+                const x = xOf[i];
+                const hasValues = c.aggA != null && c.aggB != null;
+                const top = sy(Math.max(c.aggA ?? 0, c.aggB ?? 0));
+                const bottom = sy(Math.min(c.aggA ?? 0, c.aggB ?? 0));
+                const isActive = activeKey === c.key;
+                const line =
+                  !hasValues
+                    ? "text-border"
+                    : c.aggA === c.aggB
+                      ? "text-border"
+                      : bBetter(c)
+                        ? "text-success/80"
+                        : bWorse(c)
+                          ? "text-destructive/80"
+                          : "text-muted-foreground/40";
+                return (
+                  <g
+                    key={c.key}
+                    className="cursor-pointer"
+                    onMouseEnter={() => setHoveredKey(c.key)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPinnedKey(pinnedKey === c.key ? null : c.key);
+                    }}
+                  >
+                    <title>{`${c.label}${c.isFolder ? ` (${c.taskCount} tasks)` : ""}: A ${c.aggA != null ? fmtMetric(metric, c.aggA) : "—"} → B ${c.aggB != null ? fmtMetric(metric, c.aggB) : "—"} — click for detail`}</title>
+                    {isActive && (
+                      <rect x={x - COL / 2 + 2} y={T - 6} width={COL - 4} height={H - T - B + 10} rx="3" className="fill-current text-foreground/[0.05]" />
+                    )}
+                    <rect x={x - COL / 2 + 4} y={T} width={COL - 8} height={H - T - B} fill="transparent" />
+                    {hasValues ? (
+                      <>
+                        <line x1={x} x2={x} y1={top} y2={bottom} stroke="currentColor" strokeWidth="2" className={line} />
+                        <circle cx={x} cy={sy(c.aggA ?? 0)} r="4.5" fill="var(--color-card, #18181b)" strokeWidth="1.5" className="stroke-current text-muted-foreground" />
+                        <circle cx={x} cy={sy(c.aggB ?? 0)} r="4.5" className="fill-current text-foreground" />
+                      </>
+                    ) : (
+                      <text x={x} y={sy(0) - 6} textAnchor="middle" className="fill-current font-mono text-[11px] text-muted-foreground/40">
+                        –
+                      </text>
+                    )}
+                    <text
+                      x={x}
+                      y={H - B + 14}
+                      textAnchor="end"
+                      transform={`rotate(-32 ${x} ${H - B + 14})`}
+                      className={cn("fill-current font-mono text-[10px]", isActive ? "text-foreground" : "text-muted-foreground/80")}
+                    >
+                      {(c.label.length > 16 ? `${c.label.slice(0, 15)}…` : c.label) + (c.isFolder ? ` (${c.taskCount})` : "")}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
           </div>
           {hoveredColumn && pinnedKey == null && cursor && (
             <div
@@ -349,7 +384,8 @@ export function TaskColumns({
             >
               <div className="font-mono font-medium text-foreground">{hoveredColumn.label}</div>
               <div className="mt-0.5 font-mono tabular-nums text-muted-foreground">
-                A {fmtMetric(metric, hoveredColumn.aggA)} → B {fmtMetric(metric, hoveredColumn.aggB)}
+                A {hoveredColumn.aggA != null ? fmtMetric(metric, hoveredColumn.aggA) : "—"} → B{" "}
+                {hoveredColumn.aggB != null ? fmtMetric(metric, hoveredColumn.aggB) : "—"}
               </div>
               <div className="text-[10px] text-muted-foreground/60">click for detail</div>
             </div>
@@ -378,7 +414,7 @@ export function TaskColumns({
             {(
               [
                 { label: "verdict", a: active.left.status, b: active.right.status },
-                { label: "checks", a: `${active.left.passed_checks}/${active.left.total_checks}`, b: `${active.right.passed_checks}/${active.right.total_checks}` },
+                { label: "checks", a: checksCell(active.left), b: checksCell(active.right) },
                 {
                   label: "cost",
                   a: active.left.total_cost != null && active.left.total_cost > 0 ? formatCostMicro(active.left.total_cost) : "—",
@@ -425,7 +461,8 @@ export function TaskColumns({
       {active && active.isFolder && (
         <div className="mt-3 rounded-md border border-border bg-muted/20 px-4 py-2.5 text-[12px] text-muted-foreground">
           <span className="font-mono font-medium text-foreground">{active.label}</span> — folder aggregate over{" "}
-          {active.taskCount} tasks: A {fmtMetric(metric, active.aggA)} → B {fmtMetric(metric, active.aggB)}.{" "}
+          {active.taskCount} tasks: A {active.aggA != null ? fmtMetric(metric, active.aggA) : "—"} → B{" "}
+          {active.aggB != null ? fmtMetric(metric, active.aggB) : "—"}.{" "}
           <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => toggleFolder(active.folder)}>
             Expand to tasks
           </button>

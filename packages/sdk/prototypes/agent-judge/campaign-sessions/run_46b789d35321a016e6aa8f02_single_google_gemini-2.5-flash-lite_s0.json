@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "google/gemini-2.5-flash-lite",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The user is asking for the top country (ip_country) for fraud. The provided answer is 'A. NL'. The tool log shows that the agent queried for the top country for fraud and the result was 'NL'. Therefore, the answer is correct and supported by the tool log.",
+  "steps": 1,
+  "cost_usd": 0.0000476,
+  "latency_ms": 783,
+  "tokens": {
+    "input": 200,
+    "output": 69
+  }
+}

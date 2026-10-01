@@ -17,6 +17,7 @@ export interface ViewTab {
   model: string | null;  // null = All models (Main)
   effort: string | null; // null = any effort
   since: string | null;  // "7d" | "30d" | "90d" | null (all time)
+  provider: string | null; // observed serving host; null = any host (issue #307)
 }
 
 // The task status vocabulary lives in lib/filter-status alongside the other

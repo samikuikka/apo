@@ -21,6 +21,8 @@ import { useProjectId } from "@/lib/project-router";
 import { useClientNow } from "@/hooks/use-client-now";
 import { BATCH_RUN_STATUS_FILTERS } from "@/lib/filter-status";
 import { RunsModelFilter, type ModelOption } from "./runs-model-filter";
+import { RunsHostFilter } from "./runs-host-filter";
+import type { ProviderFacetOption } from "@/lib/agent-task-api";
 import { RunsCompareBar } from "./components/RunsCompareBar";
 import { ListPagination } from "@/components/table";
 import { RunsListAutoRefresh } from "@/components/agent-task-execution/runs-list-auto-refresh";
@@ -39,6 +41,7 @@ export function RunsClient({
   pageSize,
   totalPages,
   modelFacets,
+  providerFacets = [],
   canDeleteRuns,
 }: {
   batchRuns: AgentTaskBatchRunSummary[];
@@ -49,6 +52,8 @@ export function RunsClient({
   pageSize: number;
   totalPages: number;
   modelFacets: ModelFacetOption[];
+  /** Serving-host facet for the Hosts column filter (issue #307). */
+  providerFacets: ProviderFacetOption[];
   /** Caller's project role allows run deletion (owner/admin). */
   canDeleteRuns: boolean;
 }) {
@@ -125,6 +130,25 @@ export function RunsClient({
     updateUrl({ model: null, effort: null, page: null });
   }, [updateUrl]);
 
+  // Serving-host filter (issue #307): the host dimension runs are compared
+  // by — "same model, which host was faster/cheaper".
+  const selectedHosts = useMemo(() => {
+    const raw = searchParams.get("provider") ?? "";
+    return new Set(raw.split(",").filter(Boolean));
+  }, [searchParams]);
+  const toggleHost = useCallback(
+    (host: string) => {
+      const next = new Set(selectedHosts);
+      if (next.has(host)) next.delete(host);
+      else next.add(host);
+      updateUrl({ provider: Array.from(next).join(",") || null, page: null });
+    },
+    [selectedHosts, updateUrl],
+  );
+  const clearHosts = useCallback(() => {
+    updateUrl({ provider: null, page: null });
+  }, [updateUrl]);
+
   const modelOptions: ModelOption[] = useMemo(
     () =>
       modelFacets
@@ -185,7 +209,8 @@ export function RunsClient({
     selectedStatuses.size > 0 ||
     urlSince !== null ||
     selectedModels.size > 0 ||
-    selectedEfforts.size > 0;
+    selectedEfforts.size > 0 ||
+    selectedHosts.size > 0;
 
   const clearFilters = useCallback(() => {
     // Cancel any in-flight debounced status write so it cannot resurrect a
@@ -197,6 +222,7 @@ export function RunsClient({
       status: null,
       model: null,
       effort: null,
+      provider: null,
       since: null,
       page: null,
     });
@@ -296,6 +322,17 @@ export function RunsClient({
                       onToggle={toggleModel}
                       onClear={clearModels}
                       onSetArchived={setModelArchivedState}
+                    />
+                  </span>
+                </TableHead>
+                <TableHead style={{ width: COL.hosts }} className="hidden xl:table-cell">
+                  <span className="inline-flex items-center gap-1">
+                    Hosts
+                    <RunsHostFilter
+                      options={providerFacets}
+                      selected={selectedHosts}
+                      onToggle={toggleHost}
+                      onClear={clearHosts}
                     />
                   </span>
                 </TableHead>

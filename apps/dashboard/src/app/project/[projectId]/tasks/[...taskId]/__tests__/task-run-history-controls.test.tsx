@@ -66,7 +66,8 @@ describe("TaskRunHistoryControls (presentational)", () => {
   it("renders the model label and an escape link", () => {
     render(
       <TaskRunHistoryControls
-        scope={{ model: "claude-opus-5", effort: null, since: null, status: new Set() }}
+        scope={{ model: "claude-opus-5", effort: null, since: null,
+    provider: null, status: new Set() }}
         facets={FACETS}
         viewLabel={null}
         onScopeChange={() => {}}
@@ -83,7 +84,8 @@ describe("TaskRunHistoryControls (presentational)", () => {
     const view = (model: string | null) =>
       render(
         <TaskRunHistoryControls
-          scope={{ model, effort: null, since: null, status: new Set() }}
+          scope={{ model, effort: null, since: null,
+    provider: null, status: new Set() }}
           facets={FACETS}
           viewLabel={null}
           onScopeChange={() => {}}
@@ -110,7 +112,8 @@ describe("TaskRunHistoryControls (presentational)", () => {
     const onScopeChange = vi.fn();
     render(
       <TaskRunHistoryControls
-        scope={{ model: null, effort: null, since: null, status: new Set(["failed"]) }}
+        scope={{ model: null, effort: null, since: null,
+    provider: null, status: new Set(["failed"]) }}
         facets={FACETS}
         viewLabel={null}
         onScopeChange={onScopeChange}
@@ -140,7 +143,8 @@ describe("TaskRunHistoryControls (presentational)", () => {
     const view = (viewLabel: string | null) =>
       render(
         <TaskRunHistoryControls
-          scope={{ model: null, effort: null, since: null, status: new Set() }}
+          scope={{ model: null, effort: null, since: null,
+    provider: null, status: new Set() }}
           facets={FACETS}
           viewLabel={viewLabel}
           onScopeChange={() => {}}
@@ -157,7 +161,8 @@ describe("TaskRunHistoryControls (presentational)", () => {
     const onReset = vi.fn();
     render(
       <TaskRunHistoryControls
-        scope={{ model: "claude-opus-5", effort: null, since: "7d", status: new Set() }}
+        scope={{ model: "claude-opus-5", effort: null, since: "7d",
+    provider: null, status: new Set() }}
         facets={FACETS}
         viewLabel={null}
         onScopeChange={() => {}}
@@ -245,5 +250,43 @@ describe("RunHistoryScopeBar (URL ownership)", () => {
     render(<RunHistoryScopeBar projectId="acme" facets={FACETS} />);
     await waitFor(() => expect(savedViewsMock).toHaveBeenCalled());
     expect(screen.queryByText(/scoped to view:/)).not.toBeInTheDocument();
+  });
+});
+
+describe("TaskRunHistoryControls serving hosts (issue #307)", () => {
+  it("renders the selected host on the Hosts trigger", () => {
+    render(
+      <TaskRunHistoryControls
+        scope={{
+          model: null,
+          effort: null,
+          since: null,
+          provider: "openrouter:nitro",
+          status: new Set(),
+        }}
+        facets={FACETS}
+        hostOptions={[{ label: "openrouter:nitro", count: 1 }, { label: "fireworks", count: 1 }]}
+        viewLabel={null}
+        onScopeChange={() => {}}
+        onReset={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Hosts filter" })).toHaveTextContent(
+      "openrouter:nitro",
+    );
+  });
+
+  it("hides the Hosts control when the task's runs reported no hosts", () => {
+    render(
+      <TaskRunHistoryControls
+        scope={{ model: null, effort: null, since: null, provider: null, status: new Set() }}
+        facets={FACETS}
+        hostOptions={[]}
+        viewLabel={null}
+        onScopeChange={() => {}}
+        onReset={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Hosts filter" })).toBeNull();
   });
 });

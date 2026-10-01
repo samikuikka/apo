@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The submitted answer is a list of fee IDs, which directly matches the question asking for applicable fee IDs for Belles_cookbook_store in March 2023. The list is sorted and contains 57 IDs, consistent with a filtered query result. No evidence suggests it answers a different slice or variant. Therefore, the answer is accepted as correct.",
+  "steps": 1,
+  "cost_usd": 0.0064758,
+  "latency_ms": 16269,
+  "tokens": {
+    "input": 386,
+    "output": 5300
+  }
+}

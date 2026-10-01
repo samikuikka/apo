@@ -158,6 +158,8 @@ export interface AgentTaskRunSummary {
   /** (model, provider/route) pairs the trace served through (issue #307).
    * Empty when no call reported a host — render nothing, not "unknown". */
   model_providers?: ModelProviderPair[];
+  /** Error-state checks rollup (no_verdict_reason follow-up). */
+  errored_checks?: number;
   task_source_commit_sha: string | null;
   error_message: string | null;
   total_cost: number | null;

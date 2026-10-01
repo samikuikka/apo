@@ -76,6 +76,7 @@ function renderRuns(query: string, modelFacets: ModelFacetOption[] = facets) {
       pageSize={20}
       totalPages={0}
       modelFacets={modelFacets}
+      providerFacets={[]}
       canDeleteRuns={false}
     />,
   );
@@ -127,6 +128,7 @@ describe("Runs page live refresh", () => {
         pageSize={20}
         totalPages={1}
         modelFacets={facets}
+        providerFacets={[]}
         canDeleteRuns={false}
       />,
     );
@@ -155,6 +157,7 @@ describe("Runs page live refresh", () => {
         pageSize={20}
         totalPages={3}
         modelFacets={facets}
+        providerFacets={[]}
         canDeleteRuns={false}
       />,
     );

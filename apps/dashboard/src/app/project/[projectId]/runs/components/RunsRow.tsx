@@ -16,6 +16,8 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { formatCostMicro, formatTokenTotal } from "@/lib/format";
 import { formatBatchExecution } from "@/lib/run-configuration";
+import { providerLabels } from "@/lib/agent-task-api";
+import { HostLabelsCell } from "@/components/task-run-list";
 
 import { InlineTaskRunRow } from "./InlineTaskRunRow";
 import { formatDuration, formatRelative, formatTrigger, getBatchName, getSourceIcon, getTaskPaths } from "./runs-utils";
@@ -237,6 +239,19 @@ export function RunsRow({
           <span className="truncate font-mono text-[12px] tabular-nums text-muted-foreground" title={formatBatchExecution(batch.configuration)}>
             {formatBatchExecution(batch.configuration)}
           </span>
+        </TableCell>
+
+        {/* Hosts — the union over this batch's child runs once expanded
+         * (the list payload carries counts, not children). A collapsed row
+         * shows an em dash; expanding fills it in (issue #307). */}
+        <TableCell className="hidden max-w-[160px] xl:table-cell">
+          <HostLabelsCell
+            labels={
+              taskRuns
+                ? [...new Set(taskRuns.flatMap((r) => providerLabels(r.model_providers)))]
+                : []
+            }
+          />
         </TableCell>
 
         <TableCell className="text-right">

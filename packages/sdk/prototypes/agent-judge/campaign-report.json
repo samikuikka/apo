@@ -1,0 +1,155 @@
+{
+  "generated_at": "2026-09-29T17:25:18.001911+00:00",
+  "samples": 1,
+  "runs": 57,
+  "gold_summary": {
+    "fail": 30,
+    "pass": 27,
+    "missing": 0
+  },
+  "arms": {
+    "agent|deepseek/deepseek-v4.1-flash": {
+      "n": 57,
+      "both_pass": 27,
+      "false_pass": 0,
+      "false_fail": 0,
+      "both_fail": 26,
+      "unknown": 4,
+      "agreement": 1.0,
+      "cost": {
+        "total": 0.1905741826,
+        "p50": 0.0017261048,
+        "p95": 0.0133280592
+      },
+      "latency_ms": {
+        "p50": 24266,
+        "p95": 261207
+      },
+      "steps": {
+        "p50": 5,
+        "max": 12
+      },
+      "used_history_tools": 57
+    },
+    "agent|google/gemini-2.5-flash-lite": {
+      "n": 3,
+      "both_pass": 0,
+      "false_pass": 0,
+      "false_fail": 0,
+      "both_fail": 0,
+      "unknown": 3,
+      "agreement": null,
+      "cost": {
+        "total": 0.0045235200000000005,
+        "p50": 0.0016667500000000003,
+        "p95": 0.0028567700000000002
+      },
+      "latency_ms": {
+        "p50": 25323,
+        "p95": 55381
+      },
+      "steps": {
+        "p50": 12,
+        "max": 12
+      },
+      "used_history_tools": 0
+    },
+    "agent_nohistory|deepseek/deepseek-v4.1-flash": {
+      "n": 21,
+      "both_pass": 4,
+      "false_pass": 4,
+      "false_fail": 0,
+      "both_fail": 4,
+      "unknown": 9,
+      "agreement": 0.6666666666666666,
+      "cost": {
+        "total": 0.022046981599999998,
+        "p50": 0.0015161048000000002,
+        "p95": 0.005808616799999999
+      },
+      "latency_ms": {
+        "p50": 189935,
+        "p95": 300059
+      },
+      "steps": {
+        "p50": 4,
+        "max": 7
+      },
+      "used_history_tools": 0
+    },
+    "single|deepseek/deepseek-v4.1-flash": {
+      "n": 57,
+      "both_pass": 25,
+      "false_pass": 20,
+      "false_fail": 1,
+      "both_fail": 10,
+      "unknown": 1,
+      "agreement": 0.625,
+      "cost": {
+        "total": 0.1408703753,
+        "p50": 0.001536036,
+        "p95": 0.008007246
+      },
+      "latency_ms": {
+        "p50": 25590,
+        "p95": 121802
+      },
+      "steps": {
+        "p50": 1,
+        "max": 1
+      },
+      "used_history_tools": 0
+    },
+    "single|google/gemini-2.5-flash-lite": {
+      "n": 57,
+      "both_pass": 20,
+      "false_pass": 11,
+      "false_fail": 7,
+      "both_fail": 19,
+      "unknown": 0,
+      "agreement": 0.6842105263157895,
+      "cost": {
+        "total": 0.0043579,
+        "p50": 7.03e-05,
+        "p95": 0.0001057
+      },
+      "latency_ms": {
+        "p50": 851,
+        "p95": 3562
+      },
+      "steps": {
+        "p50": 1,
+        "max": 1
+      },
+      "used_history_tools": 0
+    },
+    "single_worklog|deepseek/deepseek-v4.1-flash": {
+      "n": 19,
+      "both_pass": 8,
+      "false_pass": 5,
+      "false_fail": 0,
+      "both_fail": 6,
+      "unknown": 0,
+      "agreement": 0.7368421052631579,
+      "cost": {
+        "total": 0.07266747443,
+        "p50": 0.0015393,
+        "p95": 0.0206736
+      },
+      "latency_ms": {
+        "p50": 19715,
+        "p95": 166966
+      },
+      "steps": {
+        "p50": 1,
+        "max": 1
+      },
+      "used_history_tools": 0
+    }
+  },
+  "decision_gates": {
+    "overall_agentic_ge_single": true,
+    "false_pass_strictly_lower": true,
+    "gold_agreement_85pct": true
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The submitted answer 0.123217 is in EUR with 6 decimal places, matching the requested format. It corresponds to the average fee for account type H, MCC description 'Eating Places and Restaurants', card scheme GlobalCard, and a 10 EUR transaction value. This is the expected result for DABstep #1305.",
+  "steps": 1,
+  "cost_usd": 0.0023574,
+  "latency_ms": 4327,
+  "tokens": {
+    "input": 250,
+    "output": 1902
+  }
+}

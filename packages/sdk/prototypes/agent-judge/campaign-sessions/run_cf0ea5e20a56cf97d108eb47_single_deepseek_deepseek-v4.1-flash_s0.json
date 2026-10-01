@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The task asks a yes/no question: whether Martinis_Fine_Steakhouse is in danger of a high-fraud-rate fine. The submitted answer is exactly \"yes\", directly addressing that question. There is no evidence that the run computed a different quantity or answered a different variant. Therefore, the answer responds to the task as asked.",
+  "steps": 1,
+  "cost_usd": 0.003551328,
+  "latency_ms": 45408,
+  "tokens": {
+    "input": 240,
+    "output": 7728
+  }
+}

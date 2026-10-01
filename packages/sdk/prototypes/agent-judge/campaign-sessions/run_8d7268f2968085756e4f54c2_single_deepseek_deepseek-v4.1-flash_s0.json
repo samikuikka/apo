@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The submitted answer provides a list of Fee IDs, which directly addresses the question of which Fee IDs are applicable to Belles_cookbook_store on the specified date. There is no evidence in the answer to suggest it computed a different slice or quantity. Although the tool log is not provided, the answer format and content are consistent with the task.",
+  "steps": 1,
+  "cost_usd": 0.00604998,
+  "latency_ms": 67533,
+  "tokens": {
+    "input": 358,
+    "output": 13178
+  }
+}

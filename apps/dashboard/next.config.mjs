@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: process.env.NEXT_STANDALONE_OUTPUT ? 'standalone' : undefined,
+  // Second concurrent dev server (another jj session sharing this checkout):
+  // its own dist dir so the two .next directories — and their dev-server
+  // locks — never collide.
+  ...(process.env.APO_DEV_DIST_DIR ? { distDir: process.env.APO_DEV_DIST_DIR } : {}),
   // The dev server binds all interfaces and both loopback names must work:
   // without 127.0.0.1 here, Next blocks its own dev resources (HMR — and with
   // them hydration) for browsers that address the server as 127.0.0.1.

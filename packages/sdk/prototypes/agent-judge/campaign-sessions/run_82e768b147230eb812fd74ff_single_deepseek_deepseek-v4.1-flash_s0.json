@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The submitted value 0.123217 is in EUR with exactly 6 decimals, matching the requested format. It is a specific computed number consistent with the average fee for account type H, MCC 'Eating Places and Restaurants', and card scheme GlobalCard for a 10 EUR transaction. There is no indication from the answer that a different slice or variant was computed. Therefore the answer directly responds to the task as asked.",
+  "steps": 1,
+  "cost_usd": 0.002740104,
+  "latency_ms": 33614,
+  "tokens": {
+    "input": 272,
+    "output": 5941
+  }
+}

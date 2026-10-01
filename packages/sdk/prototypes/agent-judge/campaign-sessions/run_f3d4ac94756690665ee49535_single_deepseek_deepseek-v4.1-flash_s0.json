@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": false,
+  "reasoning": "The run's final answer is empty and marked as not submitted. It does not provide any fee IDs or any response to the task question, so it cannot be considered a correct or supported answer.",
+  "steps": 1,
+  "cost_usd": 0.000077073,
+  "latency_ms": 6994,
+  "tokens": {
+    "input": 217,
+    "output": 138
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The task asks which issuing country has the highest number of transactions. The submitted answer 'NL' directly identifies a country (the Netherlands) as that issuing country, which is responsive to the question rather than answering a different metric or variant. Therefore it passes.",
+  "steps": 1,
+  "cost_usd": 0.000365484,
+  "latency_ms": 5359,
+  "tokens": {
+    "input": 230,
+    "output": 744
+  }
+}
