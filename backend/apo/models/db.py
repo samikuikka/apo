@@ -1039,6 +1039,22 @@ class AutomationDB(SQLModel, table=True):
         ),
     )
 
+    # Windowed triggers ("monitors"): the evaluator computes an aggregate
+    # over a time window and fires on a threshold crossing, instead of
+    # matching a single run event. ``trigger_kind`` is "event" (default,
+    # everything before this) or "window".
+    trigger_kind: str = Field(default="event", index=True)
+    window_metric: str | None = Field(default=None)
+    window_operator: str | None = Field(default=None)
+    window_threshold: float | None = Field(default=None)
+    # Named evaluation_window ("1h" | "6h" | "24h" | "7d") — not a cooldown:
+    # a breach keeps firing only on the rising edge (was_breached).
+    evaluation_window: str | None = Field(default=None)
+    # Last evaluation state; was_breached gates re-firing.
+    was_breached: bool = Field(default=False)
+    last_evaluated_at: datetime | None = Field(default=None)
+    last_evaluated_value: float | None = Field(default=None)
+
 
 class AutomationExecutionDB(SQLModel, table=True):
     __tablename__: ClassVar[str] = "automation_executions"

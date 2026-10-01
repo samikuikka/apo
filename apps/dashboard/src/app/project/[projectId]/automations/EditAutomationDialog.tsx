@@ -2,6 +2,13 @@
 
 import { useCallback, useMemo, useState } from "react";
 import {
+  type EvaluationWindow,
+  type WindowMetricId,
+  type WindowOperator,
+  WINDOW_METRIC_LABELS,
+  formatWindowValue,
+} from "@/lib/automations-api";
+import {
   type AutomationSummary,
   updateAutomation,
 } from "@/lib/automations-api";
@@ -88,6 +95,27 @@ export default function EditAutomationDialog({
 
   const [submitting, setSubmitting] = useState(false);
 
+  // Window automations edit their trigger knobs instead of event/conditions.
+  const isWindow = automation.trigger_kind === "window";
+  const percentMetric =
+    automation.window_metric === "suite_pass_rate" ||
+    automation.window_metric === "checks_pass_rate" ||
+    automation.window_metric === "error_rate";
+  const [windowMetric, setWindowMetric] = useState<WindowMetricId>(
+    automation.window_metric ?? "suite_pass_rate",
+  );
+  const [windowOperator, setWindowOperator] = useState<WindowOperator>(
+    automation.window_operator ?? "lt",
+  );
+  const [windowThreshold, setWindowThreshold] = useState(() =>
+    percentMetric
+      ? String(Math.round((automation.window_threshold ?? 80) * 100))
+      : String(automation.window_threshold ?? 1),
+  );
+  const [windowEval, setWindowEval] = useState<EvaluationWindow>(
+    automation.evaluation_window ?? "24h",
+  );
+
   const rule = useMemo(
     () => triggerToRule(trigger, taskFilter),
     [trigger, taskFilter],
@@ -124,6 +152,39 @@ export default function EditAutomationDialog({
     setSubmitting(true);
     onError(null);
     try {
+      if (isWindow) {
+        const nextPercent =
+          windowMetric === "suite_pass_rate" ||
+          windowMetric === "checks_pass_rate" ||
+          windowMetric === "error_rate";
+        const thresholdNumber = nextPercent
+          ? Number(windowThreshold) / 100
+          : Number(windowThreshold);
+        if (!Number.isFinite(thresholdNumber)) {
+          onError("Threshold must be a number");
+          setSubmitting(false);
+          return;
+        }
+        const updated = await updateAutomation(automation.id, {
+          name: name.trim(),
+          window_metric: windowMetric,
+          window_operator: windowOperator,
+          window_threshold: thresholdNumber,
+          evaluation_window: windowEval,
+          action_config:
+            automation.action_type === "webhook"
+              ? { url: url.trim() }
+              : automation.action_type === "slack"
+                ? url.trim()
+                  ? { url: url.trim() }
+                  : undefined
+                : { owner: owner.trim(), repo: repo.trim() },
+          ...(githubToken.trim() ? { github_token: githubToken.trim() } : {}),
+        });
+        onUpdated(updated);
+        onOpenChange(false);
+        return;
+      }
       const updated = await updateAutomation(automation.id, {
         name: name.trim(),
         event_type: useAdvanced ? advancedEvent : rule.event,
@@ -157,6 +218,7 @@ export default function EditAutomationDialog({
     automation.action_type,
     automation.id,
     githubToken,
+    isWindow,
     name,
     onUpdated,
     onOpenChange,
@@ -166,6 +228,10 @@ export default function EditAutomationDialog({
     rule,
     url,
     useAdvanced,
+    windowEval,
+    windowMetric,
+    windowOperator,
+    windowThreshold,
   ]);
 
   const updateCondition = useCallback(
@@ -204,6 +270,79 @@ export default function EditAutomationDialog({
             />
           </div>
 
+          {isWindow ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium">Trigger</p>
+            <p className="text-xs text-muted-foreground">
+              Current value:{" "}
+              <span className="font-mono tabular-nums">
+                {formatWindowValue(
+                  automation.window_metric,
+                  automation.last_evaluated_value,
+                )}
+              </span>
+              {automation.last_evaluated_at
+                ? ` · last evaluated ${automation.last_evaluated_at.slice(0, 16).replace("T", " ")} UTC`
+                : " · not evaluated yet"}
+              {automation.enabled && automation.was_breached
+                ? " · breaching now"
+                : ""}
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5 text-sm">
+              <span>When</span>
+              <select
+                aria-label="Window metric"
+                className={SELECT_CLASS + " w-40"}
+                value={windowMetric}
+                onChange={(e) => setWindowMetric(e.target.value as WindowMetricId)}
+              >
+                {Object.entries(WINDOW_METRIC_LABELS).map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <span>is</span>
+              <select
+                aria-label="Window operator"
+                className={SELECT_CLASS + " w-24"}
+                value={windowOperator}
+                onChange={(e) =>
+                  setWindowOperator(e.target.value as WindowOperator)
+                }
+              >
+                <option value="lt">below</option>
+                <option value="gt">above</option>
+                <option value="gte">at least</option>
+              </select>
+              <Input
+                aria-label="Window threshold"
+                className="h-8 w-20 font-mono text-xs tabular-nums"
+                value={windowThreshold}
+                onChange={(e) => setWindowThreshold(e.target.value)}
+              />
+              <span>over</span>
+              <select
+                aria-label="Evaluation window"
+                className={SELECT_CLASS + " w-20"}
+                value={windowEval}
+                onChange={(e) => setWindowEval(e.target.value as EvaluationWindow)}
+              >
+                <option value="1h">1h</option>
+                <option value="6h">6h</option>
+                <option value="24h">24h</option>
+                <option value="7d">7d</option>
+              </select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Editing the trigger re-arms it: the next crossing of the
+              threshold fires again.
+            </p>
+          </div>
+          ) : null}
+
+      {!isWindow ? (
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">When exactly?</p>
             {TRIGGER_CHOICES.map((choice) => {
@@ -440,6 +579,8 @@ export default function EditAutomationDialog({
               </>
             )}
           </div>
+        </div>
+          ) : null}
         </div>
 
         <DialogFooter>

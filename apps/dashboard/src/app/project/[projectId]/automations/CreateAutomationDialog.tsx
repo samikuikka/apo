@@ -6,6 +6,10 @@ import {
   type AutomationCondition,
   type AutomationEventType,
   type AutomationSummary,
+  type EvaluationWindow,
+  type WindowMetricId,
+  type WindowOperator,
+  WINDOW_METRIC_LABELS,
   createAutomation,
 } from "@/lib/automations-api";
 import { Button } from "@/components/ui/button";
@@ -76,6 +80,14 @@ export default function CreateAutomationDialog({
   const [trigger, setTrigger] = useState<TriggerId>("scheduled");
   const [taskFilter, setTaskFilter] = useState("");
 
+  // Window ("monitor") triggers: the evaluator watches an aggregate over a
+  // time window instead of matching single events.
+  const [windowMode, setWindowMode] = useState(false);
+  const [windowMetric, setWindowMetric] = useState<WindowMetricId>("suite_pass_rate");
+  const [windowOperator, setWindowOperator] = useState<WindowOperator>("lt");
+  const [windowThreshold, setWindowThreshold] = useState("80");
+  const [windowEval, setWindowEval] = useState<EvaluationWindow>("24h");
+
   // Advanced overrides — when used they replace the plain-language trigger.
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedEvent, setAdvancedEvent] = useState<AutomationEventType | "">("");
@@ -106,6 +118,11 @@ export default function CreateAutomationDialog({
     setOutcome(null);
     setTrigger("scheduled");
     setTaskFilter("");
+    setWindowMode(false);
+    setWindowMetric("suite_pass_rate");
+    setWindowOperator("lt");
+    setWindowThreshold("80");
+    setWindowEval("24h");
     setAdvancedOpen(false);
     setAdvancedEvent("");
     setAdvancedConditions([]);
@@ -189,6 +206,49 @@ export default function CreateAutomationDialog({
     setSubmitting(true);
     onError(null);
     try {
+      if (windowMode) {
+        const thresholdNumber =
+          windowMetric === "suite_pass_rate" ||
+          windowMetric === "checks_pass_rate" ||
+          windowMetric === "error_rate"
+            ? Number(windowThreshold) / 100
+            : Number(windowThreshold);
+        if (!Number.isFinite(thresholdNumber)) {
+          onError("Threshold must be a number");
+          setSubmitting(false);
+          return;
+        }
+        const created = await createAutomation({
+          project_id: projectId,
+          name: `${WINDOW_METRIC_LABELS[windowMetric]} ${
+            windowOperator === "lt" ? "below" : "above"
+          } ${windowThreshold} over ${windowEval} → ${
+            outcome === "github_issue" ? "GitHub issue" : outcome === "slack" ? "Slack" : "webhook"
+          }`,
+          trigger_kind: "window",
+          conditions: [],
+          window_metric: windowMetric,
+          window_operator: windowOperator,
+          window_threshold: thresholdNumber,
+          evaluation_window: windowEval,
+          action_type: outcome,
+          action_config:
+            outcome === "webhook" || outcome === "slack"
+              ? { url: url.trim() }
+              : {
+                  owner: repoOwner.trim(),
+                  repo: repoName.trim(),
+                  labels: null,
+                  title: null,
+                  body: null,
+                },
+          github_token: outcome === "github_issue" ? githubToken.trim() : undefined,
+        });
+        onCreated(created, created.secret ?? null);
+        reset();
+        onOpenChange(false);
+        return;
+      }
       const event = useAdvanced ? advancedEvent : rule.event;
       const conditions: AutomationCondition[] = useAdvanced
         ? advancedConditions.map((condition) => ({
@@ -245,6 +305,11 @@ export default function CreateAutomationDialog({
     triggerLabel,
     url,
     useAdvanced,
+    windowEval,
+    windowMetric,
+    windowMode,
+    windowOperator,
+    windowThreshold,
   ]);
 
   const updateCondition = useCallback(
@@ -324,6 +389,7 @@ export default function CreateAutomationDialog({
                   onClick={() => {
                     setTrigger(choice.id);
                     setAdvancedOpen(false);
+                    setWindowMode(false);
                   }}
                 >
                   <span>
@@ -353,6 +419,94 @@ export default function CreateAutomationDialog({
                 />
               </label>
             ) : null}
+
+            <div className="mt-3 border-t border-border pt-3">
+              <p className="text-xs font-semibold text-muted-foreground">
+                Or watch a window — an aggregate over recent runs
+              </p>
+              <button
+                type="button"
+                aria-pressed={windowMode}
+                className={`mt-2 w-full border p-3 text-left text-sm transition-colors ${
+                  windowMode
+                    ? "border-foreground bg-muted/30"
+                    : "border-border bg-background hover:border-foreground/40"
+                }`}
+                onClick={() => setWindowMode(!windowMode)}
+              >
+                When
+                <select
+                  aria-label="Window metric"
+                  className={`${SELECT_CLASS} mx-1`}
+                  value={windowMetric}
+                  onChange={(e) => {
+                    setWindowMetric(e.target.value as WindowMetricId);
+                    setWindowOperator(
+                      e.target.value === "suite_pass_rate" ||
+                        e.target.value === "checks_pass_rate" ||
+                        e.target.value === "error_rate"
+                        ? "lt"
+                        : "gt",
+                    );
+                    setWindowThreshold(
+                      e.target.value === "suite_pass_rate" ||
+                        e.target.value === "checks_pass_rate"
+                        ? "80"
+                        : e.target.value === "error_rate"
+                          ? "5"
+                          : e.target.value.endsWith("_cost")
+                            ? "5"
+                            : "300",
+                    );
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {Object.entries(WINDOW_METRIC_LABELS).map(([id, label]) => (
+                    <option key={id} value={id}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                is
+                <select
+                  aria-label="Window operator"
+                  className={`${SELECT_CLASS} mx-1`}
+                  value={windowOperator}
+                  onChange={(e) =>
+                    setWindowOperator(e.target.value as WindowOperator)
+                  }
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <option value="lt">below</option>
+                  <option value="gt">above</option>
+                  <option value="gte">at least</option>
+                </select>
+                <Input
+                  aria-label="Window threshold"
+                  className="mx-1 inline-block h-8 w-20 font-mono text-xs tabular-nums"
+                  value={windowThreshold}
+                  onChange={(e) => setWindowThreshold(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                over
+                <select
+                  aria-label="Evaluation window"
+                  className={`${SELECT_CLASS} mx-1`}
+                  value={windowEval}
+                  onChange={(e) => setWindowEval(e.target.value as EvaluationWindow)}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <option value="1h">1h</option>
+                  <option value="6h">6h</option>
+                  <option value="24h">24h</option>
+                  <option value="7d">7d</option>
+                </select>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  The evaluator re-checks every 5 minutes and fires once when
+                  the threshold is crossed.
+                </span>
+              </button>
+            </div>
 
             <div className="mt-3 border-t border-border pt-3">
               <button

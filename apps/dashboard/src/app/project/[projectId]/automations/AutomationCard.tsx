@@ -6,8 +6,10 @@ import {
   type AutomationExecution,
   type AutomationSummary,
   deleteAutomation,
+  formatWindowValue,
   listAutomationExecutions,
   testAutomation,
+  triggerSentence,
 } from "@/lib/automations-api";
 import { formatUtcTimestamp } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -120,6 +122,9 @@ export default function AutomationCard({
             ) : (
               <Badge variant="outline">Disabled</Badge>
             )}
+            {automation.enabled && automation.was_breached ? (
+              <Badge variant="destructive">Breached</Badge>
+            ) : null}
             {automation.consecutive_failures > 0 ? (
               <Badge variant="destructive">
                 {automation.consecutive_failures} consecutive failures
@@ -130,9 +135,33 @@ export default function AutomationCard({
             <div className="flex gap-2">
               <dt className="shrink-0">When</dt>
               <dd className="break-all">
-                {automation.event_type} — {describeConditions(automation)}
+                {automation.trigger_kind === "window"
+                  ? triggerSentence(automation)
+                  : `${automation.event_type} — ${describeConditions(automation)}`}
               </dd>
             </div>
+            {automation.trigger_kind === "window" ? (
+              <div className="flex gap-2">
+                <dt className="shrink-0">Current value</dt>
+                <dd className="font-mono tabular-nums">
+                  <span
+                    className={
+                      automation.enabled && automation.was_breached
+                        ? "text-destructive"
+                        : ""
+                    }
+                  >
+                    {formatWindowValue(
+                      automation.window_metric,
+                      automation.last_evaluated_value,
+                    )}
+                  </span>
+                  {automation.last_evaluated_at
+                    ? ` · evaluated ${formatUtcTimestamp(automation.last_evaluated_at)}`
+                    : " · not evaluated yet"}
+                </dd>
+              </div>
+            ) : null}
             <div className="flex gap-2">
               <dt className="shrink-0">Then</dt>
               <dd className="break-all">{describeAction(automation)}</dd>

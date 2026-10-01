@@ -1445,6 +1445,19 @@ def _record_delivery_outcome(
 # --- Lifecycle -----------------------------------------------------------------
 
 
+async def dispatch_execution_delivery(
+    automation_id: str,
+    execution_id: str,
+    project: str,
+    event_type: str,
+    data: dict[str, object],
+) -> None:
+    """Deliver a recorded execution; public wrapper so the window evaluator
+    can dispatch through the same path as event fires (semaphore, retries,
+    health auto-disable)."""
+    await _deliver(automation_id, execution_id, project, event_type, data)
+
+
 def recover_stale_automations(session: Session) -> None:
     """Mark orphaned pending executions as error; never retry a delivery.
 

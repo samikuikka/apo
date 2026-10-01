@@ -2022,6 +2022,34 @@ def _migrate_to_v50() -> None:
     )
 
 
+def _migrate_to_v51() -> None:
+    """Version 51: windowed automation triggers ("monitors").
+
+    Automations gain a ``trigger_kind`` — ``event`` (the only behavior
+    before this; default keeps every existing row unchanged) or ``window``,
+    where an evaluator computes an aggregate over batch runs in a time
+    window and fires on a threshold crossing. Window automations carry
+    ``window_metric`` / ``window_operator`` / ``window_threshold`` /
+    ``evaluation_window`` plus the last evaluation state
+    (``was_breached`` rising-edge gate, ``last_evaluated_at`` /
+    ``last_evaluated_value``). All new columns are nullable or defaulted,
+    so no backfill is needed.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(
+            conn, "automations", "trigger_kind", "VARCHAR NOT NULL DEFAULT 'event'"
+        )
+        _add_column_if_missing(conn, "automations", "window_metric", "VARCHAR")
+        _add_column_if_missing(conn, "automations", "window_operator", "VARCHAR")
+        _add_column_if_missing(conn, "automations", "window_threshold", "FLOAT")
+        _add_column_if_missing(conn, "automations", "evaluation_window", "VARCHAR")
+        _add_column_if_missing(
+            conn, "automations", "was_breached", "BOOLEAN NOT NULL DEFAULT 0"
+        )
+        _add_column_if_missing(conn, "automations", "last_evaluated_at", "DATETIME")
+        _add_column_if_missing(conn, "automations", "last_evaluated_value", "FLOAT")
+
+
 def _migrate_to_v4() -> None:
     """Version 4: check-level rollup columns on agent_task_batch_runs.
 
@@ -3387,7 +3415,7 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 50
+LATEST_SCHEMA_VERSION = 51
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -3440,6 +3468,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     48: _migrate_to_v48,
     49: _migrate_to_v49,
     50: _migrate_to_v50,
+    51: _migrate_to_v51,
 }
 
 

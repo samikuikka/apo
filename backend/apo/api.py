@@ -97,13 +97,19 @@ async def lifespan(app: FastAPI):
         stop_trace_ingestion_worker,
     )
     from .services.execution_leases import start_lease_reaper, stop_lease_reaper
+    from .services.automation_window_evaluator import (
+        start_window_evaluator,
+        stop_window_evaluator,
+    )
     start_schedule_dispatcher()
     start_retention_loop()
     start_trace_ingestion_worker()
     start_lease_reaper()
+    start_window_evaluator()
     yield
     await stop_lease_reaper()
     await stop_trace_ingestion_worker()
+    await stop_window_evaluator()
     stop_retention_loop()
     stop_schedule_dispatcher()
     from .services.automations import stop_automation_deliveries
