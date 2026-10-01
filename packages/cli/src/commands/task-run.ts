@@ -521,7 +521,12 @@ async function runCallerRecorded(config: Config, resolved: ResolvedTask): Promis
     delete process.env.APO_AUTH_TOKEN;
     process.removeListener("SIGINT", onRunSigint);
     process.removeListener("SIGTERM", onRunSigterm);
-    await collector.stop();
+    if ((await collector.stop()) === "left-running") {
+      console.log(dim(
+        "Local collector left running — it is still delivering queued traces " +
+          "(backend was unreachable or throttling); the next apo command reuses it.",
+      ));
+    }
   }
   return exitCode;
 }

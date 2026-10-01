@@ -41,10 +41,21 @@ export const COLLECTOR_VERSION = "0.160.0";
 /** apo's canonical OTLP traces path; the receiver impersonates it. */
 export const APO_TRACES_PATH = "/api/public/otel/v1/traces";
 
-const DEFAULT_OTLP_PORT = 4318;
+// NOT the OTLP-conventional 4318: anything on the machine exporting to the
+// standard localhost OTLP port (other collectors' SDKs, replay tooling)
+// would be silently captured by apo's collector and forwarded to the user's
+// apo project. A dedicated port keeps the sidecar apo-only; every consumer
+// is env-driven by the CLI, so nothing needs the conventional port.
+const DEFAULT_OTLP_PORT = 14318;
 const DEFAULT_HEALTH_PORT = 13133;
+const DEFAULT_METRICS_PORT = 18888;
 const DEFAULT_MAX_QUEUE_BYTES = 512 * 1024 * 1024;
 const DEFAULT_HEALTH_TIMEOUT_MS = 20_000;
+const DEFAULT_DRAIN_TIMEOUT_MS = 15_000;
+// > the batch processor's 1s timeout: a partial batch can sit in the batch
+// stage for that long after the last export, invisible to the queue gauge.
+const DEFAULT_SETTLE_MS = 2_500;
+const DEFAULT_EMPTY_WINDOW_MS = 1_000;
 const STOP_TIMEOUT_MS = 10_000;
 
 export interface CollectorPaths {
@@ -52,6 +63,7 @@ export interface CollectorPaths {
   bin: string;
   config: string;
   log: string;
+  pid: string;
   queueDir: string;
 }
 
@@ -62,6 +74,7 @@ export function collectorPaths(): CollectorPaths {
     bin: join(home, "bin", "otelcol-contrib"),
     config: join(home, "config.yaml"),
     log: join(home, "collector.log"),
+    pid: join(home, "collector.pid"),
     queueDir: join(home, "queue"),
   };
 }
@@ -71,6 +84,7 @@ export interface CollectorRenderOptions {
   backendUrl: string;
   otlpPort: number;
   healthPort: number;
+  metricsPort: number;
   queueDir: string;
   maxQueueBytes: number;
 }
@@ -125,7 +139,9 @@ processors:
   batch:
     send_batch_size: 512
     send_batch_max_size: 1024
-    timeout: 2s
+    # Short timeout so a finished run's tail spans reach the exporter queue
+    # well inside stop()'s settle window.
+    timeout: 1s
 
 exporters:
   otlphttp/apo:
@@ -153,9 +169,17 @@ exporters:
 
 service:
   extensions: [file_storage, health_check]
+  # Queue-depth gauge scraped by stop() so a finished run's late spans drain
+  # to the backend before the collector shuts down.
   telemetry:
-    logs:
-      level: info
+    metrics:
+      level: normal
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: ${opts.metricsPort}
   pipelines:
     traces:
       receivers: [otlp]
@@ -283,12 +307,18 @@ export interface StartCollectorOptions {
 }
 
 export interface CollectorHandle {
-  /** Loopback base URL the task trace endpoint should point at. */
+  /** Loopback base URL the task trace endpoint should be pointed at. */
   traceEndpoint: string;
   /** True when an already-running collector was reused instead of started. */
   reused: boolean;
-  /** Graceful stop (SIGTERM, bounded). Queued spans persist on disk. */
-  stop(): Promise<void>;
+  /**
+   * Stop the collector once its queue is provably drained. Resolves with
+   * "stopped", or "left-running" when the backend is unreachable / the queue
+   * will not drain (bounded): in-flight retries are dropped at collector
+   * shutdown, so the only safe stop is a fully drained one — otherwise the
+   * process keeps retrying on its own and the next apo command reuses it.
+   */
+  stop(): Promise<"stopped" | "left-running">;
 }
 
 /**
@@ -301,6 +331,7 @@ export async function startCollector(opts: StartCollectorOptions): Promise<Colle
   const paths = collectorPaths();
   const otlpPort = intEnv("APO_COLLECTOR_PORT", DEFAULT_OTLP_PORT);
   const healthPort = intEnv("APO_COLLECTOR_HEALTH_PORT", DEFAULT_HEALTH_PORT);
+  const metricsPort = intEnv("APO_COLLECTOR_METRICS_PORT", DEFAULT_METRICS_PORT);
 
   // A healthy collector on the ports is reused whatever started it: the
   // config is ours (same path impersonation), and a second start would fail
@@ -308,12 +339,16 @@ export async function startCollector(opts: StartCollectorOptions): Promise<Colle
   // the health port alone must not trick us into pointing traces at a dead
   // receiver.
   if ((await isHealthy(healthPort)) && (await isReceiverUp(otlpPort))) {
+    // The reused collector is not our child process, but with its pidfile we
+    // can still stop it once drained — otherwise a collector left running by
+    // an earlier outage-era command would linger forever.
+    const pid = readCollectorPid();
     return {
       traceEndpoint: `http://127.0.0.1:${otlpPort}`,
       reused: true,
-      stop: async () => {
-        // A reused collector is not ours to stop.
-      },
+      stop: pid === null
+        ? async () => "left-running" as const
+        : makeStop({ pid }, metricsPort, opts.backendUrl),
     };
   }
 
@@ -334,6 +369,7 @@ export async function startCollector(opts: StartCollectorOptions): Promise<Colle
       backendUrl: opts.backendUrl,
       otlpPort,
       healthPort,
+      metricsPort,
       queueDir: paths.queueDir,
       maxQueueBytes: intEnv("APO_COLLECTOR_MAX_QUEUE_BYTES", DEFAULT_MAX_QUEUE_BYTES),
     }),
@@ -347,6 +383,11 @@ export async function startCollector(opts: StartCollectorOptions): Promise<Colle
       // The one secret the collector needs — argv and config stay clean.
       APO_COLLECTOR_AUTH: opts.authHeader,
     },
+    // Own process group: a terminal Ctrl+C (group SIGINT) or the CLI's own
+    // death must not kill the collector mid-retry — in-flight retries are
+    // dropped at shutdown, exactly what this sidecar exists to prevent. Only
+    // stop() ends it, and only once the queue is provably drained.
+    detached: true,
   });
   // The child holds its own duplicate of the log fd; the parent's copy can go.
   closeSync(logFd);
@@ -374,10 +415,12 @@ export async function startCollector(opts: StartCollectorOptions): Promise<Colle
   // into an unhandled rejection.
   earlyExit.catch(() => undefined);
 
+  writeFileSync(paths.pid, `${child.pid}\n`);
+
   return {
     traceEndpoint: `http://127.0.0.1:${otlpPort}`,
     reused: false,
-    stop: () => stopCollector(child),
+    stop: makeStop({ child }, metricsPort, opts.backendUrl),
   };
 }
 
@@ -419,23 +462,191 @@ async function waitForHealth(healthPort: number, timeoutMs: number): Promise<voi
   );
 }
 
-function stopCollector(child: ChildProcess): Promise<void> {
-  return new Promise((resolve) => {
-    if (child.exitCode !== null) return resolve();
-    const timer = setTimeout(() => {
-      killCollector(child);
-      resolve();
-    }, STOP_TIMEOUT_MS);
-    child.once("exit", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-    try {
-      child.kill("SIGTERM");
-    } catch {
-      clearTimeout(timer);
-      resolve();
+/** Who to terminate: our own child process, or a reused collector by pid. */
+type CollectorTarget = { child: ChildProcess } | { pid: number };
+
+/** Read the pid of a previously started collector, or null when unknown. */
+function readCollectorPid(): number | null {
+  try {
+    const pid = Number.parseInt(readFileSync(collectorPaths().pid, "utf8").trim(), 10);
+    // Probe liveness; ESRCH means the pidfile is stale.
+    process.kill(pid, 0);
+    return pid;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Best-effort identity check before signaling a reused pid: a recycled pid
+ * must never be killed as "the collector". When /proc is readable and the
+ * process name does not match, refuse.
+ */
+function pidLooksLikeCollector(pid: number): boolean {
+  try {
+    const comm = readFileSync(`/proc/${pid}/comm`, "utf8").trim();
+    return comm.startsWith("otelcol");
+  } catch {
+    // No /proc (macOS) or unreadable — fall back to trusting the pidfile.
+    return true;
+  }
+}
+
+/**
+ * Stop the collector only when doing so is provably safe. In-flight retries
+ * are DROPPED at otelcol shutdown (the persistent queue only covers items
+ * not yet popped for sending), so a SIGTERM while the backend is unreachable
+ * or throttling loses exactly the spans the sidecar exists to protect. When
+ * the drain cannot be confirmed within the bound, the collector is left
+ * running to retry on its own; the next apo command reuses it and stops it
+ * once drained.
+ */
+function makeStop(
+  target: CollectorTarget,
+  metricsPort: number,
+  backendUrl: string,
+): () => Promise<"stopped" | "left-running"> {
+  return async () => {
+    if (!(await isBackendUp(backendUrl))) {
+      return "left-running";
     }
+    const drained = await waitForQueueDrain(metricsPort);
+    if (!drained) {
+      return "left-running";
+    }
+    await terminateCollector(target);
+    return "stopped";
+  };
+}
+
+async function isBackendUp(backendUrl: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${backendUrl.replace(/\/$/, "")}/health`, {
+      signal: AbortSignal.timeout(2_000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Wait until the exporter queue is provably empty — not merely momentarily
+ * empty: the queue-size gauge cannot see spans still sitting in the batch
+ * processor (held for up to the batch timeout after the last export) nor
+ * items mid-retry (visible only as a rising send-failure counter). So: a
+ * settle window longer than the batch timeout, then sustained zero queue
+ * size AND a stable send-failure counter.
+ */
+async function waitForQueueDrain(metricsPort: number): Promise<boolean> {
+  const timeoutMs = intEnv("APO_COLLECTOR_DRAIN_TIMEOUT_MS", DEFAULT_DRAIN_TIMEOUT_MS);
+  const deadline = Date.now() + timeoutMs;
+  if ((await scrapeExporterMetrics(metricsPort)) === null) {
+    return false; // metrics unreachable — cannot prove drain
+  }
+  // Let any partial batch move from the batch processor into the exporter
+  // queue first; only then does a zero reading mean anything.
+  await new Promise((resolve) => setTimeout(resolve, DEFAULT_SETTLE_MS));
+  let emptySince: number | null = null;
+  let failedSpans = -1;
+  while (Date.now() < deadline) {
+    const metrics = await scrapeExporterMetrics(metricsPort);
+    if (metrics === null) return false;
+    if (metrics.failedSpans > failedSpans) {
+      // A send just failed (throttle, transient) — items are mid-retry.
+      failedSpans = metrics.failedSpans;
+      emptySince = null;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      continue;
+    }
+    if (metrics.queued > 0) {
+      emptySince = null;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      continue;
+    }
+    if (emptySince === null) emptySince = Date.now();
+    if (Date.now() - emptySince >= DEFAULT_EMPTY_WINDOW_MS) return true;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
+}
+
+/** Exporter queue depth and cumulative failed-span count, or null when unreadable. */
+async function scrapeExporterMetrics(
+  metricsPort: number,
+): Promise<{ queued: number; failedSpans: number } | null> {
+  try {
+    const response = await fetch(`http://127.0.0.1:${metricsPort}/metrics`, {
+      signal: AbortSignal.timeout(1_000),
+    });
+    if (!response.ok) return null;
+    const text = await response.text();
+    let queued: number | null = null;
+    let failedSpans = 0;
+    for (const line of text.split("\n")) {
+      const value = Number.parseFloat(line.slice(line.lastIndexOf(" ") + 1));
+      if (!Number.isFinite(value)) continue;
+      if (line.startsWith("otelcol_exporter_queue_size")) {
+        queued = (queued ?? 0) + value;
+      } else if (line.startsWith("otelcol_exporter_send_failed_spans")) {
+        failedSpans += value;
+      }
+    }
+    return queued === null ? null : { queued, failedSpans };
+  } catch {
+    return null;
+  }
+}
+
+function terminateCollector(target: CollectorTarget): Promise<void> {
+  return new Promise((resolve) => {
+    if ("child" in target) {
+      const child = target.child;
+      if (child.exitCode !== null) return resolve();
+      const timer = setTimeout(() => {
+        killCollector(child);
+        resolve();
+      }, STOP_TIMEOUT_MS);
+      child.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        clearTimeout(timer);
+        resolve();
+      }
+      return;
+    }
+    // Reused collector by pid: no exit event, poll liveness instead.
+    const pid = target.pid;
+    if (!pidLooksLikeCollector(pid)) {
+      return resolve(); // pid recycled — do not kill an unrelated process
+    }
+    const started = Date.now();
+    const finishWhenDead = (): void => {
+      if (Date.now() - started > STOP_TIMEOUT_MS) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+        return resolve();
+      }
+      try {
+        process.kill(pid, 0);
+        setTimeout(finishWhenDead, 200);
+      } catch {
+        resolve();
+      }
+    };
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      return resolve();
+    }
+    finishWhenDead();
   });
 }
 
@@ -463,8 +674,12 @@ export interface MaybeCollector {
    * directly, exactly the pre-collector behavior.
    */
   traceEndpoint: string | null;
-  /** Graceful stop; safe to call unconditionally. */
-  stop(): Promise<void>;
+  /**
+   * Safe stop: only ends the process once its queue is provably drained.
+   * Returns "left-running" when it must keep retrying (backend down or
+   * throttling) — safe to call unconditionally.
+   */
+  stop(): Promise<"stopped" | "left-running" | "off">;
 }
 
 /**
@@ -479,7 +694,7 @@ export async function maybeStartCollector(input: {
   log?: (line: string) => void;
   warn?: (line: string) => void;
 }): Promise<MaybeCollector> {
-  const off: MaybeCollector = { traceEndpoint: null, stop: async () => undefined };
+  const off: MaybeCollector = { traceEndpoint: null, stop: async () => "off" };
   if (!decideCollectorEnabled(input.backendUrl)) return off;
   if (!input.authHeader) {
     input.warn?.("span buffering off: no stored credential to forward — exporting directly");

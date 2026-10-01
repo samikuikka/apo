@@ -73,14 +73,24 @@ describe("decideCollectorEnabled", () => {
 describe("renderCollectorConfig", () => {
   const rendered = renderCollectorConfig({
     backendUrl: "https://apo.example.com/",
-    otlpPort: 4318,
+    otlpPort: 14318,
     healthPort: 13133,
+    metricsPort: 18888,
     queueDir: "/home/user/.apo/collector/queue",
     maxQueueBytes: 512 * 1024 * 1024,
   });
 
   it("impersonates apo's ingest path so one env var redirects a run", () => {
     expect(rendered).toContain(`traces_url_path: ${APO_TRACES_PATH}`);
+  });
+
+  it("listens on the dedicated port, not the OTLP-conventional 4318", () => {
+    expect(rendered).toContain("endpoint: 127.0.0.1:14318");
+    expect(rendered).not.toContain("127.0.0.1:4318");
+  });
+
+  it("exposes the queue-depth metrics stop() drains on", () => {
+    expect(rendered).toContain("port: 18888");
   });
 
   it("exports to the backend's full traces URL", () => {
