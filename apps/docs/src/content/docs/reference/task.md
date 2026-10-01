@@ -82,6 +82,37 @@ Human-readable summary. Shown in the dashboard and `apo task show`.
 
 Free-form metadata, searchable in the dashboard.
 
+### `judgeTools`
+
+- **Type:** `{ mcp?: McpServerConfig[] }`
+- **Required:** no
+
+MCP evidence servers for `t.agent` sessions in this task. Overrides `runTask({ judgeTools })`, is overridden per `t.agent(..., { tools: { mcp } })` call; arrays replace, never concat. See [Assertions API → MCP evidence tools](/reference/assertions/#mcp-evidence-tools).
+
+### `mcpServers`
+
+- **Type:** `McpServerConfig[]`
+- **Required:** no
+
+MCP servers for the **agent under test** — the adapter plane, a separate declaration from `judgeTools`. Adapters that honor it resolve `./`-relative stdio paths against the task directory and expose the tools as `mcp__<server>__<tool>`, so trace assertions can match those stable names:
+
+```typescript title="my-task.eval.ts"
+task("my-task", {
+  adapter: myAdapter,
+  deliverables: ["report"],
+  mcpServers: [
+    {
+      name: "geo",
+      transport: { type: "stdio", command: "node", args: ["./mcp/geo-server.mjs"] },
+      tools: ["get_elevation"],          // optional allowlist (not enforced by every adapter)
+      timeoutMs: 30_000,
+    },
+  ],
+});
+```
+
+Declaring the harness's tool surface here keeps the task portable across harnesses. Custom adapters consume it through the SDK's exported `connectMcpServers(servers)` — raw namespaced tools, no budget wrapping (the agent under test is not apo's to budget).
+
 ## `turn(fn)`
 
 Decide what the agent sees each turn. apo calls `turn` before each `sendUserTurn`; the return value becomes the user input for that turn.
