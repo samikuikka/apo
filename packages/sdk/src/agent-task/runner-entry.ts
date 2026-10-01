@@ -55,6 +55,27 @@ async function main(): Promise<void> {
     ...(taskRunId ? { taskRunId } : {}),
   } as AgentTaskTraceOptions;
 
+  // Graceful termination: end the root span as cancelled and flush it before
+  // this process dies, so the backend keeps the run's trace linkage instead
+  // of holding every step span but not the linking root. The lease reaper
+  // requeues the attempt server-side either way.
+  let terminating = false;
+  const handleTermSignal = (signal: "SIGINT" | "SIGTERM"): void => {
+    if (terminating) return;
+    terminating = true;
+    const exitCode = signal === "SIGINT" ? 130 : 143;
+    const bail = setTimeout(() => process.exit(exitCode), 4_000);
+    void tracing.client
+      .cancelActiveRun("cancelled")
+      .catch(() => undefined)
+      .finally(() => {
+        clearTimeout(bail);
+        process.exit(exitCode);
+      });
+  };
+  process.once("SIGINT", () => handleTermSignal("SIGINT"));
+  process.once("SIGTERM", () => handleTermSignal("SIGTERM"));
+
   // Thread the already-loaded task through so runTask does not re-import the
   // eval module (Issue #7). loadTask above copied the eval to a temp file and
   // imported it once with all registries reset; a second loadTask would run

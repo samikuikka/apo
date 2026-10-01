@@ -397,7 +397,9 @@ async function executeAssignment(
         ? "driver"
         : outcome.timedOut
           ? "timeout"
-          : "task_runtime";
+          : outcome.error === "task_cancelled"
+            ? "cancelled"
+            : "task_runtime";
       finalized = true;
       await submitFailure({
         backendUrl,
