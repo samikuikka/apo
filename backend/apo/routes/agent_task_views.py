@@ -9,8 +9,6 @@ manage them so derived tabs persist across refresh / cross-device.
 
 from __future__ import annotations
 
-from typing import Any
-
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -21,6 +19,7 @@ from ..auth.deps import get_user_id
 from ..db import get_session
 from ..models.db import ProjectDB, TaskViewDB
 from ..models.schemas import (
+    ResolvedComparisonCell,
     TaskComparisonEvidence,
     TaskViewComparisonOverview,
     TaskViewComparisonRequest,
@@ -124,12 +123,9 @@ async def get_task_view_comparison_overview(
     # onto the live-run summaries. Summaries read the *current* effective
     # projection; corrections made after this snapshot must not leak into it.
     # Load-bearing fields that are not frozen (cost, tokens, model) stay live.
-    frozen_by_run: dict[str, Any] = {}
+    frozen_by_run: dict[str, ResolvedComparisonCell] = {}
     for cell in snapshot.resolved:
-        for run_id, prefix in (
-            (cell.a_run_id, "a"),
-            (cell.b_run_id, "b"),
-        ):
+        for run_id in (cell.a_run_id, cell.b_run_id):
             if run_id is not None:
                 frozen_by_run[run_id] = cell
     for summary in summaries:
@@ -139,14 +135,10 @@ async def get_task_view_comparison_overview(
         is_a = cell.a_run_id == summary.id
         status = cell.a_status if is_a else cell.b_status
         pass_result = cell.a_pass_result if is_a else cell.b_pass_result
-        total = cell.a_total_checks if cell.a_run_id == summary.id else cell.b_total_checks
-        passed = cell.a_passed_checks if cell.a_run_id == summary.id else cell.b_passed_checks
-        errored = (
-            cell.a_errored_checks if cell.a_run_id == summary.id else cell.b_errored_checks
-        )
-        corrected = (
-            cell.a_corrected_tests if cell.a_run_id == summary.id else cell.b_corrected_tests
-        )
+        total = cell.a_total_checks if is_a else cell.b_total_checks
+        passed = cell.a_passed_checks if is_a else cell.b_passed_checks
+        errored = cell.a_errored_checks if is_a else cell.b_errored_checks
+        corrected = cell.a_corrected_tests if is_a else cell.b_corrected_tests
         reason_field = "a_no_verdict_reason" if is_a else "b_no_verdict_reason"
         reason = cell.a_no_verdict_reason if is_a else cell.b_no_verdict_reason
         # Only a verdict frozen on a terminal run is a verdict: a snapshot
