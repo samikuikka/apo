@@ -8,8 +8,11 @@
  * - Attempt/service token (adapter capture): the replayed spans join the live
  *   task run's trace — the runner's root span already carries the claim.
  *
- * 5xx and network failures are retried; a 4xx is a caller bug (bad token,
- * malformed payload) and fails fast with the response body excerpt.
+ * 5xx, 429, and network failures are retried — apo's admission controller
+ * 429s OTLP ingest under per-key concurrency pressure, which the runner's own
+ * simple-processor exports can create while a replay POST is in flight. Any
+ * other 4xx is a caller bug (bad token, malformed payload) and fails fast
+ * with the response body excerpt.
  */
 
 import type { OtlpTracesPayload } from "./otlp.ts";
@@ -27,8 +30,10 @@ export class TranscriptReplayError extends Error {
 export type ExportOtlpTracesOptions = {
   /** apo base URL (e.g. http://localhost:8000); a full …/v1/traces URL is accepted verbatim. */
   endpoint: string;
-  /** API key or attempt token — sent as the OTLP Authorization bearer. */
-  token: string;
+  /** Attempt/service token — sent as the OTLP Authorization bearer. */
+  token?: string;
+  /** Complete headers override (e.g. buildApoAuthHeaders() for Basic API-key auth). */
+  headers?: Record<string, string>;
   /** Per-request timeout. Default 30s. */
   timeoutMs?: number;
   /** Extra attempts after the first on 5xx/network failure. Default 2. */
@@ -50,6 +55,12 @@ export async function exportOtlpTraces(
   const body = JSON.stringify(payload);
   const retries = options.retries ?? 2;
   const timeoutMs = options.timeoutMs ?? 30_000;
+  const authHeaders =
+    options.headers ??
+    (options.token !== undefined ? { Authorization: `Bearer ${options.token}` } : undefined);
+  if (authHeaders === undefined) {
+    throw new TranscriptReplayError("OTLP export requires a token or auth headers");
+  }
 
   let lastFailure = "unknown error";
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -58,7 +69,7 @@ export async function exportOtlpTraces(
       const response = await fetch(url, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${options.token}`,
+          ...authHeaders,
           "Content-Type": "application/json",
         },
         body,
@@ -66,7 +77,7 @@ export async function exportOtlpTraces(
       });
       if (response.ok) return;
       const text = await response.text().catch(() => "");
-      if (response.status >= 500) {
+      if (response.status === 429 || response.status >= 500) {
         lastFailure = `HTTP ${response.status}: ${excerpt(text)}`;
         continue;
       }

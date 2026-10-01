@@ -26,6 +26,11 @@ export {
   resolveOtlpTracesUrl,
   type ExportOtlpTracesOptions,
 } from "./export.ts";
+export {
+  replayAdapterTranscript,
+  type ReplayAdapterTranscriptOptions,
+  type TranscriptCaptureResult,
+} from "./capture.ts";
 export type {
   ParsedTranscriptSession,
   TranscriptSource,

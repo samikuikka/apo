@@ -1,6 +1,7 @@
 import type { FileEntry, TaskDefinition } from "../task/types.ts";
 import type { AgentTaskTraceContext } from "../tracing.ts";
 import type { TurnFn } from "../turn.ts";
+import type { TranscriptSource } from "../transcript-replay/types.ts";
 
 export type ValidatableSchemaLike = {
   safeParse: (data: unknown) => {
@@ -78,6 +79,22 @@ export type CleanupContext = {
   trace: AgentTaskTraceContext;
 };
 
+/**
+ * A harness session transcript the adapter captured on disk.
+ *
+ * Declaring one opts the run into transcript-replay capture: after the turn
+ * loop, the runner parses the session file and replays it into the run —
+ * exported spans join the live trace and projection observations join the
+ * snapshot — so a harness that cannot emit OTel (Codex CLI, plain Claude
+ * Code, anything that only writes session JSONL) still produces a fully
+ * assertable trace. The file must exist and be complete when the turn loop
+ * ends; a missing file fails the run.
+ */
+export type AdapterTranscriptCapture = {
+  source: TranscriptSource;
+  path: string;
+};
+
 export type AdapterSession = {
   /**
    * The adapter's resolved model/effort for this run. Read by
@@ -86,6 +103,12 @@ export type AdapterSession = {
    * that do not report configuration.
    */
   runConfiguration?: AgentTaskRunConfiguration;
+  /**
+   * The harness session transcript this run captured. Set as soon as the
+   * path is known (typically after the first `sendUserTurn`); the runner
+   * reads it once, after the turn loop. See {@link AdapterTranscriptCapture}.
+   */
+  transcript?: AdapterTranscriptCapture;
   sendUserTurn: (
     turn: unknown,
     context: {

@@ -125,6 +125,13 @@ export interface ProjectionTee {
   trace: AgentTaskTraceContext;
   /** Freeze the current observations into an immutable snapshot. */
   getSnapshot(): TraceProjectionSnapshot;
+  /**
+   * Add externally-produced observations to the snapshot (transcript-replay
+   * capture). They keep their own span ids and parent chain, so assertions
+   * treat them exactly like locally recorded ones. Must be called before
+   * {@link getSnapshot} freezes; capabilities are derived at freeze time.
+   */
+  injectObservations(observations: readonly TraceProjectionObservation[]): void;
 }
 
 /**
@@ -390,6 +397,17 @@ export function createProjectionTee(
         capabilities: deriveCapabilities(observations, ambiguousRealStepIds.size > 0),
         observations: [...observations],
       };
+    },
+    injectObservations(injected: readonly TraceProjectionObservation[]): void {
+      observations.push(...injected);
+      // Keep the snapshot contract's deterministic order (invocation time,
+      // then span id) — injected observations arrive with their own timestamps.
+      observations.sort((a, b) => {
+        const at = a.startedAt ?? "";
+        const bt = b.startedAt ?? "";
+        if (at !== bt) return at < bt ? -1 : 1;
+        return a.spanId < b.spanId ? -1 : 1;
+      });
     },
   };
 }

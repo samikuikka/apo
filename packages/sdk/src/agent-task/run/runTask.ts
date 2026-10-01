@@ -40,7 +40,11 @@ import type { JudgeTracer } from "../tracing.ts";
 import { APO_TASK_ID, APO_TASK_RUN_ID } from "../../semconv.ts";
 import { aggregateResult } from "./aggregate.ts";
 import type { AgentTaskTraceContext, AgentTaskTraceOptions } from "../tracing.ts";
-import { createNoopAgentTaskTraceContext } from "../tracing.ts";
+import { createNoopAgentTaskTraceContext, isTraceableSpanId } from "../tracing.ts";
+import {
+  replayAdapterTranscript,
+  type TranscriptCaptureResult,
+} from "../transcript-replay/capture.ts";
 import type { LoadedTask } from "../task/loadTask.ts";
 import { getActiveApoRun, withApoRun } from "../integrations/run-context.ts";
 
@@ -172,7 +176,10 @@ export async function runTask(
       // in-process tee can never see, since they're created in another process).
       // Falls back to the local snapshot on any failure (offline runs, unreachable
       // backend, projection timeout) so evaluation still runs.
-      const canonical = await readCanonicalSnapshot(trace);
+      const canonical = await readCanonicalSnapshot(
+        trace,
+        phase1.replayObservationFloor,
+      );
       if (canonical) phase1.snapshot = canonical;
 
       // Phase 2: evaluate against the frozen snapshot, inside the export
@@ -189,19 +196,30 @@ export async function runTask(
  * run) or when the read fails for any reason — the caller falls back to the
  * local tee snapshot in that case. Errors are logged but never thrown: a
  * projection read problem must not fail the task run.
+ *
+ * When the run replayed a transcript capture, `minObservations` is the local
+ * observation count the canonical projection should eventually reach. The
+ * replay batch was exported moments before this read, so a snapshot that
+ * exists but is still missing those observations gets the same bounded
+ * backoff as a not-yet-projected trace — otherwise tool-based checks would
+ * evaluate against a projection silently missing the agent's activity.
  */
 async function readCanonicalSnapshot(
   trace: AgentTaskTraceOptions,
+  minObservations?: number,
 ): Promise<CapturedExecution["snapshot"] | null> {
   if (!trace.taskRunId) return null; // offline/local run — no backend read
   const endpoint = process.env.AGENT_TASK_TRACE_ENDPOINT;
   const authToken = process.env.APO_AUTH_TOKEN;
   if (!endpoint || !authToken) return null;
+  const deadlineMs = 30_000;
+  const start = Date.now();
   try {
-    return await readTaskRunProjection({
+    let snapshot = await readTaskRunProjection({
       endpoint,
       authToken,
       taskRunId: trace.taskRunId,
+      deadlineMs,
       // Fresh-run readback: the run row was pre-created by the caller/executor
       // flow, and the subprocess-exported trace may still be in flight when
       // the checks phase starts — a 409 "no trace yet" must wait for the
@@ -209,6 +227,27 @@ async function readCanonicalSnapshot(
       // subprocess's spans.
       retryNoTrace: true,
     });
+    while (
+      minObservations !== undefined &&
+      snapshot.observations.length < minObservations
+    ) {
+      const remaining = deadlineMs - (Date.now() - start);
+      if (remaining <= 0) {
+        console.error(
+          `[AgentTask] Projection still missing replayed observations after ${deadlineMs}ms ` +
+            `(${snapshot.observations.length}/${minObservations}); continuing with the current snapshot`,
+        );
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      snapshot = await readTaskRunProjection({
+        endpoint,
+        authToken,
+        taskRunId: trace.taskRunId,
+        deadlineMs: remaining,
+      });
+    }
+    return snapshot;
   } catch (error) {
     console.error(
       "[AgentTask] Backend projection read failed, using local snapshot:",
@@ -227,6 +266,12 @@ interface CapturedExecution {
   runConfiguration: AgentTaskRunConfiguration | undefined;
   /** The frozen projection snapshot Phase 2 evaluates against. */
   snapshot: TraceProjectionSnapshot;
+  /**
+   * When a transcript capture was replayed: the observation count the
+   * canonical read-back should reach before Phase 2 uses it (see
+   * {@link readCanonicalSnapshot}).
+   */
+  replayObservationFloor?: number;
 }
 
 /** What the shared adapter lifecycle hands to the caller's continuation. */
@@ -236,6 +281,8 @@ interface AdapterRunOutcome {
   transcriptTurns: TaskTranscriptTurn[];
   /** The adapter-reported run configuration, captured right after session open. */
   runConfiguration: AgentTaskRunConfiguration | undefined;
+  /** The transcript-replay result, when the adapter declared a capture. */
+  replay: TranscriptCaptureResult | undefined;
   /** The tee-wrapped trace context — continuations must keep using this. */
   trace: AgentTaskTraceContext;
   /** Freeze the projection snapshot. Call before the root span ends. */
@@ -400,10 +447,48 @@ async function executeAdapterRun<T>(
             },
           );
 
+          // Transcript-replay capture: the adapter ran a harness that writes a
+          // session transcript but emits no OTel. One replay does both halves —
+          // spans join the live trace (when the run has one) and observations
+          // join the local snapshot — so OTel-less harnesses are first-class.
+          // Strict failure semantics: the adapter declared the transcript, so
+          // a missing file or failed export (recorded runs) fails the run
+          // loudly instead of leaving checks a silently starved projection.
+          const transcriptCapture = session?.transcript;
+          let replay: TranscriptCaptureResult | undefined;
+          if (transcriptCapture) {
+            replay = await trace.step(
+              {
+                step_name: "adapter.replay-transcript",
+                input: { source: transcriptCapture.source, path: transcriptCapture.path },
+                metadata: { source: transcriptCapture.source },
+                summarize: (r) => {
+                  const result = r as TranscriptCaptureResult;
+                  return {
+                    turns: result.turns,
+                    spans: result.spanCount,
+                    exported: result.exported,
+                    warnings: result.warnings.length,
+                  };
+                },
+              },
+              async () =>
+                replayAdapterTranscript(transcriptCapture, {
+                  rootSpanId: rawTrace.rootSpanId,
+                  liveTraceId: isTraceableSpanId(rawTrace.runId)
+                    ? rawTrace.runId
+                    : undefined,
+                  endpoint: process.env.AGENT_TASK_TRACE_ENDPOINT,
+                }),
+            );
+            tee.injectObservations(replay.observations);
+          }
+
           return await continueWith({
             collected,
             transcriptTurns,
             runConfiguration,
+            replay,
             trace,
             getSnapshot: () => tee.getSnapshot(),
           });
@@ -543,6 +628,11 @@ async function captureExecution(
     runConfiguration: outcome.runConfiguration,
     // Freeze the snapshot before the root span ends — Phase 2 reads it.
     snapshot: outcome.getSnapshot(),
+    // The floor for the canonical read-back: everything the local snapshot
+    // holds (runner spans + replayed observations) should project remotely.
+    ...(outcome.replay
+      ? { replayObservationFloor: outcome.getSnapshot().observations.length }
+      : {}),
   }));
 }
 

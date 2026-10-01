@@ -15,6 +15,7 @@ export { TaskFiles } from "./task/TaskFiles.ts";
 export type {
   AdapterDefinition,
   AdapterSession,
+  AdapterTranscriptCapture,
   DeliverableDefinition,
   TypedAdapterDefinition,
   CollectedDeliverables,
@@ -27,6 +28,7 @@ export type {
   AdapterRuntimeState,
 } from "./adapter/types.ts";
 export { defineAdapter } from "./adapter/defineAdapter.ts";
+export { buildApoAuthHeaders } from "./auth-headers.ts";
 
 // ── Unified testing framework ───────────────────────────────────────────
 // `test` registers a check; the callback receives `t` (flat, eve-style
@@ -224,6 +226,7 @@ export {
 export {
   parseClaudeCodeTranscript,
   parseCodexTranscript,
+  replayAdapterTranscript,
   transcriptSessionToOtlp,
   exportOtlpTraces,
   resolveOtlpTracesUrl,
@@ -234,6 +237,8 @@ export {
   type OtlpSpan,
   type OtlpTracesPayload,
   type ParsedTranscriptSession,
+  type ReplayAdapterTranscriptOptions,
+  type TranscriptCaptureResult,
   type TranscriptReplayOptions,
   type TranscriptSource,
   type TranscriptToolCall,

@@ -118,10 +118,10 @@ type TurnContext = {
 function turnSpans(turn: TranscriptTurn, ctx: TurnContext): OtlpSpan[] {
   const { traceId, prefix, system } = ctx;
   const interactionId = deriveSpanId(`${traceId}|${turn.index}|interaction`);
-  const parent =
-    turn.index === 0 && ctx.options.parentSpanId !== undefined
-      ? ctx.options.parentSpanId
-      : undefined;
+  // Adapter capture joins EVERY interaction span under the live run root: the
+  // transcript is one session, and its turns have no reliable 1:1 mapping to
+  // the runner's task.turn spans.
+  const parent = ctx.options.parentSpanId;
   const startNanos = isoToNanos(turn.startedAt);
   const endNanos = maxNanos(startNanos, isoToNanos(turn.endedAt));
   const timing = { startTimeUnixNano: startNanos, endTimeUnixNano: endNanos };
@@ -129,8 +129,10 @@ function turnSpans(turn: TranscriptTurn, ctx: TurnContext): OtlpSpan[] {
   const inputMessages = messageAttrValue("user", turn.userMessage);
   const outputMessages = messageAttrValue("assistant", turn.assistantMessage);
 
-  // Turn root: the agent interaction. Run metadata rides the first turn only —
-  // the receiver synthesizes one run per trace from the first-seen root.
+  // Turn root: the agent interaction. Run metadata rides the first turn of a
+  // standalone trace only — when joining a live trace (parentSpanId set) the
+  // run root already carries it, and a second flow_name on a nested span is
+  // noise.
   const interaction: OtlpSpan = {
     traceId,
     spanId: interactionId,
@@ -143,7 +145,7 @@ function turnSpans(turn: TranscriptTurn, ctx: TurnContext): OtlpSpan[] {
       "gen_ai.request.model": turn.model,
       "gen_ai.input.messages": inputMessages,
       "gen_ai.output.messages": outputMessages,
-      ...(turn.index === 0
+      ...(ctx.options.parentSpanId === undefined && turn.index === 0
         ? {
             "apo.run.flow_name": ctx.flowName,
             "apo.run.tags": JSON.stringify(ctx.tags),

@@ -4,6 +4,7 @@ import type { AgentTaskRunConfiguration } from "./adapter/types.ts";
 import { loadTask } from "./task/loadTask.ts";
 import type { JudgeConfig } from "./checks/t.ts";
 import { resolveJudgeToolsFromEnv, type JudgeToolsConfig } from "./checks/mcp-tools.ts";
+import { buildApoAuthHeaders } from "./auth-headers.ts";
 import { createOtelAgentTaskTraceClient } from "./otel-trace-client.ts";
 import type { AgentTaskTraceOptions } from "./tracing.ts";
 
@@ -83,7 +84,7 @@ export async function runTaskDir(
         client: createOtelAgentTaskTraceClient({
           endpoint,
           project: process.env.AGENT_TASK_PROJECT!,
-          headers: _buildAuthHeaders(),
+          headers: buildApoAuthHeaders(),
         }),
         project: process.env.AGENT_TASK_PROJECT!,
         environment: process.env.AGENT_TASK_ENVIRONMENT ?? "default",
@@ -112,18 +113,3 @@ export async function runTaskDir(
   };
 }
 
-function _buildAuthHeaders(): Record<string, string> | undefined {
-  const pk = process.env.APO_PUBLIC_KEY;
-  const sk = process.env.APO_SECRET_KEY;
-  if (pk && sk) {
-    const creds = typeof btoa === "function"
-      ? btoa(`${pk}:${sk}`)
-      : Buffer.from(`${pk}:${sk}`).toString("base64");
-    return { Authorization: `Basic ${creds}` };
-  }
-  const token = process.env.APO_AUTH_TOKEN;
-  if (token) {
-    return { Authorization: `Bearer ${token}` };
-  }
-  return undefined;
-}

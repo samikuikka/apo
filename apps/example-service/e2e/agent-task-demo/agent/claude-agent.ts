@@ -42,7 +42,11 @@ function assistantText(message: SDKAssistantMessage): string {
  * @param mcpServers    Extra MCP servers for this session (task-declared via
  *                      TaskDefinition.mcpServers; the SDK spawns and owns the
  *                      server processes, tools surface as mcp__<name>__<tool>)
- * @returns           The agent's final text response and whether it errored
+ * @param persist     Persist the session to ~/.claude/projects/ (default false).
+ *                    The transcript-replay adapter turns this on and replays the
+ *                    session JSONL into the run's trace instead of using OTel.
+ * @returns           The agent's final text response, whether it errored, and
+ *                    the session id (present when persistence is on)
  */
 export async function runClaudeAgent(options: {
   prompt: string;
@@ -50,7 +54,8 @@ export async function runClaudeAgent(options: {
   env: Record<string, string | undefined>;
   allowedTools?: string[];
   mcpServers?: Record<string, McpServerConfig>;
-}): Promise<{ text: string; is_error: boolean; num_turns: number }> {
+  persist?: boolean;
+}): Promise<{ text: string; is_error: boolean; num_turns: number; session_id?: string }> {
   const stream: AsyncGenerator<SDKMessage, void> = query({
     prompt: options.prompt,
     options: {
@@ -72,8 +77,9 @@ export async function runClaudeAgent(options: {
       // Hermetic: don't load ~/.claude or .claude/settings — keeps the run
       // reproducible and free of host-specific config.
       settingSources: [],
-      // Don't persist the session to ~/.claude/projects/ — ephemeral run.
-      persistSession: false,
+      // Ephemeral by default; the replay adapter opts into persistence so the
+      // session transcript exists on disk to reconstruct the trace from.
+      persistSession: options.persist ?? false,
       // Enough headroom for read-then-synthesize without looping on a small model.
       maxTurns: 10,
     },
@@ -93,9 +99,13 @@ export async function runClaudeAgent(options: {
 
   if (!result) {
     // Stream ended without a result message — shouldn't happen in normal
-    // operation, but report honestly rather than fabricating a success.
+    // operation, but report honestly rather than fabricate a success.
     return { text, is_error: true, num_turns: 0 };
   }
+
+  // The session id names the persisted transcript file — the replay adapter
+  // resolves ~/.claude/projects/*/<session_id>.jsonl from it.
+  const sessionId = (result as { session_id?: string }).session_id;
 
   // On success the SDK sets `result` to the assistant's final synthesized
   // answer; prefer it over our concatenated text (it's the canonical output).
@@ -105,11 +115,13 @@ export async function runClaudeAgent(options: {
       text: result.result || text,
       is_error: false,
       num_turns: result.num_turns,
+      ...(sessionId !== undefined ? { session_id: sessionId } : {}),
     };
   }
   return {
     text: result.errors.length > 0 ? result.errors.join("\n") : text || "Unknown error",
     is_error: true,
     num_turns: result.num_turns,
+    ...(sessionId !== undefined ? { session_id: sessionId } : {}),
   };
 }

@@ -349,11 +349,16 @@ describe("transcriptSessionToOtlp", () => {
     expect(JSON.stringify(again)).toBe(JSON.stringify(payload));
   });
 
-  it("parents only the first turn under a provided parentSpanId", () => {
+  it("joins a live trace: every interaction parents under parentSpanId and run metadata is suppressed", () => {
     const parented = transcriptSessionToOtlp(session, { parentSpanId: "1234567890abcdef" });
     const interactions = named(spansOf(parented), "claude_code.interaction");
+    // The transcript is one session; its turns have no reliable 1:1 mapping
+    // to the host run's task.turn spans, so all interactions nest under the
+    // provided root. The live trace's root already carries run metadata.
     expect(interactions[0]!.parentSpanId).toBe("1234567890abcdef");
-    expect(interactions[1]!.parentSpanId).toBeUndefined();
+    expect(interactions[1]!.parentSpanId).toBe("1234567890abcdef");
+    expect(attrOf(interactions[0]!, "apo.run.flow_name")).toBeUndefined();
+    expect(attrOf(interactions[1]!, "apo.run.flow_name")).toBeUndefined();
   });
 });
 
@@ -395,6 +400,25 @@ describe("exportOtlpTraces", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("boom", { status: 503 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const payload = transcriptSessionToOtlp(parseCodexTranscript(codexFixture));
+    await exportOtlpTraces(payload, {
+      endpoint: "http://apo.test",
+      token: "tok",
+      retries: 2,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a 429 rate-limit and succeeds on the next attempt", async () => {
+    // apo's admission controller 429s OTLP ingest under per-key concurrency
+    // pressure (the runner's own simple-processor exports can be in flight);
+    // a replay POST must back off, not fail the run.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("concurrency", { status: 429 }))
       .mockResolvedValueOnce(new Response(null, { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 

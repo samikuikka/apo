@@ -1,0 +1,7 @@
+INVOICE #2026-104
+Date: 2026-09-30
+Billed to: Demo Corp
+
+Subtotal: 95.00 EUR
+VAT (5%): 5.00 EUR
+Total: 100.00 EUR
