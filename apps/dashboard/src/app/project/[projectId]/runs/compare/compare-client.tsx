@@ -1,14 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Brain,
   ChevronRight,
   Clock,
   Folder,
-  Gauge,
   GitCompare,
   Hash,
 } from "lucide-react";
@@ -23,11 +21,11 @@ import {
 import { cn } from "@/lib/utils";
 import { formatDuration, formatRelativeTime, runDurationMs, formatCostMicro, tokenFormat, formatTokenTotal } from "@/lib/format";
 import { formatBatchExecution, shortModel } from "@/lib/run-configuration";
-import { useUrlParamSet } from "@/hooks/use-url-state";
+import { useUrlParam, useUrlParamSet } from "@/hooks/use-url-state";
 import { conclusionStyle } from "@/components/run-outcome";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { useComparison, tallyChecks, type CheckTally } from "./use-comparison";
+import { useComparison, type CheckTally } from "./use-comparison";
 import { FlowSection } from "./components/FlowSection";
 import { TaskColumns } from "./components/TaskColumns";
 
@@ -38,9 +36,6 @@ interface CompareClientProps {
   inventory: AgentTaskSummary[];
   leftRuns: AgentTaskRunSummary[];
   rightRuns: AgentTaskRunSummary[];
-  /** PROTOTYPE — ?aggregate=1 enables the Tasks/Summary tab split. */
-  showAggregate?: boolean;
-  tab?: "tasks" | "summary";
 }
 
 /** A meaningful identity for a batch in lists where the model may be
@@ -90,10 +85,12 @@ export function CompareClient({
   inventory,
   leftRuns,
   rightRuns,
-  showAggregate = false,
-  tab = "tasks",
 }: CompareClientProps) {
   const [expanded, toggleExpanded] = useUrlParamSet("expand");
+  // ?tab= is client-only view state: shallow-backed so switching tabs never
+  // re-runs this force-dynamic page's server component.
+  const [tabParam] = useUrlParam("tab", "tasks");
+  const tab = tabParam === "summary" ? "summary" : "tasks";
 
   const comparison = useComparison(leftRuns, rightRuns, inventory);
 
@@ -102,10 +99,11 @@ export function CompareClient({
   // in output, judge reasoning, trace shape, latency, tokens, and cost.
   const foldersToShow = comparison.folders;
 
-  // The working view (Tasks) stays exactly as it has always been; the
-  // aggregate lives on its own tab so neither competes for the same pixels.
-  const summaryActive = showAggregate && tab === "summary" && batchA && batchB;
-  const tabsActive = Boolean(showAggregate && batchA && batchB);
+  // Two reading modes over the same pair: Tasks keeps the working view's
+  // density; Summary carries the aggregate. Neither competes for the same
+  // pixels (Braintrust's List/Summary layout switcher is the precedent).
+  const tabsActive = Boolean(batchA && batchB);
+  const summaryActive = tabsActive && tab === "summary";
 
   return (
     <div className="mx-auto w-full max-w-6xl">
@@ -114,7 +112,7 @@ export function CompareClient({
       <div className="border-b border-border bg-background px-6 py-4">
         {tabsActive ? <CompareTabs tab={tab} /> : null}
 
-        {summaryActive ? (
+        {summaryActive && batchA && batchB ? (
           <SummaryView
             batchA={batchA}
             batchB={batchB}
@@ -124,6 +122,7 @@ export function CompareClient({
             rightChecks={comparison.rightChecks}
             leftRuns={leftRuns}
             rightRuns={rightRuns}
+            onlyInOne={comparison.totalOnlyInOne}
           />
         ) : (
           <>
@@ -152,26 +151,15 @@ export function CompareClient({
                 {configurationDelta(batchA, batchB)}
               </span>
             )}
-            {tabsActive ? (
-              comparison.totalDiffers > 0 ? (
-                <span>
-                  <span className="font-mono tabular-nums text-foreground">{comparison.totalDiffers}</span>{" "}
-                  of{" "}
-                  <span className="font-mono tabular-nums text-foreground">{comparison.tasks.length}</span>{" "}
-                  tasks changed
-                </span>
-              ) : (
-                <span>No tasks changed between these runs</span>
-              )
-            ) : comparison.totalDiffers > 0 ? (
+            {comparison.totalDiffers > 0 ? (
               <span>
                 <span className="font-mono tabular-nums text-foreground">{comparison.totalDiffers}</span>{" "}
                 of{" "}
                 <span className="font-mono tabular-nums text-foreground">{comparison.tasks.length}</span>{" "}
-                tasks differ
+                tasks changed
               </span>
             ) : (
-              <span>No tasks differ between these runs</span>
+              <span>No tasks changed between these runs</span>
             )}
             {comparison.totalOnlyInOne > 0 && (
               <span className="text-muted-foreground/60">
@@ -179,18 +167,8 @@ export function CompareClient({
                 <span className="font-mono tabular-nums">{comparison.totalOnlyInOne}</span> task{comparison.totalOnlyInOne > 1 ? "s" : ""} only in one run
               </span>
             )}
-            {/* Graded signal (belief #5): the check tally delta is what tells
-                you whether things improved or regressed, even when every task
-                failed on both sides. Surfaced as a fact (the numbers), never
-                a directional verdict — the reader judges the trajectory.
-                Prototype mode keeps this off the working view — the Summary
-                tab carries the tallies. */}
-            {!tabsActive && comparison.leftChecks.total > 0 && comparison.rightChecks.total > 0 && (
-              <CheckDelta
-                left={comparison.leftChecks}
-                right={comparison.rightChecks}
-              />
-            )}
+            {/* The graded check tally (belief #5) lives on the Summary tab —
+                the working view stays at verdict-level orientation only. */}
           </div>
         )}
           </>
@@ -217,13 +195,10 @@ export function CompareClient({
                 folder={f.folder}
                 tasks={f.tasks}
                 differsCount={f.tasks.filter((t) => t.differs).length}
-                leftChecks={tallyChecks(f.tasks.map((t) => t.left))}
-                rightChecks={tallyChecks(f.tasks.map((t) => t.right))}
                 defaultOpen={f.tasks.some((t) => t.differs)}
                 expanded={expanded}
                 onToggleExpand={toggleExpanded}
                 projectId={projectId}
-                compact={tabsActive}
               />
             ))}
           </div>
@@ -247,19 +222,15 @@ function CompareHeader({ projectId }: { projectId: string }) {
   );
 }
 
-/** PROTOTYPE — the Tasks/Summary split. The working view keeps its density;
+/** The Tasks/Summary tab switch. The working view keeps its density;
  *  aggregate stats live on their own tab so neither competes for pixels
- *  (Braintrust's List/Summary layout switcher is the precedent). */
+ *  (Braintrust's List/Summary layout switcher is the precedent). Writes are
+ *  shallow: the URL stays shareable without re-running the server component. */
 function CompareTabs({ tab }: { tab: "tasks" | "summary" }) {
-  const router = useRouter();
-  const setTab = (v: string) => {
-    const params = new URLSearchParams(window.location.search);
-    params.set("tab", v);
-    router.replace(`?${params.toString()}`, { scroll: false });
-  };
+  const [, setTabParam] = useUrlParam("tab", "tasks");
   return (
     <div className="-mt-1 mb-4">
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs value={tab} onValueChange={(v) => setTabParam(v === "summary" ? v : null)}>
         <TabsList className="h-9 bg-card">
           <TabsTrigger value="tasks" className="px-4 text-[13px]">Tasks</TabsTrigger>
           <TabsTrigger value="summary" className="px-4 text-[13px]">Summary</TabsTrigger>
@@ -404,9 +375,9 @@ function BatchSlot({
               {formatTokenTotal(batch.total_tokens)}
             </span>
           )}
-          {/* Issue #309: reasoning + model time beside tokens in the "what
-              did this run cost me" cluster. Null = unknown (no child
-              reported) → hidden, never rendered as zero. */}
+          {/* Issue #309: reasoning beside tokens in the "what did this run
+              cost me" cluster. Null = unknown (no child reported) → hidden,
+              never rendered as zero. */}
           {batch.total_reasoning_tokens != null && (
             <span
               className="inline-flex items-center gap-1"
@@ -414,15 +385,6 @@ function BatchSlot({
             >
               <Brain className="h-3 w-3 text-muted-foreground/50" />
               {formatTokenTotal(batch.total_reasoning_tokens)}
-            </span>
-          )}
-          {batch.total_model_time_ms != null && (
-            <span
-              className="inline-flex items-center gap-1"
-              title="Sum of model-call latencies — tool and harness time excluded"
-            >
-              <Gauge className="h-3 w-3 text-muted-foreground/50" />
-              {formatDuration(batch.total_model_time_ms)}
             </span>
           )}
         </div>
@@ -467,9 +429,9 @@ export function CheckDelta({ left, right }: { left: CheckTally; right: CheckTall
 }
 
 
-// PROTOTYPE — aggregate strip (?aggregate=1). Pure counting over data the
-// page already loaded: column totals, flip directions, graded check signal.
-// No averaging: binary verdicts counted, errors kept separate, checks X/Y.
+// The pair verdict. Pure counting over data the page already loaded:
+// flip directions and the graded check signal. No averaging — binary
+// verdicts counted, errors kept separate, checks X/Y.
 type CompareTasks = { left: { run: AgentTaskRunSummary | null }; right: { run: AgentTaskRunSummary | null } }[];
 
 function verdictCounts(tasks: CompareTasks) {
@@ -567,7 +529,6 @@ function batchStats(batch: AgentTaskBatchRunDetail) {
     // Issue #309: null means unknown (nobody reported), rendered as absent —
     // never as zero.
     reasoning: batch.total_reasoning_tokens ?? null,
-    modelTime: batch.total_model_time_ms ?? null,
   };
 }
 
@@ -583,6 +544,13 @@ function sideDot(batch: AgentTaskBatchRunDetail) {
 
 /** Run identity that leads with the model when the reported runs agree —
  *  "Partial · 10/12 reported" hides the one fact you identify a run by. */
+/** "+N unpriced" caveat — a cost total is partial when calls had no pricing
+ *  entry; the Summary must not present it as exact (issue found in review). */
+function unpricedSuffix(batch: AgentTaskBatchRunDetail): string {
+  const n = batch.unpriced_call_count ?? 0;
+  return n > 0 ? ` (+${n} unpriced)` : "";
+}
+
 function runIdentity(batch: AgentTaskBatchRunDetail): string {
   const c = batch.configuration;
   if (c.state === "partial" && c.configurations.length === 1) {
@@ -605,6 +573,7 @@ function runStatTooltip(batch: AgentTaskBatchRunDetail): string {
     s.duration != null ? formatDuration(s.duration) : null,
     s.cost != null ? formatCostMicro(s.cost) : null,
     s.tokens != null ? `${tokenFormat(s.tokens)} tokens` : null,
+    unpricedSuffix(batch).trim() || null,
     runIdentity(batch),
     formatRelativeTime(batch.created_at),
   ]
@@ -612,7 +581,7 @@ function runStatTooltip(batch: AgentTaskBatchRunDetail): string {
     .join(" · ");
 }
 
-/** PROTOTYPE — Tasks-tab pickers: identity + swap only (GitHub's compare
+/** Tasks-tab pickers: identity + swap only (GitHub's compare
  *  selectors `base ⌄ … compare ⌄` carry names, never metrics). One line per
  *  run; all numbers live on the Summary tab or on hover. */
 function MinimalPickers({
@@ -652,6 +621,62 @@ function MinimalPickers({
   );
 }
 
+/** One run's identity: label, selection, #id, model-led config, revision
+ *  (commit/branch when the run recorded one), time, and the swap link. All
+ *  hover-detail on the pickers; visible inline on the Summary strip. */
+function RunIdentityStrip({
+  batchA,
+  batchB,
+  projectId,
+  inlineDetail = true,
+}: {
+  batchA: AgentTaskBatchRunDetail;
+  batchB: AgentTaskBatchRunDetail;
+  projectId: string;
+  inlineDetail?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      {[batchA, batchB].map((batch, i) => {
+        const label = i === 0 ? "Run A" : "Run B";
+        const commit = batch.task_runs?.[0]?.task_source_commit_sha ?? null;
+        return (
+          <div key={label} className="flex min-w-0 items-center gap-2" title={runStatTooltip(batch)}>
+            {i === 1 && <span className="font-mono text-[11px] text-muted-foreground/50">vs</span>}
+            <span className={cn("h-2 w-2 shrink-0 rounded-full", sideDot(batch))} aria-hidden />
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+            <span className="truncate text-[13px] font-medium text-foreground">
+              {batchLabel(batch)}{" "}
+              <span className="font-mono text-[11px] font-normal text-muted-foreground/60">
+                #{batch.id.slice(0, 8)}
+              </span>
+            </span>
+            <span className="hidden truncate font-mono text-[11px] text-muted-foreground/70 sm:inline">
+              {runIdentity(batch)} · {formatRelativeTime(batch.created_at)}
+            </span>
+            {commit && (
+              <span className="hidden font-mono text-[11px] text-muted-foreground/60 lg:inline" title="Task source revision">
+                @{commit.slice(0, 7)}
+              </span>
+            )}
+            {batch.trigger?.branch && (
+              <span className="hidden font-mono text-[11px] text-muted-foreground/60 lg:inline">
+                {batch.trigger.branch}
+              </span>
+            )}
+            <Link
+              href={`/project/${projectId}/runs`}
+              className="shrink-0 text-[11px] text-muted-foreground/70 hover:text-foreground"
+            >
+              Change
+            </Link>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Summary tab — the aggregate on its own surface, ordered answer-first:
  *  who ran (identity, model-led) → the plain-numbers verdict → the per-task
  *  dumbbell chart (which run wins each task, visually) → exact numbers last. */
@@ -664,6 +689,7 @@ function SummaryView({
   rightChecks,
   leftRuns,
   rightRuns,
+  onlyInOne,
 }: {
   batchA: AgentTaskBatchRunDetail;
   batchB: AgentTaskBatchRunDetail;
@@ -673,6 +699,7 @@ function SummaryView({
   rightChecks: { passed: number; total: number };
   leftRuns: AgentTaskRunSummary[];
   rightRuns: AgentTaskRunSummary[];
+  onlyInOne: number;
 }) {
   const a = batchStats(batchA);
   const b = batchStats(batchB);
@@ -682,33 +709,7 @@ function SummaryView({
     x && y && x > 0 ? `×${(y / x).toFixed(1)}` : null;
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {[batchA, batchB].map((batch, i) => {
-          const label = i === 0 ? "Run A" : "Run B";
-          return (
-            <div key={label} className="flex min-w-0 items-center gap-2" title={runStatTooltip(batch)}>
-              {i === 1 && <span className="font-mono text-[11px] text-muted-foreground/50">vs</span>}
-              <span className={cn("h-2 w-2 shrink-0 rounded-full", sideDot(batch))} aria-hidden />
-              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
-              <span className="truncate text-[13px] font-medium text-foreground">
-                {batchLabel(batch)}{" "}
-                <span className="font-mono text-[11px] font-normal text-muted-foreground/60">
-                  #{batch.id.slice(0, 8)}
-                </span>
-              </span>
-              <span className="hidden truncate font-mono text-[11px] text-muted-foreground/70 sm:inline">
-                {runIdentity(batch)} · {formatRelativeTime(batch.created_at)}
-              </span>
-              <Link
-                href={`/project/${projectId}/runs`}
-                className="shrink-0 text-[11px] text-muted-foreground/70 hover:text-foreground"
-              >
-                Change
-              </Link>
-            </div>
-          );
-        })}
-      </div>
+      <RunIdentityStrip batchA={batchA} batchB={batchB} projectId={projectId} />
 
       <VerdictSentence
         tasks={tasks}
@@ -716,6 +717,7 @@ function SummaryView({
         rightChecks={rightChecks}
         costA={a.cost ?? 0}
         costB={b.cost ?? 0}
+        onlyInOne={onlyInOne}
         configDelta={configurationDelta(batchA, batchB)}
       />
 
@@ -763,8 +765,8 @@ function SummaryView({
               },
               {
                 label: "cost",
-                a: a.cost != null ? formatCostMicro(a.cost) : "—",
-                b: b.cost != null ? formatCostMicro(b.cost) : "—",
+                a: (a.cost != null ? formatCostMicro(a.cost) : "—") + unpricedSuffix(batchA),
+                b: (b.cost != null ? formatCostMicro(b.cost) : "—") + unpricedSuffix(batchB),
                 delta: ratio(a.cost, b.cost) ?? null,
               },
               {
@@ -772,6 +774,18 @@ function SummaryView({
                 a: a.tokens != null ? tokenFormat(a.tokens) : "—",
                 b: b.tokens != null ? tokenFormat(b.tokens) : "—",
                 delta: ratio(a.tokens, b.tokens) ?? null,
+              },
+              {
+                label: "reasoning",
+                a: batchA.total_reasoning_tokens != null ? formatTokenTotal(batchA.total_reasoning_tokens) : "—",
+                b: batchB.total_reasoning_tokens != null ? formatTokenTotal(batchB.total_reasoning_tokens) : "—",
+                delta: ratio(batchA.total_reasoning_tokens ?? null, batchB.total_reasoning_tokens ?? null) ?? null,
+              },
+              {
+                label: "model time",
+                a: batchA.total_model_time_ms != null ? formatDuration(batchA.total_model_time_ms) : "—",
+                b: batchB.total_model_time_ms != null ? formatDuration(batchB.total_model_time_ms) : "—",
+                delta: ratio(batchA.total_model_time_ms ?? null, batchB.total_model_time_ms ?? null) ?? null,
               },
             ] as const
           ).map((row) => (

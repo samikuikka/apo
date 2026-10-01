@@ -15,7 +15,7 @@ import { getTaskComparisonEvidence } from "@/lib/agent-task-view-api";
 import { cn } from "@/lib/utils";
 import { useUrlParam } from "@/hooks/use-url-state";
 
-import { tallyChecks, useComparison } from "../../runs/compare/use-comparison";
+import { useComparison } from "../../runs/compare/use-comparison";
 import { CheckDelta } from "../../runs/compare/compare-client";
 import { FlowSection } from "../../runs/compare/components/FlowSection";
 
@@ -146,8 +146,6 @@ export function CompareViewsClient({
               folder={f.folder}
               tasks={f.tasks}
               differsCount={f.tasks.filter((t) => t.differs).length}
-              leftChecks={tallyChecks(f.tasks.map((t) => t.left))}
-              rightChecks={tallyChecks(f.tasks.map((t) => t.right))}
               defaultOpen={f.tasks.some((t) => t.differs)}
               expanded={expanded}
               onToggleExpand={toggleExpanded}

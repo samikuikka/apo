@@ -6,26 +6,17 @@ import { ChevronRight, Folder } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TaskComparisonEvidenceLoader } from "@/lib/agent-task-view-api";
 
-import { type CheckTally, type ComparisonTask } from "../use-comparison";
+import { type ComparisonTask } from "../use-comparison";
 import { CompareTaskRow } from "./CompareTaskRow";
 
 interface FlowSectionProps {
   folder: string;
   tasks: ComparisonTask[];
   differsCount: number;
-  /** Σ checks across the folder's runs, per side. Graded signal (belief #5):
-   *  surfaces a per-flow regression even when every task failed on both
-   *  sides. Omitted when neither side recorded checks. */
-  leftChecks: CheckTally;
-  rightChecks: CheckTally;
   defaultOpen: boolean;
   expanded: Set<string>;
   onToggleExpand: (value: string, open?: boolean) => void;
   projectId: string;
-  /** PROTOTYPE (compact rows): name · task count · changed count only —
-   *  no per-folder check tallies; the numbers live in the task rows and
-   *  on the Summary tab. */
-  compact?: boolean;
   /** Optional progressive evidence loader. When provided,
    *  CompareTaskRow fetches full details lazily on expand instead of
    *  receiving them in bulk from SSR. */
@@ -42,13 +33,10 @@ export function FlowSection({
   folder,
   tasks,
   differsCount,
-  leftChecks,
-  rightChecks,
   defaultOpen,
   expanded,
   onToggleExpand,
   projectId,
-  compact = false,
   evidenceLoader,
 }: FlowSectionProps) {
   const [forcedOpen, setForcedOpen] = useState<boolean | null>(null);
@@ -57,9 +45,6 @@ export function FlowSection({
 
   // A differing task marks the whole flow. We do not assert which way.
   const hasChange = differsCount > 0;
-  // Graded signal — only meaningful when at least one side ran checks.
-  const hasChecks = leftChecks.total > 0 || rightChecks.total > 0;
-  const delta = rightChecks.passed - leftChecks.passed;
 
   return (
     <div className="py-1">
@@ -80,22 +65,9 @@ export function FlowSection({
         {hasChange && (
           <span
             className="rounded bg-foreground/10 px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground"
-            title={compact ? "tasks whose results changed between the two runs" : undefined}
+            title="tasks whose results changed between the two runs"
           >
-            {differsCount} {compact ? "changed" : `differ${differsCount === 1 ? "" : "s"}`}
-          </span>
-        )}
-        {!compact && hasChecks && (
-          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-            · checks {leftChecks.passed}/{leftChecks.total}
-            <span className="text-muted-foreground/40"> → </span>
-            {rightChecks.passed}/{rightChecks.total}
-            {delta !== 0 && (
-              <span className={cn("ml-0.5", delta > 0 ? "text-success" : "text-destructive")}>
-                ({delta > 0 ? "+" : ""}
-                {delta})
-              </span>
-            )}
+            {differsCount} changed
           </span>
         )}
       </div>
