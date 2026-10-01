@@ -167,6 +167,10 @@ type AdapterSession = {
     model: string;
     effort?: string;
   };
+  transcript?: {
+    source: "claude-code" | "codex";
+    path: string;
+  };
   sendUserTurn: (
     turn: unknown,
     context: {
@@ -180,6 +184,8 @@ type AdapterSession = {
 ```
 
 apo calls `sendUserTurn` once per turn. Inside it, you invoke your real agent, the LLM, the tools, the same code path you ship. **Thread the `trace` and `parentSpanId` into your agent call**, or tool-call assertions (`t.calledTool`, `t.toolOrder`) won't have anything to read. See [Tracing integrations](/reference/tracing-integrations/) for the wrappers that do this automatically.
+
+`transcript` opts the run into capture-by-replay for harnesses that emit no telemetry of their own. Set it as soon as the session file's path is known (typically inside `sendUserTurn`); after the turn loop, apo parses it and replays it into the run's trace and snapshot. The file must exist and be complete when the turn loop ends — a declared-but-missing transcript fails the run. See [Trace capture](/concepts/adapters/#trace-capture-thread-the-context-or-replay-the-transcript) for when to choose this over live tracing.
 
 `runConfiguration` is optional descriptive metadata. `model` is the exact
 runtime model identifier. Include `effort` only when the selected model/provider

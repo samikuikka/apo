@@ -1,0 +1,59 @@
+---
+title: Import session transcripts
+description: "Turn a real Claude Code or Codex session into an apo run — the front door of the production-failure loop."
+---
+
+Every major coding harness already writes a complete record of every session to disk: the prompt, every model call with its tokens, every tool call with its arguments and results. `apo traces import` turns that file into a run in your project — no OTel integration, no instrumentation, nothing added to the harness. If you can find the file, apo has the trace.
+
+This is the front door of the loop apo's [positioning](/why-apo/) promises: an observability stack tells you *where* production misbehaved; the session transcript tells you *exactly what the harness did*; apo turns that into evidence you can act on — and, from there, into a regression test.
+
+## Where transcripts live
+
+| Harness | Path | Format |
+|---|---|---|
+| Claude Code | `~/.claude/projects/<project>/<session-id>.jsonl` | one JSON object per line; streamed assistant chunks share a `message.id`, tool results come back on `user` lines |
+| Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | task-bracket events (`task_started`…`task_complete`) plus `response_item` tool calls and reasoning summaries |
+
+`--source auto` recognizes both from content, so you rarely need to care which is which.
+
+## Import a session
+
+```bash
+apo traces import ~/.claude/projects/-home-me-app/2f9c41a8….jsonl --name "passport-pdf failure"
+```
+
+```text
+Imported /home/me/.claude/projects/-home-me-app/2f9c41a8….jsonl (claude-code)
+  Trace    4d8aa70b54cc4bb554baae9b8841fa4a
+  Turns    3   Spans 16   Model glm-4.7
+  Open     /project/47dbef032d05/traces/4d8aa70b54cc4bb554baae9b8841fa4a
+```
+
+What lands is a fully-formed run, not a flattened log. The transcript's turns become an agent-interaction span tree: each model request is a generation with its model, token counts (cache buckets included), and server-computed cost; each tool call is a tool observation with its parsed arguments and result; thinking blocks survive as their own observations.
+
+```text
+$ apo traces show 4d8aa70b54cc4bb554baae9b8841fa4a
+
+  claude_code.interaction   glm-4.7   13.5s
+    claude_code.llm_request glm-4.7   13.5s   64,040 tokens  37.3tok/s
+        tokens: 63,536 prompt + 504 completion
+    claude_code.thinking
+    claude_code.tool        0.1s
+        tool: Bash
+        args: {"command":"ls -la ~/Downloads/*.png 2>/dev/null || echo \"No PNG files found\"", …}
+        result: -rw-r--r-- 1 sami sami  61591 Apr 20 07:25 …
+```
+
+Because the trace id is derived from the session's identity, **importing is idempotent**: run it twice and you update the same run. A session that has grown since the last import picks up the new turns on the next import.
+
+:::tip[Find it in the dashboard]
+The command prints the run's dashboard path. Imported runs carry the `transcript-replay` tag by default — filter the runs list by it to see everything that came in this way.
+:::
+
+## From imported run to regression test
+
+The import gives you the evidence; the specification is still the product. Today, turning an imported session into a task is manual: read the failing run, then [define a task](/guides/define-a-task/) whose prompt reproduces the job, whose `files/` fixture the inputs, and whose checks encode the outcome that *should* have happened. `apo task seed`, which scaffolds that folder directly from an imported session, is on the roadmap — the manual path and the seeded path will produce the same artifact.
+
+## When the harness runs inside apo instead
+
+If you're testing a harness you control as an [adapter](/concepts/adapters/), you don't need this command — the adapter can declare its session transcript and the runner replays it into the run's trace automatically. That's [transcript capture](/concepts/adapters/#trace-capture-thread-the-context-or-replay-the-transcript): same parser, same span vocabulary, wired into the task run itself.

@@ -114,6 +114,39 @@ effective effort was reported,” whether the control is unsupported or unknown.
 
 **Configured vs. observed.** `runConfiguration.model` is what the adapter *intended* to use. The trace's observed model (what the provider actually served, after routing or fallbacks) is a separate value shown as **Observed** on the run. A difference between them is useful evidence, not an error.
 
+## Trace capture: thread the context, or replay the transcript
+
+Tool-call assertions (`t.calledTool`, `t.toolOrder`) and token budgets read the run's trace, so an adapter must produce one. There are two ways, and the second one exists so that harnesses without an OTel bone in their body are still testable:
+
+| Path | How it works | For |
+|---|---|---|
+| **Live tracing** | Thread `trace`/`parentSpanId` into your agent, or use an [OTel integration](/reference/tracing-integrations/). Spans stream as they happen. | Agents built on an SDK apo can trace (Vercel AI SDK, OpenAI, Anthropic, anything OTel-native). |
+| **Transcript capture** | Declare the session file your harness wrote (`session.transcript`). After the turn loop, apo parses it and replays it into the run's trace. | Harnesses that run as real CLIs and only write their session JSONL — Codex, plain Claude Code, vendor tools. |
+
+```typescript
+async startSession(ctx) {
+  const session: AdapterSession = {
+    async sendUserTurn(turn) {
+      const { text, session_id } = await runHarnessCli({ prompt: String(turn), cwd });
+      const transcriptPath = await findSessionFile(session_id); // ~/.claude/projects/…/<session_id>.jsonl
+      if (transcriptPath) {
+        session.transcript = { source: "claude-code", path: transcriptPath };
+      }
+      return { response: text };
+    },
+  };
+  return session;
+}
+```
+
+The replay is not a downgrade: generations, thinking, tool calls, models, and cache-aware token counts land in the same trace, typed and priced like native spans, and the run's model is read out of them. It also works offline — the replayed observations join the local snapshot, so checks assert against them with no backend at all.
+
+Two rules, both load-bearing. The transcript must **exist and be complete when the turn loop ends** — a declared file that isn't there fails the run loudly, because checks would otherwise starve on a trace silently missing the agent's activity. And offline runs skip nothing: replay happens whether the run is recorded or not.
+
+:::note[Which harnesses?]
+`source: "claude-code"` and `source: "codex"` are the formats apo parses today. OpenCode emits OTLP natively (no transcript needed); other harness formats land as the pattern demands them.
+:::
+
 
 ## Next
 

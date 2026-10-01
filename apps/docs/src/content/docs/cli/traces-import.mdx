@@ -1,0 +1,75 @@
+---
+title: "apo traces import"
+description: "Turn a harness session transcript (Claude Code / Codex JSONL) into an apo run."
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
+
+Import one or more session transcripts as traces. Claude Code and Codex already write a full record of every session to disk — this command turns that file into a run in your project, with typed observations, token counts, cost, and tool calls, through the same pipeline natively-traced runs use. See [Import session transcripts](/guides/import-transcripts/) for the workflow this serves.
+
+<TerminalDemo
+  command="apo traces import ~/.claude/projects/-home-me-app/2f9c….jsonl"
+  lines={[
+    { text: "Imported /home/me/.claude/projects/-home-me-app/2f9c….jsonl (claude-code)" },
+    { text: "  Trace    4d8aa70b54cc4bb554baae9b8841fa4a" },
+    { text: "  Turns    3   Spans 16   Model glm-4.7" },
+    { text: "  Open     /project/47dbef032d05/traces/4d8aa70b54cc4bb554baae9b8841fa4a", tone: "default" },
+  ]}
+/>
+
+## Synopsis
+
+```bash
+apo traces import <path…> [--source auto|claude-code|codex] [--name <name>] [--tag <tag>…] [--json]
+```
+
+## Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--source <s>` | `auto` | Transcript format. `auto` detects it from the file's content — Claude Code transcripts and Codex rollouts have distinct shapes. |
+| `--name <name>` | `<source> session <id>` | The run's label in the runs list. |
+| `--tag <tag>` | `transcript-replay`, `<source>` | Run tags, repeatable. |
+| `--json` | off | One JSON object per imported file instead of the text summary. |
+
+## Behavior worth knowing
+
+- **Auth** uses your stored login (`apo login`), `--api-key`, or the runner credential env vars — same options as every other command.
+- **Imports are idempotent.** The trace id is derived from the session's identity, so importing the same file twice updates the same run instead of duplicating it. Sessions that grew since the last import pick up the new turns.
+- **Torn writes don't matter.** Transcripts are appended live; a half-written last line is skipped with a warning, never a failure.
+- A file with no completed turns, or a format `--source auto` can't recognize, fails that file and prints why. Other files in the batch still import; the exit code is `1` if any failed.
+
+## Examples
+
+```bash
+# Import a Claude Code session picked up from ~/.claude/projects
+apo traces import ~/.claude/projects/-home-me-app/2f9c41a8….jsonl
+
+# A Codex rollout, tagged so it's findable later
+apo traces import rollout-2026-10-01.jsonl --source codex --tag production
+
+# Several at once, with one label
+apo traces import session-a.jsonl session-b.jsonl --name "invoice incident"
+```
+
+## Output
+
+<TerminalOutput
+  lines={[
+    { text: "Imported rollout-2026-10-01.jsonl (codex)" },
+    { text: "  Trace    85e1d0baef356724135a05ebc7fd2f83" },
+    { text: "  Turns    1   Spans 3   Model gpt-5.4" },
+    { text: "  Open     /project/47dbef032d05/traces/85e1d0baef356724135a05ebc7fd2f83" },
+    { text: "" },
+    { text: "Imported 1 trace(s)", tone: "default" },
+  ]}
+/>
+
+The `Open` path is relative to your dashboard URL. [`apo traces show`](/cli/traces-show/) renders the imported call tree exactly like a live-traced one.
+
+## See also
+
+- [Import session transcripts](/guides/import-transcripts/): the workflow — production session to apo run.
+- [`apo traces list`](/cli/traces-list/) / [`apo traces show`](/cli/traces-show/): find and open what you imported.
+- [Traces](/concepts/traces/): what a trace is and how to read it.

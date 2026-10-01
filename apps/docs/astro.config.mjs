@@ -47,6 +47,7 @@ export default defineConfig({
 						{ label: 'Define a Task', slug: 'guides/define-a-task' },
 						{ label: 'Run and debug', slug: 'guides/run-and-debug' },
 						{ label: 'Send service traces', slug: 'guides/send-service-traces' },
+					{ label: 'Import transcripts', slug: 'guides/import-transcripts' },
 						{ label: 'Close the loop', slug: 'guides/loop-engineering' },
 					],
 				},
@@ -137,7 +138,8 @@ export default defineConfig({
 					label: 'traces',
 					collapsed: false,
 					items: [
-						{ label: 'traces list', slug: 'cli/traces-list' },
+						{ label: 'traces import', slug: 'cli/traces-import' },
+					{ label: 'traces list', slug: 'cli/traces-list' },
 						{ label: 'traces show', slug: 'cli/traces-show' },
 					],
 				},
