@@ -1592,6 +1592,8 @@ class TaskViewDB(SQLModel, table=True):
     model: str | None = None
     effort: str | None = None
     since: str | None = None
+    # Observed serving host (issue #307) — the fourth view dimension.
+    provider: str | None = None
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(UTCDateTime, server_default=func.now()),

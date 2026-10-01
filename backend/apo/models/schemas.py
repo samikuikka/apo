@@ -367,6 +367,14 @@ class RunConfigEffortFacet(SQLModel):
     count: int
 
 
+class RunHostFacet(SQLModel):
+    """A serving-host label (route wins over provider; issue #307) and how
+    many task runs in the project used it."""
+
+    label: str
+    count: int
+
+
 class RunConfigModelFacet(SQLModel):
     """One model, its total run count, and the per-effort breakdown.
 
@@ -388,11 +396,14 @@ class RunConfigModelFacet(SQLModel):
 # — selection-scoped view comparison.
 
 class TaskViewConfig(SQLModel):
-    """A model/effort/date filter — one side of a comparison. ``model=None`` = Main."""
+    """A model/effort/date/host filter — one side of a comparison. ``model=None`` = Main."""
 
     model: str | None = None
     effort: str | None = None
     since: str | None = None  # "5h" | "1d" | "30d" | None (all time)
+    # Observed serving host (issue #307): matches the run's trace provider
+    # or route. The fourth evidence-view dimension.
+    provider: str | None = None
 
 
 class TaskViewCreateRequest(SQLModel):
@@ -400,6 +411,7 @@ class TaskViewCreateRequest(SQLModel):
     model: str | None = None
     effort: str | None = None
     since: str | None = None
+    provider: str | None = None
 
 
 class TaskViewUpdateRequest(SQLModel):
@@ -407,6 +419,7 @@ class TaskViewUpdateRequest(SQLModel):
     model: str | None = None
     effort: str | None = None
     since: str | None = None
+    provider: str | None = None
 
 
 class TaskViewResponse(SQLModel):
@@ -416,6 +429,7 @@ class TaskViewResponse(SQLModel):
     model: str | None = None
     effort: str | None = None
     since: str | None = None
+    provider: str | None = None
 
 
 class TaskViewComparisonRequest(SQLModel):

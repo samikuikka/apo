@@ -78,6 +78,7 @@ SESSION_CREATED_AT_COL: ColumnElement[datetime] = as_column(cast(object, Session
 # --- AgentTaskRunDB ---
 
 AGENT_TASK_RUN_ID_COL: ColumnElement[str] = as_column(cast(object, AgentTaskRunDB.id))
+AGENT_TASK_RUN_TRACE_RUN_ID_COL: ColumnElement[str | None] = as_column(cast(object, AgentTaskRunDB.trace_run_id))
 AGENT_TASK_RUN_TASK_ID_COL: ColumnElement[str] = as_column(cast(object, AgentTaskRunDB.task_id))
 AGENT_TASK_RUN_STATUS_COL: ColumnElement[str] = as_column(cast(object, AgentTaskRunDB.status))
 AGENT_TASK_RUN_STARTED_AT_COL: ColumnElement[datetime | None] = as_column(cast(object, AgentTaskRunDB.started_at))

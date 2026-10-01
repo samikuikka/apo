@@ -709,6 +709,17 @@ def _migrate_to_baseline():
 #
 # Schema evolution is tracked by a tiny ``schema_migrations`` table holding
 # the versions applied. Each migration is a numbered, idempotent function
+def _migrate_to_v51() -> None:
+    """Version 51 (issue #307): serving-host dimension on saved task views.
+
+    Adds ``task_view.provider`` so an evidence view can scope by the observed
+    serving host (provider or route), like model/effort/date. Existing rows
+    stay NULL — every saved view keeps its current cohort unchanged.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(conn, "task_view", "provider", "VARCHAR")
+
+
 def _migrate_to_v26() -> None:
     """Version 26: backfill legacy deliverables columns.
 
@@ -3000,7 +3011,7 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 50
+LATEST_SCHEMA_VERSION = 51
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -3053,6 +3064,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     48: _migrate_to_v48,
     49: _migrate_to_v49,
     50: _migrate_to_v50,
+    51: _migrate_to_v51,
 }
 
 

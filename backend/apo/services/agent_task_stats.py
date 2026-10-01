@@ -35,7 +35,7 @@ from ..models.columns import (
     AGENT_TASK_RUN_CONFIGURED_MODEL_COL,
 )
 from ..models.db import AgentTaskBatchRunDB
-from ..models.schemas import AgentTaskRunStats, RunConfigEffortFacet, RunConfigModelFacet, TaskViewConfig
+from ..models.schemas import AgentTaskRunStats, RunConfigEffortFacet, RunConfigModelFacet, TaskViewConfig, RunHostFacet
 from .archived_models import load_archived_models
 from .view_runs import runs_in_view
 
@@ -113,6 +113,7 @@ def load_run_stat_fields(
     model: str | None = None,
     effort: str | None = None,
     since: str | None = None,
+    provider: str | None = None,
 ) -> dict[str, list[RunStatFields]]:
     """Load the run columns stats needs, grouped by task id.
 
@@ -131,7 +132,7 @@ def load_run_stat_fields(
         session,
         project_id=project_id,
         task_ids=task_ids,
-        view=TaskViewConfig(model=model, effort=effort, since=since),
+        view=TaskViewConfig(model=model, effort=effort, since=since, provider=provider),
     )
     grouped: dict[str, list[RunStatFields]] = {}
     for run in cohort:
@@ -214,3 +215,48 @@ def compute_run_config_facets(
             )
         )
     return facets
+
+def compute_run_host_facets(
+    session: Session, project_id: str
+) -> list[RunHostFacet]:
+    """Distinct serving-host labels over a project's task runs (issue #307).
+
+    Route-wins per call (the projection the run rows display), counted in
+    distinct task runs. Scalar columns only — OOM-safe like the model facets.
+    """
+    from sqlalchemy import and_, func as sa_func
+    from sqlalchemy import select as sa_sel
+
+    from ..db_helpers import as_column
+    from ..models.db import AgentTaskRunDB, LoggedCallDB
+
+    label = sa_func.coalesce(
+        sa_func.nullif(as_column(LoggedCallDB.route), ""),
+        sa_func.nullif(as_column(LoggedCallDB.provider), ""),
+    )
+    stmt = (
+        sa_sel(label, sa_func.count(sa_func.distinct(as_column(AgentTaskRunDB.id))))
+        .select_from(AgentTaskRunDB)
+        .join(
+            AgentTaskBatchRunDB,
+            as_column(AgentTaskBatchRunDB.id) == as_column(AgentTaskRunDB.batch_run_id),
+        )
+        .join(
+            LoggedCallDB,
+            and_(
+                as_column(LoggedCallDB.run_id) == as_column(AgentTaskRunDB.trace_run_id),
+                as_column(LoggedCallDB.project) == as_column(AgentTaskBatchRunDB.project),
+            ),
+        )
+        .where(
+            as_column(AgentTaskBatchRunDB.project) == project_id,
+            as_column(AgentTaskRunDB.trace_run_id).is_not(None),
+            label.is_not(None),
+        )
+        .group_by(label)
+    )
+    rows = session.execute(stmt).all()
+    return [
+        RunHostFacet(label=str(value), count=int(count))
+        for value, count in sorted(rows, key=lambda r: (-int(r[1]), str(r[0])))
+    ]
