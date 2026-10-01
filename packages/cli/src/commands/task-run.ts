@@ -26,6 +26,7 @@ import {
   type ResultBodySize,
 } from "../lib/result-submission.ts";
 import { externalizeResultEvidence, ResultEvidenceTooLargeError } from "../lib/result-evidence.ts";
+import { maybeStartCollector } from "../lib/collector.ts";
 
 type LocalRunSummary = {
   taskId: string;
@@ -223,7 +224,19 @@ async function runCallerRecorded(config: Config, resolved: ResolvedTask): Promis
   // is known-reachable; the sibling dispatch path below already uses it. A
   // deployment that wants telemetry on a different ingress configures it here,
   // client-side, rather than relying on the server to guess its own address.
-  process.env.AGENT_TASK_TRACE_ENDPOINT = config.backendUrl.replace(/\/$/, "");
+  //
+  // With span buffering on (remote backends, or APO_COLLECTOR=1), traces go
+  // through the local collector instead: the run's spans queue on disk through
+  // network drops and backend outages. Result/artifact traffic still goes to
+  // the backend directly.
+  const collector = await maybeStartCollector({
+    backendUrl: config.backendUrl,
+    authHeader: config.apiKey ? `Bearer ${config.apiKey}` : null,
+    log: (line) => console.log(dim(line)),
+    warn: (line) => console.error(red(`Warning: ${line}`)),
+  });
+  process.env.AGENT_TASK_TRACE_ENDPOINT =
+    (collector.traceEndpoint ?? config.backendUrl).replace(/\/$/, "");
   // AGENT_TASK_PROJECT is the name the SDK reads (task-runtime.ts gates tracing on
   // endpoint && AGENT_TASK_PROJECT). This used to set AGENT_TASK_TRACE_PROJECT,
   // which nothing reads, so caller execution fell through to noop tracing: no
@@ -508,6 +521,7 @@ async function runCallerRecorded(config: Config, resolved: ResolvedTask): Promis
     delete process.env.APO_AUTH_TOKEN;
     process.removeListener("SIGINT", onRunSigint);
     process.removeListener("SIGTERM", onRunSigterm);
+    await collector.stop();
   }
   return exitCode;
 }
