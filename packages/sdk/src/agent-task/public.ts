@@ -215,3 +215,28 @@ export {
   type ModeClass,
   type TaskRevisionManifestV1,
 } from "./task-revision-manifest.ts";
+
+// ── Transcript replay ──────────────────────────────────────────
+// Reconstruct an OTLP trace from a harness session transcript (Claude Code /
+// Codex session JSONL) so harnesses that cannot emit OTel still produce
+// full-fidelity traces: replayed into a task run's live trace (adapter
+// capture mode) or exported as a standalone run (session import).
+export {
+  parseClaudeCodeTranscript,
+  parseCodexTranscript,
+  transcriptSessionToOtlp,
+  exportOtlpTraces,
+  resolveOtlpTracesUrl,
+  TranscriptReplayError,
+  type ExportOtlpTracesOptions,
+  type OtlpAttribute,
+  type OtlpAttributeValue,
+  type OtlpSpan,
+  type OtlpTracesPayload,
+  type ParsedTranscriptSession,
+  type TranscriptReplayOptions,
+  type TranscriptSource,
+  type TranscriptToolCall,
+  type TranscriptTurn,
+  type TranscriptUsage,
+} from "./transcript-replay/index.ts";
