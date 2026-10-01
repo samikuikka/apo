@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { type AgentTaskSummary } from "@/lib/agent-task-api";
 import { Button } from "@/components/ui/button";
@@ -98,6 +98,19 @@ export function AgentTasksClient({
     closeView,
     setModelArchivedState,
   } = useEvidenceViews({ projectId, isDemoProject, tasks, initialViewId });
+
+  // Keep the active tab in the URL (?view=<id>) so a reload — or arriving
+  // back from a task's detail page — re-opens the same view. Main is the
+  // default, so it drops the param instead of writing view=main, mirroring
+  // how an "all" status filter stays out of the URL. Covers every path that
+  // moves the tab: select, duplicate, close-active, and the fallback when a
+  // bookmarked ?view= no longer exists.
+  useEffect(() => {
+    setSearchParamShallow(
+      "view",
+      activeViewId === MAIN_VIEW_ID ? null : activeViewId,
+    );
+  }, [activeViewId]);
 
   // The active tab is a model/effort/date cohort. Publish it so the Runs nav
   // link opens the same cohort instead of the unfiltered run list; Main

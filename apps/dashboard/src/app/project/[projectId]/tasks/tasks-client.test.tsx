@@ -27,6 +27,7 @@ vi.mock("@/lib/agent-task-view-api", async () => {
     ...actual,
     fetchTaskViewConfigFacets: vi.fn().mockResolvedValue([]),
     fetchTaskViewStats: vi.fn().mockResolvedValue({}),
+    fetchSavedViews: vi.fn().mockResolvedValue([]),
     createTaskViewComparison: vi.fn(),
   };
 });
@@ -260,5 +261,93 @@ describe("AgentTasksClient — select all", () => {
     await user.click(screen.getByRole("checkbox", { name: "Select all tasks" }));
 
     expect(screen.getByText("Run 1 task")).toBeInTheDocument();
+  });
+});
+
+describe("AgentTasksClient — active view tab in the URL", () => {
+  // A derived saved tab: model is pinned, so the tab is "derived" and shows
+  // the scoped-stats chip when active.
+  const savedView = {
+    id: "v-91",
+    label: "Opus only",
+    model: "gpt-5.2",
+    effort: null,
+    since: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // The native-Run describe above replaces window.location with a bare
+    // { href } object; the URL-sync assertions need the real jsdom location
+    // (history.replaceState writes through it). Restore it and start clean.
+    Object.defineProperty(window, "location", {
+      value: originalLocation,
+      writable: true,
+    });
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("writes ?view=<id> when a saved tab is selected and clears it back on Main", async () => {
+    const user = userEvent.setup();
+    const { fetchSavedViews } = await import("@/lib/agent-task-view-api");
+    vi.mocked(fetchSavedViews).mockResolvedValue([savedView]);
+    render(
+      <AgentTasksClient
+        tasks={[task()]}
+        error={null}
+        taskSource={taskSource}
+        isDemo={false}
+      />,
+    );
+
+    // Anchor on the tab itself ("Opus only gpt-5.2"), not its close button
+    // ("Close Opus only tab").
+    await user.click(await screen.findByRole("button", { name: /^Opus only/ }));
+    expect(new URLSearchParams(window.location.search).get("view")).toBe("v-91");
+
+    await user.click(screen.getByRole("button", { name: /^Main/ }));
+    expect(new URLSearchParams(window.location.search).get("view")).toBeNull();
+  });
+
+  it("keeps ?view= for the whole visit when arriving with the saved tab selected", async () => {
+    const { fetchSavedViews } = await import("@/lib/agent-task-view-api");
+    vi.mocked(fetchSavedViews).mockResolvedValue([savedView]);
+    window.history.replaceState(null, "", "/?view=v-91");
+    render(
+      <AgentTasksClient
+        tasks={[task()]}
+        error={null}
+        taskSource={taskSource}
+        isDemo={false}
+        initialViewId="v-91"
+      />,
+    );
+
+    // The saved tab is active (derived view → scoped chip) and the URL param
+    // survives the mount effects instead of being dropped.
+    await screen.findByText("scoped to this view");
+    expect(new URLSearchParams(window.location.search).get("view")).toBe("v-91");
+  });
+
+  it("falls back to Main and heals the URL when ?view= names a deleted view", async () => {
+    const { fetchSavedViews } = await import("@/lib/agent-task-view-api");
+    vi.mocked(fetchSavedViews).mockResolvedValue([savedView]);
+    window.history.replaceState(null, "", "/?view=v-gone");
+    render(
+      <AgentTasksClient
+        tasks={[task()]}
+        error={null}
+        taskSource={taskSource}
+        isDemo={false}
+        initialViewId="v-gone"
+      />,
+    );
+
+    // Saved views load, v-gone is not among them → Main takes over and the
+    // stale param is removed so a reload lands on Main, not a ghost tab.
+    await waitFor(() => {
+      expect(new URLSearchParams(window.location.search).get("view")).toBeNull();
+    });
+    expect(screen.queryByText("scoped to this view")).not.toBeInTheDocument();
   });
 });
