@@ -186,6 +186,25 @@ function validateTaskDefinition(
   if (!Array.isArray(task.deliverables)) {
     throw new Error(`Task must have a 'deliverables' array: ${taskDir}`);
   }
+
+  if (task.judgeTools?.mcp !== undefined) {
+    if (!Array.isArray(task.judgeTools.mcp)) {
+      throw new Error(`Task 'judgeTools.mcp' must be an array of MCP server configs: ${taskDir}`);
+    }
+    for (const server of task.judgeTools.mcp) {
+      if (
+        server === null ||
+        typeof server !== "object" ||
+        typeof server.name !== "string" ||
+        server.transport === null ||
+        typeof server.transport !== "object"
+      ) {
+        throw new Error(
+          `Task 'judgeTools.mcp' entries need a string 'name' and a 'transport' object: ${taskDir}`,
+        );
+      }
+    }
+  }
 }
 
 function loadFilesDirectory(taskDir: string): FileEntry[] {

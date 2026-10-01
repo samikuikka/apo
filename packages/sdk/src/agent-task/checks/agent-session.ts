@@ -26,6 +26,7 @@ import type { JudgeTracer } from "../tracing.ts";
 import { isTraceableSpanId } from "../tracing.ts";
 import { resolveJudgeConfig } from "./t.ts";
 import type { AgentHistoryPlane } from "./agent-history.ts";
+import { createMcpToolset, type McpServerConfig } from "./mcp-tools.ts";
 
 // ── Public types ───────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ export type AgentJudgeOptions = {
   /** Judge config override for this call only (merges field-by-field). */
   judge?: Partial<JudgeConfig>;
   /** Tool families; deliverables are always on. `trace: false` drops get_trace. */
-  tools?: { trace?: boolean };
+  tools?: { trace?: boolean; mcp?: McpServerConfig[] };
   budget?: AgentBudget;
   label?: string;
 };
@@ -217,16 +218,10 @@ function buildEvidenceTools(args: {
   includeTrace: boolean;
   includeHistory: boolean;
   tracer?: JudgeTracer;
+  /** Shared tool-call guard — owned by the session so MCP tools draw the same budget. */
+  budgetGuard: () => string | null;
 }): Record<string, unknown> {
-  const { z, tool, evidence, scope, budget, ledger, stepIndexOf, includeTrace, includeHistory, tracer } = args;
-
-  const budgetGuard = (): string | null => {
-    ledger.toolCallsUsed += 1;
-    if (ledger.toolCallsUsed > budget.maxToolCalls) {
-      return `tool-call budget exhausted (${budget.maxToolCalls}); call finish_verdict now`;
-    }
-    return null;
-  };
+  const { z, tool, evidence, scope, budget, ledger, stepIndexOf, includeTrace, includeHistory, tracer, budgetGuard } = args;
 
   const accountRead = (
     toolName: string,
@@ -444,6 +439,7 @@ function buildBriefing(
   scope: JudgeScope | undefined,
   evidence: AgentEvidence,
   budget: Required<AgentBudget>,
+  mcpBriefingLines?: string[],
 ): string {
   const deliverableNames = Object.keys(evidence.deliverables);
   return (
@@ -455,6 +451,8 @@ function buildBriefing(
     `  trace: ${evidence.view ? "available via get_trace" : "not recorded for this run"}\n` +
     `  history: ${evidence.history ? `${evidence.history.runs.length} run(s) of this task via list_runs` : "unavailable (no backend credentials)"}\n` +
     (scope?.taskDescription ? `  task description: ${scope.taskDescription}\n` : "") +
+    // Names only — transport config, headers, and env never enter the record.
+    (mcpBriefingLines?.length ? `  mcp tools: ${mcpBriefingLines.join("; ")}\n` : "") +
     "\nYou MUST end by calling finish_verdict exactly once. " +
     `You have at most ${budget.maxTurns} steps and ${budget.maxToolCalls} tool calls; ` +
     "a session that ends without finish_verdict is recorded as a failure."
@@ -537,6 +535,8 @@ export async function runAgentSession(spec: {
   scope?: JudgeScope;
   exhibits?: unknown[];
   tools?: { trace?: boolean; history?: boolean };
+  /** Layered MCP servers (already resolved); per-call `tools.mcp` beat these. */
+  mcpServers?: McpServerConfig[];
   budget?: AgentBudget;
   tracer?: JudgeTracer;
 }): Promise<AgentSessionResult> {
@@ -569,6 +569,16 @@ export async function runAgentSession(spec: {
   });
 
   const ledger: Ledger = { toolCallsUsed: 0, readBytesUsed: 0, manifest: [] };
+
+  // One shared tool-call guard for evidence AND MCP tools: an MCP server
+  // must draw down the same maxToolCalls budget as read_deliverable.
+  const budgetGuard = (): string | null => {
+    ledger.toolCallsUsed += 1;
+    if (ledger.toolCallsUsed > budget.maxToolCalls) {
+      return `tool-call budget exhausted (${budget.maxToolCalls}); call finish_verdict now`;
+    }
+    return null;
+  };
 
   // The transcript accumulates per step so an aborted or errored session
   // still returns the investigation it managed — the transcript is the audit
@@ -606,8 +616,27 @@ export async function runAgentSession(spec: {
     includeTrace: spec.tools?.trace !== false,
     includeHistory: spec.tools?.history !== false,
     tracer: spec.tracer,
+    budgetGuard,
   });
-  const system = buildBriefing(spec.scope, spec.evidence, budget);
+
+  // User MCP servers: connect before the engine loop (setup failures throw,
+  // fail-closed), close after it no matter how it ended. `mcp__`-prefixed
+  // names cannot collide with the built-in evidence tools.
+  const mcpToolset = spec.mcpServers?.length
+    ? await createMcpToolset({
+        servers: spec.mcpServers,
+        ops: {
+          guardToolCall: budgetGuard,
+          maxReadBytes: budget.maxReadBytes,
+          ledger,
+          stepIndexOf: () => liveSteps.length,
+          ...(spec.tracer ? { tracer: spec.tracer } : {}),
+        },
+      })
+    : undefined;
+  if (mcpToolset) Object.assign(tools, mcpToolset.tools);
+
+  const system = buildBriefing(spec.scope, spec.evidence, budget, mcpToolset?.briefingLines);
 
   const exhibitsBlock = spec.exhibits?.length
     ? "\n\nValues submitted for judgment:\n" +
@@ -616,35 +645,40 @@ export async function runAgentSession(spec: {
 
   let engineUsage: AiStepResult["usage"];
   try {
-    const result = await generateText({
-      model: provider(spec.model),
-      system,
-      prompt: spec.instruction + exhibitsBlock,
-      temperature: 0,
-      toolChoice: "required",
-      stopWhen: [stepCountIs(budget.maxTurns)],
-      tools,
-      abortSignal: AbortSignal.timeout(budget.timeoutMs),
-      maxRetries: 2,
-      onStepFinish: onStep,
-    });
-    engineUsage = result.usage;
-  } catch (error) {
-    // Every mid-loop failure returns the partial transcript. A wall-clock
-    // abort is a budget outcome; everything else is an error outcome — but
-    // neither may discard the investigation.
-    const outcome = isAbortError(error) ? "budget_exhausted" : "error";
-    return {
-      outcome,
-      session: sessionForRecord(
-        outcome, Object.keys(tools), system, spec.instruction, liveSteps, ledger.manifest, undefined,
-      ),
-      usage: aggregateUsage(liveSteps),
-      latency_ms: Date.now() - started,
-      ...(outcome === "error"
-        ? { error: error instanceof Error ? error.message : String(error) }
-        : {}),
-    };
+    try {
+      const result = await generateText({
+        model: provider(spec.model),
+        system,
+        prompt: spec.instruction + exhibitsBlock,
+        temperature: 0,
+        toolChoice: "required",
+        stopWhen: [stepCountIs(budget.maxTurns)],
+        tools,
+        abortSignal: AbortSignal.timeout(budget.timeoutMs),
+        maxRetries: 2,
+        onStepFinish: onStep,
+      });
+      engineUsage = result.usage;
+    } catch (error) {
+      // Every mid-loop failure returns the partial transcript. A wall-clock
+      // abort is a budget outcome; everything else is an error outcome — but
+      // neither may discard the investigation.
+      const outcome = isAbortError(error) ? "budget_exhausted" : "error";
+      return {
+        outcome,
+        session: sessionForRecord(
+          outcome, Object.keys(tools), system, spec.instruction, liveSteps, ledger.manifest, undefined,
+        ),
+        usage: aggregateUsage(liveSteps),
+        latency_ms: Date.now() - started,
+        ...(outcome === "error"
+          ? { error: error instanceof Error ? error.message : String(error) }
+          : {}),
+      };
+    }
+  } finally {
+    // Spawned MCP servers die with the session — never outlive the check.
+    await mcpToolset?.cleanup();
   }
 
   const verdict = extractVerdict(liveSteps);
@@ -683,6 +717,7 @@ export function createAgentMethod(
   judgeScope?: JudgeScope,
   evidence?: AgentEvidence,
   judgeTracer?: JudgeTracer,
+  judgeTools?: { mcp?: McpServerConfig[] },
 ): (instruction: string, opts?: AgentJudgeOptions) => Promise<void> {
   return async (instruction, opts) => {
     const label = opts?.label ?? "agent";
@@ -715,6 +750,8 @@ export function createAgentMethod(
         scope: judgeScope,
         exhibits,
         tools: opts?.tools,
+        // Per-call config beats the layered run/task config; arrays replace.
+        mcpServers: opts?.tools?.mcp ?? judgeTools?.mcp,
         budget: opts?.budget,
         tracer: judgeTracer,
       });

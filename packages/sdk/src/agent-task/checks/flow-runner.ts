@@ -13,6 +13,7 @@ import type {
   EvaluationItemResult,
 } from "../run/types.ts";
 import { createTraceTestContext, type TestContext, type JudgeConfig } from "./t.ts";
+import type { JudgeToolsConfig } from "./mcp-tools.ts";
 import type { AgentHistoryPlane } from "./agent-history.ts";
 import type { JudgeTracer } from "../tracing.ts";
 import { Recorder, type LocateFn } from "./recorder.ts";
@@ -193,6 +194,7 @@ export async function runTraceChecks(args: {
   files?: unknown;
   task?: unknown;
   judgeConfig?: JudgeConfig;
+  judgeTools?: JudgeToolsConfig;
   judgeTracer?: JudgeTracer;
   historyPlane?: AgentHistoryPlane;
   historyUnavailableReason?: string;
@@ -234,6 +236,7 @@ export async function runTraceChecks(args: {
           ...(args.historyUnavailableReason ? { historyUnavailable: args.historyUnavailableReason } : {}),
         },
         args.judgeTracer,
+        args.judgeTools,
       );
       let thrownLocation: CheckLocation | undefined;
       try {
@@ -328,6 +331,7 @@ export async function loadAndRunFlowChecks(
     files?: unknown;
     task?: unknown;
     judgeConfig?: JudgeConfig;
+    judgeTools?: JudgeToolsConfig;
     judgeTracer?: JudgeTracer;
     historyPlane?: AgentHistoryPlane;
   },
@@ -345,6 +349,7 @@ export async function loadAndRunFlowChecks(
     files: args.files,
     task: args.task,
     judgeConfig: args.judgeConfig,
+    ...(args.judgeTools ? { judgeTools: args.judgeTools } : {}),
     ...(args.historyPlane ? { historyPlane: args.historyPlane } : {}),
     ...(args.judgeTracer ? { judgeTracer: args.judgeTracer } : {}),
     moduleUrl,

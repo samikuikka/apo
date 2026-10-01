@@ -3,11 +3,13 @@ import type { EvaluationItemResult } from "./run/types.ts";
 import type { AgentTaskRunConfiguration } from "./adapter/types.ts";
 import { loadTask } from "./task/loadTask.ts";
 import type { JudgeConfig } from "./checks/t.ts";
+import { resolveJudgeToolsFromEnv, type JudgeToolsConfig } from "./checks/mcp-tools.ts";
 import { createOtelAgentTaskTraceClient } from "./otel-trace-client.ts";
 import type { AgentTaskTraceOptions } from "./tracing.ts";
 
 export type AgentTaskRuntime = {
   judge?: JudgeConfig;
+  judgeTools?: JudgeToolsConfig;
 };
 
 export type AgentTaskRunSummary = {
@@ -34,6 +36,9 @@ export async function loadTaskRuntime(
 ): Promise<AgentTaskRuntime> {
   return {
     judge: resolveJudgeFromEnv(),
+    // Env/file layer for MCP evidence servers (APO_JUDGE_MCP) — seeds the
+    // run-level config, so explicit runTask({ judgeTools }) always wins.
+    judgeTools: await resolveJudgeToolsFromEnv(),
   };
 }
 

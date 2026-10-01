@@ -90,6 +90,12 @@ export {
   type AgentJudgeOptions,
 } from "./checks/agent-session.ts";
 export type {
+  McpServerConfig,
+  McpStdioTransport,
+  McpHttpTransport,
+  JudgeToolsConfig,
+} from "./checks/mcp-tools.ts";
+export type {
   AgentJudgeSession,
   AgentJudgeStep,
   AgentJudgeOutcome,

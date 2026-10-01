@@ -1,6 +1,6 @@
 {
   "name": "@apo-ai/sdk",
-  "version": "0.9.0",
+  "version": "0.8.0",
   "description": "TypeScript SDK for executable agent capability specifications and harness engineering with Apo",
   "keywords": [
     "ai-agents",
@@ -109,6 +109,7 @@
   },
   "devDependencies": {
     "@codspeed/vitest-plugin": "^5.7.1",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^4.1.9",
     "esbuild": "^0.21.5",
@@ -118,6 +119,7 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
+    "@ai-sdk/mcp": "^2.0.62",
     "@ai-sdk/openai-compatible": "^3.0.48",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/context-async-hooks": "^2.9.0",

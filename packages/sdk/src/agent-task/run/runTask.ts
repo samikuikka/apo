@@ -30,6 +30,7 @@ import { createProjectionTee } from "../trace-projection/projection-tee.ts";
 import type { TraceProjectionSnapshot } from "../trace-projection/types.ts";
 import { readTaskRunProjection } from "../trace-projection/remote-capture.ts";
 import { resolveJudgeConfig, type JudgeConfig } from "../checks/t.ts";
+import { resolveJudgeTools, type JudgeToolsConfig } from "../checks/mcp-tools.ts";
 import { freezeHistoryPlaneFromEnv } from "../checks/agent-history.ts";
 import type { JudgeTracer } from "../tracing.ts";
 import { APO_TASK_ID, APO_TASK_RUN_ID } from "../../semconv.ts";
@@ -85,6 +86,11 @@ export type RunTaskOptions = {
   tracing?: AgentTaskTraceOptions;
   /** LLM judge model config for `t.judge(...)` calls in the task checks. */
   judge?: JudgeConfig;
+  /**
+   * Judge tool config for `t.agent(...)` sessions (MCP evidence servers).
+   * Layered under `TaskDefinition.judgeTools` and per-call `tools.mcp`.
+   */
+  judgeTools?: JudgeToolsConfig;
   onTurn?: (
     turnNumber: number,
     userAction: TaskTranscriptTurn["userAction"],
@@ -441,6 +447,7 @@ async function executeLoadedTask(
         // Task-level judge config beats the run-level one (#161); per-call
         // overrides are applied later, inside t.judge.
         const judgeConfig = resolveJudgeConfig(options?.judge, task.judge);
+        const judgeTools = resolveJudgeTools(options?.judgeTools, task.judgeTools);
         const historyPlane = await freezeHistoryPlaneFromEnv(task.id);
         if (!inlineChecks) {
           return loadAndRunFlowChecks(
@@ -451,6 +458,7 @@ async function executeLoadedTask(
               files,
               task,
               ...(judgeConfig ? { judgeConfig } : {}),
+              ...(judgeTools ? { judgeTools } : {}),
               judgeTracer: trace,
               ...(historyPlane ? { historyPlane } : {}),
             },
@@ -466,6 +474,7 @@ async function executeLoadedTask(
           files,
           task,
           ...(judgeConfig ? { judgeConfig } : {}),
+          ...(judgeTools ? { judgeTools } : {}),
           judgeTracer: trace,
           ...(historyPlane ? { historyPlane } : {}),
           moduleUrl,
@@ -541,6 +550,7 @@ async function evaluate(
   // Task-level judge config beats the run-level one (#161); per-call
   // overrides are applied later, inside t.judge.
   const judgeConfig = resolveJudgeConfig(options?.judge, task.judge);
+  const judgeTools = resolveJudgeTools(options?.judgeTools, task.judgeTools);
   const historyPlane = await freezeHistoryPlaneFromEnv(task.id);
 
   const runChecks = async (): Promise<EvaluationItemResult[]> =>
@@ -551,6 +561,7 @@ async function evaluate(
           files,
           task,
           ...(judgeConfig ? { judgeConfig } : {}),
+          ...(judgeTools ? { judgeTools } : {}),
           ...(judgeTracer ? { judgeTracer } : {}),
           ...(historyPlane ? { historyPlane } : {}),
           moduleUrl,
@@ -564,6 +575,7 @@ async function evaluate(
             files,
             task,
             ...(judgeConfig ? { judgeConfig } : {}),
+            ...(judgeTools ? { judgeTools } : {}),
             ...(judgeTracer ? { judgeTracer } : {}),
             ...(historyPlane ? { historyPlane } : {}),
           },

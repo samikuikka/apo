@@ -28,9 +28,7 @@ These read the run's trace, what the agent *did*. Fast, deterministic, free.
 | [`t.calledSubagent(agent)`](#tcalledsubagentagent) | A subagent delegation happened. |
 | [`t.messageIncludes(token)`](#tmessageincludestoken) | The agent's reply contains a substring or matches the RegExp. |
 | [`t.maxTurns(n)`](#tmaxturnsn) | The run took at most `n` turns, anti-flail. |
-| [`t.maxDurationMs(n, opts?)`](#tmaxdurationmsn-opts) | The run (or one turn, `{ turn }`) took at most `n` milliseconds, anti-flail. |
-| [`t.maxTokens(n, opts?)`](#tmaxtokensn-opts) | The agent spent at most `n` tokens (whole run, or `{ turn }`). |
-| [`t.minTokens(n, opts?)`](#tmintokensn-opts) | The agent spent at least `n` tokens (whole run, or `{ turn }`). |
+| [`t.maxDurationMs(n)`](#tmaxdurationmsn) | The run took at most `n` milliseconds, anti-flail. |
 | [`t.assert(label, predicate)`](#tassertlabel-predicate) | Escape hatch: a named predicate over the full normalized run. |
 
 ### `t.calledTool(name, opts?)`
@@ -85,39 +83,10 @@ Matches the name of a `SKILL` observation. Produce one by marking the span that 
 - **Signature:** `(n: number) → void`
 - **Asserts:** the run took at most `n` turns, anti-flail.
 
-### `t.maxDurationMs(n, opts?)`
+### `t.maxDurationMs(n)`
 
-- **Signature:** `(n: number, opts?: { turn?: number }) → void`
-- **Asserts:** the run took at most `n` milliseconds, anti-flail. With `{ turn }` (1-based), bounds that one Task Turn instead: the duration of its `task.turn` span, which is the adapter's whole `sendUserTurn` call for that turn — the agent's work plus anything else the adapter does inside it.
-
-```typescript
-t.maxDurationMs(20 * 60_000, { turn: 1 }); // the first turn finished inside 20 minutes
-```
-
-A turn that never ran is a failure, not `unsupported`: the run is evidence that it did not happen.
-
-### `t.maxTokens(n, opts?)`
-
-- **Signature:** `(n: number, opts?: { turn?: number; kind?: "input" | "output" | "total" }) → void`
-- **Asserts:** the agent spent at most `n` tokens. `kind` defaults to `"total"` (input + output).
-
-### `t.minTokens(n, opts?)`
-
-- **Signature:** `(n: number, opts?: { turn?: number; kind?: "input" | "output" | "total" }) → void`
-- **Asserts:** the agent spent at least `n` tokens. A floor catches the agent that answered without doing the work — a review that never read the document spends far fewer input tokens than one that did.
-
-```typescript
-t.maxTokens(400_000, { turn: 1 });
-t.minTokens(20_000, { turn: 1, kind: "input" }); // it actually read the 30-page contract
-```
-
-**Which tokens count.** Token budgets sum the usage recorded on observations *inside* `task.turn` spans, every turn or only `{ turn }`. Work outside the turns never counts: judge calls in the evaluation phase, and anything the adapter does in `initialize`, `startSession` or `collectDeliverables`. Everything inside `sendUserTurn` does — so if the adapter makes its own traced LLM calls there (a simulated user, a completion check), they count with the agent's. The agent's LLM calls must nest under the turn span: the `ApoSpanProcessor` parents them there automatically, and the explicit integrations do when you pass them the `parentSpanId` `sendUserTurn` receives (see [Tracing integrations](/reference/tracing-integrations/)). Token budgets need a traced run; an untraced local run cannot attribute calls to turns and records `unsupported`.
-
-**What a token is.** Input tokens are what the provider reported as the prompt, which for most providers includes cached prompt reads and writes; output tokens include reasoning tokens where the provider counts them as output. A cache-heavy agent can read hundreds of thousands of input tokens for a few cents — set the budget from measured runs, not from cost.
-
-**Nested usage counts once.** When an LLM call's span carries usage and so do the LLM-call spans directly beneath it (the AI SDK's `ai.generateText` over its per-step `doGenerate` calls), the parent counts the larger of its own count and its children's sum, never both. Calls reached through a span that is not itself one of those steps — a tool call running a subagent, an agent span, a plain wrapper span — are separate calls and add to the total.
-
-**Incomplete usage fails closed.** When an LLM call in scope reported no count for the requested `kind`, or errored (a provider error often drops the final usage event, so an errored call's count is kept but read as a minimum), the sum is only a lower bound. A lower bound cannot prove a maximum, so `maxTokens` records `unsupported`; `minTokens` still passes when the known part already reaches `n`. The one exception is a step whose parent call reported a complete count of its own: the parent's count already covers that step, so it does not make the sum a lower bound. With no usage-bearing call in scope at all, both record `unsupported` rather than comparing against 0. The breakdown's `received` shows the lower bound and how many calls had unknown or errored usage.
+- **Signature:** `(n: number) → void`
+- **Asserts:** the run took at most `n` milliseconds, anti-flail.
 
 ### `t.assert(label, predicate)`
 
@@ -163,7 +132,7 @@ t.check(deliverables.answer, includes("acme-corp"), "answer names acme");
 
 ### `t.judge(value, instruction, opts?)`, async
 
-- **Signature:** `(value: unknown | unknown[], instruction: string, opts?: { label?: string; judge?: Partial<JudgeConfig>; secondJudgeValue?: unknown | unknown[] }) → Promise<void>`
+- **Signature:** `(value: unknown | unknown[], instruction: string, opts?: { label?: string; judge?: Partial<JudgeConfig> }) → Promise<void>`
 - **Asserts:** the configured judge model grades `value` against `instruction` (a natural-language rubric). **Must be awaited**: the check function must be `async`.
 
 ```typescript title="my-task.eval.ts"
@@ -183,7 +152,7 @@ A purely factual criterion ("every `Finland` was replaced by `Sweden`", "the JSO
 
 #### Overriding the judge model per call
 
-apo's only built-in judge fallback is deliberately cheap (`deepseek/deepseek-v4.1-flash` in the packaged task runtime; local runs use the model you configured): stronger models are always opt-in, never a surprise (see [Cost-aware defaults](/self-hosting/configuration/#cost-aware-defaults)). `opts.judge` is the most surgical opt-in: it overrides the run's judge config for **this call only**, merging field-by-field, use it to escalate one finicky criterion without switching the whole run onto an expensive model.
+apo's only built-in judge fallback is deliberately cheap (`google/gemini-2.5-flash` in the packaged task runtime; local runs use the model you configured): stronger models are always opt-in, never a surprise (see [Cost-aware defaults](/self-hosting/configuration/#cost-aware-defaults)). `opts.judge` is the most surgical opt-in: it overrides the run's judge config for **this call only**, merging field-by-field, use it to escalate one finicky criterion without switching the whole run onto an expensive model.
 
 ```typescript title="my-task.eval.ts"
 test("answer-quality", async (t, { deliverables }) => {
@@ -199,23 +168,7 @@ test("answer-quality", async (t, { deliverables }) => {
 });
 ```
 
-Absent fields inherit from the run's judge config (`runTask({ judge })`, or the `OPENROUTER_MODEL` / `AGENT_TASK_JUDGE_MODEL` env defaults), so `{ model }` alone is usually enough, `baseURL` and `apiKey` flow through unchanged. The overridden model is stamped on the assertion metadata and shown in the dashboard breakdown.
-
-#### Projecting a smaller view for the second judge
-
-`opts.secondJudgeValue` applies only when the [second judge](/concepts/tests/#the-second-judge) is armed and the full value doesn't fit its context: the primary judge still grades all of `value`, the second judge grades the projection. The evidence records `projected: true`, and without a second judge the option changes nothing.
-
-```typescript title="my-task.eval.ts"
-test("sla-credit-cap-redlined", async (t, { deliverables }) => {
-  await t.judge(
-    deliverables.redlinedDocument,
-    "PASS when the SLA credit cap is marked up from 15% to 30%.",
-    // The tracked-changes section answers this criterion; the whole
-    // marked-up document exceeds the second judge's context limit.
-    { secondJudgeValue: deliverables.redlinedDocument.trackedChanges },
-  );
-});
-```
+Absent fields inherit from the run's judge config (`runTask({ judge })`, or a task-level `judge` layer), whose env defaults depend on the runner: `OPENROUTER_MODEL` / `OPENAI_MODEL` for local runs (`apo task run`, `apo connect`), `AGENT_TASK_JUDGE_MODEL` for backend-spawned runs. So `{ model }` alone is usually enough, `baseURL` and `apiKey` flow through unchanged. The overridden model is stamped on the assertion metadata and shown in the dashboard breakdown.
 
 #### Response-contract order: reasoning-first
 
@@ -234,6 +187,74 @@ Judgments elicited before the default flip carry `contract: "verdict-first"`. Wh
 :::
 
 The repo ships a probe task for this (`apps/example-service/e2e/agent-task-demo/tasks/judge-flip-probe`, a stub agent returning one fixed memo, ten calibrated criteria); on `google/gemini-2.5-flash-lite` it measured zero flips across 10 criteria × 3 samples per arm.
+
+### `t.agent(instruction, opts?)`, async
+
+- **Signature:** `(instruction: string, opts?: AgentJudgeOptions) → Promise<void>`
+- **Asserts:** an agentic judge — a tool-using LLM session — investigates the run's own evidence with read-only tools, then verdicts via `finish_verdict` (whose reasoning must cite the evidence it relied on). **Must be awaited**: the check function must be `async`. For when to reach for this over `t.judge`, see [Tests → The agentic judge](/concepts/tests/#the-agentic-judge).
+
+```typescript title="my-task.eval.ts"
+test("claims-are-grounded", async (t) => {
+  await t.agent(
+    "PASS when every claim in the memorandum is supported by the source documents. Read the deliverables, search them for the cited figures, and check the trace for what the agent actually read.",
+  );
+});
+```
+
+Records a single assertion tagged `evaluator_type: "agent"` with the session transcript (a content-hashed manifest of what was read, not a copy) attached. Unlike `t.judge`, you state a rubric and the judge gathers its own evidence; `opts.exhibits` optionally pre-stages values into turn 0 the way `t.judge` values are staged.
+
+The session's tool surface:
+
+| Tool | Serves |
+|---|---|
+| `read_deliverable` | One deliverable by name, paginated (offset/limit, max 12,000 bytes per call) |
+| `search_deliverable` | Regex search over one deliverable — up to 8 matches with surrounding context, cheaper than reading end to end |
+| `get_trace` | The run's execution trace (tool calls, turns, final reply); answers `unsupported` honestly when trace evidence is missing |
+| `list_runs` / `get_run` | This task's prior runs and their full check reports, human corrections included — frozen once per evaluation; present when the run is recorded against a backend |
+| `get_task_definition` | The task's id, description, and deliverable names |
+| `finish_verdict` | The only exit besides the budget — ends the session with the verdict |
+
+Options: `opts.budget` overrides each ceiling (defaults: 12 turns, 24 tool calls, 300 s wall clock, 2 MiB total read); `opts.tools: { trace: false }` drops `get_trace` (deliverables are always readable); `opts.judge` overrides the judge model for this call only, merging field-by-field like `t.judge`; `opts.label` names the assertion in the breakdown.
+
+The session is fail-closed: one that ends without a verdict records a **failure** with its explanation — `budget exhausted after N steps; last tool: …` — never a silent pass. Without a judge model configured, the check records a setup failure naming the env vars to set (`OPENROUTER_MODEL` + `OPENROUTER_API_KEY`, or `OPENAI_MODEL` + `OPENAI_API_KEY`); the model must be tool-calling capable.
+
+#### MCP evidence tools
+
+The judge's tool surface is not closed. `opts.tools.mcp` attaches your own MCP servers, so a rubric can be verified against your systems, not just the run's artifacts:
+
+```typescript title="my-task.eval.ts"
+test("deploy-actually-live", async (t) => {
+  await t.agent(
+    "PASS when the ops tools confirm the service endpoint returns 200 and the reported version matches the deliverable.",
+    {
+      tools: {
+        mcp: [
+          {
+            name: "ops",
+            transport: { type: "http", url: "https://ops.internal/mcp", headers: { Authorization: "Bearer ${OPS_TOKEN}" } },
+            tools: ["check_endpoint", "get_version"],   // allowlist
+          },
+        ],
+      },
+    },
+  );
+});
+```
+
+Exposed as `mcp__<server>__<tool>` — stable names your trace assertions can also match. Config layers like the judge model: file/env ← `runTask({ judgeTools })` ← task `judgeTools` ← per-call `tools.mcp`, most specific wins. `APO_JUDGE_MCP=/path/to/mcp.json` points at the industry `.mcp.json` shape (`{"mcpServers": {"<name>": {command, args, env} | {url, headers}}}`), so an existing file works as-is.
+
+| Field | Meaning |
+|---|---|
+| `name` | Unique; prefixes the tool names. |
+| `transport` | `{ type: "stdio", command, args?, env? }` or `{ type: "http", url, headers? }`. |
+| `tools` / `excludeTools` | Allowlist then denylist of raw server tool names. |
+| `timeoutMs` | Per-tool-call timeout (default 30 s; connect gets its own 10 s budget). |
+
+MCP calls draw down the **same session budget** as `read_deliverable` (tool calls, read bytes — one result serves at most 64 KiB to the model; the manifest fingerprints the full payload), and every result lands in the content-hashed evidence manifest like any other read.
+
+:::caution[Trust and secrets]
+A stdio server is a process the eval file told apo to spawn — the same trust as any adapter code. Secret-bearing values (`env`, `headers`) expand `${VAR}` from the environment at connect time; an unset variable is a visible load error, and the values themselves never appear in the recorded session. A configured server that fails to connect fails the check closed, naming the server.
+:::
 
 ## Matchers
 
@@ -263,15 +284,14 @@ Every `t.*` assertion is gated by an **evidence capability**: whether the trace 
 |---|---|---|---|
 | Positive (`calledTool`, `loadedSkill`, `calledSubagent`, `messageIncludes`) | normal evaluation | `unsupported` (inconclusive) | `unsupported` |
 | Negative / upper-bound (`notCalledTool`, `usedNoTools`, `maxToolCalls`, `maxTurns`, `maxDurationMs`) | normal evaluation | `unsupported` (absence is inconclusive) | `unsupported` |
-| Token budgets (`maxTokens`, `minTokens`), gated on `usage` | normal evaluation (see [incomplete usage](#tmintokensn-opts)) | `unsupported` | `unsupported` |
 | `noFailedActions` | normal evaluation | `unsupported` (inconclusive) | `unsupported` |
 
 When a capability is `partial` or `unavailable`, the assertion immediately records `unsupported` without scanning for matches, a partial projection cannot prove a positive or a negative.
 
 An `unsupported` outcome records `pass: false`, it is never a silent pass. This is why a complete `apo-agent-task-v1` run with zero tools still has `tools = available`: the projection can *prove* `usedNoTools()`, not just fail to find tools.
 
-:::note[Transparent wrappers]
-The trace projection suppresses lifecycle wrappers (`ai.generateText`, `ai.streamText`): assertions read the effective graph where children are reparented to the nearest retained ancestor. You never see a synthetic container row in `toolOrder` or `subagentCalls`.
+:::note[One generation per wrapper]
+The Vercel AI SDK emits a wrapper span (`ai.generateText` / `ai.streamText`) plus per-step children (`ai.generateText.doGenerate`). apo's translation keeps the wrapper — it carries the complete picture: the final assembled text and the total usage — as the single GENERATION row, and ignores the per-step children. Assertions never see a duplicated per-step row, and `toolOrder` reads the effective call graph.
 :::
 
 ## See also
