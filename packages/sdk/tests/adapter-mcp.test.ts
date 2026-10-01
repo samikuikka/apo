@@ -10,8 +10,8 @@ import {
 } from "../src/agent-task/checks/mcp-tools.ts";
 
 /**
- * `connectMcpServers` — the adapter-side MCP connect helper (SPEC-207). The
- * agent under test is not apo's to budget, so unlike the judge toolset this
+ * `connectMcpServers` — the adapter-side MCP connect helper. The agent
+ * under test is not apo's to budget, so unlike the judge toolset this
  * returns RAW namespaced tools; everything else (transports, filtering,
  * namespacing, cleanup) is shared plumbing, proven here against the same
  * real stdio fixture server as the judge tests.

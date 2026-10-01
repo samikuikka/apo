@@ -36,6 +36,8 @@ const CLOSURE = [
    "e2e/agent-task-demo/lib/files.ts"],
   ["e2e/agent-task-demo/lib/deliverables.ts",
    "e2e/agent-task-demo/lib/deliverables.ts"],
+  ["e2e/agent-task-demo/lib/mcp.ts",
+   "e2e/agent-task-demo/lib/mcp.ts"],
   ["e2e/agent-task-demo/agent/types.ts",
    "e2e/agent-task-demo/agent/types.ts"],
   // The real agent

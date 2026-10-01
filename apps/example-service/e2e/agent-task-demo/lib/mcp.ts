@@ -10,7 +10,27 @@ import {
   resolveMcpServerPaths,
   type McpServerConfig,
 } from "@apo-ai/sdk/agent-task";
-import type { McpServerConfig as ClaudeMcpServerConfig } from "@anthropic-ai/claude-agent-sdk";
+
+/**
+ * Structural view of the Claude Agent SDK's mcpServers option shape — kept
+ * local so this helper has zero claude-agent-sdk dependency (consumers that
+ * only use the ai-sdk path never install it). Assignability to the SDK's own
+ * McpServerConfig is pinned by the claude adapter's usage.
+ */
+export type ClaudeMcpServerConfig =
+  | {
+      type: "stdio";
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+      timeout?: number;
+    }
+  | {
+      type: "http";
+      url: string;
+      headers?: Record<string, string>;
+      timeout?: number;
+    };
 
 export { resolveMcpServerPaths };
 

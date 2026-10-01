@@ -90,15 +90,6 @@ export {
   type AgentJudgeOptions,
 } from "./checks/agent-session.ts";
 export type {
-  McpServerConfig,
-  McpStdioTransport,
-  McpHttpTransport,
-  JudgeToolsConfig,
-} from "./checks/mcp-tools.ts";
-export { connectMcpServers } from "./checks/mcp-tools.ts";
-export { expandSecretPlaceholders } from "./checks/mcp-tools.ts";
-export { resolveMcpServerPaths } from "./checks/mcp-tools.ts";
-export type {
   AgentJudgeSession,
   AgentJudgeStep,
   AgentJudgeOutcome,
@@ -249,3 +240,14 @@ export {
   type TranscriptTurn,
   type TranscriptUsage,
 } from "./transcript-replay/index.ts";
+
+// ── MCP tools (judge evidence tools + adapter-side connect) ─────────────
+export type {
+  McpServerConfig,
+  McpStdioTransport,
+  McpHttpTransport,
+  JudgeToolsConfig,
+} from "./checks/mcp-tools.ts";
+export { connectMcpServers } from "./checks/mcp-tools.ts";
+export { expandSecretPlaceholders } from "./checks/mcp-tools.ts";
+export { resolveMcpServerPaths } from "./checks/mcp-tools.ts";

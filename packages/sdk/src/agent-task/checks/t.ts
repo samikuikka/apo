@@ -842,6 +842,139 @@ export function createTraceTestContext(
   };
 }
 
+type RecordUnsupported = (
+  id: string,
+  capability: keyof TraceProjectionCapabilities,
+) => void;
+
+/** The legacy context's stand-in for the capability-gated `unsupported`. */
+function recordMissingEvidence(rec: Recorder, view: TraceView): RecordUnsupported {
+  return (id, capability) => {
+    rec.record(id, false, `${CAPABILITY_LABELS[capability]} evidence is unavailable in this trace projection`, {
+      outcome: "unsupported" as AssertionOutcome,
+      expected: `${CAPABILITY_LABELS[capability]} evidence available`,
+      received: view.requireCapability(capability),
+    });
+  };
+}
+
+function requireBudget(method: string, n: number): void {
+  if (!Number.isFinite(n) || n < 0) {
+    throw new TypeError(`${method}: the budget must be a finite, non-negative number, got ${n}`);
+  }
+}
+
+const TOKEN_KINDS: readonly TokenKind[] = ["input", "output", "total"];
+
+function requireTurnNumber(method: string, turn: number): void {
+  if (!Number.isInteger(turn) || turn < 1) {
+    throw new TypeError(`${method}: turn must be a positive integer (1-based), got ${turn}`);
+  }
+}
+
+function recordTurnDuration(
+  view: TraceView,
+  rec: Recorder,
+  n: number,
+  turn: number,
+  unsupported: RecordUnsupported,
+): void {
+  requireBudget("maxDurationMs", n);
+  requireTurnNumber("maxDurationMs", turn);
+  const id = `maxDurationMs(${n}, turn ${turn})`;
+  const turns = view.turns;
+  if (turns === undefined) {
+    unsupported(id, "timing");
+    return;
+  }
+  const record = turns[turn - 1];
+  if (!record) {
+    rec.record(id, false, `turn ${turn} did not run (the run had ${turns.length} turn(s))`, {
+      expected: `turn ${turn} ≤ ${n}ms`,
+      received: `${turns.length} turn(s)`,
+    });
+    return;
+  }
+  const ms = record.durationMs;
+  if (ms === undefined) {
+    unsupported(id, "timing");
+    return;
+  }
+  rec.record(id, ms <= n, ms <= n ? "" : `expected turn ${turn} ≤ ${n}ms, took ${ms}ms`, {
+    expected: `turn ${turn} ≤ ${n}ms`,
+    received: `${ms}ms`,
+  });
+}
+
+/**
+ * Token budgets fail closed on incomplete evidence: an LLM call in scope with
+ * unknown or errored usage (not covered by a complete count on the call
+ * above it) makes the sum a lower bound, which cannot prove a maximum — and
+ * proves a minimum only once the known part already reaches it.
+ */
+function recordTokenBudget(
+  view: TraceView,
+  rec: Recorder,
+  bound: "max" | "min",
+  n: number,
+  opts: TokenBudgetOptions | undefined,
+  unsupported: RecordUnsupported,
+): void {
+  const method = bound === "max" ? "maxTokens" : "minTokens";
+  const kind = opts?.kind ?? "total";
+  const turn = opts?.turn;
+  requireBudget(method, n);
+  if (!TOKEN_KINDS.includes(kind)) {
+    throw new TypeError(`${method}: kind must be one of ${TOKEN_KINDS.join(", ")}, got ${String(kind)}`);
+  }
+  if (turn !== undefined) requireTurnNumber(method, turn);
+  const scope = turn === undefined ? "" : `, turn ${turn}`;
+  const id = `${method}(${n}${kind === "total" ? "" : `, ${kind}`}${scope})`;
+  const op = bound === "max" ? "≤" : "≥";
+  const expected = `${op} ${n} ${kind} tokens${turn === undefined ? "" : ` in turn ${turn}`}`;
+
+  if (view.requireCapability("usage") !== "available") {
+    unsupported(id, "usage");
+    return;
+  }
+  if (turn !== undefined) {
+    const turnCount = view.turnCountFromSpans;
+    if (turn > turnCount) {
+      rec.record(id, false, `turn ${turn} did not run (the run had ${turnCount} turn(s))`, {
+        expected,
+        received: `${turnCount} turn(s)`,
+      });
+      return;
+    }
+  }
+  const tally = view.tokens(kind, turn === undefined ? undefined : { turn });
+  if (tally === undefined || (tally.reported === 0 && tally.unreported === 0)) {
+    rec.record(id, false, `no LLM call${turn === undefined ? " inside a turn" : ` in turn ${turn}`} reported ${kind} token usage`, {
+      outcome: "unsupported" as AssertionOutcome,
+      expected,
+      received: "no usage-bearing LLM calls in scope",
+    });
+    return;
+  }
+  const received =
+    tally.unreported > 0
+      ? `≥ ${tally.tokens} tokens (${tally.unreported} LLM call(s) with unknown or errored usage)`
+      : `${tally.tokens} tokens`;
+  const within = bound === "max" ? tally.tokens <= n : tally.tokens >= n;
+  if (tally.unreported > 0 && !(bound === "min" && within)) {
+    rec.record(id, false, `usage is incomplete: ${tally.unreported} LLM call(s) in scope have unknown or errored ${kind} usage`, {
+      outcome: "unsupported" as AssertionOutcome,
+      expected,
+      received,
+    });
+    return;
+  }
+  rec.record(id, within, within ? "" : `expected ${expected}, got ${tally.tokens}`, {
+    expected,
+    received,
+  });
+}
+
 function matchesTraceToolCall(
   call: { name: string; input?: unknown; output?: unknown; status?: string },
   name: NameMatcher,
