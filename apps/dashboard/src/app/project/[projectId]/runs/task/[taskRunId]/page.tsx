@@ -355,7 +355,7 @@ export default async function TaskRunDetailPage({
                   ? `${formatTokenTotal(taskRun.total_tokens)}${generationErrors > 0 ? " partial" : ""}`
                   : "cost",
               },
-              // Reasoning rollup (issue #309): unknown renders as unknown —
+              // Reasoning rollup (issue #309): unknown renders as an em dash —
               // a provider that never sent the reasoning dimension must not
               // read as "the model didn't think". Linked to the deepest call.
               ...(taskRun.total_reasoning_tokens != null
@@ -374,7 +374,7 @@ export default async function TaskRunDetailPage({
                     label: "reasoning",
                   }]
                 : (taskRun.total_tokens ?? 0) > 0
-                  ? [{ icon: Brain, key: "reasoning", value: "not reported", label: "reasoning" }]
+                  ? [{ icon: Brain, key: "reasoning", value: "—", label: "reasoning" }]
                   : []),
               ...(taskRun.max_call_latency_ms != null
                 ? [{
