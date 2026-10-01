@@ -12,12 +12,13 @@
  * Tracing is automatic via `registerApoTracing()` + `handleChat`'s
  * `experimental_telemetry` (same process).
  */
-import { defineAdapter, registerApoTracing } from "@apo-ai/sdk/agent-task";
+import { defineAdapter, registerApoTracing, connectMcpServers } from "@apo-ai/sdk/agent-task";
 import { handleChat, type ChatRequest } from "../../app/lib/agent/service.ts";
 import type { AgentState } from "./agent/types.ts";
 import { loadFiles } from "./lib/files.ts";
 import { REAL_AGENT_SYSTEM_PROMPT, buildWorkflowMessage } from "./lib/prompts.ts";
 import { realAgentDeliverableSchemas, collectRealAgentDeliverables } from "./lib/deliverables.ts";
+import { resolveMcpServerPaths } from "./lib/mcp.ts";
 
 await registerApoTracing();
 
@@ -41,8 +42,18 @@ export const realAgentAdapter = defineAdapter({
     // report the same resolved model the agent uses (service.ts
     // getModel() reads OPENROUTER_MODEL with the same default).
     const model = process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4.1-flash";
+
+    // Task-declared MCP servers (TaskDefinition.mcpServers): connect once per
+    // session, merge the raw namespaced tools into the agent's tool record,
+    // close when the session ends. The agent under test is not apo's to
+    // budget — no judge-style ledger on this plane.
+    const mcp = ctx.task.mcpServers?.length
+      ? await connectMcpServers(resolveMcpServerPaths(ctx.task.mcpServers, ctx.taskDir))
+      : undefined;
+
     return {
       runConfiguration: { model },
+      ...(mcp ? { close: () => mcp.cleanup() } : {}),
       async sendUserTurn(turn: unknown) {
         state.turnCount++;
         const fileList = Object.keys(state.fileContents).map((f) => `- ${f}`).join("\n");
@@ -57,6 +68,7 @@ export const realAgentAdapter = defineAdapter({
           taskDir: ctx.taskDir,
           system: REAL_AGENT_SYSTEM_PROMPT,
           maxSteps: 8,
+          ...(mcp ? { extraTools: mcp.tools } : {}),
         });
         state.agentResponses.push(result.response);
         state.allToolCalls.push(...result.tool_calls);

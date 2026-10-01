@@ -34,6 +34,7 @@ import { defineAdapter } from "@apo-ai/sdk/agent-task";
 import { z } from "zod";
 import { runClaudeAgent } from "./agent/claude-agent.ts";
 import { buildOtelEnv } from "./lib/otel-env.ts";
+import { resolveMcpServerPaths, toClaudeMcpServers } from "./lib/mcp.ts";
 
 /** State accumulated across turns in one session, surfaced to collectDeliverables. */
 type ClaudeSessionState = {
@@ -81,6 +82,13 @@ export const claudeAdapter = defineAdapter({
     // independently guess a display label after execution.
     const model = process.env.CLAUDE_MODEL;
 
+    // Task-declared MCP servers (TaskDefinition.mcpServers): relative paths
+    // resolve against the task dir, then hand off to the Claude Agent SDK,
+    // which spawns and owns the server processes for the session's lifetime.
+    const mcpServers = ctx.task.mcpServers?.length
+      ? toClaudeMcpServers(resolveMcpServerPaths(ctx.task.mcpServers, ctx.taskDir))
+      : undefined;
+
     return {
       runConfiguration: model ? { model } : undefined,
       async sendUserTurn(turn: unknown) {
@@ -89,6 +97,7 @@ export const claudeAdapter = defineAdapter({
           prompt: String(turn),
           cwd,
           env: buildOtelEnv(),
+          ...(mcpServers ? { mcpServers } : {}),
         });
 
         state.numTurns = num_turns;

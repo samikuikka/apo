@@ -14,7 +14,7 @@
  *
  * Could run standalone outside apo — `runClaudeAgent({ ... })` is plain code.
  */
-import { query, type SDKMessage, type SDKAssistantMessage, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type SDKMessage, type SDKAssistantMessage, type SDKResultMessage, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 import type { BetaTextBlock } from "@anthropic-ai/sdk/resources/beta/messages/messages.mjs";
 
 /** Pull the readable text out of an assistant message's content blocks. */
@@ -39,6 +39,9 @@ function assistantText(message: SDKAssistantMessage): string {
  *                    this entirely; it does not merge. The agent reads its own
  *                    model config (CLAUDE_MODEL) from this env — apo never picks.
  * @param allowedTools  Built-in tools to auto-allow without prompting
+ * @param mcpServers    Extra MCP servers for this session (task-declared via
+ *                      TaskDefinition.mcpServers; the SDK spawns and owns the
+ *                      server processes, tools surface as mcp__<name>__<tool>)
  * @returns           The agent's final text response and whether it errored
  */
 export async function runClaudeAgent(options: {
@@ -46,6 +49,7 @@ export async function runClaudeAgent(options: {
   cwd: string;
   env: Record<string, string | undefined>;
   allowedTools?: string[];
+  mcpServers?: Record<string, McpServerConfig>;
 }): Promise<{ text: string; is_error: boolean; num_turns: number }> {
   const stream: AsyncGenerator<SDKMessage, void> = query({
     prompt: options.prompt,
@@ -60,6 +64,11 @@ export async function runClaudeAgent(options: {
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       allowedTools: options.allowedTools ?? ["Read", "Grep", "Glob", "Bash"],
+      // Task-declared MCP servers, injected explicitly — never read from host
+      // config (settingSources stays [] below, keeping the run hermetic).
+      ...(options.mcpServers && Object.keys(options.mcpServers).length > 0
+        ? { mcpServers: options.mcpServers }
+        : {}),
       // Hermetic: don't load ~/.claude or .claude/settings — keeps the run
       // reproducible and free of host-specific config.
       settingSources: [],

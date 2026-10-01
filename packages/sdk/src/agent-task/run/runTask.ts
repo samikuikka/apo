@@ -30,7 +30,11 @@ import { createProjectionTee } from "../trace-projection/projection-tee.ts";
 import type { TraceProjectionSnapshot } from "../trace-projection/types.ts";
 import { readTaskRunProjection } from "../trace-projection/remote-capture.ts";
 import { resolveJudgeConfig, type JudgeConfig } from "../checks/t.ts";
-import { resolveJudgeTools, type JudgeToolsConfig } from "../checks/mcp-tools.ts";
+import {
+  resolveJudgeTools,
+  resolveMcpServerPaths,
+  type JudgeToolsConfig,
+} from "../checks/mcp-tools.ts";
 import { freezeHistoryPlaneFromEnv } from "../checks/agent-history.ts";
 import type { JudgeTracer } from "../tracing.ts";
 import { APO_TASK_ID, APO_TASK_RUN_ID } from "../../semconv.ts";
@@ -114,6 +118,22 @@ export type RunTaskOptions = {
    */
   loaded?: LoadedTask;
 };
+
+/**
+ * Layered judgeTools with path-like stdio entries resolved against the task
+ * dir — one contract with TaskDefinition.mcpServers on the adapter plane.
+ * Per-call `t.agent(..., { tools: { mcp } })` configs are used verbatim;
+ * eval authors writing per-call servers should use absolute paths.
+ */
+function resolveJudgeToolsForTask(
+  runLevel: JudgeToolsConfig | undefined,
+  taskLevel: JudgeToolsConfig | undefined,
+  taskDir: string,
+): JudgeToolsConfig | undefined {
+  const layered = resolveJudgeTools(runLevel, taskLevel);
+  if (!layered?.mcp) return layered;
+  return { mcp: resolveMcpServerPaths(layered.mcp, taskDir) };
+}
 
 export async function runTask(
   taskDir: string,
@@ -445,9 +465,12 @@ async function executeLoadedTask(
       },
       async () => {
         // Task-level judge config beats the run-level one (#161); per-call
-        // overrides are applied later, inside t.judge.
+        // overrides are applied later, inside t.judge. Layered judgeTools
+        // get their path-like stdio entries resolved against the task dir —
+        // the SAME contract TaskDefinition.mcpServers follows on the adapter
+        // plane, so "./mcp/server.mjs" works regardless of the runner's cwd.
         const judgeConfig = resolveJudgeConfig(options?.judge, task.judge);
-        const judgeTools = resolveJudgeTools(options?.judgeTools, task.judgeTools);
+        const judgeTools = resolveJudgeToolsForTask(options?.judgeTools, task.judgeTools, absoluteDir);
         const historyPlane = await freezeHistoryPlaneFromEnv(task.id);
         if (!inlineChecks) {
           return loadAndRunFlowChecks(
@@ -548,9 +571,10 @@ async function evaluate(
   );
 
   // Task-level judge config beats the run-level one (#161); per-call
-  // overrides are applied later, inside t.judge.
+  // overrides are applied later, inside t.judge. Same path-resolution
+  // contract as the merge above.
   const judgeConfig = resolveJudgeConfig(options?.judge, task.judge);
-  const judgeTools = resolveJudgeTools(options?.judgeTools, task.judgeTools);
+  const judgeTools = resolveJudgeToolsForTask(options?.judgeTools, task.judgeTools, absoluteDir);
   const historyPlane = await freezeHistoryPlaneFromEnv(task.id);
 
   const runChecks = async (): Promise<EvaluationItemResult[]> =>

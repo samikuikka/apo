@@ -95,6 +95,9 @@ export type {
   McpHttpTransport,
   JudgeToolsConfig,
 } from "./checks/mcp-tools.ts";
+export { connectMcpServers } from "./checks/mcp-tools.ts";
+export { expandSecretPlaceholders } from "./checks/mcp-tools.ts";
+export { resolveMcpServerPaths } from "./checks/mcp-tools.ts";
 export type {
   AgentJudgeSession,
   AgentJudgeStep,

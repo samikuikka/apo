@@ -199,6 +199,79 @@ describe("loadTask", () => {
     );
   });
 
+  it("accepts mcpServers on the task and loads them through", async () => {
+    setupTaskDir({
+      adapterContent: buildAdapterModule(),
+      taskContent: `
+import { task } from "${LOCAL_DEFINE_TASK_IMPORT}";
+import { testAdapter } from "./adapter.ts";
+export const { test } = task("typed-task", {
+  adapter: testAdapter,
+  deliverables: ["report"],
+  mcpServers: [
+    {
+      name: "geo",
+      transport: { type: "stdio", command: "node", args: ["./mcp/geo-server.mjs"] },
+    },
+  ],
+});`,
+    });
+
+    const loaded = await loadTask(taskDir);
+
+    expect(loaded.task.mcpServers).toHaveLength(1);
+    expect(loaded.task.mcpServers?.[0]).toMatchObject({
+      name: "geo",
+      transport: { type: "stdio", command: "node" },
+    });
+  });
+
+  it("rejects malformed mcpServers with the task dir in the message", async () => {
+    setupTaskDir({
+      adapterContent: buildAdapterModule(),
+      taskContent: `
+import { task } from "${LOCAL_DEFINE_TASK_IMPORT}";
+import { testAdapter } from "./adapter.ts";
+export const { test } = task("typed-task", {
+  adapter: testAdapter,
+  deliverables: ["report"],
+  mcpServers: [{ name: "geo" }],
+});`,
+    });
+
+    await expect(loadTask(taskDir)).rejects.toThrow(/transport.*mcpServers|mcpServers.*transport/);
+  });
+
+  it("rejects untyped transports and __-containing server names at load", async () => {
+    setupTaskDir({
+      adapterContent: buildAdapterModule(),
+      taskContent: `
+import { task } from "${LOCAL_DEFINE_TASK_IMPORT}";
+import { testAdapter } from "./adapter.ts";
+export const { test } = task("typed-task", {
+  adapter: testAdapter,
+  deliverables: ["report"],
+  mcpServers: [{ name: "geo", transport: {} }],
+});`,
+    });
+
+    await expect(loadTask(taskDir)).rejects.toThrow(/transport\.type must be/);
+
+    setupTaskDir({
+      adapterContent: buildAdapterModule(),
+      taskContent: `
+import { task } from "${LOCAL_DEFINE_TASK_IMPORT}";
+import { testAdapter } from "./adapter.ts";
+export const { test } = task("typed-task", {
+  adapter: testAdapter,
+  deliverables: ["report"],
+  mcpServers: [{ name: "my__geo", transport: { type: "stdio", command: "node" } }],
+});`,
+    });
+
+    await expect(loadTask(taskDir)).rejects.toThrow(/must not contain "__"/);
+  });
+
   it("discovers files and checks", async () => {
     setupTaskDir({
       adapterContent: buildAdapterModule(),

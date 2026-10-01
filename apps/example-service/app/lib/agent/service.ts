@@ -161,6 +161,12 @@ export type ChatRequest = {
   telemetry?: boolean;
   /** Task directory — enables a filesystem fallback for read_file. */
   taskDir?: string;
+  /**
+   * Extra tools merged over the built-ins — e.g. task-declared MCP servers
+   * (already namespaced `mcp__<server>__<tool>` by the SDK's
+   * connectMcpServers). The caller owns the clients and their cleanup.
+   */
+  extraTools?: Record<string, unknown>;
 };
 
 export type ChatResponse = {
@@ -178,7 +184,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   const client = getClient();
   const model = getModel();
   const files = request.files ?? {};
-  const tools = buildTools(files, request.taskDir);
+  const tools = { ...buildTools(files, request.taskDir), ...request.extraTools };
   const telemetryEnabled = request.telemetry ?? true;
 
   const messages: ModelMessage[] = request.messages.map((m) => ({
