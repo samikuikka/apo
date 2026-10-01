@@ -28,6 +28,13 @@ export interface ProjectionReadOptions {
   initialIntervalMs?: number;
   /** Maximum retry interval after backoff (default: 5000). */
   maxIntervalMs?: number;
+  /**
+   * Retry 409 "Task run has no trace" like a 202. Set for fresh-run readback,
+   * where the run row was pre-created and subprocess-exported spans are still
+   * in flight; leave unset for settled reads (rejudge of a completed run),
+   * where a missing trace is a permanent fact of that run.
+   */
+  retryNoTrace?: boolean;
 }
 
 /** Error thrown when the projection is not ready within the deadline. */
@@ -45,7 +52,9 @@ export class ProjectionTimeoutError extends Error {
  * exponential backoff until it's ready (200) or the deadline expires.
  *
  * Throws {@link ProjectionTimeoutError} on timeout. Throws on 403/404/409
- * (the endpoint's permanent-error responses).
+ * (the endpoint's permanent-error responses) — except that 409 "no trace
+ * yet" is retried when {@link ProjectionReadOptions.retryNoTrace} is set for
+ * fresh-run readback, where the claim lands asynchronously.
  */
 export async function readTaskRunProjection(
   options: ProjectionReadOptions,
@@ -72,14 +81,19 @@ export async function readTaskRunProjection(
       return (await response.json()) as TraceProjectionSnapshot;
     }
 
-    if (response.status === 202) {
-      // Not ready yet — back off and retry.
+    if (response.status === 202 || (response.status === 409 && options.retryNoTrace)) {
+      // 202: projection not ready yet. 409 "Task run has no trace" with
+      // retryNoTrace: the run row was pre-created (caller/executor flow) and
+      // the trace has not been claimed by ingestion yet — transient while
+      // subprocess-exported spans are still in flight, so it backs off and
+      // retries like a 202 until the deadline (then the caller falls back to
+      // the local snapshot).
       await sleep(interval);
       interval = Math.min(interval * 1.5, maxIntervalMs);
       continue;
     }
 
-    // 403/404/409 — permanent errors, surface immediately.
+    // 403/404 — permanent errors, surface immediately.
     const detail = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(
       `Projection read failed (${response.status}): ${(detail as { detail?: string }).detail ?? response.statusText}`,
