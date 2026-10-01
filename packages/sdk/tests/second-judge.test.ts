@@ -179,6 +179,47 @@ describe("second judge connection overrides (proxied primary)", () => {
   });
 });
 
+describe("second judge provider selection", () => {
+  it("OpenAI base URL auto-selects the reserved provider: clear error, no request sent", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "gpt-6-luna-decision");
+    const { calls } = stubBoth(async () => jevResponse());
+    const result = await callJudge({ ...judgeArgs, baseURL: "https://api.openai.com/v1" });
+    expect(result.pass).toBe(true); // primary verdict unaffected
+    expect(result.judge.secondJudge?.error).toContain("not implemented yet");
+    expect(result.judge.secondJudge?.error).toContain("limited-preview");
+    expect(calls.mock.calls.some((c) => String(c[0]).includes("decisions"))).toBe(false);
+  });
+
+  it("explicit APO_SECOND_JUDGE_PROVIDER=openai reserved even on an OpenRouter base", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "gpt-6-luna-decision");
+    vi.stubEnv("APO_SECOND_JUDGE_PROVIDER", "openai");
+    const { calls } = stubBoth(async () => jevResponse());
+    const result = await callJudge(judgeArgs);
+    expect(result.judge.secondJudge?.error).toContain("not implemented yet");
+    expect(calls.mock.calls.some((c) => String(c[0]).includes("decisions"))).toBe(false);
+  });
+
+  it("explicit openrouter wins over host auto-detection", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    vi.stubEnv("APO_SECOND_JUDGE_PROVIDER", "openrouter");
+    const { calls } = stubBoth(async () => jevResponse());
+    await callJudge({ ...judgeArgs, baseURL: "https://api.openai.com/v1" });
+    const decCall = calls.mock.calls.find((c) => String(c[0]).includes("alpha/decisions"));
+    expect(String(decCall?.[0])).toBe("https://api.openai.com/alpha/decisions");
+  });
+
+  it("unknown provider value: error evidence names the known providers", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    vi.stubEnv("APO_SECOND_JUDGE_PROVIDER", "gateway");
+    stubBoth(async () => jevResponse());
+    const result = await callJudge(judgeArgs);
+    expect(result.pass).toBe(true);
+    expect(result.judge.secondJudge?.error).toContain("APO_SECOND_JUDGE_PROVIDER");
+    expect(result.judge.secondJudge?.error).toContain("openrouter");
+    expect(result.judge.secondJudge?.error).toContain("openai");
+  });
+});
+
 describe("decisionsEndpoint URL derivation", () => {
   it.each([
     ["https://openrouter.ai/api/v1", "https://openrouter.ai/api/alpha/decisions"],
