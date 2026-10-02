@@ -150,12 +150,13 @@ describe("judge-span spend attribution (issue #288)", () => {
       judgeTracer: tracer,
     });
 
-    expect(steps).toHaveLength(1);
-    expect(steps[0]?.name).toBe("judge:quality");
+    // One span for the check, one for the judge call it issued (issue #344).
+    expect(steps.map((s) => s.name)).toEqual(["check:quality", "judge:quality"]);
+    const judgeStep = steps.find((s) => s.name === "judge:quality");
     // The model lets the backend price the span; the tokens are the ones the
     // judge provider reported (stubbed usage above).
-    expect(steps[0]?.model).toBe("test/judge");
-    expect(steps[0]?.usage).toEqual({ prompt_tokens: 12, completion_tokens: 4 });
+    expect(judgeStep?.model).toBe("test/judge");
+    expect(judgeStep?.usage).toEqual({ prompt_tokens: 12, completion_tokens: 4 });
     expect(result?.judge?.model).toBe("test/judge");
   });
 
@@ -187,14 +188,19 @@ describe("judge-span spend attribution (issue #288)", () => {
       judgeTracer: tracer,
     });
 
-    expect(steps).toHaveLength(1);
-    expect(steps[0]?.name).toBe("t.agent:agent-under-test");
-    expect(steps[0]?.model).toBe("test-model");
+    // The check span wraps the session span (issue #344); tools nest under
+    // the session, their spend owner.
+    expect(steps.map((s) => s.name)).toEqual([
+      "check:agent-under-test",
+      "t.agent:agent-under-test",
+    ]);
+    const agentStep = steps.find((s) => s.name === "t.agent:agent-under-test");
+    expect(agentStep?.model).toBe("test-model");
     // Two scripted turns × the stubbed 120+8 usage.
-    expect(steps[0]?.usage).toEqual({ prompt_tokens: 240, completion_tokens: 16 });
+    expect(agentStep?.usage).toEqual({ prompt_tokens: 240, completion_tokens: 16 });
     // Every evidence read the judge made is a tool span under its step.
     expect(tools.map((t) => t.name)).toContain("read_deliverable");
-    expect(tools.every((t) => t.parentStep === steps[0]?.spanId)).toBe(true);
+    expect(tools.every((t) => t.parentStep === agentStep?.spanId)).toBe(true);
   });
 
   it("t.judge: a failed call records no judge metadata — nothing to link or bill", async () => {
@@ -216,7 +222,7 @@ describe("judge-span spend attribution (issue #288)", () => {
 
     // The span exists (it ends in error), but the failure record must not
     // carry judge metadata — there is no verdict or usage to find there.
-    expect(steps).toHaveLength(1);
+    expect(steps.map((s) => s.name)).toEqual(["check:quality", "judge:quality"]);
     expect(result?.assertions?.[0]?.pass).toBe(false);
     expect(result?.assertions?.[0]?.judge).toBeUndefined();
   });

@@ -17,6 +17,7 @@ import type { JudgeToolsConfig } from "./mcp-tools.ts";
 import type { AgentHistoryPlane } from "./agent-history.ts";
 import type { JudgeTracer } from "../tracing.ts";
 import { Recorder, type LocateFn } from "./recorder.ts";
+import { truncateReceivedValue } from "./compact.ts";
 import { parseCheckLocation } from "./location.ts";
 import { copyFileSync, existsSync, unlinkSync } from "fs";
 import { basename } from "path";
@@ -179,16 +180,8 @@ export function describe(
   }
 }
 
-/**
- * Projection-first check runner. Runs registered checks
- * against a {@link TraceView} built from a {@link TraceProjectionSnapshot}.
- *
- * Trace-dependent assertions that need unavailable evidence (e.g. timing,
- * errors) record ``outcome="unsupported"`` (pass=false) instead of vacuously
- * passing. Value assertions (``t.check``) and LLM assertions (``t.judge``)
- * are unaffected by capabilities.
- */
-export async function runTraceChecks(args: {
+/** Arguments of {@link runTraceChecks} — shared with the per-check runner. */
+type RunTraceChecksArgs = {
   snapshot: TraceProjectionSnapshot;
   deliverables: Record<string, unknown>;
   files?: unknown;
@@ -200,7 +193,18 @@ export async function runTraceChecks(args: {
   historyUnavailableReason?: string;
   moduleUrl?: string;
   displayFile?: string;
-}): Promise<EvaluationItemResult[]> {
+};
+
+/**
+ * Projection-first check runner. Runs registered checks
+ * against a {@link TraceView} built from a {@link TraceProjectionSnapshot}.
+ *
+ * Trace-dependent assertions that need unavailable evidence (e.g. timing,
+ * errors) record ``outcome="unsupported"`` (pass=false) instead of vacuously
+ * passing. Value assertions (``t.check``) and LLM assertions (``t.judge``)
+ * are unaffected by capabilities.
+ */
+export async function runTraceChecks(args: RunTraceChecksArgs): Promise<EvaluationItemResult[]> {
   const view = new TraceView(args.snapshot);
 
   const locate: LocateFn | undefined =
@@ -213,88 +217,194 @@ export async function runTraceChecks(args: {
   const taskMeta = readTaskMeta(args.task);
 
   const results = await Promise.all(
-    registry.map(async (check) => {
-      const rec = new Recorder(locate);
-      const reads = trackDeliverableReads(args.deliverables);
-      const t = createTraceTestContext(
-        view,
-        rec,
-        args.judgeConfig,
-        {
-          taskId: taskMeta.id ?? "",
-          ...(taskMeta.description !== undefined ? { taskDescription: taskMeta.description } : {}),
-          checkName: check.id,
-          readDeliverableNames: reads.names,
-        },
-        // The agentic judge investigates the raw deliverables + frozen
-        // trace, not the read-tracking proxy (its reads are accounted in
-        // the session's own evidence manifest).
-        {
-          deliverables: args.deliverables,
-          view,
-          ...(args.historyPlane ? { history: args.historyPlane } : {}),
-          ...(args.historyUnavailableReason ? { historyUnavailable: args.historyUnavailableReason } : {}),
-        },
-        args.judgeTracer,
-        args.judgeTools,
-      );
-      let thrownLocation: CheckLocation | undefined;
-      try {
-        await check.fn(t, {
-          deliverables: reads.proxied,
-          files: args.files,
-          task: args.task,
-        });
-      } catch (error) {
-        thrownLocation = locate
-          ? locate(error instanceof Error ? error.stack ?? "" : "")
-          : undefined;
-        rec.record("check-error", false, error instanceof Error ? error.message : String(error), {
-          location: thrownLocation,
-        });
-      }
-
-      // An un-awaited t.judge/t.agent call still owns a verdict — settle it
-      // before collecting, so a dropped await can't end the check early with
-      // a vacuous "no assertions recorded" pass.
-      await rec.settlePending();
-
-      const failed = rec.all.filter((r) => !r.pass);
-      const pass = failed.length === 0;
-      const outcome = rollUpCheckOutcome(failed);
-      const reasoning =
-        failed.length > 0
-          ? failed.map((r) => r.reasoning || r.id).join("; ")
-          : rec.all.length > 0
-            ? "passed"
-            : "no assertions recorded";
-      const location = failed.find((r) => r.location)?.location;
-      const judge = rec.all.find((r) => r.judge)?.judge;
-
-      return {
-        id: check.id,
-        pass,
-        reasoning,
-        evaluator_type: "code" as const,
-        ...(outcome ? { outcome } : {}),
-        ...(judge ? { judge } : {}),
-        ...(location ? { location } : {}),
-        ...(args.displayFile ? { source_file: args.displayFile } : {}),
-        ...(rec.all.length > 0
-          ? { assertions: rec.all.map((a) => ({ ...a })) }
-          : {}),
-        ...(check.group_id ? { group_id: check.group_id } : {}),
-        ...(check.group_name ? { group_name: check.group_name } : {}),
-        // stamp the snapshot source so consumers can tell projection-first
-        // results (canonical) from locally recorded snapshots.
-        ...(args.snapshot.source !== "canonical"
-          ? { source: args.snapshot.source }
-          : {}),
-      };
-    }),
+    registry.map((check) => runOneCheck(check, args, view, taskMeta, locate)),
   );
 
   return results;
+}
+
+/**
+ * Run a single registered check and assemble its {@link EvaluationItemResult}.
+ *
+ * When a {@link JudgeTracer} is threaded in, the whole check runs inside a
+ * `check:<id>` step span: every check gets a node in the trace tree under
+ * `checks.run` — deterministic `t.check` assertions included, which otherwise
+ * left the tree showing only the judged subset — and each `judge:*` /
+ * `t.agent` span created during the body nests under the check that issued
+ * it, because `step()` activates its span for the duration of the callback.
+ */
+async function runOneCheck(
+  check: RegisteredCheck,
+  args: RunTraceChecksArgs,
+  view: TraceView,
+  taskMeta: { id?: string; description?: string },
+  locate: LocateFn | undefined,
+): Promise<EvaluationItemResult> {
+  const runCheck = async (): Promise<EvaluationItemResult> => {
+    const rec = new Recorder(locate);
+    const reads = trackDeliverableReads(args.deliverables);
+    const t = createTraceTestContext(
+      view,
+      rec,
+      args.judgeConfig,
+      {
+        taskId: taskMeta.id ?? "",
+        ...(taskMeta.description !== undefined ? { taskDescription: taskMeta.description } : {}),
+        checkName: check.id,
+        readDeliverableNames: reads.names,
+      },
+      // The agentic judge investigates the raw deliverables + frozen
+      // trace, not the read-tracking proxy (its reads are accounted in
+      // the session's own evidence manifest).
+      {
+        deliverables: args.deliverables,
+        view,
+        ...(args.historyPlane ? { history: args.historyPlane } : {}),
+        ...(args.historyUnavailableReason ? { historyUnavailable: args.historyUnavailableReason } : {}),
+      },
+      args.judgeTracer,
+      args.judgeTools,
+    );
+    let thrownLocation: CheckLocation | undefined;
+    try {
+      await check.fn(t, {
+        deliverables: reads.proxied,
+        files: args.files,
+        task: args.task,
+      });
+    } catch (error) {
+      thrownLocation = locate
+        ? locate(error instanceof Error ? error.stack ?? "" : "")
+        : undefined;
+      rec.record("check-error", false, error instanceof Error ? error.message : String(error), {
+        location: thrownLocation,
+      });
+    }
+
+    // An un-awaited t.judge/t.agent call still owns a verdict — settle it
+    // before collecting, so a dropped await can't end the check early with
+    // a vacuous "no assertions recorded" pass.
+    await rec.settlePending();
+
+    const failed = rec.all.filter((r) => !r.pass);
+    const pass = failed.length === 0;
+    const outcome = rollUpCheckOutcome(failed);
+    const judged = rec.all.filter(isJudgedAssertion);
+    const reasoning =
+      failed.length > 0
+        ? failed.map((r) => r.reasoning || r.id).join("; ")
+        : judged.length > 0
+          // A passing check still carries the judge's explanation, not just
+          // "passed" — the summary is the only place a reader scanning the
+          // results list sees why it passed.
+          ? judged.map((r) => r.reasoning).filter(Boolean).join("; ") || "passed"
+          : rec.all.length > 0
+            ? "passed"
+            : "no assertions recorded";
+    const location = failed.find((r) => r.location)?.location;
+    const judge = rec.all.find((r) => r.judge)?.judge;
+
+    return {
+      id: check.id,
+      pass,
+      reasoning,
+      evaluator_type: deriveEvaluatorType(rec.all),
+      ...(outcome ? { outcome } : {}),
+      ...(judge ? { judge } : {}),
+      ...(location ? { location } : {}),
+      ...(args.displayFile ? { source_file: args.displayFile } : {}),
+      ...(rec.all.length > 0
+        ? { assertions: rec.all.map((a) => ({ ...a })) }
+        : {}),
+      ...(check.group_id ? { group_id: check.group_id } : {}),
+      ...(check.group_name ? { group_name: check.group_name } : {}),
+      // stamp the snapshot source so consumers can tell projection-first
+      // results (canonical) from locally recorded snapshots.
+      ...(args.snapshot.source !== "canonical"
+        ? { source: args.snapshot.source }
+        : {}),
+    };
+  };
+
+  if (!args.judgeTracer) return runCheck();
+  return args.judgeTracer.step(
+    {
+      step_name: `check:${check.id}`,
+      metadata: {
+        checkId: check.id,
+        ...(check.group_id ? { groupId: check.group_id } : {}),
+      },
+      summarize: summarizeCheckForSpan,
+    },
+    runCheck,
+  );
+}
+
+/**
+ * Did this assertion come from an LLM (`t.judge`) or an agentic session
+ * (`t.agent`) rather than a deterministic `t.check`/trace assertion?
+ * Judge metadata counts as judged even on legacy assertions that never
+ * recorded an `evaluator_type`.
+ */
+function isJudgedAssertion(assertion: AssertionResult): boolean {
+  return (
+    assertion.evaluator_type === "llm" ||
+    assertion.evaluator_type === "agent" ||
+    assertion.judge !== undefined
+  );
+}
+
+/**
+ * Derive the check-level evaluator type from the recorded assertions instead
+ * of stamping every check "code": "llm" when every assertion judged,
+ * "agent" for pure `t.agent` sessions, "mixed" when a check combines judged
+ * and deterministic assertions, "code" otherwise.
+ */
+function deriveEvaluatorType(
+  assertions: readonly AssertionResult[],
+): EvaluationItemResult["evaluator_type"] {
+  let sawLlm = false;
+  let sawAgent = false;
+  let sawDeterministic = false;
+  for (const assertion of assertions) {
+    if (isJudgedAssertion(assertion)) {
+      if (assertion.evaluator_type === "agent") sawAgent = true;
+      else sawLlm = true;
+    } else {
+      sawDeterministic = true;
+    }
+  }
+  if (!sawLlm && !sawAgent) return "code";
+  if (sawDeterministic) return "mixed";
+  if (sawAgent && !sawLlm) return "agent";
+  return "llm";
+}
+
+/**
+ * Span output for one check: the verdict, the reasoning, and the
+ * per-assertion expected/received pairs a trace reader needs without
+ * hopping to the run report. `received` values ride the same truncation
+ * contract as submitted check reports, so a judge over a large deliverable
+ * does not bloat the span attribute.
+ */
+function summarizeCheckForSpan(result: unknown): Record<string, unknown> {
+  const check = result as EvaluationItemResult;
+  return {
+    pass: check.pass,
+    reasoning: check.reasoning.slice(0, 2000),
+    evaluator_type: check.evaluator_type,
+    ...(check.judge ? { judge_model: check.judge.model } : {}),
+    ...(check.assertions
+      ? {
+          assertions: check.assertions.map((a) => ({
+            id: a.id,
+            pass: a.pass,
+            ...(a.expected !== undefined ? { expected: a.expected } : {}),
+            ...(a.received !== undefined ? { received: truncateReceivedValue(a.received) } : {}),
+          })),
+        }
+      : {}),
+  };
 }
 
 /**

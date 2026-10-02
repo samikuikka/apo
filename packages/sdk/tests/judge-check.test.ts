@@ -55,7 +55,7 @@ describe("t.judge", () => {
     expect(result).toMatchObject({
       id: "quality",
       pass: true,
-      evaluator_type: "code",
+      evaluator_type: "llm",
       judge: {
         model: "test/judge",
         tokens: { input: 12, output: 4 },
@@ -85,7 +85,7 @@ describe("t.judge", () => {
     expect(result).toMatchObject({
       pass: false,
       reasoning: "missing evidence",
-      evaluator_type: "code",
+      evaluator_type: "llm",
     });
   });
 
@@ -101,7 +101,7 @@ describe("t.judge", () => {
 
     expect(result).toMatchObject({
       pass: false,
-      evaluator_type: "code",
+      evaluator_type: "llm",
       // No judge, no verdict: the same bucket as an unreachable judge (#323).
       outcome: "error",
     });
@@ -127,7 +127,7 @@ describe("t.judge", () => {
 
     expect(result).toMatchObject({
       pass: false,
-      evaluator_type: "code",
+      evaluator_type: "llm",
       judge: { response: "not-json" },
     });
     // Malformed output is a failure with a plain-language explanation (not a
@@ -153,7 +153,7 @@ describe("t.judge", () => {
 
     expect(result).toMatchObject({
       pass: false,
-      evaluator_type: "code",
+      evaluator_type: "llm",
       judge: { response: "[" },
     });
     expect(result?.reasoning).toContain("empty or truncated");
@@ -177,7 +177,7 @@ describe("t.judge", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result).toMatchObject({
       pass: false,
-      evaluator_type: "code",
+      evaluator_type: "llm",
     });
     expect(result?.reasoning).toContain("Judge API 503");
     expect(result?.assertions?.[0]).toMatchObject({ pass: false, outcome: "error" });

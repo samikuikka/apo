@@ -190,7 +190,7 @@ export interface GenerationUsageSummary {
   max_reasoning_call_id: string | null;
 }
 
-export type EvaluatorType = "llm" | "code" | "agent" | "regex";
+export type EvaluatorType = "llm" | "code" | "agent" | "regex" | "mixed";
 
 /** typed catalog selection stored on a source-owned Schedule. */
 export type ScheduleSelection =
