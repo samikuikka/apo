@@ -61,6 +61,7 @@ def _task_run(
     tokens: int = 0,
     unpriced: int = 0,
     status: str = "success",
+    model_providers: dict[str, object] | None = None,
 ) -> AgentTaskRunDB:
     return AgentTaskRunDB(
         id=trid,
@@ -75,6 +76,7 @@ def _task_run(
         total_cost=cost,
         total_tokens=tokens,
         unpriced_call_count=unpriced,
+        model_providers_json=model_providers,
     )
 
 
@@ -296,6 +298,51 @@ def test_batch_list_hydrates_cost_and_tokens(session: Session):
     # cost and tokens are accumulated across child runs
     assert page.data[0].total_cost == 3.5
     assert page.data[0].total_tokens == 800
+
+
+def test_batch_list_hydrates_provider_label_union(session: Session):
+    # The list payload carries each batch's serving-host label union, so the
+    # Runs page fills the Hosts column for collapsed rows without fetching
+    # child runs. Labels dedupe across children and stay deterministic
+    # (sorted); runs with no host reported contribute nothing.
+    session.add(_batch("b-hosts"))
+    session.add(
+        _task_run(
+            "tr-h1",
+            "b-hosts",
+            model_providers={
+                "pairs": [
+                    {"model": "m", "provider": "openai.chat", "route": None, "calls": 2},
+                    {"model": "m", "provider": None, "route": None, "calls": 1},
+                ]
+            },
+        )
+    )
+    session.add(
+        _task_run(
+            "tr-h2",
+            "b-hosts",
+            model_providers={
+                "pairs": [
+                    # route wins over provider (issue #307)
+                    {"model": "m", "provider": "ignored", "route": "deepseek", "calls": 1},
+                    {"model": "m", "provider": "openai.chat", "route": None, "calls": 1},
+                ]
+            },
+        )
+    )
+    session.add(_batch("b-none"))
+    session.add(_task_run("tr-n1", "b-none"))
+    session.commit()
+
+    page = list_batch_run_summaries(
+        session,
+        BatchRunListFilters(),
+        BatchRunListPagination(page=0, page_size=50),
+    )
+    by_id = {b.id: b for b in page.data}
+    assert by_id["b-hosts"].providers == ["deepseek", "openai.chat"]
+    assert by_id["b-none"].providers == []
 
 
 def test_batch_list_hydrates_unpriced_call_count(session: Session):

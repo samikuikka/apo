@@ -32,6 +32,7 @@ from ..services.agent_task_projection import (
     to_batch_run_summary,
 )
 from ..services.archived_models import load_archived_models
+from ..services.trace_backend import parse_model_providers, provider_labels
 from ..services.view_runs import since_cutoff
 
 
@@ -373,6 +374,21 @@ def _hydrate_batch_summaries(
                 + tr.total_model_time_ms
             )
     configuration_by_batch = group_batch_configuration_summaries(all_task_runs)
+    # Serving-host label union per batch, from the same hydration pass that
+    # already loaded every child — a collapsed list row shows hosts without a
+    # per-batch child fetch. Labels are sorted so the payload is deterministic
+    # regardless of child row order.
+    providers_by_batch: dict[str, list[str]] = {}
+    for tr in all_task_runs:
+        labels = provider_labels(parse_model_providers(tr.model_providers_json))
+        if not labels:
+            continue
+        merged = providers_by_batch.setdefault(tr.batch_run_id, [])
+        for label in labels:
+            if label not in merged:
+                merged.append(label)
+    for labels in providers_by_batch.values():
+        labels.sort()
     task_ids_by_batch = {
         bid: child_task_ids([tr for tr in all_task_runs if tr.batch_run_id == bid])
         for bid in batch_ids
@@ -396,6 +412,7 @@ def _hydrate_batch_summaries(
                 if br.id in timed_known_by_batch
                 else None
             ),
+            providers=providers_by_batch.get(br.id, []),
         )
         for br in batches
     ]

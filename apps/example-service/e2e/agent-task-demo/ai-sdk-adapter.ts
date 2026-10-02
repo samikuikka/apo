@@ -42,10 +42,12 @@ export const aiSdkAdapter = defineAdapter({
 
   async startSession(ctx) {
     const state = (ctx.state ?? EMPTY_STATE) as AgentState;
-    // report the same resolved model the agent uses (service.ts
-    // getModel() reads OPENROUTER_MODEL with the same default). apo never
-    // picks the model — the adapter resolves and reports the truth.
+    // report the same resolved model + reasoning effort the agent uses
+    // (service.ts getModel()/getReasoningEffort() read the same env with the
+    // same defaults). apo never picks the model — the adapter resolves and
+    // reports the truth.
     const model = process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4-flash-0731";
+    const effort = process.env.OPENROUTER_REASONING_EFFORT;
 
     // Task-declared MCP servers (TaskDefinition.mcpServers): connect once
     // per session, merge the raw namespaced tools into the agent's tool
@@ -56,7 +58,7 @@ export const aiSdkAdapter = defineAdapter({
       : undefined;
 
     return {
-      runConfiguration: { model },
+      runConfiguration: { model, ...(effort ? { effort } : {}) },
       ...(mcp ? { close: () => mcp.cleanup() } : {}),
       async sendUserTurn(turn: unknown) {
         state.turnCount++;
