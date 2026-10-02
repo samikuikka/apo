@@ -111,9 +111,9 @@ verify_version_is_unused() {
 
 create_release_tag() {
   jj tag set "$TAG" -r "$MERGE_SHA"
-  # jj cannot push tags in every supported version. This narrow push contains
-  # only the immutable tag created above; all commit/bookmark work stays in jj.
-  git push origin "refs/tags/$TAG"
+  # jj cannot push tags in every supported version, and jj tags are not always
+  # exported as Git refs. Push the verified immutable commit to the exact tag.
+  git push origin "$MERGE_SHA:refs/tags/$TAG"
 }
 
 find_publisher_run() {

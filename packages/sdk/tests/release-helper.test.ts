@@ -22,6 +22,10 @@ describe("scripts/publish-npm-package contract", () => {
     expect(helper).toContain('head_tree" = "$merge_tree');
   });
 
+  it("pushes the verified merge commit directly to the release tag", () => {
+    expect(helper).toContain('git push origin "$MERGE_SHA:refs/tags/$TAG"');
+  });
+
   it("approves only the environment discovered from the current run", () => {
     expect(helper).toContain("pending_deployments");
     expect(helper).toContain('environment.name == \\"$ENVIRONMENT\\"');
