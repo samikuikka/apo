@@ -6,11 +6,9 @@ import {
   Brain,
   ChevronRight,
   Clock,
-  Folder,
   GitCompare,
   Hash,
 } from "lucide-react";
-import { useEffect } from "react";
 
 import {
   type AgentTaskBatchRunDetail,
@@ -542,15 +540,15 @@ function sideDot(batch: AgentTaskBatchRunDetail) {
   }).dot;
 }
 
-/** Run identity that leads with the model when the reported runs agree —
- *  "Partial · 10/12 reported" hides the one fact you identify a run by. */
 /** "+N unpriced" caveat — a cost total is partial when calls had no pricing
- *  entry; the Summary must not present it as exact (issue found in review). */
+ *  entry; presenting it as exact would misprice comparisons. */
 function unpricedSuffix(batch: AgentTaskBatchRunDetail): string {
   const n = batch.unpriced_call_count ?? 0;
   return n > 0 ? ` (+${n} unpriced)` : "";
 }
 
+/** Run identity that leads with the model when the reported runs agree —
+ *  "Partial · 10/12 reported" hides the one fact you identify a run by. */
 function runIdentity(batch: AgentTaskBatchRunDetail): string {
   const c = batch.configuration;
   if (c.state === "partial" && c.configurations.length === 1) {
@@ -584,46 +582,18 @@ function runStatTooltip(batch: AgentTaskBatchRunDetail): string {
 /** Tasks-tab pickers: identity + swap only (GitHub's compare
  *  selectors `base ⌄ … compare ⌄` carry names, never metrics). One line per
  *  run; all numbers live on the Summary tab or on hover. */
-function MinimalPickers({
-  batchA,
-  batchB,
-  projectId,
-}: {
+function MinimalPickers(props: {
   batchA: AgentTaskBatchRunDetail;
   batchB: AgentTaskBatchRunDetail;
   projectId: string;
 }) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      {[batchA, batchB].map((batch, i) => {
-        const label = i === 0 ? "Run A" : "Run B";
-        return (
-          <div key={label} className="flex min-w-0 items-center gap-2" title={runStatTooltip(batch)}>
-            {i === 1 && <span className="font-mono text-[11px] text-muted-foreground/50">vs</span>}
-            <span className={cn("h-2 w-2 shrink-0 rounded-full", sideDot(batch))} aria-hidden />
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
-            <span className="truncate text-[13px] font-medium text-foreground">
-              {batchLabel(batch)}{" "}
-              <span className="font-mono text-[11px] font-normal text-muted-foreground/60">
-                #{batch.id.slice(0, 8)}
-              </span>
-            </span>
-            <Link
-              href={`/project/${projectId}/runs`}
-              className="shrink-0 text-[11px] text-muted-foreground/70 hover:text-foreground"
-            >
-              Change
-            </Link>
-          </div>
-        );
-      })}
-    </div>
-  );
+  return <RunIdentityStrip {...props} inlineDetail={false} />;
 }
 
 /** One run's identity: label, selection, #id, model-led config, revision
  *  (commit/branch when the run recorded one), time, and the swap link. All
- *  hover-detail on the pickers; visible inline on the Summary strip. */
+ *  hover-detail when `inlineDetail` is false (the pickers); visible inline on
+ *  the Summary strip. */
 function RunIdentityStrip({
   batchA,
   batchB,
@@ -651,18 +621,22 @@ function RunIdentityStrip({
                 #{batch.id.slice(0, 8)}
               </span>
             </span>
-            <span className="hidden truncate font-mono text-[11px] text-muted-foreground/70 sm:inline">
-              {runIdentity(batch)} · {formatRelativeTime(batch.created_at)}
-            </span>
-            {commit && (
-              <span className="hidden font-mono text-[11px] text-muted-foreground/60 lg:inline" title="Task source revision">
-                @{commit.slice(0, 7)}
-              </span>
-            )}
-            {batch.trigger?.branch && (
-              <span className="hidden font-mono text-[11px] text-muted-foreground/60 lg:inline">
-                {batch.trigger.branch}
-              </span>
+            {inlineDetail && (
+              <>
+                <span className="hidden truncate font-mono text-[11px] text-muted-foreground/70 sm:inline">
+                  {runIdentity(batch)} · {formatRelativeTime(batch.created_at)}
+                </span>
+                {commit && (
+                  <span className="hidden font-mono text-[11px] text-muted-foreground/60 lg:inline" title="Task source revision">
+                    @{commit.slice(0, 7)}
+                  </span>
+                )}
+                {batch.trigger?.branch && (
+                  <span className="hidden font-mono text-[11px] text-muted-foreground/60 lg:inline">
+                    {batch.trigger.branch}
+                  </span>
+                )}
+              </>
             )}
             <Link
               href={`/project/${projectId}/runs`}

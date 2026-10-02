@@ -234,11 +234,11 @@ function normalizeServerEntry(entry: unknown, where: string): McpServerConfig {
 
 /**
  * Structural validation of one {@link McpServerConfig}: non-empty name
- * without the "__" separator, a typed transport with its required field.
- * The single enforcement point for eval-file declarations, the
- * APO_JUDGE_MCP file layer, and adapter-side configs — a malformed entry
- * must fail HERE with a clear message, not later as a confusing connect
- * error.
+ * without the "__" separator, a typed transport with its required field,
+ * string-array filter options, and a positive timeoutMs. The single
+ * enforcement point for eval-file declarations, the APO_JUDGE_MCP file
+ * layer, and adapter-side configs — a malformed entry must fail HERE with
+ * a clear message, not later as a confusing connect error.
  */
 export function validateMcpServerConfig(server: unknown, where: string): void {
   if (server === null || typeof server !== "object") {
@@ -266,6 +266,24 @@ export function validateMcpServerConfig(server: unknown, where: string): void {
     }
   } else {
     throw new Error(`MCP server "${record.name}" transport.type must be "stdio" or "http" (${where})`);
+  }
+  // Filter options must be arrays of tool names, or tool filtering silently
+  // degrades: `config.tools.includes(name)` on a string does substring
+  // matching against every raw tool name. timeoutMs bounds every call made
+  // through the server, so a non-positive value is a misconfiguration.
+  for (const key of ["tools", "excludeTools"] as const) {
+    const value = record[key];
+    if (value === undefined) continue;
+    if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
+      throw new Error(
+        `MCP server "${record.name}" '${key}' must be an array of tool names (${where})`,
+      );
+    }
+  }
+  if (record.timeoutMs !== undefined) {
+    if (typeof record.timeoutMs !== "number" || !Number.isFinite(record.timeoutMs) || record.timeoutMs <= 0) {
+      throw new Error(`MCP server "${record.name}" 'timeoutMs' must be a positive number (${where})`);
+    }
   }
 }
 
@@ -470,6 +488,9 @@ export async function connectMcpServers(
       // Backstop for exotic raw tool names: "__" collisions must not
       // silently drop a tool from either plane.
       if (toolName in tools) {
+        // Same discipline as connect failures: close every spawned client
+        // before surfacing the collision.
+        await Promise.allSettled(clients.map((c) => c.close()));
         throw new Error(
           `MCP tool name collision on "${toolName}" — two servers/tools namespaced to the same key`,
         );

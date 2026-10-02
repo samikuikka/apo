@@ -12,7 +12,7 @@
  *   ``commentary``), ``token_count`` (``info.last_token_usage``).
  * - ``response_item`` payloads: ``function_call`` / ``custom_tool_call`` and
  *   their ``*_output`` counterparts (paired by ``call_id``), ``reasoning``
- *   (summary text), ``web_search_call``.
+ *   (summary parts), ``web_search_call``.
  *
  * A turn is bracketed by ``task_started`` … ``task_complete``. A rollout that
  * ends mid-turn (harness killed, crash) still yields its turn — the activity
@@ -23,8 +23,10 @@ import {
   asNumber,
   asRecord,
   asString,
+  laterTimestamp,
   parseMaybeJson,
   parseTranscriptLines,
+  sumUsage,
   type JsonObject,
 } from "./parse-shared.ts";
 import type {
@@ -54,10 +56,10 @@ export function parseCodexTranscript(content: string): ParsedTranscriptSession {
   let cwd: string | undefined;
   const turns: TranscriptTurn[] = [];
   let current: OpenTurn | null = null;
-  // turn_context can arrive just before task_started; remember it for the
-  // turn it describes.
+  // Context can arrive just before task_started; remember it for the turn
+  // it describes.
   let pendingModel: string | undefined;
-  let pendingCwd: string | undefined;
+  let pendingUserMessage: string | undefined;
 
   const commit = (reason?: string) => {
     if (current === null) return;
@@ -93,15 +95,11 @@ export function parseCodexTranscript(content: string): ParsedTranscriptSession {
       cwd = cwd ?? asString(payload.cwd);
     } else if (type === "turn_context") {
       const model = asString(payload.model);
-      const contextCwd = asString(payload.cwd);
       if (model !== undefined) {
         if (current !== null && current.model === undefined) current.model = model;
         else pendingModel = model;
       }
-      if (contextCwd !== undefined) {
-        cwd = cwd ?? contextCwd;
-        pendingCwd = contextCwd;
-      }
+      cwd = cwd ?? asString(payload.cwd);
     } else if (type === "event_msg") {
       const msgType = asString(payload.type) ?? "";
       if (msgType === "task_started") {
@@ -112,18 +110,26 @@ export function parseCodexTranscript(content: string): ParsedTranscriptSession {
           thinking: [],
           toolCalls: [],
           ...(pendingModel !== undefined ? { model: pendingModel } : {}),
+          ...(pendingUserMessage !== undefined ? { userMessage: pendingUserMessage } : {}),
         };
         pendingModel = undefined;
+        pendingUserMessage = undefined;
       } else if (msgType === "task_complete") {
         if (current !== null) {
           current.endedAt = timestamp;
           commit();
         }
+      } else if (msgType === "user_message") {
+        // Can precede task_started, same as turn_context — a leading user
+        // message belongs to the turn it opens, not the void before it.
+        const message = asString(payload.message);
+        if (message !== undefined) {
+          if (current !== null) current.userMessage = message;
+          else pendingUserMessage = message;
+        }
       } else if (current !== null) {
-        if (timestamp !== "") current.endedAt = laterOf(current.endedAt, timestamp);
-        if (msgType === "user_message") {
-          current.userMessage = asString(payload.message);
-        } else if (msgType === "agent_message") {
+        if (timestamp !== "") current.endedAt = laterTimestamp(current.endedAt, timestamp);
+        if (msgType === "agent_message") {
           const message = asString(payload.message);
           if (message !== undefined) {
             if (asString(payload.phase) === "final_answer") {
@@ -133,14 +139,17 @@ export function parseCodexTranscript(content: string): ParsedTranscriptSession {
             }
           }
         } else if (msgType === "token_count") {
+          // One token_count per API request: last_token_usage is that
+          // request's usage, so a multi-request turn sums them — matching
+          // the claude-code parser's per-call accounting.
           const usage = usageOf(asRecord(asRecord(payload.info)?.last_token_usage));
-          if (usage !== undefined) current.usage = usage;
+          if (usage !== undefined) current.usage = sumUsage(current.usage, usage);
         }
       }
     } else if (type === "response_item") {
       if (current === null) continue;
       const itemType = asString(payload.type) ?? "";
-      if (timestamp !== "") current.endedAt = laterOf(current.endedAt, timestamp);
+      if (timestamp !== "") current.endedAt = laterTimestamp(current.endedAt, timestamp);
       if (itemType === "function_call" || itemType === "custom_tool_call") {
         const rawArguments =
           itemType === "custom_tool_call" ? payload.input : payload.arguments;
@@ -163,7 +172,7 @@ export function parseCodexTranscript(content: string): ParsedTranscriptSession {
           warnings.push(`tool output for unknown call_id "${callId}" ignored`);
         }
       } else if (itemType === "reasoning") {
-        const summary = asString(payload.summary) ?? asString(payload.text);
+        const summary = reasoningSummaryText(payload);
         if (summary !== undefined) current.thinking.push(summary);
       } else if (itemType === "web_search_call") {
         // Web search has no separate output event; record the query as both.
@@ -181,13 +190,26 @@ export function parseCodexTranscript(content: string): ParsedTranscriptSession {
   }
   commit("session ended without task_complete for the last turn");
 
-  if (cwd === undefined) cwd = pendingCwd;
   return { source: "codex", sessionId, cwd, turns, warnings };
 }
 
-function laterOf(a: string | undefined, b: string): string {
-  if (a === undefined) return b;
-  return Date.parse(b) > Date.parse(a) ? b : a;
+/**
+ * Reasoning summaries arrive as the Responses API's summary-part array —
+ * `{"summary":[{"type":"summary_text","text":"…"}]}` — the shape codex-rs
+ * serializes into rollouts. Accept a bare string too for hand-written or
+ * older fixtures.
+ */
+function reasoningSummaryText(payload: JsonObject): string | undefined {
+  const summary = payload.summary;
+  if (typeof summary === "string") return summary;
+  if (Array.isArray(summary)) {
+    const text = summary
+      .map((part) => asString(asRecord(part)?.text))
+      .filter((t): t is string => t !== undefined)
+      .join("\n");
+    return text !== "" ? text : undefined;
+  }
+  return asString(payload.text);
 }
 
 function usageOf(raw: JsonObject | undefined): TranscriptUsage | undefined {

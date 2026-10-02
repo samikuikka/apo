@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
 import { TaskColumns } from "./TaskColumns";
+import { formatCostMicro } from "@/lib/format";
 import type { AgentTaskRunSummary } from "@/lib/agent-task-api";
 
 // ─── helpers ──────────────────────────────────────────────────────────────
@@ -64,20 +65,25 @@ describe("TaskColumns", () => {
     expect(screen.getByText(/flow-b ▾/i)).toBeTruthy();
   });
 
-  it("keeps the same columns when the metric changes — tasks without a value stay with a dash", async () => {
+  it("keeps the same columns when the metric changes — a valueless task trades dash for data", () => {
     const { leftRuns, rightRuns } = makePair();
     // gamma reports no cost on either side
     leftRuns[2] = { ...leftRuns[2], total_cost: null };
     rightRuns[2] = { ...rightRuns[2], total_cost: null };
-    const { container } = render(<TaskColumns leftRuns={leftRuns} rightRuns={rightRuns} projectId="p1" />);
+    render(<TaskColumns leftRuns={leftRuns} rightRuns={rightRuns} projectId="p1" />);
 
-    const widthBefore = container.querySelector("svg")?.getAttribute("width");
+    // under cost, all three columns render; gamma carries the no-data dash
     expect(screen.getByText("alpha")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "duration" }));
-    const widthAfter = container.querySelector("svg")?.getAttribute("width");
-    expect(widthAfter).toBe(widthBefore);
+    expect(screen.getByText("beta")).toBeTruthy();
     expect(screen.getByText("gamma")).toBeTruthy();
+    expect(screen.getByText("—")).toBeTruthy();
+
+    // under duration every run reports a value — same columns, no dash
+    fireEvent.click(screen.getByRole("button", { name: "duration" }));
+    expect(screen.getByText("alpha")).toBeTruthy();
+    expect(screen.getByText("beta")).toBeTruthy();
+    expect(screen.getByText("gamma")).toBeTruthy();
+    expect(screen.queryByText("—")).toBeNull();
   });
 
   it("pins the detail card on click — with links into both runs", () => {
@@ -116,20 +122,31 @@ describe("TaskColumns", () => {
     expect(screen.getByText("gamma")).toBeTruthy();
   });
 
-  it("collapsed folder sums only tasks that report the metric", () => {
+  it("collapsed folder sums only reporting tasks; a silent side is not a fake zero", () => {
     const { leftRuns, rightRuns } = makePair();
-    // beta: 500 + 500 A, 5000 + 5000 B; alpha reports no cost
-    leftRuns[0] = { ...leftRuns[0], total_cost: null };
+    // flow-a on side B reports no cost at all; side A reports on both tasks.
+    // flow-b reports no cost on either side.
     rightRuns[0] = { ...rightRuns[0], total_cost: null };
-    render(<TaskColumns leftRuns={leftRuns} rightRuns={rightRuns} projectId="p1" />);
+    rightRuns[1] = { ...rightRuns[1], total_cost: null };
+    leftRuns[2] = { ...leftRuns[2], total_cost: null };
+    rightRuns[2] = { ...rightRuns[2], total_cost: null };
+    const { container } = render(<TaskColumns leftRuns={leftRuns} rightRuns={rightRuns} projectId="p1" />);
 
     fireEvent.click(screen.getByText(/flow-a ▾/i));
-    // the aggregate column exists with its task count…
-    expect(screen.getByText(/flow-a \(2\)/i)).toBeTruthy();
-    // …and draws real dots, not the no-data dash a fake-zero aggregate
-    // (or an all-null one) would show — the null task contributed nothing
-    // instead of pulling the sum to zero
-    const dash = screen.queryByText("–");
-    expect(dash).toBeNull();
+    fireEvent.click(screen.getByText(/flow-b ▾/i));
+
+    // flow-a's aggregate tooltip pins the arithmetic: A sums its two
+    // reporting tasks (500 + 500), B has nothing to sum and stays null —
+    // rendered as the em dash, not formatCostMicro(0)'s "$0.00"
+    const flowATitle = Array.from(container.querySelectorAll("title"))
+      .map((t) => t.textContent ?? "")
+      .find((t) => t.startsWith("flow-a:"));
+    expect(flowATitle).toBe(`flow-a: A ${formatCostMicro(1_000)} → B — — click for detail`);
+
+    // No-data stays visible as markers, not fake-zero dots: flow-b has no
+    // data on either side, and flow-a's silent B side counts as no value
+    // for the dumbbell — one marker each.
+    expect(screen.getByText(/flow-b \(1\)/i)).toBeTruthy();
+    expect(screen.getAllByText("—")).toHaveLength(2);
   });
 });

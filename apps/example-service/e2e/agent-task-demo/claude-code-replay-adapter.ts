@@ -63,9 +63,12 @@ export const claudeCodeReplayAdapter = defineAdapter({
         const { text, is_error, num_turns, session_id } = await runClaudeAgent({
           prompt: String(turn),
           cwd,
-          // The whole point: the plain environment, no OTel plumbing. The
-          // harness writes its session transcript; the runner replays it.
-          env: { ...process.env },
+        // The whole point: the plain environment, no OTel plumbing. Strip
+        // host telemetry config so the subprocess cannot emit a second,
+        // native-OTel trace alongside the transcript the runner replays —
+        // a host carrying OTEL_* or CLAUDE_CODE_*TELEMETRY* vars would
+        // otherwise be double-captured.
+        env: stripTelemetryEnv(process.env),
           persist: true,
         });
 
@@ -92,3 +95,25 @@ export const claudeCodeReplayAdapter = defineAdapter({
     };
   },
 });
+
+/**
+ * Copy of the host environment minus every variable that would make the
+ * Claude Code subprocess emit its own telemetry. CLAUDE_MODEL and ordinary
+ * Claude credentials survive; only the OTel/tracing surface is removed, so
+ * the session transcript stays the run's single trace source.
+ */
+function stripTelemetryEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...source };
+  for (const key of Object.keys(env)) {
+    if (
+      key.startsWith("OTEL_") ||
+      key === "TRACEPARENT" ||
+      key === "TRACESTATE" ||
+      key === "CLAUDE_CODE_ENABLE_TELEMETRY" ||
+      key.startsWith("CLAUDE_CODE_OTLP_")
+    ) {
+      delete env[key];
+    }
+  }
+  return env;
+}

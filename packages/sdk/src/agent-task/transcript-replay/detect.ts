@@ -1,8 +1,9 @@
 /**
  * Transcript source detection.
  *
- * Guesses which harness wrote a JSONL transcript from its first parseable
- * line, so `apo traces import <file>` needs no `--source` in the common case:
+ * Guesses which harness wrote a JSONL transcript from its leading lines —
+ * blank, torn, or non-object lines are scanned past until one is decisive —
+ * so `apo traces import <file>` needs no `--source` in the common case:
  *
  * - Codex rollouts are uniformly ``{ type: session_meta|turn_context|
  *   event_msg|response_item, timestamp, payload }``.

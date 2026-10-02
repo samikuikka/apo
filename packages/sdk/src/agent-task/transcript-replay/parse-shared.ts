@@ -75,3 +75,24 @@ export function laterTimestamp(a: string | undefined, b: string | undefined): st
   if (Number.isNaN(tb)) return a;
   return tb > ta ? b : a;
 }
+
+/** Sum two usage records field-wise; absent fields count as zero. */
+export function sumUsage<T extends {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
+}>(total: T | undefined, add: T): T {
+  if (total === undefined) return add;
+  const sum = (a: number | undefined, b: number | undefined) =>
+    a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0);
+  return {
+    ...total,
+    inputTokens: sum(total.inputTokens, add.inputTokens),
+    outputTokens: sum(total.outputTokens, add.outputTokens),
+    cacheReadTokens: sum(total.cacheReadTokens, add.cacheReadTokens),
+    cacheWriteTokens: sum(total.cacheWriteTokens, add.cacheWriteTokens),
+    reasoningTokens: sum(total.reasoningTokens, add.reasoningTokens),
+  };
+}

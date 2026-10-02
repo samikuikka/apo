@@ -17,10 +17,12 @@
  */
 
 import {
+  asNumber,
   asRecord,
   asString,
   laterTimestamp,
   parseTranscriptLines,
+  sumUsage,
   type JsonObject,
 } from "./parse-shared.ts";
 import type {
@@ -226,10 +228,10 @@ function renderToolResult(content: unknown): unknown {
 function usageOf(raw: unknown): TranscriptUsage | undefined {
   const usage = asRecord(raw);
   if (usage === undefined) return undefined;
-  const inputTokens = numberOrUndefined(usage.input_tokens);
-  const outputTokens = numberOrUndefined(usage.output_tokens);
-  const cacheReadTokens = numberOrUndefined(usage.cache_read_input_tokens);
-  const cacheWriteTokens = numberOrUndefined(usage.cache_creation_input_tokens);
+  const inputTokens = asNumber(usage.input_tokens);
+  const outputTokens = asNumber(usage.output_tokens);
+  const cacheReadTokens = asNumber(usage.cache_read_input_tokens);
+  const cacheWriteTokens = asNumber(usage.cache_creation_input_tokens);
   if (
     inputTokens === undefined &&
     outputTokens === undefined &&
@@ -246,10 +248,6 @@ function usageOf(raw: unknown): TranscriptUsage | undefined {
   };
 }
 
-function numberOrUndefined(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
 function usageCompleteness(usage: TranscriptUsage): number {
   return (
     (usage.inputTokens ?? 0) +
@@ -257,16 +255,6 @@ function usageCompleteness(usage: TranscriptUsage): number {
     (usage.cacheReadTokens ?? 0) +
     (usage.cacheWriteTokens ?? 0)
   );
-}
-
-function sumUsage(total: TranscriptUsage | undefined, add: TranscriptUsage): TranscriptUsage {
-  if (total === undefined) return add;
-  return {
-    inputTokens: (total.inputTokens ?? 0) + (add.inputTokens ?? 0),
-    outputTokens: (total.outputTokens ?? 0) + (add.outputTokens ?? 0),
-    cacheReadTokens: (total.cacheReadTokens ?? 0) + (add.cacheReadTokens ?? 0),
-    cacheWriteTokens: (total.cacheWriteTokens ?? 0) + (add.cacheWriteTokens ?? 0),
-  };
 }
 
 function lineRole(event: JsonObject): string {

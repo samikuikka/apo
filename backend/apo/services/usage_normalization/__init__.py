@@ -73,7 +73,13 @@ _SYSTEM_PROVIDERS: dict[str, str] = {
 
 
 def detect_provider(attrs: dict[str, Any], model_name: str | None) -> str:
-    """Multi-signal provider detection hierarchy (ticket 03 §detection)."""
+    """Multi-signal provider detection, most-specific signal first.
+
+    Explicit telemetry (providerMetadata, ``gen_ai.system``) outranks
+    model-name heuristics (vendor prefix, then bare model family); anything
+    unrecognized falls back to the generic normalizer, which stores keys
+    verbatim without pricing them.
+    """
     # 1. providerMetadata key-membership.
     metadata = get_json_dict(attrs, "ai.response.providerMetadata")
     if metadata:

@@ -36,11 +36,11 @@ export { resolveMcpServerPaths };
 
 /**
  * Map apo's McpServerConfig[] onto the Claude Agent SDK's option shape.
- * Parity rules (adversarial review finding): secret-bearing values expand
- * `${VAR}` exactly like the SDK's own client path, and `tools`/`excludeTools`
- * fail closed — the Claude Agent SDK's per-tool policy cannot express
- * visibility filtering, so a load-bearing allowlist must refuse to run
- * rather than silently expose everything.
+ * Parity rules: secret-bearing values expand `${VAR}` exactly like the
+ * SDK's own client path, and `tools`/`excludeTools` fail closed — the
+ * Claude Agent SDK's per-tool policy gates permission, not visibility, so
+ * a load-bearing allowlist must refuse to run rather than silently expose
+ * everything.
  */
 export function toClaudeMcpServers(
   servers: McpServerConfig[],

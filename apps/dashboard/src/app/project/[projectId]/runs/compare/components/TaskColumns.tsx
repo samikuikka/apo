@@ -378,7 +378,7 @@ export function TaskColumns({
                       </>
                     ) : (
                       <text x={x} y={sy(0) - 6} textAnchor="middle" className="fill-current font-mono text-[11px] text-muted-foreground/40">
-                        –
+                        —
                       </text>
                     )}
                     <text

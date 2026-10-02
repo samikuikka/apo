@@ -49,6 +49,7 @@ import {
 } from "@opentelemetry/semantic-conventions";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { getRegisteredApoProcessor } from "../agent-task/integrations/register.ts";
+import { resolveApoAuthHeaders } from "../apo-auth.ts";
 
 // ── public types ───────────────────────────────────────────
 
@@ -189,26 +190,16 @@ const DEFAULT_APO_OTLP_ENDPOINT = "http://localhost:8000/api/public/otel/v1/trac
  *   secret-bearing legacy API keys.)
  * - Else returns an empty object (unauthenticated).
  *
- * Mirrors Python's `_build_auth_headers` in apo-otel-python.
+ * Mirrors Python's `_build_auth_headers` in apo-otel-python. The resolution
+ * core lives in `apo-auth.ts`, shared with the agent-task entry's env-only
+ * variant of this builder.
  */
 export function buildApoAuthHeaders(
   publicKey?: string,
   secretKey?: string,
   authToken?: string,
 ): Record<string, string> {
-  const pk = publicKey ?? process.env.APO_PUBLIC_KEY;
-  const sk = secretKey ?? process.env.APO_SECRET_KEY;
-  const token = authToken ?? process.env.APO_AUTH_TOKEN;
-  if (pk && sk) {
-    const credentials = typeof btoa === "function"
-      ? btoa(`${pk}:${sk}`)
-      : Buffer.from(`${pk}:${sk}`).toString("base64");
-    return { Authorization: `Basic ${credentials}` };
-  }
-  if (token) {
-    return { Authorization: `Bearer ${token}` };
-  }
-  return {};
+  return resolveApoAuthHeaders(publicKey, secretKey, authToken);
 }
 
 /**

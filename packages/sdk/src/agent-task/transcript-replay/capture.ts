@@ -158,7 +158,7 @@ function nanosToIso(nanos: string): string | undefined {
  * input *net* of cache with separate buckets; OpenAI reports input *incl.*
  * cache — summing the input-side family must respect that difference).
  */
-export function observationsFromOtlpPayload(
+function observationsFromOtlpPayload(
   payload: OtlpTracesPayload,
   source: TranscriptSource,
 ): TraceProjectionObservation[] {
