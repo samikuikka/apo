@@ -29,7 +29,11 @@ interface ChildFailure {
   error: string;
 }
 
+let resultWritten = false;
+
 function writeResult(payload: ChildSuccess | ChildFailure): void {
+  if (resultWritten) return;
+  resultWritten = true;
   try {
     const line = JSON.stringify(payload) + "\n";
     writeSync(resultFd, line);
@@ -38,13 +42,48 @@ function writeResult(payload: ChildSuccess | ChildFailure): void {
   }
 }
 
+// Graceful termination: the parent cancels/times out via SIGTERM → 5s grace →
+// SIGKILL, and a terminal Ctrl+C reaches this process group directly. Without
+// a handler the process dies mid-run with the root span unfinished — the
+// backend then holds every step span but not the one that links the trace to
+// the run row. Handle the signal by ending the active root span as cancelled,
+// flushing it (bounded below the parent's grace period), reporting an honest
+// cancelled result, and exiting.
+let cancelTrace: ((reason?: string) => Promise<void>) | undefined;
+let terminating = false;
+
+function handleTerminationSignal(signal: "SIGINT" | "SIGTERM"): void {
+  if (terminating) return;
+  terminating = true;
+  const exitCode = signal === "SIGINT" ? 130 : 143;
+  const bail = setTimeout(() => {
+    writeResult({ ok: false, error: "task_cancelled" });
+    process.exit(exitCode);
+  }, 4_000);
+  const flush = cancelTrace ? cancelTrace("cancelled") : Promise.resolve();
+  void flush
+    .catch(() => undefined)
+    .finally(() => {
+      clearTimeout(bail);
+      writeResult({ ok: false, error: "task_cancelled" });
+      process.exit(exitCode);
+    });
+}
+
+process.on("SIGINT", () => handleTerminationSignal("SIGINT"));
+process.on("SIGTERM", () => handleTerminationSignal("SIGTERM"));
+
 async function main(): Promise<number> {
   if (!taskDir) {
     writeResult({ ok: false, error: "APO_CHILD_TASK_DIR not set" });
     return 1;
   }
   try {
-    const summary = await runTaskDir(taskDir);
+    const summary = await runTaskDir(taskDir, {
+      registerCancel: (cancel) => {
+        cancelTrace = cancel;
+      },
+    });
 
     // Upload file artifacts after checks, before fd-3 result.
     const deliverables = (summary as { deliverables?: Record<string, unknown> }).deliverables;

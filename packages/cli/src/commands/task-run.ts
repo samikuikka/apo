@@ -32,6 +32,7 @@ import {
   type ResultBodySize,
 } from "../lib/result-submission.ts";
 import { externalizeResultEvidence, ResultEvidenceTooLargeError } from "../lib/result-evidence.ts";
+import { maybeStartCollector } from "../lib/collector.ts";
 
 export type LocalRunSummary = {
   taskId: string;
@@ -271,7 +272,19 @@ async function runCallerRecorded(
   // is known-reachable; the sibling dispatch path below already uses it. A
   // deployment that wants telemetry on a different ingress configures it here,
   // client-side, rather than relying on the server to guess its own address.
-  process.env.AGENT_TASK_TRACE_ENDPOINT = config.backendUrl.replace(/\/$/, "");
+  //
+  // With span buffering on (remote backends, or APO_COLLECTOR=1), traces go
+  // through the local collector instead: the run's spans queue on disk through
+  // network drops and backend outages. Result/artifact traffic still goes to
+  // the backend directly.
+  const collector = await maybeStartCollector({
+    backendUrl: config.backendUrl,
+    authHeader: config.apiKey ? `Bearer ${config.apiKey}` : null,
+    log: (line) => console.log(dim(line)),
+    warn: (line) => console.error(red(`Warning: ${line}`)),
+  });
+  process.env.AGENT_TASK_TRACE_ENDPOINT =
+    (collector.traceEndpoint ?? config.backendUrl).replace(/\/$/, "");
   // AGENT_TASK_PROJECT is the name the SDK reads (task-runtime.ts gates tracing on
   // endpoint && AGENT_TASK_PROJECT). This used to set AGENT_TASK_TRACE_PROJECT,
   // which nothing reads, so caller execution fell through to noop tracing: no
@@ -288,7 +301,10 @@ async function runCallerRecorded(
   // reaper requeues the attempt instead of marking it LOST with the misleading
   // "after task code started" message. The trace env vars are already set
   // (step 3), and the SDK reads them at import time — no /start dependency.
-  let runTaskDirImpl: (taskDir: string) => Promise<unknown>;
+  let runTaskDirImpl: (
+    taskDir: string,
+    options?: { registerCancel?: (cancel: (reason?: string) => Promise<void>) => void },
+  ) => Promise<unknown>;
   let persistFileArtifactsImpl: typeof import("@apo-ai/sdk/agent-task").persistFileArtifacts | undefined;
   let compactChecksImpl: typeof import("@apo-ai/sdk/agent-task").compactChecksForSubmission | undefined;
   try {
@@ -319,6 +335,32 @@ async function runCallerRecorded(
   heartbeat.start("running");
   loadEnvFiles(taskDir);
 
+  // Graceful termination for the in-process run: without a handler, Ctrl+C
+  // kills the CLI mid-run with the root span unfinished — the backend keeps
+  // every step span but loses the span that links the trace to the run row.
+  // End the root span as cancelled, flush it bounded, then exit; the lease
+  // reaper requeues the attempt server-side.
+  let cancelTrace: ((reason?: string) => Promise<void>) | undefined;
+  let terminating = false;
+  const handleTermSignal = (signal: "SIGINT" | "SIGTERM"): void => {
+    if (terminating) return;
+    terminating = true;
+    console.error(red(`\nReceived ${signal} — cancelling run, flushing trace…`));
+    const exitCode = signal === "SIGINT" ? 130 : 143;
+    const bail = setTimeout(() => process.exit(exitCode), 4_000);
+    const flush = cancelTrace ? cancelTrace("cancelled") : Promise.resolve();
+    void flush
+      .catch(() => undefined)
+      .finally(() => {
+        clearTimeout(bail);
+        process.exit(exitCode);
+      });
+  };
+  const onRunSigint = (): void => handleTermSignal("SIGINT");
+  const onRunSigterm = (): void => handleTermSignal("SIGTERM");
+  process.once("SIGINT", onRunSigint);
+  process.once("SIGTERM", onRunSigterm);
+
   const completionId = `${created.lease.attemptId}-${created.lease.generation}`;
   let exitCode = 0;
   let resultStarted = false;
@@ -332,7 +374,11 @@ async function runCallerRecorded(
   // branch so its diagnostic can name bytes/limit/fields (issue #249).
   let measuredSize: ResultBodySize | null = null;
   try {
-    summary = withNoVerdict(await runTaskDirImpl(taskDir) as LocalRunSummary);
+    summary = withNoVerdict(await runTaskDirImpl(taskDir, {
+      registerCancel: (cancel) => {
+        cancelTrace = cancel;
+      },
+    }) as LocalRunSummary);
 
     // Upload file artifacts after checks, before result submission.
     // Issue #176: the heartbeat stays alive through this and the /result
@@ -547,6 +593,14 @@ async function runCallerRecorded(
     // exactly once, for every path through the try/catch above.
     await heartbeat.stop();
     delete process.env.APO_AUTH_TOKEN;
+    process.removeListener("SIGINT", onRunSigint);
+    process.removeListener("SIGTERM", onRunSigterm);
+    if ((await collector.stop()) === "left-running") {
+      console.log(dim(
+        "Local collector left running — it is still delivering queued traces " +
+          "(backend was unreachable or throttling); the next apo command reuses it.",
+      ));
+    }
   }
   return exitCode;
 }

@@ -15,6 +15,7 @@ import { loadExecutorState, saveExecutorState } from "../lib/executor-state.ts";
 import { walkWorkspaceForRevision } from "../lib/task-revision.ts";
 import { readGitProvenance } from "../lib/git-provenance.ts";
 import { runTaskChild } from "../lib/local-task-child.ts";
+import { maybeStartCollector } from "../lib/collector.ts";
 import {
   AttemptHeartbeatHttpError,
   bootstrapAndEnroll,
@@ -120,6 +121,18 @@ export async function run(argv: string[]): Promise<number> {
 
   printEligibility(eligibility, projectId, concurrency);
 
+  // 3.5 Local span-durability sidecar: auto-started for remote backends
+  // (APO_COLLECTOR=1/0 overrides) so task traces queue on disk through
+  // network drops and backend outages. Any failure degrades to direct
+  // export — never worse than not having a collector.
+  const collector = await maybeStartCollector({
+    backendUrl: config.backendUrl,
+    authHeader: config.apiKey ? `Bearer ${config.apiKey}` : null,
+    log: (line) => console.log(dim(line)),
+    warn: (line) => console.error(red(`Warning: ${line}`)),
+  });
+  const traceEndpoint = collector.traceEndpoint ?? config.backendUrl;
+
   // 4. Main loop
   let running = 0;
   let shouldStop = false;
@@ -153,6 +166,7 @@ export async function run(argv: string[]): Promise<number> {
     } catch (err) {
       if (err instanceof ExecutorCredentialRevoked) {
         console.error(red(`error: ${err.message}. Re-run \`apo connect\` to re-enroll.`));
+        await collector.stop();
         return 2;
       }
       throw err;
@@ -193,6 +207,7 @@ export async function run(argv: string[]): Promise<number> {
     } catch (err) {
       if ((err as Error).message.includes("invalid or revoked")) {
         console.error(red("error: executor credential revoked. Re-run `apo connect` to re-enroll."));
+        await collector.stop();
         return 2;
       }
       console.error(dim(`claim error: ${(err as Error).message}`));
@@ -209,7 +224,14 @@ export async function run(argv: string[]): Promise<number> {
     console.log(cyan(`\n← Assigned: ${assignment.task_id}`));
 
     // Execute asynchronously in an isolated child process.
-    executeAssignment(config.backendUrl, taskRoot, assignment, shutdownController.signal)
+    executeAssignment(
+      config.backendUrl,
+      taskRoot,
+      assignment,
+      shutdownController.signal,
+      undefined,
+      traceEndpoint,
+    )
       .catch((err) => console.error(red(`task ${assignment.task_id} failed: ${(err as Error).message}`)))
       .finally(() => {
         running--;
@@ -223,6 +245,12 @@ export async function run(argv: string[]): Promise<number> {
   console.log(dim("Waiting for active tasks to finish..."));
   while (running > 0) {
     await sleep(1000);
+  }
+  if ((await collector.stop()) === "left-running") {
+    console.log(dim(
+      "Local collector left running — it is still delivering queued traces " +
+        "(backend was unreachable or throttling); the next apo command reuses it.",
+    ));
   }
   console.log(green("Disconnected."));
   return 0;
@@ -273,6 +301,8 @@ async function executeAssignment(
   assignment: SourceOwnedAssignment,
   cancelSignal: AbortSignal,
   heartbeatIntervalMs: number = 30_000,
+  /** Trace export target — the local collector when span buffering is on. */
+  traceEndpoint: string = backendUrl,
 ): Promise<void> {
   const completionId = `${assignment.attempt_id}-${Date.now()}`;
   // track finalization explicitly so the catch block never
@@ -378,9 +408,10 @@ async function executeAssignment(
     const outcome = await runTaskChild({
       taskDir: task.path,
       envRoot: taskRoot,
-      // use the configured backend base URL, not the server's
-      // trace_endpoint (which is a full path that the SDK would double).
-      traceEndpoint: backendUrl,
+      // The local collector's loopback base when span buffering is on;
+      // otherwise the backend base. Either way the SDK appends apo's
+      // canonical traces path — and the collector impersonates it.
+      traceEndpoint,
       // Explicit API base for artifact uploads.
       backendUrl,
       project: assignment.project,
@@ -397,7 +428,9 @@ async function executeAssignment(
         ? "driver"
         : outcome.timedOut
           ? "timeout"
-          : "task_runtime";
+          : outcome.error === "task_cancelled"
+            ? "cancelled"
+            : "task_runtime";
       finalized = true;
       await submitFailure({
         backendUrl,

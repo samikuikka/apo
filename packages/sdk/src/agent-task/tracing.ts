@@ -20,6 +20,9 @@ export type AgentTaskTraceOptions = {
       params: TraceRunOptions,
       fn: (trace: AgentTaskTraceContext) => Promise<T>,
     ): Promise<T>;
+    /** End the active run's root span as cancelled and flush it (see
+     * createOtelAgentTaskTraceClient). */
+    cancelActiveRun(reason?: string): Promise<void>;
   };
   project?: string;
   flowName?: string;

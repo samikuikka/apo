@@ -59,8 +59,19 @@ function resolveJudgeFromEnv(): JudgeConfig | undefined {
   };
 }
 
+export type RunTaskDirOptions = {
+  /**
+   * Receives a handle that ends the active run's root span as cancelled and
+   * flushes it. Callers that can be terminated by a signal (the CLI task
+   * child, `apo task run`) register it so the run's trace and linkage survive
+   * their own death instead of dying with the process.
+   */
+  registerCancel?: (cancel: (reason?: string) => Promise<void>) => void;
+};
+
 export async function runTaskDir(
   taskDir: string,
+  options?: RunTaskDirOptions,
 ): Promise<AgentTaskRunSummary> {
   const [loaded, runtime] = await Promise.all([
     loadTask(taskDir),
@@ -91,6 +102,10 @@ export async function runTaskDir(
         ...(taskRunId ? { taskRunId } : {}),
       } as AgentTaskTraceOptions
     : undefined;
+
+  if (tracing && options?.registerCancel) {
+    options.registerCancel((reason) => tracing.client.cancelActiveRun(reason));
+  }
 
   // Thread the already-loaded task through so runTask does not re-import the
   // eval module (Issue #7). loadTask above copied the eval to a temp file and

@@ -71,6 +71,13 @@ export function createOtelAgentTaskTraceClient(
     params: TraceRunOptions,
     fn: (trace: TraceRunContext) => Promise<T>,
   ): Promise<T>;
+  /**
+   * End the active run's root span as cancelled and flush it. Resolves when
+   * the export settles (or immediately when no run is active). Callers that
+   * received a termination signal use this so the run's trace and linkage
+   * survive their own death; the still-running task body is unaffected.
+   */
+  cancelActiveRun(reason?: string): Promise<void>;
 } {
   // Cache the provider across all client instances — OTel only allows one
   // global provider per process. Subsequent calls reuse the existing handle.
@@ -80,13 +87,23 @@ export function createOtelAgentTaskTraceClient(
     if (!myHandle) {
       const headers = config.headers
         ?? (config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {});
+      // Batched export: one HTTP request per flush, not per span. The
+      // backend's admission control allows ~2 requests/s per identity, so the
+      // former simple processor silently lost ~30% of spans on runs emitting
+      // 4+ ended spans/s (HTTP 429 exhausting the exporter's 5-attempt
+      // retry). Durability is unchanged: every exit path (run completion,
+      // cancelActiveRun, shutdown) force-flushes.
       myHandle = await configureApoTelemetry({
         takeOwnership: true,
         endpoint: `${config.endpoint.replace(/\/$/, "")}/api/public/otel/v1/traces`,
         serviceName: "apo-agent-task",
         project: config.project,
         headers,
-        processor: "simple",
+        processor: "batch",
+        // A user-set OTEL_BSP_SCHEDULE_DELAY keeps winning.
+        ...(process.env.OTEL_BSP_SCHEDULE_DELAY === undefined
+          ? { scheduledDelayMillis: 500 }
+          : {}),
         registerGlobal: true,
       });
     }
@@ -95,6 +112,31 @@ export function createOtelAgentTaskTraceClient(
 
   const activeSpans = new Map<string, ActiveSpan>();
   let activeTracer: Tracer | null = null;
+
+  // The active run's root span, addressable from outside `traceRun` so a
+  // termination signal can end and flush it while the task body still runs.
+  // Cleared once the run's own flush completes.
+  let activeRoot: { end: (params?: Omit<EndSpanParams, "id">) => void } | null = null;
+
+  async function cancelActiveRun(reason = "cancelled"): Promise<void> {
+    const root = activeRoot;
+    if (!root) return;
+    root.end({
+      output: { error: reason },
+      status_message: reason,
+      level: "ERROR",
+      metadata: { cancelled: true },
+    });
+    const handle = myHandle;
+    if (!handle) return;
+    try {
+      await handle.forceFlush();
+    } catch {
+      // Cancellation is best-effort: the parent process is dying, and the
+      // caller bounds the wait itself. An unreachable endpoint must not
+      // surface here — spans already exported are durable.
+    }
+  }
 
   function createSpan(params: CreateSpanParams): string {
     if (!activeTracer) throw new Error("traceRun not started");
@@ -235,6 +277,7 @@ export function createOtelAgentTaskTraceClient(
   }
 
   return {
+    cancelActiveRun,
     async traceRun<T>(
       params: TraceRunOptions,
       fn: (trace: TraceRunContext) => Promise<T>,
@@ -288,6 +331,13 @@ export function createOtelAgentTaskTraceClient(
 
       let callCount = 1;
       let rootEnded = false;
+      activeRoot = {
+        end: (endParams) => {
+          if (rootEnded) return;
+          endSpan({ id: rootSpanId, ...endParams });
+          rootEnded = true;
+        },
+      };
 
       const traceContext: TraceRunContext = {
         runId,
@@ -475,6 +525,7 @@ export function createOtelAgentTaskTraceClient(
         }
 
         let flushError: unknown;
+        activeRoot = null;
         if (myHandle) {
           try {
             await myHandle.forceFlush();
