@@ -241,15 +241,16 @@ export function RunsRow({
           </span>
         </TableCell>
 
-        {/* Hosts — the union over this batch's child runs once expanded
-         * (the list payload carries counts, not children). A collapsed row
-         * shows an em dash; expanding fills it in (issue #307). */}
+        {/* Hosts — the serving-host label union over this batch's child runs.
+         * The list payload carries it (batch.providers), so a collapsed row
+         * shows hosts immediately; expanded rows recompute it from the fetched
+         * children (issue #307). */}
         <TableCell className="hidden max-w-[160px] xl:table-cell">
           <HostLabelsCell
             labels={
               taskRuns
                 ? [...new Set(taskRuns.flatMap((r) => providerLabels(r.model_providers)))]
-                : []
+                : (batch.providers ?? [])
             }
           />
         </TableCell>

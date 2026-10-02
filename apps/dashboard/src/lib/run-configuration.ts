@@ -15,31 +15,38 @@ export function shortModel(model: string): string {
   return slash >= 0 ? model.slice(slash + 1) : model;
 }
 
+function hasEffort(config: AgentTaskRunConfiguration): boolean {
+  return Boolean(config.effort && config.effort !== "");
+}
+
 /**
- * render a Task Run's adapter-reported configuration as a compact
- * `model · effort` string. The model is shown without its provider prefix
- * (see {@link shortModel}); absent effort renders as `—` (em dash); a run that
- * reported no configuration renders as a lone `—`. Monochrome data — never a
- * colored badge (see docs/design.md).
+ * render a Task Run's adapter-reported configuration as a compact string:
+ * `model · effort` when the adapter reported an effort, the bare model when
+ * it did not (most models have no reasoning-effort control, so a dangling
+ * `· —` read as missing data rather than as "no effort configured"). A run
+ * that reported no configuration at all renders as a lone `—`. Monochrome
+ * data — never a colored badge (see docs/design.md).
  */
 export function formatRunExecution(
   config: AgentTaskRunConfiguration | null,
 ): string {
   if (!config) return "\u2014";
-  const effort = config.effort && config.effort !== "" ? config.effort : "\u2014";
-  return `${shortModel(config.model)} · ${effort}`;
+  return hasEffort(config)
+    ? `${shortModel(config.model)} · ${config.effort}`
+    : shortModel(config.model);
 }
 
 /**
- * The full, provider-qualified `model · effort` form — used for tooltips so the
- * exact identity is one hover away even though the visible cell is shortened.
+ * The full, provider-qualified form — used for tooltips so the exact identity
+ * is one hover away even though the visible cell is shortened.
  */
 export function formatRunExecutionFull(
   config: AgentTaskRunConfiguration | null,
 ): string {
   if (!config) return "\u2014";
-  const effort = config.effort && config.effort !== "" ? config.effort : "\u2014";
-  return `${config.model} · ${effort}`;
+  return hasEffort(config)
+    ? `${config.model} · ${config.effort}`
+    : config.model;
 }
 
 /**
@@ -74,7 +81,7 @@ export function formatBatchExecution(
 function formatRunConfigurationPair(
   pair: AgentTaskRunConfiguration,
 ): string {
-  const effort = pair.effort && pair.effort !== "" ? pair.effort : "\u2014";
-  return `${shortModel(pair.model)} · ${effort}`;
+  return hasEffort(pair)
+    ? `${shortModel(pair.model)} · ${pair.effort}`
+    : shortModel(pair.model);
 }
-

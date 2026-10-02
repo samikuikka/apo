@@ -1011,6 +1011,11 @@ class AgentTaskBatchRunSummary(SQLModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     trigger: AgentTaskRunTrigger | None = None
+    # Union of serving-host labels (route wins over provider; issue #307)
+    # across the child Task Runs, projected on read from each child's
+    # ``model_providers_json`` rollup. Lets the list page fill the Hosts
+    # column for collapsed rows without fetching child runs.
+    providers: list[str] = Field(default_factory=list)
     # derived configuration summary. Projected from child Task
     # Runs on read — never stored on the batch row.
     configuration: AgentTaskBatchRunConfigurationSummary = Field(

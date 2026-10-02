@@ -472,6 +472,9 @@ export interface AgentTaskBatchRunSummary {
    * latency) — unknown, NOT zero. */
   total_reasoning_tokens?: number | null;
   total_model_time_ms?: number | null;
+  /** Union of serving-host labels (route wins over provider; issue #307)
+   * across the batch's child runs — fills the Hosts cell on collapsed rows. */
+  providers?: string[];
   /** derived configuration summary (uniform/mixed/partial/unknown). */
   configuration: AgentTaskBatchRunConfigurationSummary;
 }

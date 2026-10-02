@@ -200,6 +200,7 @@ def to_batch_run_summary(
     derived_task_ids: Sequence[str] = (),
     total_reasoning_tokens: int | None = None,
     total_model_time_ms: float | None = None,
+    providers: Sequence[str] = (),
 ) -> AgentTaskBatchRunSummary:
     """Project a batch run DB row to its summary view model.
 
@@ -208,7 +209,9 @@ def to_batch_run_summary(
     page's batch IDs (no per-batch N+1); when omitted the batch projects as
     "unknown" configuration. ``derived_task_ids`` comes from that same query
     and only fills a missing ``selection_query`` (see
-    ``derive_selection_query``).
+    ``derive_selection_query``). ``providers`` is the union of serving-host
+    labels across the children, from that same hydration pass, so a collapsed
+    list row can show hosts without fetching child runs.
     """
     trigger = parse_trigger(br.run_metadata)
     return AgentTaskBatchRunSummary(
@@ -239,6 +242,7 @@ def to_batch_run_summary(
         started_at=br.started_at,
         completed_at=br.completed_at,
         trigger=trigger,
+        providers=list(providers),
         configuration=configuration
         or AgentTaskBatchRunConfigurationSummary(state="unknown"),
     )

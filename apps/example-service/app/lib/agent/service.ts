@@ -30,6 +30,32 @@ function getModel() {
   return process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4.1-flash";
 }
 
+/**
+ * The reasoning effort to request from the model, when the caller set one.
+ * Sent as the OpenAI-style `reasoning_effort` parameter (via the AI SDK's
+ * `providerOptions.openai.reasoningEffort`), which OpenRouter maps to its
+ * unified `reasoning.effort` for models that support the dimension
+ * (deepseek/glm flash do; gemini-2.5-flash-lite only takes the unified
+ * `reasoning` object and ignores the OpenAI-style alias). Unset = the
+ * provider's default effort — the run then reports no effort.
+ */
+const REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh"] as const;
+type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+
+function getReasoningEffort(): ReasoningEffort | undefined {
+  const raw = process.env.OPENROUTER_REASONING_EFFORT;
+  if (raw === undefined || raw === "") return undefined;
+  const effort = raw.toLowerCase() as ReasoningEffort;
+  // Fail loudly rather than silently running at the provider default: the
+  // run would report the typo'd effort while the model never received it.
+  if (!REASONING_EFFORTS.includes(effort)) {
+    throw new Error(
+      `OPENROUTER_REASONING_EFFORT must be one of ${REASONING_EFFORTS.join("|")} — got "${raw}"`,
+    );
+  }
+  return effort;
+}
+
 const SYSTEM_PROMPT =
   "You are a careful analysis agent with access to tools. " +
   "Always use list_files first, then use read_file with the exact file paths shown. " +
@@ -192,12 +218,14 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     content: m.content,
   })) as ModelMessage[];
 
+  const effort = getReasoningEffort();
   const result = await generateText({
     model: client.chat(model),
     system: request.system ?? SYSTEM_PROMPT,
     messages,
     tools,
     stopWhen: stepCountIs(request.maxSteps ?? 8),
+    ...(effort ? { providerOptions: { openai: { reasoningEffort: effort } } } : {}),
     experimental_telemetry: { isEnabled: telemetryEnabled },
   });
 
@@ -209,6 +237,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     const synthesis = await generateText({
       model: client.chat(model),
       system: request.system ?? SYSTEM_PROMPT,
+      ...(effort ? { providerOptions: { openai: { reasoningEffort: effort } } } : {}),
       messages: [
         ...messages,
         ...(result.response.messages as ModelMessage[]),
