@@ -97,47 +97,65 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 2
+      - name: Detect version-only npm release
+        id: npm_release
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: echo "version_only=$(node scripts/is-version-only-npm-release.mjs "$BASE_SHA" "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
       - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        if: steps.npm_release.outputs.version_only != 'true'
         with:
           version: 11.3.0
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        if: steps.npm_release.outputs.version_only != 'true'
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        if: steps.npm_release.outputs.version_only != 'true'
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        if: steps.npm_release.outputs.version_only != 'true'
         with:
           python-version: "3.13"
       - name: Install uv
+        if: steps.npm_release.outputs.version_only != 'true'
         # Cached install: the backend + package overlays re-resolve several
         # hundred MB of wheels per run without it.
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
       - name: Sync dependencies
+        if: steps.npm_release.outputs.version_only != 'true'
         working-directory: backend
         run: uv sync --frozen
       - name: Typecheck
+        if: steps.npm_release.outputs.version_only != 'true'
         working-directory: backend
         # basedpyright treats warnings as failures whenever GITHUB_ACTIONS is set,
         # even when --level error is requested. Keep the CI and local gates aligned.
         run: env -u GITHUB_ACTIONS uv run basedpyright --level error apo
       - name: Test
+        if: steps.npm_release.outputs.version_only != 'true'
         working-directory: backend
         env:
           APO_TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/postgres
         run: uv run pytest -x -q
       - name: Test apo-otel-python package
+        if: steps.npm_release.outputs.version_only != 'true'
         # Orphaned suite found by the CI-covers-tests census; pytest is not in
         # the package env, so overlay it. Load-bearing command string.
         working-directory: packages/apo-otel-python
         run: uv run --with pytest pytest -q
       - name: Test langchain-apo package
+        if: steps.npm_release.outputs.version_only != 'true'
         # Orphaned suite found by the CI-covers-tests census; langchain-core
         # lives in the package extras, so overlay both. Load-bearing command.
         working-directory: packages/langchain-apo
         run: uv run --with pytest --with langchain-core pytest -q
       - name: Test example-service-py
+        if: steps.npm_release.outputs.version_only != 'true'
         # Orphaned suite found by the CI-covers-tests census (12 tests, <1s).
         working-directory: apps/example-service-py
         run: uv run pytest -q

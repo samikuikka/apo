@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+
+# Publish an already-merged SDK or CLI release without waiting for duplicate
+# post-merge CI. Safety comes from proving the merged commit has the exact tree
+# that passed the release PR, then letting the protected publisher rerun the
+# package-specific gates against the tagged commit.
+
+set -euo pipefail
+
+main() {
+  parse_arguments "$@"
+  require_commands gh jj git npm node
+  configure_stream "$STREAM"
+
+  REPOSITORY="$(gh repo view --json nameWithOwner --jq .nameWithOwner | clean_gh_output | tail -n 1)"
+  read_pr_state
+  verify_release_pr
+
+  if [ "$DRY_RUN" = true ]; then
+    echo "Dry run passed: $PACKAGE@$VERSION can be released from $MERGE_SHA after uniqueness checks."
+    return
+  fi
+
+  verify_version_is_unused
+  create_release_tag
+  RUN_ID="$(find_publisher_run)"
+  approve_release_environment "$RUN_ID"
+  gh run watch "$RUN_ID" --exit-status
+  wait_for_registry
+
+  echo "Published $PACKAGE@$VERSION from $MERGE_SHA ($TAG)."
+}
+
+parse_arguments() {
+  DRY_RUN=false
+  if [ "${1:-}" = "--dry-run" ]; then
+    DRY_RUN=true
+    shift
+  fi
+
+  STREAM="${1:-}"
+  VERSION="${2:-}"
+  PR="${3:-}"
+  if [ -z "$STREAM" ] || [ -z "$VERSION" ] || [ -z "$PR" ]; then
+    die "Usage: scripts/publish-npm-package [--dry-run] <sdk|cli> <version> <merged-pr-number-or-url>"
+  fi
+  if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+    die "Invalid semver '$VERSION'."
+  fi
+}
+
+configure_stream() {
+  case "$1" in
+    sdk)
+      PACKAGE="@apo-ai/sdk"
+      MANIFEST="packages/sdk/package.json"
+      TAG="sdk-v$VERSION"
+      WORKFLOW="publish-sdk.yml"
+      ENVIRONMENT="npm-sdk-release"
+      ;;
+    cli)
+      PACKAGE="@apo-ai/cli"
+      MANIFEST="packages/cli/package.json"
+      TAG="cli-v$VERSION"
+      WORKFLOW="publish-cli.yml"
+      ENVIRONMENT="npm-cli-release"
+      ;;
+    *) die "Unknown release stream '$1'; expected sdk or cli." ;;
+  esac
+}
+
+read_pr_state() {
+  PR_STATE="$(gh pr view "$PR" --json state --jq .state | clean_gh_output | tail -n 1)"
+  PR_BASE="$(gh pr view "$PR" --json baseRefName --jq .baseRefName | clean_gh_output | tail -n 1)"
+  PR_HEAD_SHA="$(gh pr view "$PR" --json headRefOid --jq .headRefOid | clean_gh_output | tail -n 1)"
+  MERGE_SHA="$(gh pr view "$PR" --json mergeCommit --jq '.mergeCommit.oid // empty' | clean_gh_output | tail -n 1)"
+}
+
+verify_release_pr() {
+  [ "$PR_STATE" = "MERGED" ] || die "PR $PR is $PR_STATE; release only after it merges."
+  [ "$PR_BASE" = "main" ] || die "PR $PR targeted '$PR_BASE', not main."
+  [ -n "$MERGE_SHA" ] || die "PR $PR has no merge commit."
+
+  local bad_checks ci_checks head_tree merge_tree manifest_version
+  bad_checks="$(gh pr view "$PR" --json statusCheckRollup --jq '[.statusCheckRollup[] | select(if .__typename == "CheckRun" then (.status != "COMPLETED" or ((.conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL") | not)) else (.__typename == "StatusContext" and .state != "SUCCESS") end)] | length' | clean_gh_output | tail -n 1)"
+  [ "$bad_checks" = "0" ] || die "PR $PR has incomplete or unsuccessful checks."
+
+  ci_checks="$(gh pr view "$PR" --json statusCheckRollup --jq '[.statusCheckRollup[] | select(.__typename == "CheckRun" and .workflowName == "CI" and .status == "COMPLETED" and .conclusion == "SUCCESS")] | length' | clean_gh_output | tail -n 1)"
+  [ "$ci_checks" -ge 2 ] || die "PR $PR does not have both full CI jobs green."
+
+  head_tree="$(gh api "repos/$REPOSITORY/git/commits/$PR_HEAD_SHA" --jq .tree.sha | clean_gh_output | tail -n 1)"
+  merge_tree="$(gh api "repos/$REPOSITORY/git/commits/$MERGE_SHA" --jq .tree.sha | clean_gh_output | tail -n 1)"
+  [ "$head_tree" = "$merge_tree" ] || die "Merged tree differs from the green PR head; wait for main CI instead of publishing."
+
+  jj git fetch >/dev/null
+  manifest_version="$(jj file show -r "$MERGE_SHA" "$MANIFEST" | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => process.stdout.write(JSON.parse(input).version));')"
+  [ "$manifest_version" = "$VERSION" ] || die "$MANIFEST at $MERGE_SHA is $manifest_version, not $VERSION."
+}
+
+verify_version_is_unused() {
+  local npm_output
+  if npm_output="$(npm view "$PACKAGE@$VERSION" version --registry=https://registry.npmjs.org 2>&1)"; then
+    die "$PACKAGE@$VERSION already exists on npm."
+  fi
+  grep -q 'E404' <<<"$npm_output" || die "Could not verify npm version availability: $npm_output"
+
+  if gh api "repos/$REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+    die "Tag $TAG already exists on GitHub."
+  fi
+}
+
+create_release_tag() {
+  jj tag set "$TAG" -r "$MERGE_SHA"
+  # jj cannot push tags in every supported version, and jj tags are not always
+  # exported as Git refs. Push the verified immutable commit to the exact tag.
+  git push origin "$MERGE_SHA:refs/tags/$TAG"
+}
+
+find_publisher_run() {
+  local attempt run_id
+  for attempt in $(seq 1 24); do
+    run_id="$(gh run list --workflow "$WORKFLOW" --limit 10 --json databaseId,headSha,event --jq ".[] | select(.headSha == \"$MERGE_SHA\" and .event == \"push\") | .databaseId" | clean_gh_output | head -n 1)"
+    if [ -n "$run_id" ]; then
+      printf '%s\n' "$run_id"
+      return
+    fi
+    sleep 5
+  done
+  die "Publisher workflow $WORKFLOW did not start for $TAG."
+}
+
+approve_release_environment() {
+  local run_id="$1" attempt environment_id run_status
+  for attempt in $(seq 1 60); do
+    environment_id="$(gh api "repos/$REPOSITORY/actions/runs/$run_id/pending_deployments" --jq ".[] | select(.environment.name == \"$ENVIRONMENT\") | .environment.id" | clean_gh_output | tail -n 1)"
+    if [ -n "$environment_id" ]; then
+      gh api --method POST "repos/$REPOSITORY/actions/runs/$run_id/pending_deployments" \
+        -F "environment_ids[]=$environment_id" \
+        -f state=approved \
+        -f comment="Approve verified $PACKAGE@$VERSION release" >/dev/null
+      return
+    fi
+
+    run_status="$(gh run view "$run_id" --json status --jq .status | clean_gh_output | tail -n 1)"
+    if [ "$run_status" = "in_progress" ]; then
+      return
+    fi
+    [ "$run_status" != "completed" ] || die "Publisher completed before environment approval could be verified."
+    sleep 2
+  done
+  die "Expected environment '$ENVIRONMENT' did not become available for approval."
+}
+
+wait_for_registry() {
+  local attempt published_version
+  for attempt in $(seq 1 30); do
+    published_version="$(npm view "$PACKAGE@$VERSION" version --registry=https://registry.npmjs.org 2>/dev/null || true)"
+    if [ "$published_version" = "$VERSION" ]; then
+      return
+    fi
+    sleep 10
+  done
+  die "Publisher succeeded, but npm did not serve $PACKAGE@$VERSION within five minutes."
+}
+
+require_commands() {
+  local command_name
+  for command_name in "$@"; do
+    command -v "$command_name" >/dev/null 2>&1 || die "Required command '$command_name' is unavailable."
+  done
+}
+
+clean_gh_output() {
+  # Tool managers may print activation notices before gh's structured value.
+  sed '/^mise .* tools:/d'
+}
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+main "$@"

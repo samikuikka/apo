@@ -18,6 +18,9 @@ import {
   context,
   defaultTextMapGetter,
   defaultTextMapSetter,
+  diag,
+  DiagConsoleLogger,
+  DiagLogLevel,
   type Span,
   type Tracer,
   type SpanOptions,
@@ -49,6 +52,7 @@ import {
 } from "@opentelemetry/semantic-conventions";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { getRegisteredApoProcessor } from "../agent-task/integrations/register.ts";
+import { resolveApoAuthHeaders } from "../apo-auth.ts";
 
 // ── public types ───────────────────────────────────────────
 
@@ -104,6 +108,11 @@ export interface ConfigureApoTelemetryOptions {
   /** Batch for services; simple is useful for short-lived task subprocesses. */
   processor?: "batch" | "simple";
   /**
+   * Override the batch processor's flush interval (ms). Leave undefined to
+   * honor `OTEL_BSP_SCHEDULE_DELAY` (or OTel's 5s default).
+   */
+  scheduledDelayMillis?: number;
+  /**
    * Whether to register apo's provider as the global tracer provider. Defaults
    * to false. When true, registration only happens if no global provider is
    * registered yet — apo never silently replaces an existing global provider.
@@ -132,6 +141,11 @@ export interface ApoTraceExporterOptions {
 export interface ApoSpanProcessorOptions extends ApoTraceExporterOptions {
   /** Batch for long-lived services (default), simple for short-lived jobs. */
   processor?: "batch" | "simple";
+  /**
+   * Override the batch processor's flush interval (ms). Leave undefined to
+   * honor `OTEL_BSP_SCHEDULE_DELAY` (or OTel's 5s default).
+   */
+  scheduledDelayMillis?: number;
 }
 
 export interface ApoTraceOptions {
@@ -169,9 +183,14 @@ export function createApoSpanProcessor(
   options: ApoSpanProcessorOptions,
 ): SpanProcessor {
   const exporter = createApoTraceExporter(options);
-  return options.processor === "simple"
-    ? new SimpleSpanProcessor(exporter)
-    : new BatchSpanProcessor(exporter);
+  if (options.processor === "simple") {
+    return new SimpleSpanProcessor(exporter);
+  }
+  return new BatchSpanProcessor(exporter, {
+    ...(options.scheduledDelayMillis !== undefined
+      ? { scheduledDelayMillis: options.scheduledDelayMillis }
+      : {}),
+  });
 }
 
 // ── auth + env-var helpers (mirror apo-otel-python) ─────────────────────
@@ -189,26 +208,16 @@ const DEFAULT_APO_OTLP_ENDPOINT = "http://localhost:8000/api/public/otel/v1/trac
  *   secret-bearing legacy API keys.)
  * - Else returns an empty object (unauthenticated).
  *
- * Mirrors Python's `_build_auth_headers` in apo-otel-python.
+ * Mirrors Python's `_build_auth_headers` in apo-otel-python. The resolution
+ * core lives in `apo-auth.ts`, shared with the agent-task entry's env-only
+ * variant of this builder.
  */
 export function buildApoAuthHeaders(
   publicKey?: string,
   secretKey?: string,
   authToken?: string,
 ): Record<string, string> {
-  const pk = publicKey ?? process.env.APO_PUBLIC_KEY;
-  const sk = secretKey ?? process.env.APO_SECRET_KEY;
-  const token = authToken ?? process.env.APO_AUTH_TOKEN;
-  if (pk && sk) {
-    const credentials = typeof btoa === "function"
-      ? btoa(`${pk}:${sk}`)
-      : Buffer.from(`${pk}:${sk}`).toString("base64");
-    return { Authorization: `Basic ${credentials}` };
-  }
-  if (token) {
-    return { Authorization: `Bearer ${token}` };
-  }
-  return {};
+  return resolveApoAuthHeaders(publicKey, secretKey, authToken);
 }
 
 /**
@@ -283,9 +292,16 @@ export async function configureApoTelemetry(
   if (options.provider !== undefined) {
     throw new TypeError(
       "A host provider cannot be mutated after construction in OTel JS 2.x; " +
-      "construct it with createApoSpanProcessor() instead.",
+        "construct it with createApoSpanProcessor() instead.",
     );
   }
+
+  // The standalone bootstrap owns this process's OTel lifecycle, so it also
+  // owns the diag channel: OTel JS swallows export failures (retry
+  // exhaustion, dropped spans) into a diag logger nobody sets by default —
+  // warn-and-above to stderr keeps that from being silent without the
+  // info-level noise.
+  diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.WARN);
 
   // Resolve config from kwargs → env vars → defaults (mirror apo-otel-python).
   const { endpoint, headers, project, serviceName } = resolveTelemetryConfig(options);
@@ -315,6 +331,7 @@ export async function configureApoTelemetry(
     endpoint,
     headers,
     processor: options.processor,
+    scheduledDelayMillis: options.scheduledDelayMillis,
   })];
 
   // If an ApoSpanProcessor was registered via registerApoTracing(), add it to
