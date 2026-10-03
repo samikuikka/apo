@@ -199,62 +199,59 @@ def adopt_orphan_traces_for_terminal_task_runs(session: Session) -> int:
     root span whose ``apo.task.run.id`` attribute names exactly this run and
     whose trace no other run owns, and claim it — newest first when retries
     produced several. The attribute only identifies the candidate; the
-    one-trace invariant still gates the claim.
+    project check and the one-trace invariant still gate the claim.
+
+    Matching runs in Python (not SQL JSON predicates) keeps the pass working
+    on both SQLite and Postgres — the only supported JSON access in raw SQL
+    is dialect-specific.
     """
     if not table_exists(session, "otlp_spans"):
         return 0
-    rows = cast(
-        CursorResult[Any],
-        session.execute(
-            text(
-                "SELECT s.trace_id, s.project_id FROM otlp_spans s "
-                "JOIN agent_task_runs r "
-                "  ON r.id = json_extract(s.attributes, '$.\"apo.task.run.id\"') "
-                "JOIN agent_task_batch_runs b ON b.id = r.batch_run_id "
-                "WHERE s.parent_span_id IS NULL "
-                "  AND s.span_name = 'apo.task.run' "
-                "  AND r.trace_run_id IS NULL "
-                "  AND r.completed_at IS NOT NULL "
-                "  AND b.project = s.project_id "
-                "  AND NOT EXISTS ("
-                "    SELECT 1 FROM agent_task_runs r2 "
-                "    WHERE r2.trace_run_id = s.trace_id)"
-                "ORDER BY s.start_time DESC"
-            )
-        ),
-    ).fetchall()
-    if not rows:
+    roots = session.exec(
+        select(OtlpSpanDB)
+        .where(
+            as_column(OtlpSpanDB.span_name) == "apo.task.run",
+            as_column(OtlpSpanDB.parent_span_id).is_(None),
+        )
+        .order_by(as_column(OtlpSpanDB.start_time).desc())  # pyright: ignore[reportUnknownArgumentType]
+    ).all()
+    if not roots:
         return 0
 
-    from .trace_ownership import claim_trace_in_session
+    from ..models.db import AgentTaskBatchRunDB, AgentTaskRunDB
+    from .trace_ownership import claim_trace_in_session, mark_persisted
 
     adopted = 0
-    claimed_runs: set[str] = set()
-    for row in rows:  # type: ignore[any]
-        trace_id = str(row[0])  # pyright: ignore[reportAny]
-        span = session.exec(
-            select(OtlpSpanDB).where(
-                as_column(OtlpSpanDB.trace_id) == trace_id,
-                as_column(OtlpSpanDB.span_name) == "apo.task.run",
+    for span in roots:
+        task_run_id = (span.attributes or {}).get("apo.task.run.id")
+        if not isinstance(task_run_id, str):
+            continue
+        run = session.get(AgentTaskRunDB, task_run_id)
+        if run is None or run.trace_run_id is not None or run.completed_at is None:
+            continue
+        batch = session.get(AgentTaskBatchRunDB, run.batch_run_id)
+        if batch is None or batch.project != span.project_id:
+            continue
+        owner = session.exec(
+            select(AgentTaskRunDB).where(
+                as_column(AgentTaskRunDB.trace_run_id) == span.trace_id
             )
         ).first()
-        if span is None:
+        if owner is not None:
             continue
-        task_run_id_attr = (span.attributes or {}).get("apo.task.run.id")
-        if not isinstance(task_run_id_attr, str) or task_run_id_attr in claimed_runs:
-            continue
-        task_run_id: str = task_run_id_attr
         try:
-            claim_trace_in_session(session, task_run_id, trace_id)
+            claim_trace_in_session(session, task_run_id, span.trace_id)
         except ValueError as exc:
             logger.info("Trace adoption skipped for run %s: %s", task_run_id, exc)
             continue
-        claimed_runs.add(task_run_id)
+        mark_persisted(run)
+        session.add(run)
         adopted += 1
         logger.info(
-            "Adopted orphan trace %s for terminal task run %s", trace_id, task_run_id
+            "Adopted orphan trace %s for terminal task run %s", span.trace_id, task_run_id
         )
-    session.commit()
+    if adopted:
+        session.commit()
     return adopted
 
 

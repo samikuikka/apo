@@ -22,6 +22,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -459,6 +460,7 @@ async def _run_worker(stop_event: asyncio.Event) -> None:
     if recovered:
         logger.warning("Recovered %d interrupted OTLP batch(es)", recovered)
     worker = QueueWorker(receiver=OtlpReceiver(), queue=queue)
+    last_lease_sweep = time.monotonic()
     while not stop_event.is_set():
         # One raised exception (a claim hitting SQLITE_BUSY during a VACUUM,
         # a mark failing, anything) must never end the worker task silently —
@@ -469,6 +471,20 @@ async def _run_worker(stop_event: asyncio.Event) -> None:
         except Exception:
             logger.exception("Ingestion worker iteration failed; continuing")
             processed = False
+        # The lease is not only a startup concern: a batch claimed in this
+        # process whose mark failed (SQLITE_BUSY under a VACUUM, say) sits in
+        # 'processing' and is unreachable to claim_next — without a periodic
+        # sweep it would wait for a restart and then for the 30-day stuck
+        # horizon, unprojected. Re-sweep every lease interval.
+        if time.monotonic() - last_lease_sweep >= QUEUE_LEASE_SECONDS:
+            last_lease_sweep = time.monotonic()
+            try:
+                recovered = await queue.recover_stale()
+            except Exception:
+                logger.exception("Ingestion lease sweep failed; continuing")
+                recovered = 0
+            if recovered:
+                logger.warning("Recovered %d interrupted OTLP batch(es)", recovered)
         if not processed:
             try:
                 _ = await asyncio.wait_for(stop_event.wait(), timeout=1.0)

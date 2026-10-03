@@ -150,10 +150,21 @@ push into the store per request/minute; they do not cap total storage
 | `APO_TELEMETRY_MAX_REQUEST_BYTES` | `10485760` | Max decoded OTLP request body (10 MiB). |
 | `APO_OTLP_MAX_DECOMPRESSED_BYTES` | `10485760` | Max decompressed gzip payload (10 MiB). |
 | `APO_OTLP_MAX_SPANS_PER_REQUEST` | `2048` | Max spans accepted per request. |
+| `APO_TELEMETRY_REQUESTS_PER_MINUTE` | `600` | Per-identity request rate (batched clients flush ~2/s per run; keep this well above your sustained runs × rate). |
+| `APO_TELEMETRY_REQUEST_BURST` | `60` | Per-identity request burst allowance. |
+| `APO_TELEMETRY_GLOBAL_REQUESTS_PER_MINUTE` | `2400` | Deployment-wide request rate. |
+| `APO_TELEMETRY_GLOBAL_REQUEST_BURST` | `200` | Deployment-wide request burst allowance. |
+| `APO_TELEMETRY_UNITS_PER_MINUTE` | `12000` | Per-identity span rate — the real quota. |
+| `APO_TELEMETRY_UNIT_BURST` | `2048` | Per-identity span burst allowance. |
+| `APO_TELEMETRY_GLOBAL_UNITS_PER_MINUTE` | `30000` | Deployment-wide span rate. |
+| `APO_TELEMETRY_GLOBAL_UNIT_BURST` | `4096` | Deployment-wide span burst allowance. |
 | `APO_TELEMETRY_BYTES_PER_MINUTE` | `31457280` | Per-identity ingest rate (30 MiB/min). |
 | `APO_TELEMETRY_BYTE_BURST` | `10485760` | Per-identity burst allowance (10 MiB). |
 | `APO_TELEMETRY_GLOBAL_BYTES_PER_MINUTE` | `62914560` | Deployment-wide ingest rate (60 MiB/min). |
 | `APO_TELEMETRY_GLOBAL_BYTE_BURST` | `20971520` | Deployment-wide burst allowance (20 MiB). |
+| `APO_TELEMETRY_MAX_CONCURRENT_REQUESTS` | `4` | Concurrent telemetry requests in flight. |
+| `APO_TELEMETRY_INVALID_AUTH_PER_MINUTE` | `30` | Requests with invalid credentials per client IP. |
+| `APO_TELEMETRY_INVALID_AUTH_BURST` | `10` | Invalid-auth burst allowance. |
 
 ## Request body limits
 
