@@ -27,6 +27,7 @@ import { isTraceableSpanId } from "../tracing.ts";
 import { resolveJudgeConfig } from "./t.ts";
 import type { AgentHistoryPlane } from "./agent-history.ts";
 import { createMcpToolset, type McpServerConfig } from "./mcp-tools.ts";
+import { fetchWithPromptCacheKey, promptCacheKey } from "./judge.ts";
 
 // ── Public types ───────────────────────────────────────────────────────────
 
@@ -132,6 +133,19 @@ const RECORD_MAX_STEPS = 64;
 const RECORD_KEEP_HEAD = 56;
 
 // ── Small helpers ──────────────────────────────────────────────────────────
+
+/** Model + system briefing + first user turn (the criterion): fixed for a session's life. */
+function sessionPrefix(body: Record<string, unknown>): string {
+  const messages = (body.messages as Array<{ role?: string; content?: unknown }> | undefined) ?? [];
+  const firstUser = messages.find((m) => m.role === "user");
+  return [
+    String(body.model),
+    ...messages.filter((m) => m.role === "system").map((m) => m.content),
+    firstUser?.content,
+  ]
+    .map((part) => (typeof part === "string" ? part : JSON.stringify(part ?? null)))
+    .join("\u0000");
+}
 
 function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
@@ -555,11 +569,16 @@ export async function runAgentSession(spec: {
   const provider = createOpenAICompatible({
     name: "openrouter",
     baseURL: spec.baseURL ?? "https://openrouter.ai/api/v1",
+    fetch: fetchWithPromptCacheKey,
     apiKey: spec.apiKey ?? process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY,
     // Mark the briefing prefix cacheable — repeated samples (rejudge) re-bill
-    // nothing for the shared turn-0 context.
+    // nothing for the shared turn-0 context — and keep every step of one
+    // session on the replica holding its growing prefix. The key is per
+    // session (briefing + criterion): sessions run concurrently, unlike
+    // t.judge calls, and one key per task would pile them onto one replica.
     transformRequestBody: (body: Record<string, unknown>) => ({
       ...body,
+      prompt_cache_key: promptCacheKey(sessionPrefix(body)),
       messages: (body.messages as Array<Record<string, unknown>>)?.map((m) =>
         m.role === "system" && typeof m.content === "string"
           ? { ...m, content: [{ type: "text", text: m.content, cache_control: { type: "ephemeral" } }] }

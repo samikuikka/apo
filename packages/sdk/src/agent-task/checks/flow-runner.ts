@@ -275,7 +275,7 @@ export async function runTraceChecks(args: {
         id: check.id,
         pass,
         reasoning,
-        evaluator_type: "code" as const,
+        evaluator_type: deriveEvaluatorType(rec.all),
         ...(outcome ? { outcome } : {}),
         ...(judge ? { judge } : {}),
         ...(location ? { location } : {}),
@@ -295,6 +295,46 @@ export async function runTraceChecks(args: {
   );
 
   return results;
+}
+
+/**
+ * Did this assertion come from an LLM (`t.judge`) or an agentic session
+ * (`t.agent`) rather than a deterministic `t.check`/trace assertion?
+ * Judge metadata counts as judged even on legacy assertions that never
+ * recorded an `evaluator_type`.
+ */
+function isJudgedAssertion(assertion: AssertionResult): boolean {
+  return (
+    assertion.evaluator_type === "llm" ||
+    assertion.evaluator_type === "agent" ||
+    assertion.judge !== undefined
+  );
+}
+
+/**
+ * Derive the check-level evaluator type from the recorded assertions instead
+ * of stamping every check "code": "llm" when every assertion judged,
+ * "agent" for pure `t.agent` sessions, "mixed" when a check combines judged
+ * and deterministic assertions, "code" otherwise.
+ */
+function deriveEvaluatorType(
+  assertions: readonly AssertionResult[],
+): EvaluationItemResult["evaluator_type"] {
+  let sawLlm = false;
+  let sawAgent = false;
+  let sawDeterministic = false;
+  for (const assertion of assertions) {
+    if (isJudgedAssertion(assertion)) {
+      if (assertion.evaluator_type === "agent") sawAgent = true;
+      else sawLlm = true;
+    } else {
+      sawDeterministic = true;
+    }
+  }
+  if (!sawLlm && !sawAgent) return "code";
+  if (sawDeterministic) return "mixed";
+  if (sawAgent && !sawLlm) return "agent";
+  return "llm";
 }
 
 /**

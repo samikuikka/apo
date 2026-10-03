@@ -55,7 +55,7 @@ describe("t.judge", () => {
     expect(result).toMatchObject({
       id: "quality",
       pass: true,
-      evaluator_type: "code",
+      evaluator_type: "llm",
       judge: {
         model: "test/judge",
         tokens: { input: 12, output: 4 },
@@ -85,7 +85,7 @@ describe("t.judge", () => {
     expect(result).toMatchObject({
       pass: false,
       reasoning: "missing evidence",
-      evaluator_type: "code",
+      evaluator_type: "llm",
     });
   });
 
@@ -101,7 +101,7 @@ describe("t.judge", () => {
 
     expect(result).toMatchObject({
       pass: false,
-      evaluator_type: "code",
+      evaluator_type: "llm",
       // No judge, no verdict: the same bucket as an unreachable judge (#323).
       outcome: "error",
     });
@@ -127,7 +127,7 @@ describe("t.judge", () => {
 
     expect(result).toMatchObject({
       pass: false,
-      evaluator_type: "code",
+      evaluator_type: "llm",
       judge: { response: "not-json" },
     });
     // Malformed output is a failure with a plain-language explanation (not a
@@ -153,7 +153,7 @@ describe("t.judge", () => {
 
     expect(result).toMatchObject({
       pass: false,
-      evaluator_type: "code",
+      evaluator_type: "llm",
       judge: { response: "[" },
     });
     expect(result?.reasoning).toContain("empty or truncated");
@@ -177,7 +177,7 @@ describe("t.judge", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result).toMatchObject({
       pass: false,
-      evaluator_type: "code",
+      evaluator_type: "llm",
     });
     expect(result?.reasoning).toContain("Judge API 503");
     expect(result?.assertions?.[0]).toMatchObject({ pass: false, outcome: "error" });
@@ -553,6 +553,110 @@ describe("t.judge streaming", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(result).toMatchObject({ pass: true, reasoning: "late" });
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A judge that streams its reasoning, one chunk every `everyMs`, and answers once `answer()` is called.
+  const reasoningStream = (everyMs: number) => {
+    const encoder = new TextEncoder();
+    let answer!: () => void;
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const chunk = `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "still thinking" } }] })}\n\n`;
+          controller.enqueue(encoder.encode(chunk));
+          const tick = setInterval(() => controller.enqueue(encoder.encode(chunk)), everyMs);
+          answer = () => {
+            clearInterval(tick);
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ choices: [{ delta: { content: '{"reasoning":"long think","pass":true}' }, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+              ),
+            );
+            controller.close();
+          };
+          init?.signal?.addEventListener("abort", () => {
+            clearInterval(tick);
+            controller.error(init.signal!.reason);
+          });
+        },
+      });
+      return new Response(body, { headers: { "content-type": "text/event-stream" } });
+    });
+    return { fetchMock, answer: () => answer() };
+  };
+
+  it("does not cut a judge that is still streaming its reasoning past the first-data window", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    try {
+      const { fetchMock, answer } = reasoningStream(30_000);
+      vi.stubGlobal("fetch", fetchMock);
+
+      const pending = callJudge({ values: ["long-think"], instruction: "x", model: "m" });
+      await vi.advanceTimersByTimeAsync(420_000);
+      answer();
+      const result = await pending;
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({ pass: true, reasoning: "long think" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ends an attempt that sends no data within APO_JUDGE_TIMEOUT_MS and retries it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.stubEnv("APO_JUDGE_TIMEOUT_MS", "120000");
+    try {
+      // Keepalives only, never a data chunk — a provider that died behind a live gateway.
+      const silent = (_url: string, init?: RequestInit): Promise<Response> => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(": ping\n\n"));
+            init?.signal?.addEventListener("abort", () => controller.error(init.signal!.reason));
+          },
+        });
+        return Promise.resolve(new Response(body, { headers: { "content-type": "text/event-stream" } }));
+      };
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce(silent)
+        .mockResolvedValueOnce(
+          sseResponse([
+            `data: ${JSON.stringify({ choices: [{ delta: { content: '{"reasoning":"ok","pass":true}' } }] })}\n\n`,
+          ]),
+        );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const pending = callJudge({ values: ["never-starts"], instruction: "x", model: "m" });
+      await vi.advanceTimersByTimeAsync(120_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const result = await pending;
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result).toMatchObject({ pass: true, reasoning: "ok" });
+    } finally {
+      vi.unstubAllEnvs();
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops a judge that is still streaming at APO_JUDGE_MAX_DURATION_MS, without a retry", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    vi.stubEnv("APO_JUDGE_MAX_DURATION_MS", "600000");
+    try {
+      const { fetchMock } = reasoningStream(30_000);
+      vi.stubGlobal("fetch", fetchMock);
+
+      const pending = callJudge({ values: ["runaway"], instruction: "x", model: "m" });
+      const outcome = expect(pending).rejects.toThrow(/still streaming after 600s/);
+      await vi.advanceTimersByTimeAsync(600_000);
+      await outcome;
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
       vi.useRealTimers();
     }
   });

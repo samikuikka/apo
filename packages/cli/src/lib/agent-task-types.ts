@@ -169,7 +169,7 @@ export type CheckResult = {
   outcome?: CheckOutcome;
   instruction?: string;
   deliverable?: string;
-  evaluator_type?: "llm" | "code" | "agent" | "regex";
+  evaluator_type?: "llm" | "code" | "agent" | "regex" | "mixed";
   judge?: CheckJudgeMetadata;
   location?: CheckLocation;
   source_file?: string;
