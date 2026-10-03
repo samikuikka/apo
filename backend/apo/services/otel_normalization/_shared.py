@@ -20,7 +20,13 @@ VALID_OBSERVATION_TYPES = frozenset({
 # instrumented with apo.observation.type=SKILL no longer falls through to
 # the gen-ai mapper's gen_ai.tool.name -> TOOL rule.
 # v7: gen_ai.tool.definitions / gen_ai.system_instructions kept in metadata.
-NORMALIZER_VERSION = 7
+# v8: serving provider (gen_ai.provider.name / gen_ai.system) and route
+# (apo.llm.route) extracted as first-class fields (issue #307).
+# v9: Claude Code's bare usage attributes (input_tokens / output_tokens /
+# cache_read_tokens / cache_creation_tokens) translated onto the canonical
+# gen_ai.usage.* keys in usage normalization — claude_code.llm_request spans
+# previously projected with no tokens and no cost despite carrying usage.
+NORMALIZER_VERSION = 9
 
 
 @final
@@ -35,6 +41,8 @@ class NormalizedSpan:
         display_name: str = "",
         observation_type: str = "SPAN",
         model: str | None = None,
+        provider: str | None = None,
+        route: str | None = None,
         input: dict[str, Any] | None = None,
         output: dict[str, Any] | None = None,
         tool_name: str | None = None,
@@ -52,6 +60,8 @@ class NormalizedSpan:
         self.display_name = display_name
         self.observation_type = observation_type
         self.model = model
+        self.provider = provider
+        self.route = route
         self.input = input
         self.output = output
         self.tool_name = tool_name
@@ -298,6 +308,28 @@ def extract_model(attrs: dict[str, Any]) -> str | None:
         if value:
             return value
     return None
+
+
+def extract_provider(attrs: dict[str, Any]) -> str | None:
+    """The serving provider, exactly as the emitter reported it.
+
+    ``gen_ai.provider.name`` is the GenAI semconv successor of ``gen_ai.system``;
+    both are accepted. The value is stored verbatim — never guessed from the
+    model name — so a run without the attribute shows "unknown" rather than a
+    wrong host (issue #307). Guessing remains confined to usage normalization,
+    where it only picks the token-split heuristic.
+    """
+    return get_str(attrs, "gen_ai.provider.name") or get_str(attrs, "gen_ai.system")
+
+
+def extract_route(attrs: dict[str, Any]) -> str | None:
+    """The finer-grained serving host/route, when the emitter reports one.
+
+    The provider an app talks to is often a gateway, not the host that runs
+    the model (e.g. provider=openrouter, route="openrouter:nitro->fireworks").
+    ``apo.llm.route`` is apo's attribute for it; absent on most spans.
+    """
+    return get_str(attrs, "apo.llm.route")
 
 
 def extract_tokens(attrs: dict[str, Any]) -> dict[str, int | float]:

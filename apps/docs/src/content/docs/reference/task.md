@@ -32,7 +32,7 @@ function task<TTaskId, TAdapterName, TDeliverableDefs, TCollected, TSelected>(
     maxTurns?: number;
     description?: string;
     metadata?: Record<string, unknown>;
-    execution?: "local" | "bundled";
+    judge?: Partial<JudgeConfig>;
   },
 ): TaskScope<SelectedDeliverables<TCollected, TSelected>>;
 
@@ -113,6 +113,12 @@ task("my-task", {
 
 Declaring the harness's tool surface here keeps the task portable across harnesses. Custom adapters consume it through the SDK's exported `connectMcpServers(servers)` — raw namespaced tools, no budget wrapping (the agent under test is not apo's to budget).
 
+### `judge`
+
+- **Type:** `Partial<JudgeConfig>`
+- **Required:** no
+
+Task-level judge layer: overrides the run-level `runTask({ judge })` config and is itself overridden per `t.judge` call. Lets a task grade differently from its suite — a stronger model, or a custom briefing via `prompt` that tells the judge what it is grading. Fields: `model`, `baseURL`, `apiKey`, `prompt` (see [Assertions API → t.judge](/reference/assertions/) for the full semantics).
 ## `turn(fn)`
 
 Decide what the agent sees each turn. apo calls `turn` before each `sendUserTurn`; the return value becomes the user input for that turn.

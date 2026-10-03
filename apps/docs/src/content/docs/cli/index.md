@@ -28,11 +28,12 @@ The core loop: run a task, read its verdict, open its trace when something fails
 | [`apo task run`](/cli/task-run/) | Run a task. The load-bearing command. |
 | [`apo task list`](/cli/task-list/) | List runnable tasks from your task root (`--catalog` for the published inventory). |
 | [`apo task show`](/cli/task-show/) | Show a task's details. |
-| [`apo runs list`](/cli/runs-list/) | List past runs. Filter by task, status, limit. |
+| [`apo runs list`](/cli/runs-list/) | List past runs. Filter by task, status, model, effort, or serving provider. |
 | [`apo runs show`](/cli/runs-show/) | Show a run's verdict, checks, and failures. |
 | [`apo runs deliverable`](/cli/runs-deliverable/) | Read a run's deliverables (manifest, or one deliverable's full content). |
 | [`apo runs rejudge`](/cli/runs-rejudge/) | Re-judge a completed run against its stored deliverables, swap the judge, sample for stability, without re-running the agent. |
 | [`apo runs judgments`](/cli/runs-judgments/) | List a run's verdict history, the original plus every re-judge. |
+| [`apo runs correct`](/cli/runs-correct/) | Correct a recorded test result — set effective PASS/FAIL with a reason, or restore the recorded result. |
 | [`apo runs delete`](/cli/runs-delete/) | Permanently delete garbage runs (harness failures, wrong environment). `--yes` required; admin only. |
 | [`apo runs export`](/cli/runs-export/) | Dump a run as a self-contained JSON bundle, the backup before evidence expires or a run is deleted. |
 | [`apo traces import`](/cli/traces-import/) | Import a Claude Code / Codex session transcript as a run. |
@@ -58,6 +59,17 @@ Manage which project you're operating against and where its tasks come from.
 | [`apo project list`](/cli/project/) | List projects you can access. |
 | [`apo project use`](/cli/project/) | Switch the active project. |
 | [`apo project create`](/cli/project/) | Create a project. |
+| [`apo task publish`](/cli/task-publish/) | Publish task metadata to the Apo Task Catalog (bounded metadata only; nothing source-level leaves your machine). |
+| [`apo connect`](/cli/connect/) | Connect as a persistent source-owned executor: runs in the foreground, executes only catalog-matching assignments. |
+
+## Automations
+
+React to events without watching the dashboard.
+
+| Command | Purpose |
+|---|---|
+| [`apo automations list`](/cli/automations-list/) | List a project's automations (event triggers → actions). |
+| [`apo automations create`](/cli/automations-create/) | Create an automation: event trigger → webhook, GitHub issue, or Slack. |
 
 ## Authentication
 

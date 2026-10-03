@@ -114,7 +114,7 @@ verdicts, which is an operator decision rather than a per-project one.
 - **Long-running regression rig**: `APO_EVIDENCE_RETENTION_DAYS=30` plus `APO_RETENTION_DAYS=365`, evidence for a month, whole runs for a year, verdicts forever.
 - **Compliance-driven deletion**: `APO_RETENTION_DAYS` alone is the blunt instrument, everything about a run goes when the window passes.
 
-The admin endpoint `GET /admin/retention` reports the effective policy, the DB file size, and per-table bytes (largest first) so you can see which knob a given deployment actually needs:
+The admin endpoint `GET /v1/admin/retention` reports the effective policy, the DB file size, and per-table bytes (largest first) so you can see which knob a given deployment actually needs:
 
 <TerminalOutput
   lines={[

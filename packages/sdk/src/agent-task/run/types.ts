@@ -250,16 +250,13 @@ export type EvaluationItemResult = {
   /** Name of the deliverable this check was evaluated against. */
   deliverable?: string;
   /**
-   * What kind of evaluator produced this result, derived from the recorded
-   * assertions: ``"code"`` for purely deterministic checks, ``"llm"`` when
-   * every assertion judged, ``"agent"`` for pure agentic sessions,
-   * ``"mixed"`` when a check combines judged and deterministic assertions.
-   * LLM-backed assertions also carry ``evaluator_type: "llm"`` in
-   * {@link assertions}.
+   * What kind of evaluator produced this result.
+   * Registered checks use ``"code"``. LLM-backed assertions inside a check
+   * carry ``evaluator_type: "llm"`` in {@link assertions}.
    * - ``"regex"`` — pattern matching
    * Older persisted results may still use ``"llm"`` at this level.
    */
-  evaluator_type?: "llm" | "code" | "agent" | "regex" | "mixed";
+  evaluator_type?: "llm" | "code" | "agent" | "regex";
   /**
    * If this check was judged by an LLM, details about the judge call
    * (model, prompt, response, tokens, cost, latency). Populated by the

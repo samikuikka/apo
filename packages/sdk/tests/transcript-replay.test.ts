@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  detectTranscriptSource,
   exportOtlpTraces,
   parseClaudeCodeTranscript,
   parseCodexTranscript,
@@ -136,14 +135,7 @@ const codexFixture = [
   JSON.stringify({
     type: "response_item",
     timestamp: "2026-10-01T11:00:04Z",
-    payload: {
-      type: "reasoning",
-      // Real rollouts serialize the Responses API's summary-part array.
-      summary: [
-        { type: "summary_text", text: "Checking directory." },
-        { type: "summary_text", text: "Sorting output." },
-      ],
-    },
+    payload: { type: "reasoning", summary: "Checking directory." },
   }),
   JSON.stringify({
     type: "event_msg",
@@ -157,11 +149,10 @@ const codexFixture = [
   }),
   JSON.stringify({
     type: "event_msg",
-    timestamp: "2026-10-01T11:00:05.500Z",
+    timestamp: "2026-10-01T11:00:06Z",
     payload: {
       type: "token_count",
       info: {
-        // One event per API request; the turn's usage is their sum.
         last_token_usage: {
           input_tokens: 50,
           cached_input_tokens: 10,
@@ -169,14 +160,6 @@ const codexFixture = [
           reasoning_output_tokens: 3,
         },
       },
-    },
-  }),
-  JSON.stringify({
-    type: "event_msg",
-    timestamp: "2026-10-01T11:00:06Z",
-    payload: {
-      type: "token_count",
-      info: { last_token_usage: { input_tokens: 30, output_tokens: 5 } },
     },
   }),
   // No task_complete: the session ended mid-bracket and must still commit.
@@ -255,7 +238,7 @@ describe("parseCodexTranscript", () => {
     expect(turn.userMessage).toBe("List files.");
     expect(turn.assistantMessage).toBe("Two files.");
     expect(turn.commentary).toEqual(["Listing files."]);
-    expect(turn.thinkingText).toBe("Checking directory.\nSorting output.");
+    expect(turn.thinkingText).toBe("Checking directory.");
     expect(turn.startedAt).toBe("2026-10-01T11:00:01Z");
     expect(turn.endedAt).toBe("2026-10-01T11:00:06Z");
 
@@ -269,10 +252,9 @@ describe("parseCodexTranscript", () => {
       endedAt: "2026-10-01T11:00:04Z",
     });
 
-    // Two API requests in the turn: their usages sum, not overwrite.
     expect(turn.usage).toEqual({
-      inputTokens: 80,
-      outputTokens: 12,
+      inputTokens: 50,
+      outputTokens: 7,
       cacheReadTokens: 10,
       reasoningTokens: 3,
     });
@@ -282,100 +264,6 @@ describe("parseCodexTranscript", () => {
     const session = parseCodexTranscript(codexFixture);
     expect(session.warnings).toHaveLength(1);
     expect(session.warnings[0]).toContain("without task_complete");
-  });
-
-  it("accepts a bare-string reasoning summary (older or hand-written fixtures)", () => {
-    const content = [
-      JSON.stringify({
-        type: "event_msg",
-        timestamp: "2026-10-01T11:00:00Z",
-        payload: { type: "task_started", turn_id: "t1" },
-      }),
-      JSON.stringify({
-        type: "response_item",
-        timestamp: "2026-10-01T11:00:01Z",
-        payload: { type: "reasoning", summary: "Thinking plainly." },
-      }),
-      JSON.stringify({
-        type: "event_msg",
-        timestamp: "2026-10-01T11:00:02Z",
-        payload: { type: "task_complete" },
-      }),
-    ].join("\n");
-
-    const [turn] = parseCodexTranscript(content).turns;
-    expect(turn.thinkingText).toBe("Thinking plainly.");
-  });
-
-  it("keeps a user_message that arrives before task_started", () => {
-    const content = [
-      JSON.stringify({
-        type: "event_msg",
-        timestamp: "2026-10-01T11:00:00Z",
-        payload: { type: "user_message", message: "What files are here?" },
-      }),
-      JSON.stringify({
-        type: "event_msg",
-        timestamp: "2026-10-01T11:00:01Z",
-        payload: { type: "task_started", turn_id: "t1" },
-      }),
-      JSON.stringify({
-        type: "event_msg",
-        timestamp: "2026-10-01T11:00:02Z",
-        payload: { type: "task_complete" },
-      }),
-    ].join("\n");
-
-    const [turn] = parseCodexTranscript(content).turns;
-    expect(turn.userMessage).toBe("What files are here?");
-  });
-});
-
-// ── Source detection ───────────────────────────────────────────────────────
-
-describe("detectTranscriptSource", () => {
-  it("detects claude-code from a user line's message object", () => {
-    const line = JSON.stringify({ type: "user", message: { role: "user", content: "hi" } });
-    expect(detectTranscriptSource(line)).toBe("claude-code");
-  });
-
-  it("detects claude-code from sessionId alone", () => {
-    const line = JSON.stringify({ type: "user", sessionId: "sess-1", content: "hi" });
-    expect(detectTranscriptSource(line)).toBe("claude-code");
-  });
-
-  it("detects codex from a payload-bearing line", () => {
-    const line = JSON.stringify({ type: "event_msg", timestamp: "t", payload: { type: "task_started" } });
-    expect(detectTranscriptSource(line)).toBe("codex");
-  });
-
-  it("detects codex from turn_context and response_item lines", () => {
-    const turnContext = JSON.stringify({ type: "turn_context", timestamp: "t", payload: { model: "m" } });
-    const responseItem = JSON.stringify({ type: "response_item", timestamp: "t", payload: { type: "reasoning" } });
-    expect(detectTranscriptSource(turnContext)).toBe("codex");
-    expect(detectTranscriptSource(responseItem)).toBe("codex");
-  });
-
-  it("scans past torn leading lines and non-objects", () => {
-    const content = [
-      '{"torn write without close',
-      "[1, 2, 3]",
-      JSON.stringify({ type: "user", message: { role: "user", content: "hi" } }),
-    ].join("\n");
-    expect(detectTranscriptSource(content)).toBe("claude-code");
-  });
-
-  it("skips a claude-code-shaped type without message or sessionId, keeps scanning", () => {
-    const content = [
-      JSON.stringify({ type: "user", content: "no message object" }),
-      JSON.stringify({ type: "event_msg", timestamp: "t", payload: { type: "task_started" } }),
-    ].join("\n");
-    expect(detectTranscriptSource(content)).toBe("codex");
-  });
-
-  it("returns undefined for content with no recognizable line", () => {
-    expect(detectTranscriptSource("not json at all\n")).toBeUndefined();
-    expect(detectTranscriptSource("")).toBeUndefined();
   });
 });
 

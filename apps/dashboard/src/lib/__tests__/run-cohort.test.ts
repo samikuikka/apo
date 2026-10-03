@@ -10,16 +10,17 @@ import {
 describe("parseRunCohort", () => {
   it("parses single model/effort/since values", () => {
     expect(
-      parseRunCohort({ model: "claude-opus-4.5", effort: "high", since: "7d" }),
-    ).toEqual({ model: "claude-opus-4.5", effort: "high", since: "7d" });
+      parseRunCohort({ model: "claude-opus-4.5", effort: "high", since: "7d", provider: "fireworks" }),
+    ).toEqual({ model: "claude-opus-4.5", effort: "high", since: "7d", provider: "fireworks" });
   });
 
   it("empty and missing values mean all-history (null cohort)", () => {
-    expect(parseRunCohort({})).toEqual({ model: null, effort: null, since: null });
+    expect(parseRunCohort({})).toEqual({ model: null, effort: null, since: null, provider: null });
     expect(parseRunCohort({ model: "", since: undefined })).toEqual({
       model: null,
       effort: null,
       since: null,
+      provider: null,
     });
   });
 
@@ -28,6 +29,7 @@ describe("parseRunCohort", () => {
       model: "a",
       effort: null,
       since: null,
+      provider: null,
     });
   });
 });
@@ -38,6 +40,7 @@ describe("parseDrilldownCohort (Runs page hop)", () => {
       model: "claude-opus-5",
       effort: null,
       since: "7d",
+      provider: null,
     });
   });
 
@@ -48,11 +51,13 @@ describe("parseDrilldownCohort (Runs page hop)", () => {
       model: null,
       effort: null,
       since: "7d",
+      provider: null,
     });
     expect(parseDrilldownCohort({ effort: "high,low" })).toEqual({
       model: null,
       effort: null,
       since: null,
+      provider: null,
     });
   });
 });
@@ -77,11 +82,11 @@ describe("withViewId", () => {
 
 describe("hrefWithRunCohort (regression)", () => {
   it("still appends cohort params and leaves empty cohorts plain", () => {
-    expect(hrefWithRunCohort("/x", { model: "opus", effort: null, since: "7d" })).toBe(
+    expect(hrefWithRunCohort("/x", { model: "opus", effort: null, since: "7d", provider: null })).toBe(
       "/x?model=opus&since=7d",
     );
     expect(
-      hrefWithRunCohort("/x", { model: null, effort: null, since: null }),
+      hrefWithRunCohort("/x", { model: null, effort: null, since: null, provider: null }),
     ).toBe("/x");
   });
 });

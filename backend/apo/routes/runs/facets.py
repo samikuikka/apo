@@ -11,6 +11,8 @@ from ...models import RunDB
 from ...models.columns import (
     LOGGED_CALL_LEVEL_COL,
     LOGGED_CALL_MODEL_COL,
+    LOGGED_CALL_PROVIDER_COL,
+    LOGGED_CALL_ROUTE_COL,
     LOGGED_CALL_RUN_ID_COL,
     RUN_CALL_COUNT_COL,
     RUN_ENVIRONMENT_COL,
@@ -136,6 +138,37 @@ def _compute_model_facets(session: Session, run_ids: list[str]) -> list[FacetBuc
     )
     rows = session.exec(stmt).all()
     return [FacetBucket(value=r[0], count=r[1]) for r in rows if r[0]]
+
+
+def _compute_provider_facets(session: Session, run_ids: list[str]) -> list[FacetBucket]:
+    """Serving-host facet over the labels the UI displays (issue #307).
+
+    The label is route-wins — the same projection as the runs list column
+    (``provider_labels``) — so every facet bucket is a value the user can
+    see in the Host column. Listing raw provider values alongside would
+    offer "fireworks" for a run whose cell shows "priority": picking it
+    would look like a filter that does nothing.
+    """
+    if not run_ids:
+        return []
+    label = func.coalesce(func.nullif(LOGGED_CALL_ROUTE_COL, ""),
+                          func.nullif(LOGGED_CALL_PROVIDER_COL, ""))
+    stmt = (
+        select(label, func.count(func.distinct(LOGGED_CALL_RUN_ID_COL)))
+        .where(
+            LOGGED_CALL_RUN_ID_COL.in_(run_ids),
+            label.is_not(None),
+        )
+        .group_by(label)
+    )
+    counts: dict[str, int] = {}
+    for value, count in session.exec(stmt).all():
+        if value:
+            counts[str(value)] = counts.get(str(value), 0) + int(count)
+    return [
+        FacetBucket(value=value, count=counts[value])
+        for value in sorted(counts, key=lambda v: (-counts[v], v))
+    ]
 
 
 def _compute_environment_facets(
@@ -311,6 +344,7 @@ def get_run_facets(
         models=_compute_model_facets(
             session, filtered_ids(models=None) if models else filtered_ids()
         ),
+        providers=_compute_provider_facets(session, filtered_ids()),
         environments=_compute_environment_facets(
             session,
             filtered_ids(environment=None) if environment else filtered_ids(),

@@ -407,3 +407,121 @@ export function TraceMetricFilter({
     </div>
   );
 }
+
+/**
+ * Serving-host multi-select (issue #307). Same interaction shape as the
+ * model select; options come from the runs facets endpoint's merged
+ * provider+route buckets.
+ */
+interface ProviderMultiSelectProps {
+  providers: string[];
+  onAddProvider: (provider: string) => void;
+  onRemoveProvider: (provider: string) => void;
+  hideLabel?: boolean;
+  /** Scope the option list to this project — the traces list itself is
+   * project-pinned, so offering other projects' hosts yields
+   * filter-then-empty confusion. */
+  project?: string | null;
+}
+
+export function TraceProviderMultiSelect({
+  providers,
+  onAddProvider,
+  onRemoveProvider,
+  hideLabel = false,
+  project,
+}: ProviderMultiSelectProps) {
+  const [input, setInput] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [options, setOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const fetchProviders = async () => {
+      try {
+        const data = await apiClient<{ providers?: { value: string }[] }>(
+          "/v1/runs/facets",
+          {
+            signal: controller.signal,
+            cache: "no-store",
+            ...(project ? { query: { project } } : {}),
+          },
+        );
+        if (!controller.signal.aborted) {
+          setOptions((data.providers ?? []).map((b) => b.value));
+        }
+      } catch {
+      }
+    };
+    fetchProviders();
+    return () => { controller.abort(); };
+  }, []);
+
+  const providerSet = new Set(providers);
+  const suggestions = options.filter((p) => !providerSet.has(p));
+
+  const handleAdd = (provider: string) => {
+    const trimmed = provider.trim();
+    if (trimmed && !providerSet.has(trimmed)) {
+      onAddProvider(trimmed);
+      setInput("");
+      setShowSuggestions(false);
+    }
+  };
+
+  return (
+    <div className={hideLabel ? "" : "space-y-2"}>
+      {!hideLabel && (
+        <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+          Hosts
+        </Label>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {providers.map((provider) => (
+          <Badge key={provider} variant="secondary" className="gap-1">
+            {provider}
+            <button type="button"
+              aria-label={`Remove provider ${provider}`}
+              onClick={() => onRemoveProvider(provider)}
+              className="ml-1 hover:text-destructive"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+
+      <div className="relative">
+        <Input
+          placeholder="Add serving host..."
+          value={input}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setShowSuggestions(true);
+          }}
+          onFocus={() => setShowSuggestions(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && input.trim()) {
+              e.preventDefault();
+              handleAdd(input.trim());
+            }
+          }}
+        />
+
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="absolute z-10 mt-1 w-full rounded-md border bg-popover p-1 shadow-md">
+            {suggestions.slice(0, 10).map((suggestion) => (
+              <button type="button"
+                key={suggestion}
+                onClick={() => handleAdd(suggestion)}
+                className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

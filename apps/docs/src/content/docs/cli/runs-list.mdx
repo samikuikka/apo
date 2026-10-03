@@ -1,21 +1,21 @@
 ---
 title: "apo runs list"
-description: "List past runs from the backend, filtered by task or status."
+description: "List past runs from the backend, filtered by task, status, model, effort, or serving provider."
 ---
 
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-List task runs from the backend. Filter by task, status, model, or effort.
+List task runs from the backend. Filter by task, status, model, effort, or serving provider.
 
 <TerminalDemo
   command="apo runs list"
   lines={[
-    { text: "Run ID                       Task             Batch    Status   Result  Generations  Execution             Cost      Started" },
-    { text: "───────────────────────────  ───────────────  ───────  ───────  ──────  ───────────  ────────────────────  ────────  ─────────────────────" },
-    { text: "run_de89cab0f1e2d3a4b5c6d7e8  extract-parties  bch_7c0  failed   FAIL    -            gpt-5.1 · high        $0.0034   7/4/2026, 5:12 PM" },
-    { text: "run_c3d4e5f6a7b8c9d0e1f2a3b4  code-review      bch_9e2  passed   PASS    -            claude-haiku-4.5 ·,  $0.0091   7/4/2026, 4:03 PM" },
-    { text: "run_a7b8c9d0e1f2a3b4c5d6e7f8  answer-from-spec bch_441  error    -       17/22 error  gpt-5.1 · high        $0.0028 partial 7/4/2026, 2:45 PM" },
+    { text: "Run ID                       Task             Batch    Status   Result  Generations  Execution             Hosts              Cost      Started" },
+    { text: "───────────────────────────  ───────────────  ───────  ───────  ──────  ───────────  ────────────────────  ─────────────────  ────────  ─────────────────────" },
+    { text: "run_de89cab0f1e2d3a4b5c6d7e8  extract-parties  bch_7c0  failed   FAIL    -            gpt-5.1 · high        openrouter         $0.0034   7/4/2026, 5:12 PM" },
+    { text: "run_c3d4e5f6a7b8c9d0e1f2a3b4  code-review      bch_9e2  passed   PASS    -            claude-haiku-4.5 · —  -                  $0.0091   7/4/2026, 4:03 PM" },
+    { text: "run_a7b8c9d0e1f2a3b4c5d6e7f8  answer-from-spec bch_441  error    -       17/22 error  gpt-5.1 · high        openrouter          $0.0028 partial 7/4/2026, 2:45 PM" },
     { text: "" },
     { text: "3 runs", tone: "default" },
   ]}
@@ -24,7 +24,7 @@ List task runs from the backend. Filter by task, status, model, or effort.
 ## Synopsis
 
 ```bash
-apo runs list [--task <id>] [--status <s>] [--model <m>] [--effort <e>] [--limit <n>]
+apo runs list [--task <id>] [--status <s>] [--model <m>] [--effort <e>] [--provider <p>] [--limit <n>]
 ```
 
 ## Options
@@ -35,21 +35,24 @@ apo runs list [--task <id>] [--status <s>] [--model <m>] [--effort <e>] [--limit
 | `--status <s>` | all | Filter by status (`queued`, `running`, `passed`, `failed`, `error`). |
 | `--model <m>` | all | Filter by adapter-reported model. Repeatable; OR within model, AND with `--effort`. |
 | `--effort <e>` | all | Filter by adapter-reported effort. Repeatable; OR within effort, AND with `--model`. |
+| `--provider <p>` | all | Filter by observed serving provider or route, e.g. `fireworks` or `openrouter:nitro`. Repeatable. |
 | `--limit <n>` | backend default | Maximum runs to list. |
 
 ## Output
 
 <TerminalOutput
   lines={[
-    { text: "Run ID                       Task             Batch    Status   Result  Generations  Execution             Cost      Started" },
-    { text: "───────────────────────────  ───────────────  ───────  ───────  ──────  ───────────  ────────────────────  ────────  ─────────────────────" },
-    { text: "run_de89cab0f1e2d3a4b5c6d7e8  extract-parties  bch_7c0  failed   FAIL    -            gpt-5.1 · high        $0.0034   7/4/2026, 5:12 PM", tone: "danger" },
-    { text: "run_c3d4e5f6a7b8c9d0e1f2a3b4  code-review      bch_9e2  passed   PASS    -            claude-haiku-4.5 · —  $0.0091   7/4/2026, 4:03 PM", tone: "success" },
-    { text: "run_a7b8c9d0e1f2a3b4c5d6e7f8  answer-from-spec bch_441  error    -       17/22 error  gpt-5.1 · high        $0.0028 partial 7/4/2026, 2:45 PM", tone: "danger" },
+    { text: "Run ID                       Task             Batch    Status   Result  Generations  Execution             Hosts              Cost      Started" },
+    { text: "───────────────────────────  ───────────────  ───────  ───────  ──────  ───────────  ────────────────────  ─────────────────  ────────  ─────────────────────" },
+    { text: "run_de89cab0f1e2d3a4b5c6d7e8  extract-parties  bch_7c0  failed   FAIL    -            gpt-5.1 · high        openrouter         $0.0034   7/4/2026, 5:12 PM", tone: "danger" },
+    { text: "run_c3d4e5f6a7b8c9d0e1f2a3b4  code-review      bch_9e2  passed   PASS    -            claude-haiku-4.5 · —  -                  $0.0091   7/4/2026, 4:03 PM", tone: "success" },
+    { text: "run_a7b8c9d0e1f2a3b4c5d6e7f8  answer-from-spec bch_441  error    -       17/22 error  gpt-5.1 · high        openrouter          $0.0028 partial 7/4/2026, 2:45 PM", tone: "danger" },
     { text: "" },
     { text: "3 runs", tone: "default" },
   ]}
 />
+
+`Result` is `PASS` or `FAIL` when a verdict exists, `-` while the run is still going, and `-` for runs that errored or ended with **no verdict**. `Generations` appears as `17/22 error` when model generations ended in error (see [Verdict validity](/concepts/tests/#verdict-validity)); `Cost` is suffixed `partial` when errored generations or unpriced calls were excluded from the total. The `Execution` column shows the adapter-reported model and effort. The `Hosts` column shows the serving provider or route each run actually used (empty when the tracer did not report one). Pass `--json` for machine-readable output.
 
 `Result` is `PASS` or `FAIL` when a verdict exists, `NO VERDICT` when the judge gave no verdict for the only non-passing checks, and `-` while the run is still going or when it errored (an execution error, or most generations errored). `Generations` appears as `17/22 error` when model generations ended in error (see [Verdict validity](/concepts/tests/#verdict-validity)); `Cost` is suffixed `partial` when errored generations or unpriced calls were excluded from the total. The `Execution` column shows the adapter-reported model and effort. Pass `--json` for machine-readable output.
 

@@ -208,6 +208,12 @@ class RunDB(SQLModel, table=True):
     primary_model: str | None = Field(
         default=None, index=True
     )  # TASK-015: Primary model used in this run
+    # The (model, provider/route) pairs this run served through, with call
+    # counts (issue #307). JSON shape: {"pairs": [{model, provider, route,
+    # calls, total_tokens, cost_micro}]}. Null when no generation had a model.
+    model_providers_json: dict[str, object] | None = Field(
+        default=None, sa_column=Column("model_providers_json", JSON)
+    )
 
     bookmarked: bool = Field(default=False, index=True)
     is_public: bool = Field(default=False, index=True)
@@ -562,6 +568,12 @@ class AgentTaskRunDB(SQLModel, table=True):
     # Observations (issue #309). Null for runs aggregated before the column
     # existed, or with no generations — unknown, not zero.
     generation_usage_json: dict[str, object] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    # The (model, provider/route) pairs this run served through (issue #307) —
+    # same JSON shape as RunDB.model_providers_json. Null when the trace had
+    # no generation with a model.
+    model_providers_json: dict[str, object] | None = Field(
         default=None, sa_column=Column(JSON)
     )
     # adapter-reported Run Configuration. Typed, indexed product
@@ -1610,6 +1622,8 @@ class TaskViewDB(SQLModel, table=True):
     model: str | None = None
     effort: str | None = None
     since: str | None = None
+    # Observed serving host (issue #307) — the fourth view dimension.
+    provider: str | None = None
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(UTCDateTime, server_default=func.now()),

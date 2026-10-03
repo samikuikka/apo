@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The task asks for the top country (ip_country) for fraud among four options. The submitted answer selects A. NL, which directly addresses the multiple-choice question. There is no indication that it answers a different slice or variant of the question. Therefore, the answer is responsive to the task.",
+  "steps": 1,
+  "cost_usd": 0.004282182,
+  "latency_ms": 52565,
+  "tokens": {
+    "input": 251,
+    "output": 9328
+  }
+}

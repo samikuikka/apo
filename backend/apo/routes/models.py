@@ -88,6 +88,7 @@ def _build_document(session: Session, model: ModelRowDB) -> ModelDocument:
         project=model.project,
         match_pattern=model.match_pattern,
         provider=model.provider,
+        provider_pattern=model.provider_pattern,
         display_name=model.display_name,
         start_date=model.start_date,
         end_date=model.end_date,
@@ -142,6 +143,7 @@ def _upsert_model_graph(
         project=doc.project,
         match_pattern=doc.match_pattern,
         provider=doc.provider,
+        provider_pattern=doc.provider_pattern,
         display_name=doc.display_name,
         start_date=doc.start_date,
         end_date=doc.end_date,
@@ -315,6 +317,7 @@ async def create_model(
             match_pattern=request.match_pattern,
             start_date=request.start_date,
             end_date=request.end_date,
+            provider_pattern=request.provider_pattern,
         )
     except TierValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -357,6 +360,7 @@ async def replace_model(
             match_pattern=request.match_pattern,
             start_date=request.start_date,
             end_date=request.end_date,
+            provider_pattern=request.provider_pattern,
             exclude_model_id=model_id,
         )
     except TierValidationError as exc:

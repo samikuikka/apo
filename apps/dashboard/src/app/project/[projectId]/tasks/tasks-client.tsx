@@ -17,6 +17,7 @@ import { ProjectFirstRun } from "./components/ProjectFirstRun";
 import { SelectionActionBar } from "./components/SelectionActionBar";
 import { TasksToolbar } from "./components/TasksToolbar";
 import { useEvidenceViews } from "./components/use-evidence-views";
+import { fetchTaskHostFacets } from "@/lib/agent-task-view-api";
 import { useTaskSelection } from "./components/use-task-selection";
 import { useTaskRunActions } from "./components/use-task-run-actions";
 import {
@@ -121,9 +122,27 @@ export function AgentTasksClient({
       model: activeView.model,
       effort: activeView.effort,
       since: activeView.since,
+      provider: activeView.provider,
     },
     activeViewId !== MAIN_VIEW_ID ? activeViewId : null,
   );
+
+  // Serving-host palette for the Tasks page's Hosts view filter (issue #307).
+  // The host is a refinement of the model ("same model, which host"), so —
+  // like the effort tiers — the palette loads for the selected model's runs
+  // and the control appears only once a model is pinned.
+  const [hostFacets, setHostFacets] = useState<{ label: string; count: number }[]>([]);
+  useEffect(() => {
+    if (isDemoProject || !activeView.model) {
+      setHostFacets([]);
+      return;
+    }
+    const controller = new AbortController();
+    fetchTaskHostFacets(projectId, controller.signal, activeView.model)
+      .then((f) => setHostFacets(f))
+      .catch(() => {});
+    return () => controller.abort();
+  }, [projectId, isDemoProject, activeView.model]);
 
   const statusFilteredTasks = useMemo<AgentTaskSummary[]>(() => {
     // No param = all statuses; an explicitly-complete selection is also "all"
@@ -251,11 +270,16 @@ export function AgentTasksClient({
           />
           {tasks.length > 0 && (
             <EvidenceViewsBar
+              hostFacets={hostFacets}
               views={views}
               activeViewId={activeViewId}
               facets={facets}
               loading={viewStatsLoading}
-              isDerived={activeView.model !== null || activeView.effort !== null}
+              isDerived={
+                activeView.model !== null ||
+                activeView.effort !== null ||
+                activeView.provider !== null
+              }
               viewsActive={!isDemoProject}
               addingTab={addingTab}
               statusCounts={statusCounts}

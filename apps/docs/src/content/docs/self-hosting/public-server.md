@@ -82,13 +82,12 @@ Container apo-caddy-1  Recreated
 Container apo-caddy-1  Started
 ```
 
-Then prove routing took the new config — a direct backend answer carries no
-`pragma: no-cache` header (that fingerprint means the request still hops
-through the frontend):
+Then prove routing took the new config — watch the SSE feed on `/backend-proxy`: routed straight to the backend, its headers (`content-type: text/event-stream`) arrive promptly; through the frontend rewrite instead, the feed stalls before even the headers. Header fingerprints like `pragma: no-cache` prove nothing here — the backend itself sets that header on authenticated routes, so it appears on both paths:
 
 ```bash
-curl -sS -D - -o /dev/null https://apo.example.com/backend-proxy/v1/projects | grep -i pragma
-# no output = direct routing is live
+curl -sS -N --max-time 3 -D - -o /dev/null https://apo.example.com/backend-proxy/v1/events?project=demo | grep -i '^content-type:'
+# content-type: text/event-stream within 3 s = direct routing is live
+# curl exit 28 (timeout, no headers) = the feed is stalling behind the frontend hop
 ```
 
 :::caution[One-time drift repair]

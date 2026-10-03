@@ -27,9 +27,12 @@ from ..models.schemas import (
     GenerationExecutionSummary,
     GenerationUsageSummary,
     as_no_verdict_reason,
+
+    ModelProviderPair,
     as_task_run_status,
     as_trace_persistence_status,
 )
+from .trace_backend import parse_model_providers
 from .agent_task_configuration import configuration_from_row
 from .agent_task_deliverables import derive_deliverables_json_for_runs
 from .agent_task_outcome import classify_run_outcome
@@ -110,6 +113,7 @@ def _to_summary(
         unpriced_call_count=run.unpriced_call_count,
         generation_execution=_generation_execution_summary(run),
         generation_usage=_generation_usage_summary(run),
+        model_providers=_model_provider_pairs(run),
         total_tokens=run.total_tokens,
         # Issue #309 reasoning + timing rollups (see AgentTaskRunSummary).
         total_reasoning_tokens=run.total_reasoning_tokens,
@@ -272,6 +276,7 @@ def _to_detail(
         unpriced_call_count=run.unpriced_call_count,
         generation_execution=_generation_execution_summary(run),
         generation_usage=_generation_usage_summary(run),
+        model_providers=_model_provider_pairs(run),
         total_tokens=run.total_tokens,
         # Issue #309 reasoning + timing rollups (see AgentTaskRunSummary).
         total_reasoning_tokens=run.total_reasoning_tokens,
@@ -309,6 +314,14 @@ def _generation_execution_summary(
     if run.generation_execution_json is None:
         return None
     return GenerationExecutionSummary.model_validate(run.generation_execution_json)
+
+
+def _model_provider_pairs(run: AgentTaskRunDB) -> list[ModelProviderPair]:
+    """Decode the run's stored (model, provider/route) rollup (issue #307)."""
+    return [
+        ModelProviderPair.model_validate(pair)
+        for pair in parse_model_providers(run.model_providers_json)
+    ]
 
 
 def _generation_usage_summary(run: AgentTaskRunDB) -> GenerationUsageSummary | None:

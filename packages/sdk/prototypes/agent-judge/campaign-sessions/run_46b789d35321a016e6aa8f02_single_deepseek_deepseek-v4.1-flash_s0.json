@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The submitted answer selects A. NL, which directly answers the multiple-choice question asking for the top ip_country for fraud. This matches the expected result for DABstep #49, and there is no indication that it answers a different quantity or slice of the question.",
+  "steps": 1,
+  "cost_usd": 0.0018219,
+  "latency_ms": 5602,
+  "tokens": {
+    "input": 229,
+    "output": 1461
+  }
+}

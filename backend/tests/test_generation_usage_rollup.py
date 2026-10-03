@@ -52,6 +52,9 @@ def test_rolls_up_model_time_slowest_call_and_largest_reasoning(
         "model_time_ms": 10_000.0,
         "slowest_call_ms": 6_500.0,
         "slowest_call_id": "0000000000000002",
+        # 20 output + reasoning tokens over 1.0/6.5/2.5 s decode windows.
+        "median_output_tok_s": 120.0,
+        "output_tok_s_calls": 3,
         "reasoning_tokens": 1_394,
         "reasoning_calls": 3,
         "max_call_reasoning_tokens": 1_054,

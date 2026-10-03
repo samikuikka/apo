@@ -107,6 +107,7 @@ def reprice_calls(
                     call.raw_usage,
                     call.project,
                     call.created_at or datetime.now(),
+                    provider=call.provider,
                 )
                 if result is None:
                     skipped_no_match += 1

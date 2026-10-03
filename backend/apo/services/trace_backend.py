@@ -15,14 +15,156 @@ task runner or the trace UI needing to know which backend is active.
 
 from __future__ import annotations
 
+import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
 from sqlmodel import Session, select
 
 from ..models.db import AgentTaskRunDB, LoggedCallDB, OtlpSpanDB, RunDB
 from .trace_ownership import mark_failed, mark_persisted
+
+
+# ---------------------------------------------------------------------------
+# Serving provider rollup (issue #307)
+# ---------------------------------------------------------------------------
+
+# JSON shape stored on RunDB.model_providers_json /
+# AgentTaskRunDB.model_providers_json:
+#   {"pairs": [{model, provider, route, calls, total_tokens, cost_micro}, ...]}
+# ``provider``/``route`` are null when the emitter did not report them —
+# surfaces render that as "unknown", never a guess.
+
+
+@dataclass
+class _PairTotals:
+    """Accumulator for one (model, provider, route) pair."""
+
+    model: str
+    provider: str | None
+    route: str | None
+    calls: int = 0
+    total_tokens: int | None = None
+    cost_micro: int | None = None
+
+
+def model_providers_summary(calls: Sequence[LoggedCallDB]) -> dict[str, object] | None:
+    """The set of (model, provider/route) pairs a run used, with call counts.
+
+    Speed and cost of an open-weights model differ by serving host far more
+    than by run-to-run noise, so the pair — not the bare model id — is the
+    identity host comparisons need. Only GENERATION observations with a model
+    count; tool/structural rows carry no serving identity.
+    """
+    entries: dict[tuple[str, str | None, str | None], _PairTotals] = {}
+    for call in calls:
+        if call.observation_type != "GENERATION" or not call.model:
+            continue
+        key = (call.model, call.provider, call.route)
+        entry = entries.get(key)
+        if entry is None:
+            entry = _PairTotals(
+                model=call.model, provider=call.provider, route=call.route
+            )
+            entries[key] = entry
+        entry.calls += 1
+        if call.total_tokens is not None:
+            entry.total_tokens = (entry.total_tokens or 0) + call.total_tokens
+        cost = call.cost if call.cost is not None else call.provided_cost
+        if cost is not None:
+            entry.cost_micro = (entry.cost_micro or 0) + cost
+    if not entries:
+        return None
+    # Cost-dominant first (the model under test outranks incidental judge
+    # calls; a pair with no cost data sorts after any costed one), then call
+    # count, then a stable alphabetical order.
+    ordered = sorted(
+        entries.values(),
+        key=lambda e: (
+            -(e.cost_micro if e.cost_micro is not None else -1),
+            -e.calls,
+            e.model,
+            e.provider or "",
+            e.route or "",
+        ),
+    )
+    return {
+        "pairs": [
+            {
+                "model": e.model,
+                "provider": e.provider,
+                "route": e.route,
+                "calls": e.calls,
+                "total_tokens": e.total_tokens,
+                "cost_micro": e.cost_micro,
+            }
+            for e in ordered
+        ]
+    }
+
+
+def parse_model_providers(
+    value: dict[str, object] | None,
+) -> list[dict[str, object]]:
+    """Read the stored rollup JSON back as a pair list (missing → []).
+
+    Malformed pairs (hand-edited rows) are skipped, not raised — a read
+    path must not 500 on data it can degrade gracefully without.
+    """
+    if not isinstance(value, dict):
+        return []
+    raw = value.get("pairs")
+    if not isinstance(raw, list):
+        return []
+    pairs: list[dict[str, object]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        # A valid pair carries its identity and count; anything else is
+        # corruption, and skipping beats failing the whole endpoint.
+        if not isinstance(item.get("model"), str) or not isinstance(
+            item.get("calls"), int
+        ):
+            continue
+        pairs.append(cast("dict[str, object]", item))
+    return pairs
+
+
+def provider_labels(pairs: list[dict[str, object]]) -> list[str]:
+    """Distinct serving-host labels for a compact list column.
+
+    The route is the finer-grained identity, so it wins over the provider when
+    both are reported; a pair with neither renders nowhere here (its host is
+    genuinely unknown) instead of as a misleading "unknown" chip next to real
+    hosts.
+    """
+    labels: list[str] = []
+    for pair in pairs:
+        label = pair.get("route") or pair.get("provider")
+        if isinstance(label, str) and label and label not in labels:
+            labels.append(label)
+    return labels
+
+
+def output_tok_per_s(call: LoggedCallDB) -> float | None:
+    """Decode throughput of one generation: output tokens per second.
+
+    Divides completion tokens by the decode window — latency minus
+    time-to-first-token, the span after the first token started streaming —
+    falling back to the full duration when no TTFT was recorded (issue #307).
+    This is the number host comparisons are about; it was previously computed
+    by hand from exported traces. Null when tokens or timing are missing.
+    """
+    tokens = call.completion_tokens
+    latency = call.latency_ms
+    if not tokens or not latency or latency <= 0:
+        return None
+    window_ms = latency
+    ttft = call.time_to_first_token_ms
+    if ttft is not None and 0 <= ttft < latency:
+        window_ms = latency - ttft
+    return tokens / (window_ms / 1000.0)
 
 
 # ---------------------------------------------------------------------------
@@ -247,6 +389,9 @@ class NativeTraceBackend:
         # Both #309 storages stay populated: the v46 JSON summary and the
         # v47 discrete rollup columns (readers may use either).
         task_run.generation_usage_json = _generation_usage(calls, errored_span_ids)
+        # The (model, provider/route) pairs the run actually served through
+        # (issue #307) — the host dimension runs list/show and compare on.
+        task_run.model_providers_json = model_providers_summary(calls)
         apply_generation_rollups(
             task_run, compute_generation_rollups(calls, errored_span_ids)
         )
@@ -331,7 +476,7 @@ def generation_execution_facts(
 def _generation_usage(
     calls: Sequence[LoggedCallDB], errored_span_ids: set[str]
 ) -> dict[str, object] | None:
-    """Roll model time and reasoning up from the run's generations.
+    """Roll model time, decode throughput, and reasoning up from the generations.
 
     An average hides the one long call a change introduced, so the summary
     keeps the slowest and the most-reasoning call alongside the totals, with
@@ -343,6 +488,21 @@ def _generation_usage(
 
     timed = [c for c in generations if c.latency_ms is not None]
     slowest = max(timed, key=lambda c: c.latency_ms or 0.0, default=None)
+
+    # Decode throughput per generation (issue #307): output tokens over the
+    # decode window, or full duration when no TTFT exists. Errored
+    # generations are excluded — their token count is usually truncated, so
+    # the ratio would read as a fabricated slowness.
+    tok_s_values = sorted(
+        value
+        for value in (
+            output_tok_per_s(c)
+            for c in generations
+            if c.id not in errored_span_ids
+        )
+        if value is not None
+    )
+    median_tok_s = statistics.median(tok_s_values) if tok_s_values else None
 
     reasoning: list[tuple[LoggedCallDB, int]] = []
     for call in generations:
@@ -360,6 +520,8 @@ def _generation_usage(
         ),
         "slowest_call_ms": slowest.latency_ms if slowest else None,
         "slowest_call_id": slowest.id if slowest else None,
+        "median_output_tok_s": round(median_tok_s, 3) if median_tok_s is not None else None,
+        "output_tok_s_calls": len(tok_s_values),
         "reasoning_tokens": sum(v for _, v in reasoning) if reasoning else None,
         "reasoning_calls": len(reasoning),
         "max_call_reasoning_tokens": most[1] if most else None,

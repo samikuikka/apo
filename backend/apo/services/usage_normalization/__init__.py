@@ -22,7 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import anthropic, bedrock, generic, gemini, openai
-from ._shared import get_json_dict, get_str
+from ._shared import get_int, get_json_dict, get_str
 
 # model-name prefix -> provider (OpenRouter-style "anthropic/...", "openai/...").
 _PREFIX_PROVIDERS: dict[str, str] = {
@@ -71,15 +71,44 @@ _SYSTEM_PROVIDERS: dict[str, str] = {
     "vertex_ai": "gemini",
 }
 
+# Claude Code's OTLP telemetry reports usage under bare attribute names on its
+# ``claude_code.llm_request`` spans — no ``gen_ai.usage.*`` / ``ai.usage.*`` /
+# ``llm.token_count.*`` prefix at all. The values mirror the Anthropic API
+# usage object (input exclusive of cache; cache_creation with no TTL split),
+# so they translate 1:1 onto the canonical keys before provider dispatch and
+# then flow through whichever provider normalizer detection picks.
+_CLAUDE_CODE_USAGE_ALIASES: dict[str, str] = {
+    "input_tokens": "gen_ai.usage.input_tokens",
+    "output_tokens": "gen_ai.usage.output_tokens",
+    "cache_read_tokens": "gen_ai.usage.cache_read.input_tokens",
+    "cache_creation_tokens": "gen_ai.usage.cache_creation.input_tokens",
+}
+
+# Every attribute family the provider normalizers read usage from.
+_CANONICAL_USAGE_PREFIXES = ("gen_ai.usage.", "ai.usage.", "llm.token_count.")
+
+
+def _translate_claude_code_usage(attrs: dict[str, Any]) -> dict[str, Any]:
+    """Map Claude Code's bare usage attributes onto the canonical keys.
+
+    Runs only when no canonical-family attribute is present, so a span from a
+    standard emitter is passed through untouched. Returns a new dict when
+    anything is translated; the input otherwise.
+    """
+    if any(str(key).startswith(_CANONICAL_USAGE_PREFIXES) for key in attrs):
+        return attrs
+    translated: dict[str, Any] | None = None
+    for bare, canonical in _CLAUDE_CODE_USAGE_ALIASES.items():
+        value = get_int(attrs, bare)
+        if value is not None:
+            if translated is None:
+                translated = dict(attrs)
+            translated[canonical] = value
+    return translated if translated is not None else attrs
+
 
 def detect_provider(attrs: dict[str, Any], model_name: str | None) -> str:
-    """Multi-signal provider detection, most-specific signal first.
-
-    Explicit telemetry (providerMetadata, ``gen_ai.system``) outranks
-    model-name heuristics (vendor prefix, then bare model family); anything
-    unrecognized falls back to the generic normalizer, which stores keys
-    verbatim without pricing them.
-    """
+    """Multi-signal provider detection hierarchy (ticket 03 §detection)."""
     # 1. providerMetadata key-membership.
     metadata = get_json_dict(attrs, "ai.response.providerMetadata")
     if metadata:
@@ -120,6 +149,7 @@ def normalize_usage(
     input/output so the families don't double-count. Unknown keys are kept
     verbatim (store-but-unpriced). Returns ``{}`` when no usage is present.
     """
+    attrs = _translate_claude_code_usage(attrs)
     detected = provider or detect_provider(attrs, model_name)
     if detected == "openai":
         return openai.normalize(attrs)

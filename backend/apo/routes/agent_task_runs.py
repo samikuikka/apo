@@ -13,7 +13,7 @@ from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
-from sqlalchemy import asc, desc, func
+from sqlalchemy import asc, desc, func, or_
 from sqlalchemy.orm import defer
 from sqlmodel import Session, col, select
 
@@ -30,6 +30,7 @@ from ..models import (
     GenerationExecutionSummary,
     GenerationUsageSummary,
     LoggedCallDB,
+    ModelProviderPair,
     ReportAgentTaskRunResultRequest,
     RunDB,
 )
@@ -59,6 +60,7 @@ from ..services.agent_task_projection import (
     to_batch_run_detail,
     to_task_run_summary,
 )
+from ..services.trace_backend import parse_model_providers
 from ..services.view_runs import since_cutoff
 from ..services.demo_workspace import require_project_not_demo
 from ..services.agent_task_runner import finalize_external_task_run
@@ -177,7 +179,18 @@ def _checks_with_judge_span_links(
         annotate_judge_span_ids(session, [task_run], {task_run.id: checks})
     return checks
 
+def _task_run_provider_pairs(
+    task_run: AgentTaskRunDB,
+) -> list[ModelProviderPair]:
+    """Decode the run's stored (model, provider/route) rollup (issue #307).
 
+    Same tolerant read as the list projection in agent_task_run_details —
+    this route builds its detail separately and must not drift from it.
+    """
+    return [
+        ModelProviderPair.model_validate(pair)
+        for pair in parse_model_providers(task_run.model_providers_json)
+    ]
 def _build_task_run_detail(
     session: Session,
     task_run: AgentTaskRunDB,
@@ -218,6 +231,7 @@ def _build_task_run_detail(
             if task_run.generation_usage_json is not None
             else None
         ),
+        model_providers=_task_run_provider_pairs(task_run),
         total_tokens=task_run.total_tokens,
         total_reasoning_tokens=task_run.total_reasoning_tokens,
         max_call_reasoning_tokens=task_run.max_call_reasoning_tokens,
@@ -654,6 +668,10 @@ async def list_agent_task_batch_runs(
     q: str | None = Query(default=None),
     model: str | None = Query(default=None),
     effort: str | None = Query(default=None),
+    provider: str | None = Query(
+        default=None,
+        description="Comma-separated serving host filter; matches the observed provider or route on a child run's trace (issue #307)",
+    ),
     since: str | None = Query(default=None),
     page: int = Query(0, ge=0),
     page_size: int = Query(20, ge=1, le=100),
@@ -689,6 +707,11 @@ async def list_agent_task_batch_runs(
             since=since,
             models=model_list,
             efforts=effort_list,
+            providers=(
+                [p.strip() for p in provider.split(",") if p.strip()]
+                if provider
+                else []
+            ),
         ),
         BatchRunListPagination(page=page, page_size=page_size),
     )
@@ -777,6 +800,10 @@ def list_agent_task_runs(
     batch_run_id: str | None = Query(default=None),
     model: list[str] | None = Query(default=None),
     effort: list[str] | None = Query(default=None),
+    provider: list[str] | None = Query(
+        default=None,
+        description="Repeatable serving provider/route filter; matches the observed provider or route on the run's trace calls (issue #307)",
+    ),
     since: str | None = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=5000),
     session: Session = Depends(get_session),
@@ -848,6 +875,38 @@ def list_agent_task_runs(
                 [e.lower() for e in effort]
             )
         )
+    if provider:
+        # Observed serving host, unlike model/effort which filter the
+        # adapter-reported configuration. Resolved through the linked
+        # trace's calls so the JSON rollup stays display-only (issue #307).
+        # Project-scoped because trace ids may collide across projects
+        # (surrogate-PK design) — another project's copy of a trace must
+        # not satisfy this one's filter.
+        provider_values = [
+            p.lower() for raw in provider for p in raw.split(",") if p.strip()
+        ]
+        # The trace's project is the owning batch run's project — correlated
+        # against the outer row so each task run matches only its own
+        # project's copy of the trace.
+        batch_projects = select(col(AgentTaskBatchRunDB.project)).where(
+            col(AgentTaskBatchRunDB.id) == col(AgentTaskRunDB.batch_run_id)
+        )
+        matching_traces = (
+            select(col(LoggedCallDB.run_id))
+            .where(
+                col(LoggedCallDB.project).in_(batch_projects.scalar_subquery()),
+                or_(
+                    func.lower(as_column(cast(object, LoggedCallDB.provider))).in_(
+                        provider_values
+                    ),
+                    func.lower(as_column(cast(object, LoggedCallDB.route))).in_(
+                        provider_values
+                    ),
+                ),
+            )
+            .correlate(AgentTaskRunDB)
+        )
+        query = query.where(col(AgentTaskRunDB.trace_run_id).in_(matching_traces))
     since_cutoff_value = since_cutoff(since)
     if since_cutoff_value is not None:
         query = query.where(col(AgentTaskRunDB.started_at) >= since_cutoff_value)

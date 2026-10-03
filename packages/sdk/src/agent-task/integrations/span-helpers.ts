@@ -99,6 +99,56 @@ export function emitGenerationAndTools(
 }
 
 /**
+ * Resolve the serving host a client actually talks to, from its baseURL.
+ *
+ * The vendor default (no baseURL) means the SDK's own endpoint. A custom
+ * baseURL is the serving host itself — for a known gateway the provider is
+ * its name; for anything else the registered domain is the provider and the
+ * full host the route, which is exactly the split the backend stores
+ * (`gen_ai.provider.name` / `apo.llm.route`, issue #307). Local/private
+ * hosts are proxies in front of an unknown backend — report nothing rather
+ * than a wrong host.
+ */
+export function servingHostFromBaseURL(
+  baseURL: unknown,
+  defaultVendor?: string,
+): { provider?: string; route?: string } {
+  if (typeof baseURL !== "string" || baseURL.trim() === "") {
+    return defaultVendor ? { provider: defaultVendor } : {};
+  }
+  let host: string;
+  try {
+    host = new URL(baseURL).hostname;
+  } catch {
+    return defaultVendor ? { provider: defaultVendor } : {};
+  }
+  if (
+    host === "localhost" ||
+    /^(127\.|0\.0\.0\.0|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)
+  ) {
+    return {};
+  }
+  const known: Record<string, string> = {
+    "api.openai.com": "openai",
+    "api.anthropic.com": "anthropic",
+    "openrouter.ai": "openrouter",
+    "api.fireworks.ai": "fireworks",
+    "api.groq.com": "groq",
+    "api.cerebras.ai": "cerebras",
+    "api.deepseek.com": "deepseek",
+    "api.mistral.ai": "mistral",
+    "api.x.ai": "xai",
+    "api.together.xyz": "together",
+    "generativelanguage.googleapis.com": "google",
+  };
+  const provider = known[host];
+  if (provider) return { provider };
+  const labels = host.split(".");
+  if (labels.length < 2) return {};
+  return { provider: labels.slice(-2).join("."), route: host };
+}
+
+/**
  * Create a GENERATION span before the LLM call.
  * Returns `{ spanId, startedAt }` to pass to {@link emitGenerationAndTools}.
  */
@@ -111,6 +161,9 @@ export function startGeneration(
     parentSpanId?: string;
     taskId?: string;
     turnNumber?: number;
+    /** Serving host attributes for this generation (issue #307). */
+    provider?: string;
+    route?: string;
   },
 ): { spanId: string; startedAt: number } {
   const spanId = trace.createSpan({
@@ -118,6 +171,8 @@ export function startGeneration(
     parent_call_id: opts.parentSpanId ?? trace.rootSpanId,
     step_name: "agent.generate",
     model: opts.model,
+    provider: opts.provider,
+    route: opts.route,
     observation_type: "GENERATION",
     input: {
       ...(opts.system !== undefined ? { system: opts.system } : {}),

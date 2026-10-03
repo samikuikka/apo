@@ -37,7 +37,7 @@ See the [Flow normalizers](/reference/flow-normalizers/) for signatures.
 
 ## Example adapters
 
-The repo ships four reference adapters, from minimal to full-featured. Read them to learn the pattern:
+The repo ships five reference adapters, from minimal to full-featured. Read them to learn the pattern:
 
 | Adapter | What it shows | Location |
 |---|---|---|
@@ -45,6 +45,7 @@ The repo ships four reference adapters, from minimal to full-featured. Read them
 | **real-agent** | The full pattern, `initialize` loads inputs, `sendUserTurn` drives a Vercel AI SDK agent with tools (`read_file`, `search_content`, etc.), `collectDeliverables` shapes the output. | `apps/example-service/e2e/agent-task-demo/real-agent-adapter.ts` |
 | **claude** | The native-OpenTelemetry pattern, the adapter owns only the lifecycle wiring; the agent itself (prompt, tools, the `query()` call) is plain user code in `agent/claude-agent.ts`. | `apps/example-service/e2e/agent-task-demo/claude-adapter.ts` |
 | **harbor** | Wrapping an external runner as a subprocess, the adapter drives the `harbor` CLI in a child process instead of an in-process function. | `apps/example-service/e2e/agent-task-demo/harbor-adapter.ts` |
+| **reasoning** | Recording the GENERATION span yourself, with apo's own trace API: a plain-`fetch` model call whose usage object (including `reasoning_tokens`) lands in apo exactly as a GenAI-convention SDK would deliver it — built because the Vercel AI SDK's telemetry drops reasoning tokens on the `generateText` path. | `apps/example-service/e2e/agent-task-demo/reasoning-adapter.ts` |
 
 The **real-agent** adapter also ships ten ready-made tasks under `apps/example-service/e2e/agent-task-demo/tasks/real-agent/`, grouped by domain, `documents/document-qa`, `engineering/code-review`, `engineering/bug-triage`, `security/security-audit`, and so on. Each is a folder with a `.eval.ts` and `files/`. Run them by folder-scoped id: `apo task run documents/document-qa`.
 

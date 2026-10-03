@@ -44,6 +44,12 @@ export interface FilterBarProps {
   /** Empty = all models. May hold more than one when a page allows multi. */
   selectedModels: Set<string>;
   onSelectModel: (model: string | null) => void;
+  /** Serving-host facet (issue #307). Empty/omitted hides the control. */
+  hostOptions?: { label: string; count: number }[];
+  /** Selected hosts; a selection present with empty options still renders. */
+  selectedHosts?: Set<string>;
+  onToggleHost?: (host: string) => void;
+  onClearHosts?: () => void;
   /**
    * Render the model control even while its options are empty (e.g. facets
    * still loading). Defaults to hiding until there is something to show.
@@ -109,6 +115,15 @@ export function FilterBar(props: FilterBarProps) {
         </div>
       )}
 
+      {props.hostOptions && (props.hostOptions.length > 0 || (props.selectedHosts?.size ?? 0) > 0) && (
+        <HostsFilterMenu
+          options={props.hostOptions}
+          selected={props.selectedHosts ?? new Set<string>()}
+          onToggle={props.onToggleHost}
+          onClear={props.onClearHosts}
+        />
+      )}
+
       {props.effortOptions.length > 0 && (
         <FilterPicker
           label="Effort"
@@ -158,7 +173,11 @@ function countActive(p: FilterBarProps): number {
   const filtered =
     p.status.size > 0 && p.status.size < p.statusOptions.length ? 1 : 0;
   return (
-    filtered + (p.selectedModels.size > 0 ? 1 : 0) + (p.effort ? 1 : 0) + (p.since ? 1 : 0)
+    filtered +
+    (p.selectedModels.size > 0 ? 1 : 0) +
+    ((p.selectedHosts?.size ?? 0) > 0 ? 1 : 0) +
+    (p.effort ? 1 : 0) +
+    (p.since ? 1 : 0)
   );
 }
 
@@ -231,6 +250,90 @@ function StatusFilterMenu({
                   {opt.count}
                 </span>
               )}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+/**
+ * Multi-select serving-host menu (issue #307) — the same shape as the
+ * status menu: stays open across picks, counts on the rows, selected
+ * values missing from the options stay listed so a shared link can never
+ * apply an invisible, unclearable filter.
+ */
+function HostsFilterMenu({
+  options,
+  selected,
+  onToggle,
+  onClear,
+}: {
+  options: { label: string; count: number }[];
+  selected: Set<string>;
+  onToggle?: (host: string) => void;
+  onClear?: () => void;
+}) {
+  const listed = new Map(options.map((o) => [o.label, o.count]));
+  for (const host of selected) {
+    if (!listed.has(host)) listed.set(host, 0);
+  }
+  const entries = [...listed.entries()].sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+  );
+  const filtered = selected.size > 0;
+
+  return (
+    <div className="flex shrink-0 items-center gap-1.5">
+      <span className="text-[11px] uppercase tracking-wide text-foreground/50">Hosts</span>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label="Hosts filter"
+            className={cn(
+              "flex h-7 min-w-[130px] max-w-[200px] items-center justify-between gap-1 border px-2 text-[12px] transition-colors",
+              filtered
+                ? "border-foreground/30 bg-muted/60 text-foreground"
+                : "border-input bg-muted/40 text-foreground hover:bg-muted/60",
+            )}
+          >
+            <span className="truncate font-mono">
+              {selected.size === 1
+                ? Array.from(selected)[0]
+                : selected.size > 1
+                  ? `${selected.size} hosts`
+                  : "All hosts"}
+            </span>
+            <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="min-w-[16rem]">
+          <DropdownMenuLabel className="flex items-center justify-between text-[11px] uppercase tracking-wide text-muted-foreground">
+            <span>{filtered ? `Hosts — ${selected.size} selected` : "Hosts"}</span>
+            {filtered && onClear && (
+              <button
+                type="button"
+                onClick={onClear}
+                className="text-[11px] normal-case text-muted-foreground underline underline-offset-2 hover:text-foreground"
+              >
+                Clear
+              </button>
+            )}
+          </DropdownMenuLabel>
+          {entries.map(([label, count]) => (
+            <DropdownMenuCheckboxItem
+              key={label}
+              checked={selected.has(label)}
+              onCheckedChange={() => onToggle?.(label)}
+              onSelect={(e) => e.preventDefault()}
+              className="font-mono text-[12px]"
+            >
+              <span className="truncate">{label}</span>
+              <span className="ml-auto pl-3 font-mono text-[10px] tabular-nums text-muted-foreground/60">
+                {count}
+              </span>
             </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuContent>

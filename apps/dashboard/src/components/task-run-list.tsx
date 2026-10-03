@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUpRight, Clock, DollarSign, GitCompare, Hash } from "lucide-react";
-import { type AgentTaskRunSummary } from "@/lib/agent-task-api";
+import { type AgentTaskRunSummary, providerLabels } from "@/lib/agent-task-api";
 import { TraceHomeLink } from "@/components/trace-detail";
 import { TriggerBadge } from "@/components/trigger-badge";
 import { DeleteRunButton } from "@/components/runs/DeleteRunButton";
@@ -26,6 +26,7 @@ import {
 const COL = {
   trigger: 170,
   batch: 90,
+  hosts: 160,
   execution: 170,
   judges: 100,
   duration: 105,
@@ -183,6 +184,12 @@ export function TaskRunRow({
         {run.batch_run_id.slice(0, 8)}
       </TableCell>
 
+      {/* Hosts — the serving providers/routes the run actually used
+       * (issue #307); absent host renders an em dash, not "unknown". */}
+      <TableCell className="hidden max-w-[160px] xl:table-cell" style={{ width: COL.hosts }}>
+        <HostLabelsCell labels={providerLabels(run.model_providers)} />
+      </TableCell>
+
       {/* Execution — model · effort. Full qualified name on hover. */}
       <TableCell className="hidden max-w-[190px] xl:table-cell" style={{ width: COL.execution }}>
         <span
@@ -255,12 +262,29 @@ export function TaskRunListHeader() {
         <TableHead className="pl-6">Task run</TableHead>
         <TableHead style={{ width: COL.trigger }}>Trigger</TableHead>
         <TableHead className="hidden xl:table-cell" style={{ width: COL.batch }}>Batch</TableHead>
+        <TableHead className="hidden xl:table-cell" style={{ width: COL.hosts }}>Hosts</TableHead>
         <TableHead className="hidden xl:table-cell" style={{ width: COL.execution }}>Execution</TableHead>
         <TableHead className="text-right" style={{ width: COL.judges }}>Judges</TableHead>
         <TableHead className="text-right" style={{ width: COL.duration }}>Duration</TableHead>
         <TableHead className="pr-6 text-right" style={{ width: COL.started }}>Started</TableHead>
       </TableRow>
     </TableHeader>
+  );
+}
+
+/** Compact serving-host labels for a table cell; shared by every task-run
+ * row rendering (issue #307). */
+export function HostLabelsCell({ labels }: { labels: string[] }) {
+  if (labels.length === 0) {
+    return <span className="text-muted-foreground/50">&mdash;</span>;
+  }
+  return (
+    <span
+      className="block truncate font-mono text-[12px] text-muted-foreground"
+      title={labels.join(" · ")}
+    >
+      {labels.join(" · ")}
+    </span>
   );
 }
 

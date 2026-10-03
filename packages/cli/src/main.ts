@@ -197,18 +197,20 @@ const commands: Record<string, CommandEntry> = {
       ["--status <s>", "Filter by run status"],
       ["--model <m>", "Filter by adapter-reported model (repeatable; OR within model, AND with --effort)"],
       ["--effort <e>", "Filter by adapter-reported effort (repeatable; OR within effort, AND with --model)"],
+      ["--provider <p>", "Filter by observed serving provider/route, e.g. fireworks or openrouter:nitro (repeatable)"],
       ["--limit <n>", "Max results to show"],
     ],
     examples: [
       "apo runs list",
       "apo runs list --task meeting-summary --limit 5",
       "apo runs list --model gpt-5.6-terra --effort high",
+      "apo runs list --provider fireworks",
     ],
-    note: "Requires backend auth. Supports --json. The Execution column shows the adapter-reported model · effort.",
+    note: "Requires backend auth. Supports --json. The Execution column shows the adapter-reported model · effort; the Hosts column shows the serving provider/route each run actually used (empty when the tracer did not report one).",
   },
   "runs show": {
     handler: loadCommand("runs-show"),
-    help: "Show run details (checks, failures, cost, reasoning, timing) from backend. Reasoning totals and model time (sum of generation latencies) come with the peak/slowest single call. Checks judged with a second judge carry ✓✗ marks and a split count (APO_SECOND_JUDGE_MODEL)",
+    help: "Show run details (checks, failures, cost, reasoning) from backend. Reasoning totals come with the peak single call. Checks judged with a second judge carry ✓✗ marks and a split count (APO_SECOND_JUDGE_MODEL)",
     args: [
       ["[run-id]", "Run ID, unique prefix, or 'last' (default: latest run)"],
     ],
@@ -380,7 +382,7 @@ const commands: Record<string, CommandEntry> = {
   },
   "traces show": {
     handler: loadCommand("traces-show"),
-    help: "Show trace call details (timing, cost, tokens, reasoning)",
+    help: "Show trace call details (timing, cost, tokens, throughput, serving host)",
     args: [
       ["<trace-id>", "Trace ID or unique prefix"],
     ],
@@ -398,7 +400,7 @@ const commands: Record<string, CommandEntry> = {
       "apo traces show abc123 --max-chars 2000",
       "apo traces show abc123 --call c1f2",
     ],
-    note: "Accepts trace-id prefixes. Requires backend auth. Header shows the projection's evidence capabilities. --verbose adds each call's id, resolved observation_type, raw OTLP span attributes, and content previews (300 chars per message, 500 for input/output). --full lifts those caps, --max-chars resizes them, --call prints one generation with messages/input/output in full — all three imply --verbose; span attributes and tool results stay compact, and --max-chars overrides --call's no-cap default. --json prints the full raw trace, messages and span attributes included, never filtered by --call.",
+    note: "Accepts trace-id prefixes. Requires backend auth. Each generation line carries decode tok/s (output tokens over end−first-token) and the serving host when reported (@provider or @route, issue #307); the header summarizes the trace's hosts with call counts. Header shows the projection's evidence capabilities. --verbose adds each call's id, resolved observation_type, raw OTLP span attributes, and content previews (300 chars per message, 500 for input/output). --full lifts those caps, --max-chars resizes them, --call prints one generation with messages/input/output in full — all three imply --verbose; span attributes and tool results stay compact, and --max-chars overrides --call's no-cap default. --json prints the full raw trace, messages and span attributes included, never filtered by --call.",
   },
   "batch list": {
     handler: loadCommand("batch-list"),

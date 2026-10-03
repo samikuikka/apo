@@ -45,7 +45,7 @@ export const aiSdkAdapter = defineAdapter({
     // report the same resolved model the agent uses (service.ts
     // getModel() reads OPENROUTER_MODEL with the same default). apo never
     // picks the model — the adapter resolves and reports the truth.
-    const model = process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4.1-flash";
+    const model = process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4-flash-0731";
 
     // Task-declared MCP servers (TaskDefinition.mcpServers): connect once
     // per session, merge the raw namespaced tools into the agent's tool

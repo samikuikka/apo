@@ -99,12 +99,14 @@ One judge gives you a verdict. Two judges of different kinds give you an error b
 export APO_SECOND_JUDGE_MODEL=typesafe/jev-1.13
 ```
 
-The second judge needs an OpenRouter-style decisions endpoint. When your primary judge talks to OpenRouter directly, that's automatic. When it's routed through a proxy (LiteLLM, a gateway, a direct provider), give the second judge its own connection — it cannot ride a chat proxy:
+The second judge needs a decisions endpoint (OpenRouter-style `/alpha/decisions`). When your primary judge talks to OpenRouter directly, that's automatic. When it's routed through a proxy (LiteLLM, a gateway, a direct provider), give the second judge its own connection — it cannot ride a chat proxy:
 
 ```bash
 export APO_SECOND_JUDGE_BASE_URL=https://openrouter.ai/api/v1
 export APO_SECOND_JUDGE_API_KEY=sk-or-...
 ```
+
+Each decisions endpoint speaks its own request/response dialect, so the second judge has a provider switch: `APO_SECOND_JUDGE_PROVIDER` selects one explicitly, and unset it auto-detects from the base URL — an `api.openai.com` host selects the OpenAI Decisions dialect, anything else the OpenRouter dialect. The OpenAI dialect is reserved until the endpoint's schema is public: selecting it records a clear `error` on the evidence (and never sends a request) rather than guessing a request shape. Adding any other decisions provider is one provider object in the SDK's `second-judge.ts` — the knob, evidence contract, and wiring stay identical.
 
 Why a *non-generative* second opinion: text judges sometimes fabricate evidence in their reasoning — quoting findings that aren't in the deliverable — and then verdict off their own fabrication. A decision model can't write a quote, so it can't do that. Measured against production data (2,094 judged checks re-played through the second judge): 96% agreement, and the disagreements clustered exactly where judges contradicted rubric text or rubrics couldn't decide the case.
 
@@ -158,6 +160,43 @@ Agents reading `--json` get the raw evidence instead of marks: every check carri
 :::note
 Everything works without the second judge. Unset, `APO_SECOND_JUDGE_MODEL` changes nothing: no marks, no lines, output byte-identical. Code-assertion and agentic (`t.agent`) tests never get a second judge — only `t.judge` calls do.
 :::
+
+## The agentic judge
+
+`t.judge` hands the judge a value. `t.agent` hands it a question. The agentic judge is a tool-using LLM session that investigates the run's own evidence — the deliverables, the trace, this task's prior runs — and only then verdicts. Where `t.judge` asks "is this value good?", `t.agent` asks "go find out whether the run holds up."
+
+```typescript title="extract-parties.eval.ts"
+test("summary-grounded-in-invoice", async (t) => {
+  await t.agent(
+    "PASS if every line item, seller, and amount the summary claims is consistent with the extracted result. " +
+    "Investigate the deliverables before deciding. FAIL if the summary asserts anything the extracted " +
+    "data contradicts or cannot support.",
+  );
+});
+```
+
+Some criteria can't be answered from a pre-extracted slice. Groundedness across a long document, cross-references between deliverables, "did the agent actually read what it claims to have read" — the evidence for the verdict is scattered, and pulling it into the check means writing extraction code that duplicates the judgment. `t.agent` lets the judge gather its own evidence with read-only tools — read and regex-search the deliverables, query the run's trace, list and inspect this task's prior runs (human corrections included, frozen once per evaluation), read the task definition — and end the session with `finish_verdict`, whose reasoning must cite the evidence it relied on. The exact tool surface and options live in the [Assertions API](/reference/assertions/).
+
+The session is bounded and honest by construction:
+
+| Guarantee | How |
+|---|---|
+| **Bounded** | A hard budget of turns, tool calls, wall-clock time, and bytes read (defaults in the reference). When one runs out, every tool starts answering "call finish_verdict now" |
+| **Fail-closed** | A session that ends without a verdict records a **failure** with the explanation — never a silent pass |
+| **Recorded** | The whole session lands in the check report (`evaluator_type: "agent"`): the transcript as a content-hashed manifest of what was actually read, plus the verdict's reasoning |
+| **Stateless** | Each check gets a fresh session; no remembered judgment leaks between checks (remembered judgments were shown to cascade errors) |
+| **Traced** | The investigation is itself an `AGENT` span in the run's trace, with the verdict summarized |
+
+A budget-exhausted failure looks like this:
+
+```text
+    FAIL summary-grounded-in-invoice
+      agentic judge session ended without a verdict (budget exhausted after 12 steps; last tool: search_deliverable)
+```
+
+That failure is a signal about your budget or instruction, not about the agent — raise `budget`, tighten the instruction, or drop back to `t.judge` with a pre-extracted value.
+
+An agentic session costs real money and runs minutes, not seconds. Reserve it for the criteria that genuinely need investigation and keep the rest on `t.check` / `t.judge`. The judge model must be tool-calling capable (same judge config chain as `t.judge`, overridable per call), and the [second judge](#the-second-judge) never applies — only `t.judge` calls get one.
 
 ## Re-judging a run
 

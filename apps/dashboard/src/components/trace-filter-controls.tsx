@@ -45,6 +45,7 @@ import {
   TraceTaskSelect,
   TraceModelMultiSelect,
   TraceMetricFilter,
+  TraceProviderMultiSelect,
 } from "./trace-select-filters";
 import type { TraceFilterOptions } from "@/lib/traces-api";
 
@@ -539,6 +540,18 @@ export function TraceFilterControls({
             onRemoveModel={(model) => actions.setModels(filters.models.filter((m) => m !== model))}
             hideLabel={true}
             options={filterOptions?.models}
+          />
+        </FilterSection>
+
+        <FilterSection id="providers" label="Hosts" expanded={expanded} onToggle={toggleExpanded}>
+          <TraceProviderMultiSelect
+            providers={filters.providers}
+            onAddProvider={(provider) => actions.setProviders([...filters.providers, provider])}
+            onRemoveProvider={(provider) =>
+              actions.setProviders(filters.providers.filter((p) => p !== provider))
+            }
+            hideLabel={true}
+            project={filters.project}
           />
         </FilterSection>
 

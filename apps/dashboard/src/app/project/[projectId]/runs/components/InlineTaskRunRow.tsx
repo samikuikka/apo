@@ -4,7 +4,8 @@ import Link from "next/link";
 import { ArrowUpRight, Clock } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
-import { type AgentTaskRunSummary } from "@/lib/agent-task-api";
+import { type AgentTaskRunSummary, providerLabels } from "@/lib/agent-task-api";
+import { HostLabelsCell } from "@/components/task-run-list";
 import { taskRunStatusConfig } from "@/components/task-run-list.utils";
 import { DeleteRunButton } from "@/components/runs/DeleteRunButton";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -89,6 +90,10 @@ export function InlineTaskRunRow({
         >
           {formatRunExecution(run.run_configuration)}
         </span>
+      </TableCell>
+
+      <TableCell className="hidden max-w-[160px] xl:table-cell">
+        <HostLabelsCell labels={providerLabels(run.model_providers)} />
       </TableCell>
 
       <TableCell className="text-right">

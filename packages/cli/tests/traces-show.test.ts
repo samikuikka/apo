@@ -443,7 +443,7 @@ describe("traces show content caps (issue #308)", () => {
   });
 });
 
-describe("traces show reasoning and timing rollups (issue #309)", () => {
+describe("traces show reasoning rollups (issue #309)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -476,7 +476,7 @@ describe("traces show reasoning and timing rollups (issue #309)", () => {
     };
   }
 
-  it("prints reasoning totals with the deepest call, slowest call, and model time", async () => {
+  it("prints reasoning totals with the deepest call", async () => {
     const { run } = await import("../src/commands/traces-show.ts");
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse({
@@ -516,10 +516,9 @@ describe("traces show reasoning and timing rollups (issue #309)", () => {
     const out = stripAnsi(logs.join("\n"));
     expect(out).toContain("Reasoning: 7,500 tok");
     expect(out).toContain("max 7,000 in one call (observation gen-2)");
-    expect(out).toContain("Slowest call: 6.5s (observation gen-2)");
-    // Model time sums generations only (2.0s + 6.5s): the 90s tool and the
-    // 300s root span stay in the per-call list below but are not model time.
-    expect(out).toContain("Model time: 8.5s");
+    // Timing extremes stay data-only — not part of the summary output.
+    expect(out).not.toContain("Slowest call:");
+    expect(out).not.toContain("Model time:");
   });
 
   it("omits the rollup lines when nothing reported them", async () => {
@@ -543,5 +542,106 @@ describe("traces show reasoning and timing rollups (issue #309)", () => {
     expect(out).not.toContain("Reasoning:");
     expect(out).not.toContain("Slowest call:");
     expect(out).not.toContain("Model time:");
+  });
+});
+
+describe("traces show serving host + decode throughput (issue #307)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function genCall(id: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id,
+      level: "DEFAULT",
+      step_name: "ai.generateText",
+      observation_type: "GENERATION",
+      model: "deepseek-v4.1-flash",
+      latency_ms: 10_000,
+      cost: 0.0001,
+      total_tokens: 320,
+      prompt_tokens: 20,
+      completion_tokens: 300,
+      time_to_first_token_ms: 2_000,
+      provider: "fireworks",
+      route: "priority",
+      ...overrides,
+    };
+  }
+
+  it("prints decode tok/s over the window after first token, plus the host", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse({ ...makeTraceDetail(), calls: [genCall("call-1")] }),
+    );
+    const { logs, restore } = captureLog();
+    const { run } = await import("../src/commands/traces-show.ts");
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    // 300 tokens over (10s - 2s): 37.5 tok/s, not the 30 of full duration.
+    expect(out).toContain("37.5tok/s");
+    expect(out).toContain("@priority");
+    expect(out).not.toContain("30.0tok/s");
+  });
+
+  it("falls back to full duration when no TTFT was recorded", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse({
+        ...makeTraceDetail(),
+        calls: [genCall("call-1", { time_to_first_token_ms: null, latency_ms: 6_000, completion_tokens: 300 })],
+      }),
+    );
+    const { logs, restore } = captureLog();
+    const { run } = await import("../src/commands/traces-show.ts");
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain("50.0tok/s");
+  });
+
+  it("summarizes the trace's hosts with call counts in the header", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse({
+        ...makeTraceDetail(),
+        run: {
+          ...makeTraceDetail().run,
+          model_providers: [
+            { model: "deepseek-v4.1-flash", provider: "fireworks", route: "priority", calls: 12, total_tokens: 1, cost_micro: 1 },
+            { model: "deepseek-v4.1-flash", provider: "baseten", route: null, calls: 3, total_tokens: 1, cost_micro: 1 },
+          ],
+        },
+        calls: [genCall("call-1")],
+      }),
+    );
+    const { logs, restore } = captureLog();
+    const { run } = await import("../src/commands/traces-show.ts");
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain("Hosts:     priority ×12 · baseten ×3");
+  });
+
+  it("shows no host line when no call reported one", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse({
+        ...makeTraceDetail(),
+        calls: [genCall("call-1", { provider: null, route: null })],
+      }),
+    );
+    const { logs, restore } = captureLog();
+    const { run } = await import("../src/commands/traces-show.ts");
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).not.toContain("Hosts:");
+    expect(out).not.toMatch(/@\w/);
   });
 });

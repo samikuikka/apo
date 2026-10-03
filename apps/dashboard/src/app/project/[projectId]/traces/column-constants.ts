@@ -10,6 +10,7 @@ import type { TraceMetric } from "@/lib/traces-api";
 
 /** Display label per trace column id. Empty string means no header text. */
 export const COLUMN_LABELS: Record<string, string> = {
+  providers: "Host",
   bookmark: "",
   status: "Status",
   id: "ID",

@@ -107,3 +107,5 @@ spec*-proof/
 .cloudflared/
 backend/data/*.key
 
+# Transient dirs from judge-mcp tests (snapshotted mid-test once — keep out of commits)
+packages/sdk/tests/__judge-mcp-rel-*

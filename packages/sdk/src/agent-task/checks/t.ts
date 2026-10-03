@@ -19,6 +19,8 @@ import { callJudge, type JudgeCallContext, type JudgePromptBuilder } from "./jud
 import { createAgentMethod, type AgentEvidence, type AgentJudgeOptions } from "./agent-session.ts";
 import type { JudgeToolsConfig } from "./mcp-tools.ts";
 import type { JudgeTracer } from "../tracing.ts";
+import { servingHostFromBaseURL } from "../integrations/span-helpers.ts";
+
 import { isTraceableSpanId } from "../tracing.ts";
 
 /** A tool/agent name matcher: literal (exact), RegExp, or predicate. */
@@ -474,6 +476,11 @@ function createJudgeMethod(
       return;
     }
     const context = judgeScopeToContext(judgeScope);
+    // The judge call's serving host, from the endpoint it actually fetches
+    // (issue #307) — OpenRouter and friends are a different host from the
+    // model under test and must not blend into it.
+    const judgeServing = servingHostFromBaseURL(effective.baseURL);
+
     const secondJudgeValue = opts?.secondJudgeValue;
     const call = () =>
       callJudge({
@@ -506,6 +513,7 @@ function createJudgeMethod(
             // The span carries the model + tokens so the backend prices the
             // judge call and trace rollups count its spend (issue #288).
             model: effective.model,
+            ...judgeServing,
             input: { model: effective.model, instruction },
             summarize: (r: unknown) => {
               const res = r as { pass?: boolean; reasoning?: string };

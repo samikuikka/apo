@@ -32,7 +32,12 @@
  */
 
 import type { AgentTaskTraceContext } from "../tracing.ts";
-import { startGeneration, emitGenerationAndTools, safeParse } from "./span-helpers.ts";
+import {
+  startGeneration,
+  emitGenerationAndTools,
+  safeParse,
+  servingHostFromBaseURL,
+} from "./span-helpers.ts";
 
 export interface CreateApoOpenAIOptions {
   /** The tee'd trace context from `sendUserTurn`'s second argument. */
@@ -116,6 +121,12 @@ export function createApoOpenAI<T extends OpenAIClientLike>(
       return realCreate(params);
     }
 
+    // The OpenAI SDK is often pointed at a gateway via baseURL — the host
+    // it actually calls is the run's serving host (issue #307).
+    const serving = servingHostFromBaseURL(
+      (client as { baseURL?: unknown }).baseURL,
+      "openai",
+    );
     const { spanId, startedAt } = startGeneration(trace, {
       model,
       system: typeof params.system === "string" ? params.system : undefined,
@@ -123,6 +134,7 @@ export function createApoOpenAI<T extends OpenAIClientLike>(
       parentSpanId,
       taskId,
       turnNumber,
+      ...serving,
     });
 
     try {

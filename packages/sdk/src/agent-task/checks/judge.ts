@@ -4,8 +4,6 @@
  * endpoint (OpenRouter, OpenAI, etc.) via fetch and parses the verdict.
  */
 
-import { createHash } from "node:crypto";
-
 import type { JudgeMetadata } from "../run/types.ts";
 import { callSecondJudge, resolveSecondJudgeAPIKey, resolveSecondJudgeBaseURL, resolveSecondJudgeModel } from "./second-judge.ts";
 
@@ -228,38 +226,19 @@ function parseJudgeJson(raw: string): { pass?: boolean; reasoning?: string } {
 
 /**
  * Bounds on one judge call. Same-prefix judge calls are serialized (below),
- * so a stalled call delays every criterion sharing the cached prefix; every
- * bound ends it with an error rather than a silent wait.
+ * so a stalled call delays every criterion sharing the cached prefix; both
+ * bounds end it with an error rather than a silent wait.
  *
- * - First data: no `data:` chunk this long after the attempt starts. Before
- *   the first chunk a model that reasons without streaming its thinking sends
- *   only keepalive comments, and so does a gateway in front of a provider that
- *   died, so this is the one bound that cannot tell a think from a stall.
- *   `APO_JUDGE_TIMEOUT_MS` (default 300 s).
- * - Idle: once data is streaming, no `data:` chunk for this long means the
- *   stream has stalled. A judge that streams its reasoning keeps resetting it,
- *   so a long think is never cut while it is still producing.
- * - Runaway: the whole call, retry included, however much it streams. Only a
- *   reasoning loop reaches it; a judge on a whole-document checklist streamed
- *   past 300 s and was still producing. `APO_JUDGE_MAX_DURATION_MS`
- *   (default 20 min).
+ * - Total: one deadline for the whole call, retry included. Generous,
+ *   because a reasoning judge on a long checklist criterion measured
+ *   87–100 s end to end, and some samples run past 180 s.
+ * - Idle: once content has started streaming, no `data:` chunk for this long
+ *   means the stream has stalled. It is not armed before the first chunk: a
+ *   model that reasons without streaming its thinking sends only keepalive
+ *   comments until it answers, and that silence is the think, not a stall.
  */
+const JUDGE_TIMEOUT_MS = 300_000;
 const JUDGE_IDLE_TIMEOUT_MS = 90_000;
-
-function envMs(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
-  const ms = Number(raw);
-  return Number.isFinite(ms) && ms > 0 ? ms : fallback;
-}
-
-/** Read per call, so a run can set them after the SDK is imported. */
-function judgeFirstDataTimeoutMs(): number {
-  return envMs("APO_JUDGE_TIMEOUT_MS", 300_000);
-}
-function judgeMaxDurationMs(): number {
-  return envMs("APO_JUDGE_MAX_DURATION_MS", 1_200_000);
-}
 
 /**
  * One retry for a transport failure (network error, 429, 5xx, a stream error,
@@ -411,63 +390,6 @@ async function readCompletion(
  */
 const prefixQueues = new Map<string, Promise<unknown>>();
 
-/**
- * Sent as `prompt_cache_key` so every call sharing a cached prefix lands where
- * that prefix is cached. Providers that cache per replica (Fireworks) route on
- * it; without it the serialized calls above still scatter across replicas and
- * each re-bills the whole deliverable — measured on deepseek-v4.1-flash through
- * a LiteLLM proxy: 0 cached tokens without the key, 23,158 of 23,293 with it.
- * (`user` routes too, but LiteLLM books every distinct value as an end user.)
- * A hash, so the request never carries the prefix text itself.
- */
-export function promptCacheKey(prefix: string): string {
-  return `apo-${createHash("sha256").update(prefix).digest("hex").slice(0, 32)}`;
-}
-
-/** Endpoint + model pairs whose 400 rejected `prompt_cache_key`; later calls omit it. */
-const cacheKeyRejectedBy = new Set<string>();
-
-// Rejection wording next to the field, not the bare name: gateways echo
-// request params in unrelated 400 bodies (context length, bad model).
-const CACHE_KEY_REJECTED =
-  /(unknown|unrecogni[sz]ed|unsupported|unexpected|extra|not permitted|not allowed|cannot find|invalid)[^\n]{0,80}prompt_cache_key|prompt_cache_key[^\n]{0,80}(unknown|unrecogni[sz]ed|unsupported|unexpected|not permitted|not allowed|not supported|extra)/i;
-
-export function rejectsPromptCacheKey(status: number, body: string): boolean {
-  return status === 400 && CACHE_KEY_REJECTED.test(body);
-}
-
-/**
- * `fetch` for requests carrying `prompt_cache_key`. An endpoint with a closed
- * parameter list (plausibly Gemini's OpenAI compatibility layer) 400s on the
- * field; the request is resent once without it, and once that resend succeeds
- * the endpoint + model skips the field for the rest of the process. Used by
- * t.judge and t.agent alike, outside their own retry logic.
- */
-export async function fetchWithPromptCacheKey(input: string | URL | Request, init?: RequestInit): Promise<Response> {
-  let body: Record<string, unknown> | undefined;
-  try {
-    body = typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : undefined;
-  } catch {
-    body = undefined;
-  }
-  if (!body || !("prompt_cache_key" in body)) return fetch(input, init);
-
-  const scope = `${input instanceof Request ? input.url : String(input)}\u0000${String(body.model)}`;
-  const { prompt_cache_key: _omitted, ...rest } = body;
-  const withoutKey = (): Promise<Response> => fetch(input, { ...init, body: JSON.stringify(rest) });
-  if (cacheKeyRejectedBy.has(scope)) return withoutKey();
-
-  const response = await fetch(input, init);
-  if (response.status !== 400) return response;
-  const text = await response.text();
-  if (!rejectsPromptCacheKey(response.status, text)) {
-    return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
-  }
-  const retry = await withoutKey();
-  if (retry.ok) cacheKeyRejectedBy.add(scope);
-  return retry;
-}
-
 function runWithSharedPrefix<T>(key: string, task: () => Promise<T>): Promise<T> {
   const prev = prefixQueues.get(key) ?? Promise.resolve();
   // Run `task` once the previous same-prefix call settles, regardless of
@@ -551,7 +473,6 @@ export async function callJudge(args: {
   const requestBody = (stream: boolean): string =>
     JSON.stringify({
       model: args.model,
-      prompt_cache_key: promptCacheKey(cacheKey),
       messages: [
         {
           role: "system",
@@ -582,33 +503,19 @@ export async function callJudge(args: {
         streamRejected?: boolean;
       };
 
-  // One attempt: bounded by the first-data window until the first `data:`
-  // chunk, then by the idle bound, and throughout by the call's runaway
-  // deadline.
-  const attempt = async (stream: boolean, maxDeadline: number): Promise<AttemptResult> => {
+  // One attempt, bounded by the call's shared deadline and, once content is
+  // flowing, by the idle bound.
+  const attempt = async (stream: boolean, deadline: number): Promise<AttemptResult> => {
     const controller = new AbortController();
     const expire = (reason: string, name: string) => () =>
       controller.abort(new DOMException(reason, name));
-    const firstDataMs = judgeFirstDataTimeoutMs();
-    const runaway = setTimeout(
-      expire(
-        `still streaming after ${Math.round(judgeMaxDurationMs() / 1000)}s (APO_JUDGE_MAX_DURATION_MS)`,
-        "TimeoutError",
-      ),
-      Math.max(maxDeadline - Date.now(), 0),
-    );
-    let waiting: ReturnType<typeof setTimeout> | undefined = setTimeout(
-      expire(
-        `no data within ${Math.round(firstDataMs / 1000)}s (APO_JUDGE_TIMEOUT_MS)`,
-        "FirstDataTimeoutError",
-      ),
-      firstDataMs,
+    const total = setTimeout(
+      expire(`no complete response within ${JUDGE_TIMEOUT_MS / 1000}s`, "TimeoutError"),
+      Math.max(deadline - Date.now(), 0),
     );
     const stalled = expire(`no data for ${JUDGE_IDLE_TIMEOUT_MS / 1000}s`, "IdleTimeoutError");
     let idle: ReturnType<typeof setTimeout> | undefined;
     const onData = (): void => {
-      clearTimeout(waiting);
-      waiting = undefined;
       clearTimeout(idle);
       idle = setTimeout(stalled, JUDGE_IDLE_TIMEOUT_MS);
     };
@@ -616,7 +523,7 @@ export async function callJudge(args: {
     try {
       let response: Response;
       try {
-        response = await fetchWithPromptCacheKey(`${baseURL}/chat/completions`, {
+        response = await fetch(`${baseURL}/chat/completions`, {
           method: "POST",
           signal: controller.signal,
           headers: {
@@ -652,8 +559,7 @@ export async function callJudge(args: {
         return transportFailure("Judge response failed", controller.signal.reason ?? error);
       }
     } finally {
-      clearTimeout(runaway);
-      clearTimeout(waiting);
+      clearTimeout(total);
       clearTimeout(idle);
       // Release the connection on every exit, including a thrown error chunk
       // whose stream the server has not closed. A no-op once the body is read.
@@ -683,7 +589,7 @@ export async function callJudge(args: {
 
   return runWithSharedPrefix(cacheKey, async () => {
     const startedAt = Date.now();
-    const deadline = startedAt + judgeMaxDurationMs();
+    const deadline = startedAt + JUDGE_TIMEOUT_MS;
 
     let stream = true;
     let result = await attempt(stream, deadline);
@@ -753,10 +659,9 @@ export async function callJudge(args: {
 }
 
 /**
- * A fetch or body-read failure. Hitting the call's runaway deadline already
- * spent the whole budget, so that alone is not retried. A stalled stream (idle
- * bound) or one that never started (first-data bound) is transient, like a cut
- * connection, and gets the retry while the runaway budget allows.
+ * A fetch or body-read failure. Hitting the call's deadline already spent the
+ * whole budget, so that alone is not retried. A stalled stream (idle bound)
+ * is transient, like a cut connection, and gets the retry.
  */
 function transportFailure(
   prefix: string,

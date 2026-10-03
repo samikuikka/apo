@@ -32,10 +32,18 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import {
   Columns3,
   Pin,
+  RefreshCw,
   RotateCcw,
   Search,
   Star,
@@ -51,9 +59,9 @@ import {
 import { useTableSelectionManager, DataTablePagination, ColumnResizeHandle, getPinnedColumnStyle, getPinnedColumnAttrs } from "@/components/table";
 import { TableToolbar, TableActionDialog } from "@/components/table";
 import type { TableAction } from "@/components/table";
-import { RefreshControls, useRouterRefresh } from "@/components/refresh-controls";
 import { usePersistentTablePreferences } from "@/hooks/use-persistent-table-preferences";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 import { useIsDemo } from "@/lib/project-router";
 import Link from "next/link";
 import { SortableHeader, createTraceColumns } from "./columns";
@@ -78,6 +86,12 @@ interface TracesTablePanelProps {
    *  "connect a service" from "filters matched nothing" in the empty state. */
   hasTraces?: boolean;
 }
+
+const autoRefreshOptions = [
+  { label: "Off", value: 0 },
+  { label: "30s", value: 30000 },
+  { label: "1m", value: 60000 },
+];
 
 const DEFAULT_HIDDEN: Record<string, boolean> = {
   environment: false,
@@ -228,14 +242,33 @@ function TracesToolbar({
               className="h-7 w-full border-border pl-7 text-xs"
             />
           </div>
-          <RefreshControls
-            label="traces"
-            testIdPrefix="traces"
-            onRefresh={onRefresh}
-            isRefreshing={isRefreshing}
-            autoRefreshInterval={autoRefreshInterval}
-            onAutoRefreshChange={onAutoRefreshChange}
-          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            aria-label="Refresh traces"
+            data-testid="traces-refresh"
+            className="h-7 w-7 p-0"
+          >
+            <RefreshCw className={cn("h-3 w-3", isRefreshing && "animate-spin")} />
+          </Button>
+          <Select value={String(autoRefreshInterval)} onValueChange={(v) => onAutoRefreshChange(Number(v))}>
+            <SelectTrigger
+              size="sm"
+              aria-label="Auto-refresh interval"
+              data-testid="traces-autorefresh"
+              className="h-7 w-[60px] text-[11px]"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {autoRefreshOptions.map((o) => (
+                <SelectItem key={o.value} value={String(o.value)}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -430,12 +463,8 @@ export function TracesTablePanel({
     action: null,
     isOpen: false,
   });
-  const {
-    refresh: handleRefresh,
-    isRefreshing,
-    autoRefreshInterval,
-    setAutoRefreshInterval,
-  } = useRouterRefresh();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [bookmarkState, setBookmarkState] = useState<BookmarkState>({
     traces,
@@ -520,6 +549,22 @@ export function TracesTablePanel({
   const currentPage = pagination?.page ?? 0;
   const pageSize = pagination?.pageSize ?? 40;
   const totalPages = pagination?.totalPages ?? 1;
+
+  const handleRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    router.refresh();
+    setTimeout(() => setIsRefreshing(false), 500);
+  }, [router]);
+
+  useEffect(() => {
+    if (autoRefreshInterval === 0) return;
+    // Skip ticks while the tab is hidden — an abandoned background tab on a
+    // 30s interval otherwise re-runs the full server page (~720 times/hour).
+    const id = setInterval(() => {
+      if (!document.hidden) router.refresh();
+    }, autoRefreshInterval);
+    return () => clearInterval(id);
+  }, [autoRefreshInterval, router]);
 
   const updateQueryParams = useCallback((updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams.toString());

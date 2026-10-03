@@ -52,15 +52,4 @@ server.registerTool(
   },
 );
 
-server.registerTool(
-  "error_fact",
-  {
-    description: "Always fails: exercises the JSON-RPC error path end to end.",
-    inputSchema: {},
-  },
-  async () => {
-    throw new Error("facts service exploded");
-  },
-);
-
 await server.connect(new StdioServerTransport());

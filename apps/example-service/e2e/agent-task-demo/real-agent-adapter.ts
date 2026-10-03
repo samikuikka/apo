@@ -41,7 +41,7 @@ export const realAgentAdapter = defineAdapter({
     const state = (ctx.state ?? EMPTY_STATE) as AgentState;
     // report the same resolved model the agent uses (service.ts
     // getModel() reads OPENROUTER_MODEL with the same default).
-    const model = process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4.1-flash";
+    const model = process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4-flash-0731";
 
     // Task-declared MCP servers (TaskDefinition.mcpServers): connect once per
     // session, merge the raw namespaced tools into the agent's tool record,

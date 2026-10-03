@@ -35,6 +35,7 @@ from ..models.db import (
 )
 from ..models.schemas import (
     AgentTaskDetail,
+    RunHostFacet,
     AgentTaskRunStats,
     AgentTaskRunSummary,
     AgentTaskSummary,
@@ -52,6 +53,7 @@ from ..services.agent_task_stats import (
     compute_run_config_facets,
     compute_run_stats,
     load_run_stat_fields,
+    compute_run_host_facets,
 )
 from ..services.project_deletion import delete_project_data
 from ..services.project_memberships import (
@@ -533,6 +535,10 @@ async def list_project_agent_task_run_stats(
     model: str | None = Query(default=None),
     effort: str | None = Query(default=None),
     since: str | None = Query(default=None),
+    provider: str | None = Query(
+        default=None,
+        description="Observed serving host filter (issue #307)",
+    ),
 ) -> dict[str, AgentTaskRunStats]:
     """Per-task run stats scoped to a model/effort/date view.
 
@@ -550,6 +556,8 @@ async def list_project_agent_task_run_stats(
 
     runs_by_task = load_run_stat_fields(
         session, project_id, task_ids, model=model, effort=effort, since=since
+    ,
+        provider=provider,
     )
     return {
         task_id: compute_run_stats(runs) for task_id, runs in runs_by_task.items()
@@ -573,6 +581,28 @@ async def list_project_agent_task_run_config_facets(
     """
     _project, _role = _load_project_for_request(session, project_id, request)
     return compute_run_config_facets(session, project_id)
+
+
+@router.get(
+    "/{project_id}/agent-task-run-host-facets",
+    response_model=list[RunHostFacet],
+)
+async def list_project_agent_task_run_host_facets(
+    project_id: str,
+    request: Request,
+    model: str | None = Query(
+        default=None,
+        description="Scope the facet to one model's runs — the Hosts filter appears after a model is picked, so its counts follow that cohort (issue #307)",
+    ),
+    session: Session = Depends(get_session),
+) -> list[RunHostFacet]:
+    """Distinct serving-host labels over the project's task runs (issue #307).
+
+    Route-wins labels — the same projection the run rows display — with
+    per-label task-run counts. Feeds the Tasks page's Hosts view filter.
+    """
+    _project, _role = _load_project_for_request(session, project_id, request)
+    return compute_run_host_facets(session, project_id, model)
 
 
 @router.get("/{project_id}/onboarding-status")

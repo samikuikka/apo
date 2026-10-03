@@ -29,6 +29,8 @@ type RunDetail = {
   unpriced_call_count?: number;
   generation_execution?: GenerationExecution | null;
   generation_usage?: GenerationUsage | null;
+  /** (model, provider/route) pairs the trace served through (issue #307). */
+  model_providers?: ModelProviderPair[];
   total_tokens: number | null;
   /** Issue #309: reasoning + per-call timing rollups. Null reasoning = no
    * call reported the reasoning usage dimension (unknown, not zero). */
@@ -73,10 +75,23 @@ type GenerationUsage = {
   model_time_ms: number | null;
   slowest_call_ms: number | null;
   slowest_call_id: string | null;
+  /** Median decode throughput (output tokens / decode window, issue #307).
+   * Null when no generation had both tokens and timing. */
+  median_output_tok_s?: number | null;
+  output_tok_s_calls?: number;
   reasoning_tokens: number | null;
   reasoning_calls: number;
   max_call_reasoning_tokens: number | null;
   max_reasoning_call_id: string | null;
+};
+
+type ModelProviderPair = {
+  model: string;
+  provider: string | null;
+  route: string | null;
+  calls: number;
+  total_tokens: number | null;
+  cost_micro: number | null;
 };
 
 export async function run(argv: string[]): Promise<number> {
@@ -180,6 +195,16 @@ function printRunDetail(run: RunDetail, verbose: boolean): void {
     console.log(`  Model:    ${run.run_configuration.model}`);
     console.log(`  Effort:   ${run.run_configuration.effort ?? "-"}`);
   }
+  const hosts = formatHosts(run.model_providers);
+  if (hosts) {
+    console.log(`  Hosts:    ${hosts}`);
+  }
+  if (run.generation_usage?.median_output_tok_s != null) {
+    const calls = run.generation_usage.output_tok_s_calls ?? 0;
+    console.log(
+      `  Speed:    ${formatTokPerS(run.generation_usage.median_output_tok_s)} median ${dim(`(${calls} measured call${calls === 1 ? "" : "s"})`)}`,
+    );
+  }
   console.log(`  Status:   ${run.status}`);
   const beatLine = formatHeartbeatLine(run);
   if (beatLine) console.log(beatLine);
@@ -233,16 +258,6 @@ function printRunDetail(run: RunDetail, verbose: boolean): void {
     // Unknown, not zero: the provider never reported the reasoning
     // dimension, which reads differently from "the model didn't think".
     console.log(dim("  Reasoning: not reported (provider did not send reasoning usage)"));
-  }
-  if (run.max_call_latency_ms != null) {
-    console.log(
-      `  Slowest call: ${formatMs(run.max_call_latency_ms)}${callSuffix(run.max_call_latency_call_id)}`,
-    );
-  }
-  if (run.total_model_time_ms != null) {
-    console.log(
-      `  Model time: ${formatMs(run.total_model_time_ms)} ${dim("(sum of call latencies — excludes tool/harness time)")}`,
-    );
   }
   if (run.trace_run_id) {
     console.log(`  Trace:    ${run.trace_run_id} ${dim("(apo traces show " + run.trace_run_id + ")")}`);
@@ -349,6 +364,27 @@ function formatMs(ms: number): string {
 function callSuffix(callId: string | null | undefined): string {
   if (!callId) return "";
   return dim(` (observation ${callId})`);
+}
+
+/** One line of (model, provider/route) pair labels with call counts — the
+ * serving-host dimension "was this run slow because of the model or the
+ * host?" needs (issue #307). Empty when no pair reported a host. */
+function formatHosts(pairs: ModelProviderPair[] | undefined): string {
+  if (!pairs || pairs.length === 0) return "";
+  const labeled = pairs.filter((p) => p.route || p.provider);
+  if (labeled.length === 0) return "";
+  const models = new Set(labeled.map((p) => p.model));
+  const showModel = models.size > 1;
+  return labeled
+    .map((p) => {
+      const host = p.route || p.provider || "unknown";
+      return showModel ? `${p.model} @ ${host} ×${p.calls}` : `${host} ×${p.calls}`;
+    })
+    .join(dim(" · "));
+}
+
+function formatTokPerS(value: number): string {
+  return `${value < 100 ? value.toFixed(1) : Math.round(value)} tok/s`;
 }
 
 function printTranscript(transcript: Record<string, unknown>): void {  const turns = transcript.turns ?? transcript.messages ?? transcript;

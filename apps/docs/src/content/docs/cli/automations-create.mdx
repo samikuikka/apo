@@ -22,9 +22,10 @@ For webhook actions the signing secret is generated server-side and printed exac
 ## Synopsis
 
 ```bash
-apo automations create --name <n> --event <type> [--action webhook|github_issue]
+apo automations create --name <n> --event <type> [--action webhook|github_issue|slack]
   [--condition '<json>' …]
   [--url <url>]
+  [--slack-url <url>]
   [--owner <o> --repo <r> --github-token <tok> --labels <a,b>]
   [--project <id>]
 ```

@@ -343,6 +343,8 @@ class TraceProjector:
                 task_id="",
                 created_at=span.start_time or datetime.now(timezone.utc),
                 model=normalized.model or "",
+                provider=normalized.provider,
+                route=normalized.route,
                 observation_type=normalized.observation_type,
                 step_name=normalized.display_name,
                 parent_call_id=span.parent_span_id,
@@ -357,6 +359,12 @@ class TraceProjector:
             # stopped extracting I/O); slim mode writes no I/O at all and
             # reads always resolve fresh from the span.
             call.model = normalized.model or call.model
+            # First-wins for the serving host: a canonical OTel span is
+            # immutable, so a re-projection that lost the attributes must
+            # not erase the known host. A genuinely corrected value needs
+            # a re-ingest of the source span.
+            call.provider = normalized.provider or call.provider
+            call.route = normalized.route or call.route
             call.observation_type = normalized.observation_type
             call.step_name = normalized.display_name
             call.parent_call_id = span.parent_span_id
@@ -596,6 +604,11 @@ def _compute_run_aggregates(session: Session, trace_id: str, project: str) -> No
         ).all()
         run.call_count = len(calls)
         run.primary_model = _primary_model_by_cost(calls)
+        # The serving-host rollup rides the same recompute: late spans can
+        # carry the provider attributes an earlier pass didn't have.
+        from .trace_backend import model_providers_summary
+
+        run.model_providers_json = model_providers_summary(calls)
         session.add(run)
 
 

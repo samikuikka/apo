@@ -48,7 +48,7 @@ describe("Runs nav link", () => {
 
   it("stays plain for an all-history view", () => {
     renderShell(
-      <Publisher cohort={{ model: null, effort: null, since: null }} />,
+      <Publisher cohort={{ model: null, effort: null, since: null, provider: null }} />,
     );
     expect(navHref("Runs")).toBe("/project/acme/runs");
   });
@@ -56,7 +56,7 @@ describe("Runs nav link", () => {
   it("carries the published model, effort, and date window", () => {
     renderShell(
       <Publisher
-        cohort={{ model: "claude-opus-5", effort: "high", since: "5d" }}
+        cohort={{ model: "claude-opus-5", effort: "high", since: "5d", provider: null }}
       />,
     );
     expect(navHref("Runs")).toBe(
@@ -66,7 +66,7 @@ describe("Runs nav link", () => {
 
   it("carries only the dimensions the view narrows", () => {
     renderShell(
-      <Publisher cohort={{ model: "kimi-k3", effort: null, since: null }} />,
+      <Publisher cohort={{ model: "kimi-k3", effort: null, since: null, provider: null }} />,
     );
     expect(navHref("Runs")).toBe("/project/acme/runs?model=kimi-k3");
   });
@@ -74,7 +74,7 @@ describe("Runs nav link", () => {
   it("encodes model ids that carry a provider prefix", () => {
     renderShell(
       <Publisher
-        cohort={{ model: "pi:openai/gpt-5.6", effort: null, since: null }}
+        cohort={{ model: "pi:openai/gpt-5.6", effort: null, since: null, provider: null }}
       />,
     );
     expect(navHref("Runs")).toBe(
@@ -84,12 +84,12 @@ describe("Runs nav link", () => {
 
   it("follows the published cohort as the view changes", () => {
     const { rerender } = renderShell(
-      <Publisher cohort={{ model: "kimi-k3", effort: null, since: null }} />,
+      <Publisher cohort={{ model: "kimi-k3", effort: null, since: null, provider: null }} />,
     );
     rerender(
       <DashboardShell projectId="acme">
         <Publisher
-          cohort={{ model: "claude-opus-5", effort: null, since: "7d" }}
+          cohort={{ model: "claude-opus-5", effort: null, since: "7d", provider: null }}
         />
       </DashboardShell>,
     );
@@ -100,7 +100,7 @@ describe("Runs nav link", () => {
 
   it("drops the cohort once the publishing page unmounts", () => {
     const { rerender } = renderShell(
-      <Publisher cohort={{ model: "kimi-k3", effort: null, since: null }} />,
+      <Publisher cohort={{ model: "kimi-k3", effort: null, since: null, provider: null }} />,
     );
     rerender(<DashboardShell projectId="acme">{<div />}</DashboardShell>);
     expect(navHref("Runs")).toBe("/project/acme/runs");
@@ -108,7 +108,7 @@ describe("Runs nav link", () => {
 
   it("leaves the other destinations alone", () => {
     renderShell(
-      <Publisher cohort={{ model: "kimi-k3", effort: "high", since: "7d" }} />,
+      <Publisher cohort={{ model: "kimi-k3", effort: "high", since: "7d", provider: null }} />,
     );
     expect(navHref("Tasks")).toBe("/project/acme/tasks");
     expect(navHref("Schedules")).toBe("/project/acme/schedules");

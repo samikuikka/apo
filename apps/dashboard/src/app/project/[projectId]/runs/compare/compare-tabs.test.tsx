@@ -3,8 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 
 import type { AgentTaskBatchRunDetail, AgentTaskRunSummary } from "@/lib/agent-task-api";
 
-// Tabs write ?tab= shallowly (history.replaceState); the component only
-// reads the param once via useSearchParams, so stub that — then assert the URL.
+// Tabs navigate via router.replace — stub the router, capture the target.
 const searchParamsMock = vi.hoisted(() => ({ current: new URLSearchParams("") }));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => searchParamsMock.current,
@@ -125,7 +124,7 @@ describe("CompareClient tabs", () => {
     expect(screen.queryByText(/tasks changed/i)).toBeNull();
   });
 
-  it("clicking a tab updates the URL shallowly", () => {
+  it("clicking a tab updates the URL shallowly (no server refetch)", () => {
     setup();
     fireEvent.mouseDown(screen.getByRole("tab", { name: /summary/i }));
     expect(window.location.search).toContain("tab=summary");

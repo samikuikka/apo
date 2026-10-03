@@ -170,18 +170,6 @@ test("answer-quality", async (t, { deliverables }) => {
 
 Absent fields inherit from the run's judge config (`runTask({ judge })`, or a task-level `judge` layer), whose env defaults depend on the runner: `OPENROUTER_MODEL` / `OPENAI_MODEL` for local runs (`apo task run`, `apo connect`), `AGENT_TASK_JUDGE_MODEL` for backend-spawned runs. So `{ model }` alone is usually enough, `baseURL` and `apiKey` flow through unchanged. The overridden model is stamped on the assertion metadata and shown in the dashboard breakdown.
 
-#### Timeouts
-
-The judge call streams, and apo judges liveness by its `data:` chunks — a reasoning model's streamed thinking counts — not by the clock alone:
-
-| Bound | Default | Ends the attempt when |
-|---|---|---|
-| First data (`APO_JUDGE_TIMEOUT_MS`) | 300 s | no `data:` chunk has arrived yet. Keepalive comments don't count: a gateway sends them in front of a dead provider too. |
-| Idle | 90 s | data had been streaming and stopped. |
-| Runaway (`APO_JUDGE_MAX_DURATION_MS`) | 20 min | the call, retry included, is still running. |
-
-A judge that keeps streaming its reasoning is never cut by the first-data bound, however long it thinks. A stalled or never-started attempt is retried once while the runaway budget allows; the runaway bound is not retried. A call that ends on any bound records no verdict, not a FAIL.
-
 #### Response-contract order: reasoning-first
 
 The judge prompt asks for the reasoning before the verdict (`{"reasoning": ..., "pass": ...}`) so the model argues from the evidence before committing to `pass`. The legacy order (`{"pass": ..., "reasoning": ...}`) had the model commit first and then justify a decision already made: on a degenerate deliverable (an agent that admitted it never read the file it was graded on), the legacy contract passed it 3/3 with the one-word reasoning `"passed"`. Reasoning-first failed it, with the correct reasoning. That measurement (every judged run on a live stack, 14 criteria × 3 samples per arm, zero flips on sound deliverables) is why reasoning-first is the default, not an option (issue #163).

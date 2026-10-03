@@ -1,4 +1,5 @@
 import { getAgentTaskRun, listAgentTaskRunJudgments } from "@/lib/agent-task-api";
+import type { ModelProviderPair } from "@/lib/agent-task-api";
 import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
 import { TraceHomeLink } from "@/components/trace-detail";
@@ -14,7 +15,6 @@ import {
   Layers3,
   ListChecks,
   PenLine,
-  Timer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { taskDetailHref } from "@/lib/task-routes";
@@ -33,7 +33,7 @@ import { DeleteRunButton } from "@/components/runs/DeleteRunButton";
 import { TaskRunDetailBody } from "./task-run-detail-body";
 import { TaskRunAutoRefresh } from "@/components/agent-task-execution/task-run-auto-refresh";
 import { OutcomeSummary } from "@/components/run-outcome";
-import { formatInterval, formatTokenTotal, formatCostMicro } from "@/lib/format";
+import { formatTokenTotal, formatCostMicro } from "@/lib/format";
 import { getProject } from "@/lib/projects-api";
 import GenerationExecutionNotice from "@/components/generation-execution-notice";
 import { RunJudgmentsSection } from "./run-judgments-section";
@@ -92,6 +92,38 @@ function formatDuration(start: string | null, end: string | null) {
 /** Chip value that deep-links into the trace observation behind a max
  * metric (issue #309) — "slowest call" / "max reasoning" jump straight to
  * the winning span. Plain text when the run has no trace to link into. */
+/** Distinct serving-host labels (route wins over provider) for the run
+ * header (issue #307). Empty when nothing reported a host. */
+function hostLabels(pairs: ModelProviderPair[] | undefined): string[] {
+  if (!pairs) return [];
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const pair of pairs) {
+    const label = pair.route || pair.provider;
+    if (label && !seen.has(label)) {
+      seen.add(label);
+      labels.push(label);
+    }
+  }
+  return labels;
+}
+
+/** Call count behind one host label. Sums every pair the label covers —
+ * the rollup is keyed on (model, provider, route), so one host legitimately
+ * spans several pairs (task model and judge model on the same host). */
+function hostPairCalls(pairs: ModelProviderPair[] | undefined, label: string): number {
+  return (pairs ?? []).reduce(
+    (n, pair) => n + (pair.route === label || pair.provider === label ? pair.calls : 0),
+    0,
+  );
+}
+
+/** tok/s with one decimal under 100 and integers above — the precision a
+ * host comparison can actually read (issue #307). */
+function formatTokPerS(value: number): string {
+  return `${value < 100 ? value.toFixed(1) : Math.round(value)} tok/s`;
+}
+
 function observationValue(
   projectId: string,
   traceRunId: string | null,
@@ -283,6 +315,21 @@ export default async function TaskRunDetailPage({
                     <span className="font-mono text-foreground">{taskRun.primary_model}</span>
                   </>
                 )}
+              {hostLabels(taskRun.model_providers).length > 0 && (
+                <>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span className="text-muted-foreground">Hosts</span>
+                  {hostLabels(taskRun.model_providers).map((label, i) => (
+                    <span key={label} className="flex items-center gap-1">
+                      {i > 0 && <span className="text-muted-foreground/50">·</span>}
+                      <span className="font-mono text-foreground">{label}</span>
+                      <span className="text-muted-foreground">
+                        ×{hostPairCalls(taskRun.model_providers, label)}
+                      </span>
+                    </span>
+                  ))}
+                </>
+              )}
               {taskRun.trigger?.source && (
                 <>
                   <span className="text-muted-foreground/50">·</span>
@@ -376,30 +423,16 @@ export default async function TaskRunDetailPage({
                 : (taskRun.total_tokens ?? 0) > 0
                   ? [{ icon: Brain, key: "reasoning", value: "—", label: "reasoning" }]
                   : []),
-              ...(taskRun.max_call_latency_ms != null
-                ? [{
-                    icon: Timer,
-                    key: "slowest-call",
-                    value: observationValue(
-                      projectId,
-                      taskRun.trace_run_id,
-                      taskRun.max_call_latency_call_id,
-                      formatInterval(taskRun.max_call_latency_ms),
-                      "The slowest single model call",
-                    ),
-                    label: "slowest call",
-                  }]
-                : []),
-              ...(taskRun.total_model_time_ms != null
+              // Median decode throughput (issue #307): the number host
+              // comparisons are about — output tokens over the decode
+              // window. Only shown when at least one call measured it.
+              ...(taskRun.generation_usage?.median_output_tok_s != null
                 ? [{
                     icon: Gauge,
-                    key: "model-time",
-                    value: formatInterval(taskRun.total_model_time_ms),
-                    label: "model time",
+                    key: "speed",
+                    value: `${formatTokPerS(taskRun.generation_usage.median_output_tok_s)} med`,
+                    label: "decode",
                   }]
-                : []),
-              ...(taskRun.adapter_name
-                ? [{ value: taskRun.adapter_name, label: "adapter" }]
                 : []),
               ...((taskRun.corrected_tests ?? 0) > 0
                 ? [{ icon: PenLine, value: `${taskRun.corrected_tests} corrected`, label: "tests" }]

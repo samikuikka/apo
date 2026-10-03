@@ -167,7 +167,7 @@ secure Server Profile.
 
 ## Errors
 
-- `ClientError` / `ConfigurationError`, raised for client setup problems (missing endpoint, invalid keys). `ClientErrorCode` enumerates the cases. Exported from `@apo-ai/sdk`.
+`configureApoTelemetry` throws a plain `TypeError` for two setup mistakes: omitting `takeOwnership: true` (the standalone bootstrap must own the provider) and passing a host `provider` (construct it with `createApoSpanProcessor()` instead). Everything else resolves silently — a missing endpoint falls back to `APO_OTLP_ENDPOINT`, then to the local default (`http://localhost:8000/api/public/otel/v1/traces`), and auth failures surface as `401`s from the exporter at runtime, not at setup.
 
 ## See also
 

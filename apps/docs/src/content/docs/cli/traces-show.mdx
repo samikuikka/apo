@@ -18,16 +18,18 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
     { text: "  Calls:     6" },
     { text: "  Cost:      $0.003400" },
     { text: "  Tokens:    1,247" },
+    { text: "  Hosts:     openrouter:nitro ×2" },
+    { text: "  Reasoning: 612 tok · max 540 in one call (observation 2e1e24fa23cfff6c)" },
     { text: "  Created:   7/16/2026, 9:42 AM" },
     { text: "" },
     { text: "  Calls:", tone: "default" },
     { text: "  apo.task.run                                      0.8s      -          -", tone: "dim" },
-    { text: "    extract-parties       gpt-4o-mini    0.3s      $0.0008    412" },
+    { text: "    extract-parties       gpt-4o-mini    0.3s      $0.0008    412 ttft:0.2s 44.8tok/s @openrouter:nitro" },
     { text: "        tokens: 380 prompt + 32 completion" },
     { text: "      read_file                                    0.1s      -          -" },
     { text: "        tool: read_file" },
     { text: "        result: {\"path\":\"contract.pdf\",\"size\":48213}" },
-    { text: "    generate-response      gpt-4o-mini    0.3s      $0.0026    835" },
+    { text: "    generate-response      gpt-4o-mini    0.3s      $0.0026    835 ttft:0.3s 51.2tok/s @openrouter:nitro" },
     { text: "        tokens: 432 prompt + 403 completion" },
     { text: "    adapter.collect-deliverables                    0.0s      -          -", tone: "dim" },
   ]}
@@ -48,7 +50,7 @@ Shows a trace's call details. The argument is a **trace id** (required, a 32-cha
 | Option | Default | Purpose |
 |---|---|---|
 | `<trace-id>` | (required) | Trace id or unique prefix. |
-| `--verbose` | off | Show per-call input/output and messages, as compact previews. |
+| `--verbose` | off | Show per-call type, raw span attributes, input/output and messages, as compact previews. |
 | `--errors-only` | off | Filter to ERROR and WARNING calls only. |
 | `--full` | off | Show messages/input/output without truncation (implies `--verbose`). |
 | `--max-chars <n>` | off | Cap messages/input/output at `n` chars instead of the defaults (implies `--verbose`). |
@@ -65,17 +67,20 @@ Shows a trace's call details. The argument is a **trace id** (required, a 32-cha
     { text: "  Calls:     6" },
     { text: "  Cost:      $0.003400" },
     { text: "  Tokens:    1,247" },
+    { text: "  Hosts:     openrouter:nitro ×2" },
+    { text: "  Reasoning: 612 tok · max 540 in one call (observation 2e1e24fa23cfff6c)" },
     { text: "  Created:   7/16/2026, 9:42 AM" },
+    { text: "  Evidence:  messages:available  tools:available  errors:available  timing:available  skills:unavailable  subagents:unavailable" },
     { text: "" },
     { text: "  Calls:", tone: "default" },
     { text: "  apo.task.run                                      0.8s      -          -", tone: "dim" },
-    { text: "    extract-parties       gpt-4o-mini    0.3s      $0.0008    412" },
+    { text: "    extract-parties       gpt-4o-mini    0.3s      $0.0008    412 ttft:0.2s 44.8tok/s @openrouter:nitro" },
     { text: "        tokens: 380 prompt + 32 completion" },
     { text: "     read_file            -                        0.1s      -          -" },
     { text: "        tool: read_file" },
     { text: "        args: {\"path\":\"contract.pdf\"}" },
     { text: "        result: {\"path\":\"contract.pdf\",\"size\":48213}" },
-    { text: "    generate-response      gpt-4o-mini    0.3s      $0.0026    835" },
+    { text: "    generate-response      gpt-4o-mini    0.3s      $0.0026    835 ttft:0.3s 51.2tok/s @openrouter:nitro" },
     { text: "        tokens: 432 prompt + 403 completion" },
     { text: "    adapter.collect-deliverables                    0.0s      -          -", tone: "dim" },
   ]}
@@ -83,7 +88,9 @@ Shows a trace's call details. The argument is a **trace id** (required, a 32-cha
 
 Recorded task runs always contain the runtime's own spans (`apo.task.run`, `task.load`, `adapter.open-session`, `adapter.collect-deliverables`) around the agent's work, they carry no model, cost, or tokens. Model calls show their model, cost, and token split; tool calls show their arguments and results.
 
-With `--verbose`, each call expands to show its input and output, the messages sent to the model, the tool results returned, the deliverables collected. With `--errors-only`, only calls that errored or warned are shown, for fast triage.
+Each generation line ends with the numbers a serving-host comparison needs: time to first token (`ttft:0.2s`), decode throughput (`44.8tok/s` — completion tokens over the window from first token to end), and the serving host the tracer reported (`@openrouter:nitro`, the provider or route). The header adds three rows of the same rollup: `Hosts` (the model–host pairs the trace served through, with call counts), `Reasoning` (total reasoning tokens with the deepest single call), and `Evidence` (which evidence categories this trace's projection carries — `messages`, `tools`, `errors`, `timing`, `skills`, `subagents`). An assertion that reads `unsupported` means its category reads `unavailable` in `Evidence`, not that the assertion is wrong.
+
+With `--verbose`, each call expands to show its resolved observation type (`type: GENERATION`) and raw span attributes (`attrs:`) — proof of what your instrumentation sent and what it mapped to — plus its input and output, the messages sent to the model, the tool results returned, the deliverables collected, and the call's id (what `--call` takes). With `--errors-only`, only calls that errored or warned are shown, for fast triage.
 
 `--verbose` previews content, it doesn't print it whole: messages stop at 300 chars, input and output at 500. That keeps a 50-call trace scannable, but it hides the middle of a long reply — and agent reasoning runs long. Three flags lift the cap:
 

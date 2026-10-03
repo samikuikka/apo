@@ -27,9 +27,12 @@ from ..models import (
 )
 from ..models.schemas import (
     as_no_verdict_reason,
+
+    ModelProviderPair,
     as_task_run_status,
     as_trace_persistence_status,
 )
+from .trace_backend import parse_model_providers
 from ..models.db import TaskExecutionAttemptDB
 from ..models.execution import (
     AttemptStatus,
@@ -139,6 +142,10 @@ def to_task_run_summary(
             if tr.generation_usage_json is not None
             else None
         ),
+        model_providers=[
+            ModelProviderPair.model_validate(pair)
+            for pair in parse_model_providers(tr.model_providers_json)
+        ],
         total_tokens=tr.total_tokens,
         total_reasoning_tokens=tr.total_reasoning_tokens,
         max_call_reasoning_tokens=tr.max_call_reasoning_tokens,

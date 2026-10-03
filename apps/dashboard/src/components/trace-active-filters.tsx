@@ -16,6 +16,7 @@ import {
   FolderOpen,
   ListTodo,
   Cpu,
+  Server,
   BarChart,
   User,
   AlertCircle,
@@ -250,6 +251,24 @@ export function TraceActiveFilters({
           onRemoveFilter(
             "models",
             filters.models.filter((m) => m !== model)
+          )
+        }
+      />
+    );
+  });
+
+  // Serving hosts (issue #307). Without this chip a hosts filter narrows
+  // the list invisibly — only "Clear all" could remove it.
+  filters.providers.forEach((provider) => {
+    chips.push(
+      <FilterChip
+        key={`provider-${provider}`}
+        icon={<Server className="h-3 w-3" />}
+        label={provider}
+        onRemove={() =>
+          onRemoveFilter(
+            "providers",
+            filters.providers.filter((p) => p !== provider)
           )
         }
       />

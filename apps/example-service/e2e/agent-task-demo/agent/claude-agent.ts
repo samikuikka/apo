@@ -47,6 +47,10 @@ function assistantText(message: SDKAssistantMessage): string {
  *                    session JSONL into the run's trace instead of using OTel.
  * @returns           The agent's final text response, whether it errored, and
  *                    the session id (present when persistence is on)
+
+ * @param mcpServers    Extra MCP servers for this session (task-declared via
+ *                      TaskDefinition.mcpServers; the SDK spawns and owns the
+ *                      server processes, tools surface as mcp__<name>__<tool>)
  */
 export async function runClaudeAgent(options: {
   prompt: string;

@@ -45,7 +45,7 @@ export function useEvidenceViews({
   // ---- Evidence views: a permanent "Main" tab (all-history) plus
   // closable derived tabs narrowed by model (+ model-aware effort). The stats
   // shown in the task table are scoped to the active tab's cohort.
-  const [views, setViews] = useState<ViewTab[]>([{ id: MAIN_VIEW_ID, label: "Main", model: null, effort: null, since: null }]);
+  const [views, setViews] = useState<ViewTab[]>([{ id: MAIN_VIEW_ID, label: "Main", model: null, effort: null, since: null, provider: null }]);
   const [activeViewId, setActiveViewId] = useState<string>(initialViewId ?? MAIN_VIEW_ID);
   const [facets, setFacets] = useState<RunConfigModelFacet[]>([]);
   // Per-view stats overlays keyed by the view's filter content, so switching
@@ -67,8 +67,15 @@ export function useEvidenceViews({
       .then((saved) => {
         if (cancelled) return;
         const loaded = [
-          { id: MAIN_VIEW_ID, label: "Main", model: null, effort: null, since: null },
-          ...saved.map((v) => ({ id: v.id, label: v.label, model: v.model, effort: v.effort, since: v.since })),
+          { id: MAIN_VIEW_ID, label: "Main", model: null, effort: null, since: null, provider: null },
+          ...saved.map((v) => ({
+            id: v.id,
+            label: v.label,
+            model: v.model,
+            effort: v.effort,
+            since: v.since,
+            provider: v.provider ?? null,
+          })),
         ];
         setViews(loaded);
         // A ?view= that no longer exists (deleted view, stale bookmark) falls
@@ -84,13 +91,23 @@ export function useEvidenceViews({
   // When the active tab is a derived view, fetch its scoped stats and overlay
   // them. Main reuses the server-provided all-history stats (viewStats = null).
   const viewIsDerived =
-    activeView.model !== null || activeView.effort !== null || activeView.since !== null;
-  const viewStatsKey = `${activeView.model ?? ""}|${activeView.effort ?? ""}|${activeView.since ?? ""}`;
+    activeView.model !== null ||
+    activeView.effort !== null ||
+    activeView.since !== null ||
+    activeView.provider !== null;
+  const viewStatsKey = `${activeView.model ?? ""}|${activeView.effort ?? ""}|${activeView.since ?? ""}|${activeView.provider ?? ""}`;
   useEffect(() => {
     if (isDemoProject || !viewIsDerived) return;
     const key = viewStatsKey;
     const controller = new AbortController();
-    fetchTaskViewStats(projectId, activeView.model, activeView.effort, activeView.since, controller.signal)
+    fetchTaskViewStats(
+      projectId,
+      activeView.model,
+      activeView.effort,
+      activeView.since,
+      controller.signal,
+      activeView.provider,
+    )
       .then((stats) => {
         if (controller.signal.aborted) return;
         setStatsByView((prev) => ({ ...prev, [key]: stats }));
@@ -102,9 +119,7 @@ export function useEvidenceViews({
         setStatsByView((prev) => (key in prev ? prev : { ...prev, [key]: null }));
       });
     return () => controller.abort();
-    // `tasks` changes identity only when the server page re-runs (refresh or
-    // resync), which is when the derived overlay must be refetched too.
-  }, [projectId, activeView.model, activeView.effort, activeView.since, isDemoProject, viewIsDerived, viewStatsKey, tasks]);
+  }, [projectId, activeView.model, activeView.effort, activeView.since, activeView.provider, isDemoProject, viewIsDerived, viewStatsKey]);
 
   // Derived per active tab: no effect-time syncing, so a tab switch never
   // renders one frame with the previous view's overlay still applied.
@@ -120,7 +135,9 @@ export function useEvidenceViews({
   }, [tasks, viewStats]);
 
   // ---- Evidence view tab operations (auto-persisted server-side) ----
-  const updateActiveView = (patch: Partial<Pick<ViewTab, "model" | "effort" | "since" | "label">>) => {
+  const updateActiveView = (
+    patch: Partial<Pick<ViewTab, "model" | "effort" | "since" | "provider" | "label">>,
+  ) => {
     setViews((prev) => prev.map((v) => (v.id === activeViewId ? { ...v, ...patch } : v)));
     // Persist to server (best-effort). Main is never stored.
     if (activeViewId !== MAIN_VIEW_ID && !isDemoProject) {
@@ -136,8 +153,19 @@ export function useEvidenceViews({
         model: activeView.model,
         effort: activeView.effort,
         since: activeView.since,
+        provider: activeView.provider,
       });
-      setViews((prev) => [...prev, { id: saved.id, label: saved.label, model: saved.model, effort: saved.effort, since: saved.since }]);
+      setViews((prev) => [
+        ...prev,
+        {
+          id: saved.id,
+          label: saved.label,
+          model: saved.model,
+          effort: saved.effort,
+          since: saved.since,
+          provider: saved.provider ?? null,
+        },
+      ]);
       setActiveViewId(saved.id);
     } catch {
       toast.error("Failed to save view");

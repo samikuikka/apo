@@ -68,14 +68,14 @@ export function usePublishRunCohort(cohort: RunCohort, viewId: string | null = n
   // changes whenever the cohort state does, and re-running this effect would
   // set that state again — an infinite publish/republish render loop.
   const { setCohort, setViewId } = useContext(RunCohortContext) ?? {};
-  const { model, effort, since } = cohort;
+  const { model, effort, since, provider } = cohort;
   useEffect(() => {
     if (!setCohort || !setViewId) return;
-    setCohort({ model, effort, since });
+    setCohort({ model, effort, since, provider });
     setViewId(viewId);
     return () => {
       setCohort(EMPTY_RUN_COHORT);
       setViewId(null);
     };
-  }, [model, effort, since, viewId, setCohort, setViewId]);
+  }, [model, effort, since, provider, viewId, setCohort, setViewId]);
 }

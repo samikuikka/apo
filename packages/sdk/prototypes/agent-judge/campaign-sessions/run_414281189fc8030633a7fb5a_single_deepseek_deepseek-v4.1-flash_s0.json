@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The task asks for the issuing country with the highest number of transactions. The submitted value 'NL' is a valid issuing-country code and directly answers that question; there is no indication it refers to a different slice or quantity such as merchant country.",
+  "steps": 1,
+  "cost_usd": 0.001069092,
+  "latency_ms": 14361,
+  "tokens": {
+    "input": 230,
+    "output": 2287
+  }
+}

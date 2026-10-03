@@ -370,7 +370,7 @@ describe("runs show command", () => {
     expect(out).toMatch(/Tokens:.*partial/);
   });
 
-  it("prints model time and reasoning with the call that dominates each", async () => {
+  it("prints reasoning with the call that dominates it", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse(makeRun({
         total_tokens: 21_000,
@@ -389,8 +389,9 @@ describe("runs show command", () => {
 
     const out = stripAnsi(logs.join("\n"));
     expect(out).toContain("Reasoning: 5,492 tok · max 1,054 in one call (observation 2e1e24fa23cfff6c)");
-    expect(out).toContain("Slowest call: 7s (observation 8c68d098872c5aab)");
-    expect(out).toContain("Model time: 59s");
+    // Timing extremes stay data-only — not part of the summary output.
+    expect(out).not.toContain("Slowest call:");
+    expect(out).not.toContain("Model time:");
     expect(out).not.toContain("not reported");
   });
 
@@ -428,8 +429,9 @@ describe("runs show command", () => {
     restore();
 
     const out = stripAnsi(logs.join("\n"));
-    expect(out).toContain("Model time: 3s");
     expect(out).not.toContain("Reasoning:");
+    expect(out).not.toContain("Slowest call:");
+    expect(out).not.toContain("Model time:");
   });
 
   it("returns exit code 1 with --exit-status on failed run", async () => {
@@ -733,14 +735,14 @@ describe("runs show heartbeat visibility (issue #176)", () => {
   });
 });
 
-// Issue #309: run-level reasoning and per-call timing rollups — the summary
-// must surface "one call thought for 4 minutes" without opening traces.
-describe("runs show reasoning and timing rollups (issue #309)", () => {
+// Issue #309: run-level reasoning rollups — a reasoning-budget change shows
+// as a number in the summary. Timing extremes stay data-only.
+describe("runs show reasoning rollups (issue #309)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("prints reasoning total, the deepest call, slowest call, and model time", async () => {
+  it("prints reasoning total with the call that dominates it", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse(
         makeRun({
@@ -762,10 +764,8 @@ describe("runs show reasoning and timing rollups (issue #309)", () => {
     expect(out).toMatch(/Reasoning: 45,678 tok/);
     expect(out).toContain("max 12,345 in one call");
     expect(out).toContain("observation abcdef0123456789");
-    expect(out).toMatch(/Slowest call: 4m 12s/);
-    expect(out).toContain("observation fedcba9876543210");
-    expect(out).toMatch(/Model time: 12m 30s/);
-    expect(out).toContain("excludes tool/harness time");
+    expect(out).not.toContain("Slowest call:");
+    expect(out).not.toContain("Model time:");
   });
 
   it("prints unknown reasoning explicitly — never as zero", async () => {
@@ -822,5 +822,108 @@ describe("runs show reasoning and timing rollups (issue #309)", () => {
     expect(out).toContain("Reasoning: not reported");
     expect(out).not.toContain("Slowest call:");
     expect(out).not.toContain("Model time:");
+  });
+});
+
+describe("runs show serving host + throughput (issue #307)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("prints the (model, provider) pairs the run served through", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(
+        makeRun({
+          model_providers: [
+            {
+              model: "deepseek-v4.1-flash",
+              provider: "fireworks",
+              route: "priority",
+              calls: 12,
+              total_tokens: 40_000,
+              cost_micro: 420_000,
+            },
+            {
+              model: "deepseek-v4.1-flash",
+              provider: "baseten",
+              route: null,
+              calls: 3,
+              total_tokens: 9_000,
+              cost_micro: 50_000,
+            },
+          ],
+        }),
+      ),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain("Hosts:    priority ×12 · baseten ×3");
+  });
+
+  it("qualifies pairs with the model when several models ran", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(
+        makeRun({
+          model_providers: [
+            { model: "deepseek-v4.1-flash", provider: "fireworks", route: null, calls: 9, total_tokens: 1, cost_micro: 1 },
+            { model: "claude-opus-5", provider: "anthropic", route: null, calls: 1, total_tokens: 1, cost_micro: 1 },
+          ],
+        }),
+      ),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain("deepseek-v4.1-flash @ fireworks ×9");
+    expect(out).toContain("claude-opus-5 @ anthropic ×1");
+  });
+
+  it("prints the median decode throughput with its coverage", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(
+        makeRun({
+          generation_usage: {
+            generations: 15,
+            model_time_ms: 90_000,
+            slowest_call_ms: 25_000,
+            slowest_call_id: "abcdef0123456789",
+            median_output_tok_s: 220.4,
+            output_tok_s_calls: 14,
+            reasoning_tokens: null,
+            reasoning_calls: 0,
+            max_call_reasoning_tokens: null,
+            max_reasoning_call_id: null,
+          },
+        }),
+      ),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toMatch(/Speed:    220 tok\/s median \(14 measured calls\)/);
+  });
+
+  it("omits the host and speed lines when nothing was reported", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(makeRun()),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).not.toContain("Hosts:");
+    expect(out).not.toContain("Speed:");
   });
 });

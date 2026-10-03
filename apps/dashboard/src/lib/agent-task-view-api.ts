@@ -39,12 +39,35 @@ export const fetchTaskViewStats = (
   effort?: string | null,
   since?: string | null,
   signal?: AbortSignal,
+  provider?: string | null,
 ): Promise<Record<string, AgentTaskRunStats>> =>
   apiClient(`/v1/projects/${encodeURIComponent(projectId)}/agent-task-run-stats`, {
     ...NO_CACHE,
-    query: { model: model ?? undefined, effort: effort ?? undefined, since: since ?? undefined },
+    query: {
+      model: model ?? undefined,
+      effort: effort ?? undefined,
+      since: since ?? undefined,
+      provider: provider ?? undefined,
+    },
     signal,
   });
+
+/** Distinct serving-host labels over the project's task runs (issue #307) —
+ * the palette for the Tasks page's Hosts view filter. */
+export interface RunHostFacet {
+  label: string;
+  count: number;
+}
+
+export const fetchTaskHostFacets = (
+  projectId: string,
+  signal?: AbortSignal,
+  model?: string | null,
+): Promise<RunHostFacet[]> =>
+  apiClient(
+    `/v1/projects/${encodeURIComponent(projectId)}/agent-task-run-host-facets`,
+    { ...NO_CACHE, signal, query: { model: model ?? undefined } },
+  );
 
 /**
  * Distinct (model, effort) run configurations in the project — the palette for
@@ -178,6 +201,7 @@ export interface SavedView {
   model: string | null;
   effort: string | null;
   since: string | null;
+  provider: string | null;
 }
 
 /** List the caller's saved evidence-view tabs for the project. */
@@ -187,7 +211,13 @@ export const fetchSavedViews = (projectId: string): Promise<SavedView[]> =>
 /** Create a saved evidence-view tab. Returns the persisted view with its id. */
 export const createSavedView = (
   projectId: string,
-  body: { label: string; model: string | null; effort: string | null; since: string | null },
+  body: {
+    label: string;
+    model: string | null;
+    effort: string | null;
+    since: string | null;
+    provider?: string | null;
+  },
 ): Promise<SavedView> =>
   apiClient(`/v1/projects/${encodeURIComponent(projectId)}/task-views`, { method: "POST", body });
 
@@ -195,7 +225,13 @@ export const createSavedView = (
 export const updateSavedView = (
   projectId: string,
   viewId: string,
-  body: { label?: string; model?: string | null; effort?: string | null; since?: string | null },
+  body: {
+    label?: string;
+    model?: string | null;
+    effort?: string | null;
+    since?: string | null;
+    provider?: string | null;
+  },
 ): Promise<SavedView> =>
   apiClient(`/v1/projects/${encodeURIComponent(projectId)}/task-views/${encodeURIComponent(viewId)}`, {
     method: "PATCH",

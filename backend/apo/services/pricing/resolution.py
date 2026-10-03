@@ -57,6 +57,7 @@ def resolve_model_era(
     model_name: str,
     project: str,
     at_time: datetime,
+    provider: str | None = None,
 ) -> ModelRowDB | None:
     """Find the active model-era row for (model_name, project) at ``at_time``.
 
@@ -66,6 +67,23 @@ def resolve_model_era(
     (``start_date IS NULL`` matches any time, for legacy seed rows).
 
     Project overrides shadow globals per ``match_pattern``.
+
+    ``provider`` (issue #307) is the call's *observed* serving provider —
+    never a guess from the model name. A row with a non-empty
+    ``provider_pattern`` matches only when that pattern full-matches it;
+    rows without one match any provider. Resolution precedence among rows
+    that match the model and are active at ``at_time``:
+
+      1. provider-qualified (pattern matches the observed provider)
+      2. provider-agnostic
+
+    so the same model served by two hosts bills at each host's rate, and a
+    call whose provider has no qualified era — or whose qualified era's
+    time window doesn't cover it — falls back to the agnostic rate instead
+    of going unpriced. Project rows shadow globals *per slot*: a project's
+    ``(match_pattern, provider_pattern)`` era hides the global era in that
+    same slot, but never the global fallback in the other slot (a project
+    adding a per-host rate keeps the global base rate for its other hosts).
     """
     stmt = select(ModelRowDB).where(
         col(ModelRowDB.project).in_([project, GLOBAL_PROJECT]),
@@ -74,13 +92,14 @@ def resolve_model_era(
     if not candidates:
         return None
 
-    # Project rows shadow globals per match_pattern: collect which patterns the
-    # project defines, and drop global rows for those patterns.
-    project_patterns = {c.match_pattern for c in candidates if c.project == project}
+    # Project rows shadow globals per (match_pattern, provider_pattern) slot.
+    project_slots = {
+        (c.match_pattern, c.provider_pattern) for c in candidates if c.project == project
+    }
     visible = [
         c
         for c in candidates
-        if c.project == project or c.match_pattern not in project_patterns
+        if c.project == project or (c.match_pattern, c.provider_pattern) not in project_slots
     ]
 
     # Filter to full-matching patterns.
@@ -99,7 +118,23 @@ def resolve_model_era(
                 return False
         return True
 
-    in_era = [c for c in matching if _in_era(c)]
+    # Provider qualification (issue #307) applies AFTER the era filter: a
+    # qualified row competes only when its pattern matches the observed
+    # provider AND its window covers the call; otherwise the call falls
+    # back to the agnostic rows rather than resolving to nothing (which
+    # would mark history unpriced the moment a per-host era appears).
+    def _qualified(row: ModelRowDB) -> bool:
+        return bool(
+            row.provider_pattern
+            and provider
+            and _fullmatch(row.provider_pattern, provider)
+        )
+
+    qualified_in_era = [c for c in matching if _qualified(c) and _in_era(c)]
+    if qualified_in_era:
+        in_era = qualified_in_era
+    else:
+        in_era = [c for c in matching if not c.provider_pattern and _in_era(c)]
     if not in_era:
         return None
 

@@ -17,6 +17,7 @@ export interface TraceFilters {
   status?: string;
   tags: string[];
   models: string[];
+  providers: string[];
   metric_name?: string;
   min_score?: number;
   max_score?: number;
@@ -60,6 +61,7 @@ export interface FilterActions {
   setSessionId: (id: string | undefined) => void;
   setTags: (tags: string[]) => void;
   setModels: (models: string[]) => void;
+  setProviders: (providers: string[]) => void;
   setMetricFilter: (metricName?: string, minScore?: number, maxScore?: number) => void;
   setSearch: (search: string | undefined) => void;
   setSpanSearch: (span: Partial<Pick<TraceFilters, "service" | "operation" | "span_text">>) => void;
@@ -235,6 +237,7 @@ function parseTraceFilters(searchParams: URLSearchParams): TraceFilters {
     status: searchParams.get("status") || undefined,
     tags: searchParams.get("tags")?.split(",").filter(Boolean) || [],
     models: searchParams.get("models")?.split(",").filter(Boolean) || [],
+    providers: searchParams.get("providers")?.split(",").filter(Boolean) || [],
     metric_name: searchParams.get("metric_name") || undefined,
     min_score: searchParams.get("min_score") ? Number(searchParams.get("min_score")) : undefined,
     max_score: searchParams.get("max_score") ? Number(searchParams.get("max_score")) : undefined,
@@ -268,6 +271,7 @@ function buildTraceQueryString(filters: TraceFilters): string {
   if (filters.status) params.set("status", filters.status);
   if (filters.tags.length > 0) params.set("tags", filters.tags.join(","));
   if (filters.models.length > 0) params.set("models", filters.models.join(","));
+  if (filters.providers.length > 0) params.set("providers", filters.providers.join(","));
   if (filters.metric_name) params.set("metric_name", filters.metric_name);
   if (filters.min_score !== undefined) params.set("min_score", filters.min_score.toString());
   if (filters.max_score !== undefined) params.set("max_score", filters.max_score.toString());
@@ -290,9 +294,10 @@ export function useFilters(): [filters: TraceFilters, actions: FilterActions] {
     parseFilters: parseTraceFilters,
     buildQueryString: buildTraceQueryString,
     basePath: "/traces",
-    clearState: { timePreset: "all", tags: [], models: [], span_predicates: [] } as TraceFilters,
+    clearState: { timePreset: "all", tags: [], models: [], providers: [], span_predicates: [] } as TraceFilters,
     removeFilterOverrides: (key, filters) => {
       if (key === "models") return { ...filters, models: [] };
+      if (key === "providers") return { ...filters, providers: [] };
       if (key === "metric_name") {
         const next = { ...filters };
         delete next.metric_name;
@@ -314,6 +319,7 @@ export function useFilters(): [filters: TraceFilters, actions: FilterActions] {
       setSessionId: (id) => core.updateFilters({ session_id: id } as Partial<TraceFilters>),
       setTags: (tags) => core.updateFilters({ tags } as Partial<TraceFilters>),
       setModels: (models) => core.updateFilters({ models } as Partial<TraceFilters>),
+      setProviders: (providers) => core.updateFilters({ providers } as Partial<TraceFilters>),
       setMetricFilter: (metricName, minScore, maxScore) =>
         core.updateFilters({
           metric_name: metricName,
@@ -349,6 +355,7 @@ export function hasActiveFilters(filters: TraceFilters): boolean {
     (filters.status ?? "") !== "" ||
     filters.tags.length > 0 ||
     filters.models.length > 0 ||
+    filters.providers.length > 0 ||
     (filters.metric_name ?? "") !== "" ||
     (filters.search ?? "") !== "" ||
     (filters.service ?? "") !== "" ||

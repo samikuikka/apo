@@ -53,6 +53,11 @@ class ModelRowDB(SQLModel, table=True):
     project: str = Field(default=__global__, index=True)
     match_pattern: str = Field(index=True)
     provider: str = Field(index=True)
+    # Optional serving-provider qualifier (issue #307): when set, the era
+    # matches only calls whose observed provider full-matches this pattern;
+    # NULL matches any provider. This is the match key for "same model, two
+    # hosts, each at its own rate" — ``provider`` above stays display-only.
+    provider_pattern: str | None = Field(default=None, index=True)
     display_name: str = Field(default="")
 
     # Time-window (ticket 04). Half-open [start_date, end_date); NULL end = open.
@@ -169,6 +174,9 @@ class ModelDocumentCreate(SQLModel):
     project: str = __global__
     match_pattern: str
     provider: str
+    # Optional provider qualifier (issue #307): restricts the era to calls
+    # served by a matching provider. Null/omitted = any provider.
+    provider_pattern: str | None = None
     display_name: str = ""
     start_date: datetime | None = None
     end_date: datetime | None = None

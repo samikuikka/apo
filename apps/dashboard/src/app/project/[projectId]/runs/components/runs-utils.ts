@@ -16,6 +16,7 @@ export const COL = {
   chevron: 28,
   run: "auto",
   source: 150,
+  hosts: 160,
   execution: 180,
   tasks: 180,
   duration: 110,

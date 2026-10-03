@@ -90,7 +90,9 @@ def apply_cost_to_call(
     call.raw_usage = raw_usage
 
     try:
-        result = compute_cost(session, call.model, raw_usage, project, at_time)
+        result = compute_cost(
+            session, call.model, raw_usage, project, at_time, provider=call.provider
+        )
     except Exception:
         logger.debug("cost compute failed for call %s; skipping cost", call.id)
         return

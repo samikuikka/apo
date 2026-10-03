@@ -563,3 +563,108 @@ def _run(
         started_at=started_at,
         completed_at=started_at,
     )
+
+
+def test_task_run_detail_carries_model_providers(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """The single-run detail route decodes the (model, provider/route) rollup.
+
+    It builds its detail separately from the list projection — both must
+    carry the same host pairs (issue #307) or `runs show` and the run page
+    drift from the runs list.
+    """
+    now = datetime.now(timezone.utc)
+    session.add_all([_batch("batch-mp", "p", now)])
+    run = _run("mp-run", "batch-mp", "task-1", now)
+    run.model_providers_json = {
+        "pairs": [
+            {
+                "model": "deepseek-v4.1-flash",
+                "provider": "fireworks",
+                "route": "priority",
+                "calls": 2,
+                "total_tokens": 900,
+                "cost_micro": 12,
+            }
+        ]
+    }
+    session.add(run)
+    session.commit()
+
+    response = client.get("/v1/agent-task-runs/mp-run")
+    assert response.status_code == 200
+    assert response.json()["model_providers"] == [
+        {
+            "model": "deepseek-v4.1-flash",
+            "provider": "fireworks",
+            "route": "priority",
+            "calls": 2,
+            "total_tokens": 900,
+            "cost_micro": 12,
+        }
+    ]
+
+
+def test_batch_list_filters_and_facets_by_serving_host(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """The Runs page's host filter: provider_facets list route-wins labels,
+    and ?provider= keeps only batches whose child run's trace was served by
+    that host (issue #307)."""
+    from apo.models.db import LoggedCallDB, RunDB
+
+    now = datetime.now(timezone.utc)
+    session.add_all([_batch("batch-fw", "p", now), _batch("batch-other", "p", now)])
+
+    fw = _run("fw-run", "batch-fw", "task-1", now)
+    fw.trace_run_id = "trace-fw"
+    other = _run("other-run", "batch-other", "task-1", now)
+    other.trace_run_id = "trace-other"
+    session.add_all([fw, other])
+
+    def _call(run_id: str, model: str, provider: str | None, route: str | None) -> LoggedCallDB:
+        return LoggedCallDB(
+            id=f"call-{run_id}-{provider or route}",
+            run_id=run_id,
+            project="p",
+            task_id="",
+            created_at=now,
+            model=model,
+            input={},
+            messages=[],
+            output={},
+            observation_type="GENERATION",
+            provider=provider,
+            route=route,
+        )
+
+    session.add_all([
+        _call("trace-fw", "deepseek-v4.1-flash", "fireworks", "priority"),
+        _call("trace-other", "deepseek-v4.1-flash", "baseten", None),
+    ])
+    session.commit()
+
+    resp = client.get("/v1/agent-task-batch-runs", params={"project": "p"})
+    assert resp.status_code == 200
+    body = resp.json()
+    # Facet labels are route-wins: the fireworks call's route shadows its
+    # provider, so "priority" — not "fireworks" — is the offered label.
+    assert {f["label"]: f["count"] for f in body["provider_facets"]} == {
+        "priority": 1,
+        "baseten": 1,
+    }
+
+    # Filtering by the raw provider still matches (provider OR route columns).
+    resp = client.get(
+        "/v1/agent-task-batch-runs", params={"project": "p", "provider": "fireworks"}
+    )
+    ids = [b["id"] for b in resp.json()["data"]]
+    assert ids == ["batch-fw"]
+
+    resp = client.get(
+        "/v1/agent-task-batch-runs", params={"project": "p", "provider": "groq"}
+    )
+    assert resp.json()["data"] == []

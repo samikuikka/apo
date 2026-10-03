@@ -215,6 +215,14 @@ export function createApoTracer(
           ? String(initialAttrs["ai.toolCall.name"] ?? "unknown")
           : undefined,
       model: String(initialAttrs["ai.model.id"] ?? "ai-sdk"),
+      // The AI SDK reports the model's provider itself (e.g. "openai",
+      // "anthropic.chat") — pass it through so runs are labeled by host
+      // (issue #307). Absent attribute = unknown, not guessed.
+      provider:
+        typeof initialAttrs["ai.model.provider"] === "string" &&
+        initialAttrs["ai.model.provider"] !== ""
+          ? String(initialAttrs["ai.model.provider"])
+          : undefined,
       observation_type: observationType,
       ...(input !== undefined ? { input } : {}),
       metadata: {

@@ -26,6 +26,14 @@ export interface CreateSpanParams {
   step_index?: number;
   version?: string;
   model?: string;
+  /** Serving provider of the model, emitted as `gen_ai.provider.name` so
+   * runs can be labeled and compared by host (issue #307). Only set when
+   * actually known (vendor SDK or baseURL) — never guessed from the model
+   * id; the backend renders absent as unknown. */
+  provider?: string;
+  /** Finer-grained serving route (e.g. a custom gateway host), emitted as
+   * `apo.llm.route`. */
+  route?: string;
   /** Tool name for TOOL observations; emitted as `gen_ai.tool.name`. */
   tool_name?: string;
   input?: Record<string, unknown>;

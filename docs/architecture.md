@@ -254,6 +254,10 @@ read stored breakdowns; there is no client-side pricing fetch or recompute.
 **Three tables** (`backend/apo/models/pricing.py`):
 - `models` — one row per (model era, project). Same `match_pattern` across
   eras; `[start_date, end_date)` selects the era (time-windowed pricing).
+  An optional `provider_pattern` restricts an era to calls whose observed
+  serving provider matches, so the same model on two hosts can bill at each
+  host's rate; a matching qualified era shadows the provider-agnostic one
+  (issue #307).
 - `pricing_tiers` — a tier within a model. Exactly one default tier;
   non-default tiers match on usage-only threshold conditions
   (`{keys, operator, threshold}`, summing canonical keys).
@@ -269,7 +273,12 @@ GenAI non-overlap invariant (cache/reasoning subtracted from input/output so
 families don't double-count). Per-provider resolvers: OpenAI, Anthropic,
 Bedrock, Gemini, plus a generic fallback. Provider detection is a multi-signal
 hierarchy (`providerMetadata` key-membership → `gen_ai.system` → model-name
-prefix → generic).
+prefix → generic). Detection only picks the token-split heuristic — the
+*serving host* a run displays comes from the span attributes themselves
+(`gen_ai.provider.name`, falling back to `gen_ai.system`, plus the finer
+`apo.llm.route`), stored verbatim on `logged_calls.provider`/`.route` and
+rolled up per run as (model, provider/route) pairs. Spans without the
+attributes show no host, never a guessed one (issue #307).
 
 **Single compute function** (`services/pricing/compute.py:compute_cost`): used
 by ingestion, re-pricing, and the match endpoint. Resolves era → tier → prices,

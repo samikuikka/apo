@@ -225,6 +225,11 @@ async function readCanonicalSnapshot(
       // the checks phase starts — a 409 "no trace yet" must wait for the
       // claim, not fall back to a local snapshot that cannot see the
       // subprocess's spans.
+      // Fresh-run readback: the run row was pre-created by the caller/executor
+      // flow, and the subprocess-exported trace may still be in flight when
+      // the checks phase starts — a 409 "no trace yet" must wait for the
+      // claim, not fall back to a local snapshot that cannot see the
+      // subprocess's spans.
       retryNoTrace: true,
     });
     while (
@@ -676,6 +681,8 @@ async function evaluate(
   const runChecks = async (): Promise<EvaluationItemResult[]> =>
     inlineChecks
       ? runTraceChecks({
+
+        ...(judgeTools ? { judgeTools } : {}),
           snapshot: phase1.snapshot,
           deliverables,
           files,

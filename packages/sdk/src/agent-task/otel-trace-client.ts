@@ -87,23 +87,13 @@ export function createOtelAgentTaskTraceClient(
     if (!myHandle) {
       const headers = config.headers
         ?? (config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {});
-      // Batched export: one HTTP request per flush, not per span. The
-      // backend's admission control allows ~2 requests/s per identity, so the
-      // former simple processor silently lost ~30% of spans on runs emitting
-      // 4+ ended spans/s (HTTP 429 exhausting the exporter's 5-attempt
-      // retry). Durability is unchanged: every exit path (run completion,
-      // cancelActiveRun, shutdown) force-flushes.
       myHandle = await configureApoTelemetry({
         takeOwnership: true,
         endpoint: `${config.endpoint.replace(/\/$/, "")}/api/public/otel/v1/traces`,
         serviceName: "apo-agent-task",
         project: config.project,
         headers,
-        processor: "batch",
-        // A user-set OTEL_BSP_SCHEDULE_DELAY keeps winning.
-        ...(process.env.OTEL_BSP_SCHEDULE_DELAY === undefined
-          ? { scheduledDelayMillis: 500 }
-          : {}),
+        processor: "simple",
         registerGlobal: true,
       });
     }
@@ -153,6 +143,12 @@ export function createOtelAgentTaskTraceClient(
     }
     if (params.model) {
       span.setAttribute("gen_ai.request.model", params.model);
+    }
+    if (params.provider) {
+      span.setAttribute("gen_ai.provider.name", params.provider);
+    }
+    if (params.route) {
+      span.setAttribute("apo.llm.route", params.route);
     }
     const isTool = params.observation_type === "TOOL";
     if (params.input) {

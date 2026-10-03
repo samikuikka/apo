@@ -10,37 +10,33 @@ import {
   resolveMcpServerPaths,
   type McpServerConfig,
 } from "@apo-ai/sdk/agent-task";
-
-/**
- * Structural view of the Claude Agent SDK's mcpServers option shape — kept
- * local so this helper has zero claude-agent-sdk dependency (consumers that
- * only use the ai-sdk path never install it). Assignability to the SDK's own
- * McpServerConfig is pinned by the claude adapter's usage.
- */
-export type ClaudeMcpServerConfig =
+// The Claude Agent SDK's own option shape. Declared structurally so this
+// shared helper stays loadable in consumers that only install the AI SDK
+// plane (the external-example gate) — the Claude adapter re-checks the
+// mapping against the real SDK types where it uses it.
+type ClaudeMcpServerConfig =
   | {
       type: "stdio";
       command: string;
       args?: string[];
       env?: Record<string, string>;
-      timeout?: number;
+      cwd?: string;
     }
   | {
       type: "http";
       url: string;
       headers?: Record<string, string>;
-      timeout?: number;
     };
 
 export { resolveMcpServerPaths };
 
 /**
  * Map apo's McpServerConfig[] onto the Claude Agent SDK's option shape.
- * Parity rules: secret-bearing values expand `${VAR}` exactly like the
- * SDK's own client path, and `tools`/`excludeTools` fail closed — the
- * Claude Agent SDK's per-tool policy gates permission, not visibility, so
- * a load-bearing allowlist must refuse to run rather than silently expose
- * everything.
+ * Parity rules (adversarial review finding): secret-bearing values expand
+ * `${VAR}` exactly like the SDK's own client path, and `tools`/`excludeTools`
+ * fail closed — the Claude Agent SDK's per-tool policy cannot express
+ * visibility filtering, so a load-bearing allowlist must refuse to run
+ * rather than silently expose everything.
  */
 export function toClaudeMcpServers(
   servers: McpServerConfig[],

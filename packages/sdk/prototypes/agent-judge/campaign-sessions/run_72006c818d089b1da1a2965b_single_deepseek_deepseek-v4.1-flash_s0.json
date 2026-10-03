@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The submitted value is a numeric delta (-0.948103) for the specified store and time period, consistent with the question asking for the change in fees if the relative fee of fee ID=384 were set to 1. The sign and magnitude are plausible for a fee reduction, and no evidence suggests it answers a different quantity. Therefore, the answer responds to the task as asked.",
+  "steps": 1,
+  "cost_usd": 0.001340496,
+  "latency_ms": 65412,
+  "tokens": {
+    "input": 234,
+    "output": 2943
+  }
+}

@@ -129,32 +129,24 @@ maintainer never types npm credentials:
 2. **Update user-facing docs and release notes** for any SDK-visible change
    (new entry points, new exports, changed signatures, dependency bumps).
 
-3. **Merge the release PR to `main` with green CI.** CI runs the package gate
-   on every PR — the same gate the release workflow runs. When the PR changes
-   only this manifest's `version`, CI proves that shape and skips the unrelated
-   Python/Postgres backend suite; any other change runs the full suite.
+3. **Merge to `main` with green CI.** CI runs the package gate on every PR —
+   the same gate the release workflow runs.
 
-4. **Publish with the release helper.** Pass the merged release PR so the
-   helper can prove that the merge commit has the exact same tree that passed
-   PR CI:
+4. **Create and push the release tag.** The tag must be exactly
+   `sdk-v<package-version>`:
 
    ```bash
-   scripts/publish-npm-package sdk 0.3.0 <merged-pr-number-or-url>
+   git tag sdk-v0.3.0
+   git push origin sdk-v0.3.0
    ```
 
-   This command checks the merged manifest version, all PR checks, and exact
-   tree equality before it creates `sdk-v<version>`. It then discovers and
-   approves the current protected deployment, watches the publisher, and
-   waits until npm serves the immutable version.
+   The workflow refuses to publish if the tag and `package.json` version
+   disagree.
 
-   Do **not** wait for the duplicate full-repository `main` CI run when the
-   tree-equality proof succeeds. The green PR tested that exact tree, and the
-   protected publisher reruns the SDK tests, typecheck, and clean-consumer
-   package gate on the tagged commit. If the merge tree differs, the helper
-   stops and requires the normal `main` CI path.
+5. **Approve the protected environment deployment.** GitHub pauses the run
+   at the `npm-sdk-release` environment; approve it in the Actions UI.
 
-5. **Verify the result.** The helper performs the registry check; these remain
-   useful for manual inspection:
+6. **Verify the result.**
 
    - The job summary links to `https://www.npmjs.com/package/@apo-ai/sdk/v/<version>`.
    - The npm page shows a provenance badge (signed by GitHub OIDC).
@@ -172,14 +164,5 @@ maintainer never types npm credentials:
 - Packs the tarball with `pnpm pack` (applies `publishConfig` rewrite).
 - Publishes that exact `.tgz` with `--access public --provenance`.
 - Contains no `NPM_TOKEN` or `NODE_AUTH_TOKEN` secret anywhere.
-
-## Why the fast path is safe
-
-GitHub's rebase merge rewrites commit IDs, which used to cause releases to
-wait for the entire repository CI suite a second time. Commit identity is not
-the relevant artifact boundary: the tree is. `scripts/publish-npm-package`
-compares the Git tree from the green PR head with the merged commit's Git tree.
-It tags immediately only when they are identical. The protected publisher
-then validates and packs the tagged SDK again before npm accepts it.
 
 The contract is enforced by `packages/sdk/tests/publish-workflow.test.ts`.

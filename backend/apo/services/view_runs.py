@@ -50,6 +50,7 @@ from ..models.columns import (
     AGENT_TASK_RUN_TASK_ID_COL,
     AGENT_TASK_RUN_TOTAL_CHECKS_COL,
     AGENT_TASK_RUN_TOTAL_COST_COL,
+    AGENT_TASK_RUN_TRACE_RUN_ID_COL,
 )
 from ..models.db import AgentTaskBatchRunDB
 from ..models.schemas import TaskViewConfig
@@ -149,6 +150,27 @@ def runs_in_view(
         )
     if view.effort is not None:
         conditions.append(AGENT_TASK_RUN_CONFIGURED_EFFORT_COL == view.effort)
+    # Serving host (issue #307): the run's trace was served by a matching
+    # provider or route. Project-correlated — trace ids may collide across
+    # projects, so another project's copy of a trace must not leak in.
+    if view.provider is not None:
+        from sqlalchemy import func as sa_func
+
+        from ..db_helpers import as_column
+        from ..models.db import LoggedCallDB
+
+        value = view.provider.lower()
+        call_run_col = as_column(LoggedCallDB.run_id)
+        call_project_col = as_column(LoggedCallDB.project)
+        matching_traces = sa_select(call_run_col).where(
+            call_run_col == AGENT_TASK_RUN_TRACE_RUN_ID_COL,
+            call_project_col == AGENT_TASK_BATCH_PROJECT_COL,
+            or_(
+                sa_func.lower(as_column(LoggedCallDB.provider)) == value,
+                sa_func.lower(as_column(LoggedCallDB.route)) == value,
+            ),
+        )
+        conditions.append(AGENT_TASK_RUN_TRACE_RUN_ID_COL.in_(matching_traces))
     cutoff = since_cutoff(view.since)
     if cutoff is not None:
         conditions.append(AGENT_TASK_RUN_STARTED_AT_COL >= cutoff)

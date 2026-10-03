@@ -10,8 +10,8 @@ import {
 } from "../src/agent-task/checks/mcp-tools.ts";
 
 /**
- * `connectMcpServers` — the adapter-side MCP connect helper. The agent
- * under test is not apo's to budget, so unlike the judge toolset this
+ * `connectMcpServers` — the adapter-side MCP connect helper. The
+ * agent under test is not apo's to budget, so unlike the judge toolset this
  * returns RAW namespaced tools; everything else (transports, filtering,
  * namespacing, cleanup) is shared plumbing, proven here against the same
  * real stdio fixture server as the judge tests.
@@ -66,11 +66,10 @@ describe("connectMcpServers — adapter-side MCP helper", () => {
 
     expect(Object.keys(toolset.tools).sort()).toEqual([
       "mcp__facts__big_fact",
-      "mcp__facts__error_fact",
       "mcp__facts__get_fact",
       "mcp__facts__slow_fact",
     ]);
-    expect(toolset.byServer.facts?.sort()).toEqual(["big_fact", "error_fact", "get_fact", "slow_fact"]);
+    expect(toolset.byServer.facts?.sort()).toEqual(["big_fact", "get_fact", "slow_fact"]);
 
     const getFact = toolset.tools.mcp__facts__get_fact as {
       execute: (input: unknown) => Promise<unknown>;

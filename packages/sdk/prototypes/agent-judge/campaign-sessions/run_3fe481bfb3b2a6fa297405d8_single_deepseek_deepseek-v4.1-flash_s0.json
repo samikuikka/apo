@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The task asks for the average GlobalCard fee for a 10 EUR credit transaction, computed to 6 decimals. The submitted value 0.120132 is the expected numeric result for this specific credit-transaction calculation and matches the required precision. There is no evidence in the task description or value that it answers a different slice (e.g., debit or non-EUR) instead. Therefore the answer responds to the question asked.",
+  "steps": 1,
+  "cost_usd": 0.00414504,
+  "latency_ms": 49212,
+  "tokens": {
+    "input": 252,
+    "output": 9027
+  }
+}

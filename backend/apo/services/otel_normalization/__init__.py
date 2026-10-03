@@ -31,13 +31,21 @@ from ._shared import (
     extract_input,
     extract_model,
     extract_output,
+    extract_provider,
+    extract_route,
     extract_tokens,
 )
 from . import _apo, _claude, _genai, _openinference, _vercel, _generic
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["NormalizedSpan", "normalize_span", "NORMALIZER_VERSION"]
+__all__ = [
+    "NormalizedSpan",
+    "normalize_span",
+    "NORMALIZER_VERSION",
+    "extract_provider",
+    "extract_route",
+]
 
 # Ordered list of (module, mapper_name) pairs. First match wins.
 # Claude Code runs before GenAI: claude_code.* spans also carry gen_ai.* attrs,
@@ -89,6 +97,8 @@ def normalize_span(span: OtlpSpanDB) -> NormalizedSpan:
 
     # Extract common fields (shared across all conventions)
     normalized.model = extract_model(attrs)
+    normalized.provider = extract_provider(attrs)
+    normalized.route = extract_route(attrs)
     normalized.token_usage = _token_usage(attrs, normalized.model)
     normalized.error_message = extract_error(span, attrs)
     normalized.input = extract_input(attrs)

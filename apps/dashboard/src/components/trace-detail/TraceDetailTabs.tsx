@@ -156,15 +156,6 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
         : deepest,
     null,
   );
-  const slowestCall = useMemo(
-    () =>
-      generations.reduce<LoggedCall | null>(
-        (slowest, c) =>
-          slowest == null || (c.latency_ms ?? -1) > (slowest.latency_ms ?? -1) ? c : slowest,
-        null,
-      ),
-    [generations],
-  );
 
   const modelBreakdown = useMemo(
     () =>
@@ -360,25 +351,6 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
                 label="Avg latency"
                 value={avgLatency > 0 ? `${avgLatency.toFixed(0)}ms` : "—"}
               />
-              <MetricRow
-                label="Model time"
-                value={totalLatency > 0 ? `${(totalLatency / 1000).toFixed(1)}s` : "—"}
-                hint="sum of call latencies — excludes tool/harness time"
-              />
-              {slowestCall && slowestCall.latency_ms != null && (
-                <MetricRow
-                  label="Slowest call"
-                  value={
-                    <button
-                      type="button"
-                      className="underline-offset-2 hover:underline"
-                      onClick={() => selectCall(slowestCall.id)}
-                    >
-                      {`${(slowestCall.latency_ms / 1000).toFixed(1)}s`}
-                    </button>
-                  }
-                />
-              )}
             </div>
           </Section>
 

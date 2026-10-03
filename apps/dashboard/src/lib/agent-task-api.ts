@@ -82,6 +82,11 @@ export interface EffortFacetOption {
   count: number;
 }
 
+export interface ProviderFacetOption {
+  label: string;
+  count: number;
+}
+
 export interface ModelFacetOption {
   model: string;
   count: number;
@@ -97,10 +102,34 @@ export interface PaginatedBatchRunSummary {
   page_size: number;
   total_pages: number;
   model_facets: ModelFacetOption[];
+  provider_facets: ProviderFacetOption[];
 }
 
 export interface AgentTaskRunConfigurationCount extends AgentTaskRunConfiguration {
   task_runs: number;
+}
+
+/** One (model, serving provider/route) pair a run used (issue #307).
+ * `provider`/`route` are null when the emitter did not report them. */
+export interface ModelProviderPair {
+  model: string;
+  provider: string | null;
+  route: string | null;
+  calls: number;
+  total_tokens: number | null;
+  cost_micro: number | null;
+}
+
+/** Distinct serving-host labels (route wins over provider; issue #307) for
+ * a compact table cell. Empty when no call reported a host. */
+export function providerLabels(pairs: ModelProviderPair[] | undefined): string[] {
+  if (!pairs) return [];
+  const labels: string[] = [];
+  for (const pair of pairs) {
+    const label = pair.route || pair.provider;
+    if (label && !labels.includes(label)) labels.push(label);
+  }
+  return labels;
 }
 
 export interface AgentTaskBatchRunConfigurationSummary {
@@ -121,6 +150,8 @@ export type AgentTaskRunStatus = "passed" | "failed" | "running" | "error" | "pe
 export type WireStatus = AgentTaskRunStatus | (string & {});
 
 export interface AgentTaskRunSummary {
+  /** Error-state checks rollup (no_verdict_reason follow-up). */
+  errored_checks?: number;
   id: string;
   batch_run_id: string;
   task_id: string;
@@ -133,6 +164,9 @@ export interface AgentTaskRunSummary {
   trace_run_id: string | null;
   /** Primary model the run executed under (denormalized from the trace). */
   primary_model: string | null;
+  /** (model, provider/route) pairs the trace served through (issue #307).
+   * Empty when no call reported a host — render nothing, not "unknown". */
+  model_providers?: ModelProviderPair[];
   task_source_commit_sha: string | null;
   error_message: string | null;
   total_cost: number | null;
@@ -154,7 +188,6 @@ export interface AgentTaskRunSummary {
   passed_checks: number;
   failed_checks: number;
   /** Checks inside total that produced no verdict (judge error), not fails. */
-  errored_checks?: number;
   /** Why an `error` run has no verdict (issue #323); absent on older backends. */
   no_verdict_reason?: NoVerdictReason | null;
   /** Tests whose effective result differs from the recorded one. */
@@ -183,6 +216,10 @@ export interface GenerationUsageSummary {
   model_time_ms: number | null;
   slowest_call_ms: number | null;
   slowest_call_id: string | null;
+  /** Median decode throughput (output tokens / decode window; issue #307).
+   * Null when no generation had both tokens and timing. */
+  median_output_tok_s?: number | null;
+  output_tok_s_calls?: number;
   reasoning_tokens: number | null;
   /** Fewer than `generations` means `reasoning_tokens` is a partial sum. */
   reasoning_calls: number;
@@ -190,7 +227,7 @@ export interface GenerationUsageSummary {
   max_reasoning_call_id: string | null;
 }
 
-export type EvaluatorType = "llm" | "code" | "agent" | "regex" | "mixed";
+export type EvaluatorType = "llm" | "code" | "agent" | "regex";
 
 /** typed catalog selection stored on a source-owned Schedule. */
 export type ScheduleSelection =
@@ -381,6 +418,8 @@ export interface AgentTaskRunDetail extends AgentTaskRunSummary {
 
 /** Issue #159: one judgment on a Task Run (original or rejudge). */
 export interface AgentTaskJudgmentSummary {
+  /** Error-state checks rollup (no_verdict_reason follow-up). */
+  errored_checks?: number;
   id: string;
   task_run_id: string;
   trigger: "original" | "rejudge";
@@ -395,7 +434,6 @@ export interface AgentTaskJudgmentSummary {
   passed_checks: number;
   failed_checks: number;
   /** Checks that produced no verdict (judge error) — apart from fails (#323). */
-  errored_checks?: number;
   created_at: string | null;
 }
 
@@ -732,6 +770,8 @@ export interface TaskRunCohortFilter {
   model?: string | null;
   effort?: string | null;
   since?: string | null;
+  /** Observed serving host (issue #307). */
+  provider?: string | null;
   /** OR'd run statuses (repeatable `?status=`). */
   status?: string[];
 }
@@ -750,6 +790,7 @@ export const listTaskRuns = (
       model: cohort?.model,
       effort: cohort?.effort,
       since: cohort?.since,
+      provider: cohort?.provider,
       status: cohort?.status,
       limit,
     },
@@ -767,6 +808,8 @@ export const listAgentTaskBatchRuns = (
     q?: string;
     model?: string[];
     effort?: string[];
+    /** Observed serving hosts (issue #307). */
+    provider?: string[];
     since?: string;
     page?: number;
     page_size?: number;
@@ -780,6 +823,7 @@ export const listAgentTaskBatchRuns = (
       q: opts?.q,
       model: opts?.model?.join(",") || undefined,
       effort: opts?.effort?.join(",") || undefined,
+      provider: opts?.provider?.join(",") || undefined,
       since: opts?.since,
       page: opts?.page,
       page_size: opts?.page_size,

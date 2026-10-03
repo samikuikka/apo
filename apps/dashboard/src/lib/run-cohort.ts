@@ -15,12 +15,17 @@ export interface RunCohort {
   model: string | null;
   effort: string | null;
   since: string | null;
+  /** Observed serving host (issue #307) — single-valued in the drill-down
+   * vocabulary, like model. Evidence views don't scope by it yet; they
+   * publish null. */
+  provider: string | null;
 }
 
 export const EMPTY_RUN_COHORT: RunCohort = {
   model: null,
   effort: null,
   since: null,
+  provider: null,
 };
 
 /**
@@ -32,6 +37,7 @@ export function hrefWithRunCohort(href: string, cohort: RunCohort): string {
   if (cohort.model) params.set("model", cohort.model);
   if (cohort.effort) params.set("effort", cohort.effort);
   if (cohort.since) params.set("since", cohort.since);
+  if (cohort.provider) params.set("provider", cohort.provider);
   const query = params.toString();
   if (!query) return href;
   return `${href}${href.includes("?") ? "&" : "?"}${query}`;
@@ -50,7 +56,12 @@ export function parseRunCohort(query: SearchParamQuery): RunCohort {
     const single = Array.isArray(value) ? value[0] : value;
     return typeof single === "string" && single ? single : null;
   };
-  return { model: first("model"), effort: first("effort"), since: first("since") };
+  return {
+    model: first("model"),
+    effort: first("effort"),
+    since: first("since"),
+    provider: first("provider"),
+  };
 }
 
 /**
@@ -67,7 +78,12 @@ export function parseDrilldownCohort(query: SearchParamQuery): RunCohort {
     const parts = single.split(",").filter(Boolean);
     return parts.length === 1 ? parts[0] : null;
   };
-  return { model: one("model"), effort: one("effort"), since: one("since") };
+  return {
+    model: one("model"),
+    effort: one("effort"),
+    since: one("since"),
+    provider: one("provider"),
+  };
 }
 
 /**

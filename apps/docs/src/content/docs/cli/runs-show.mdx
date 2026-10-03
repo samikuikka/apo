@@ -18,6 +18,8 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
     { text: "  Adapter:  real-agent" },
     { text: "  Model:    openai/gpt-5.1" },
     { text: "  Effort:   high" },
+    { text: "  Hosts:    openrouter:nitro ×3" },
+    { text: "  Speed:    45.2 tok/s median (3 measured calls)" },
     { text: "  Status:   failed" },
     { text: "  Result:   FAIL", tone: "danger" },
     { text: "  Checks:   1/2 passed (1 failed)" },
@@ -26,8 +28,7 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
     { text: "  Source:   cli · sami · apo task run" },
     { text: "  Cost:     $0.003400" },
     { text: "  Tokens:   1,247" },
-    { text: "  Model time: 12.4s over 3 generations · slowest 9.8s (8c68d098872c5aab)" },
-    { text: "  Reasoning: 612 tokens · largest call 540 (2e1e24fa23cfff6c)" },
+    { text: "  Reasoning: 612 tok · max 540 in one call (observation 2e1e24fa23cfff6c)" },
     { text: "  Trace:    f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6 (apo traces show f1a2b3c4…)", tone: "default" },
     { text: "" },
     { text: "  Checks:", tone: "default" },
@@ -67,7 +68,7 @@ Large per-check values (typically the deliverable re-sent inside every judged cr
 
 ## Output
 
-Every field of the run record: identity (`Run`, `Task`, `Path`, `Batch`, `Adapter`), the adapter-reported configuration (`Model`, `Effort`), the outcome (`Status`, `Result`, `Checks`), timing, cost, tokens, and the trace id.
+Every field of the run record: identity (`Run`, `Task`, `Path`, `Batch`, `Adapter`), the adapter-reported configuration (`Model`, `Effort`), the observed serving route (`Hosts`, `Speed`), the outcome (`Status`, `Result`, `Checks`), timing, cost, tokens, reasoning, and the trace id.
 
 <TerminalOutput
   lines={[
@@ -89,7 +90,11 @@ Every field of the run record: identity (`Run`, `Task`, `Path`, `Batch`, `Adapte
 
 The second sample is a run with **no verdict**: most of its generations ended in error, so apo refused to turn the checks into a PASS/FAIL signal (see [Verdict validity](/concepts/tests/#verdict-validity)). The `Generations` row only appears when generations errored; `Result` shows `-` because there is no verdict to show. A run whose only non-passing checks got no verdict from the judge shows `Result: NO VERDICT` instead, with an `Error:` line naming the cause. Cost and token totals are marked `partial`, errored generations are excluded from both, and unpriced calls are excluded from cost.
 
-`Model time` is the sum of the run's generation latencies (tool and harness time are not counted, so it is usually well under the run's duration), with the slowest single call. `Reasoning` sums the reasoning tokens the provider reported, with the largest single call. Both name the call (its span id, which `apo traces show --json` lists), so a change that makes one call slow or verbose shows as a number instead of an average. Reasoning is marked `partial` when only some generations reported it, and the row is left out when none did: a provider that doesn't report reasoning is unknown, not zero. Errored generations count toward model time but not toward reasoning. Runs aggregated before this was recorded show neither row.
+`Hosts` lists the serving provider or route each observed model actually ran through (e.g. `openrouter:nitro ×3`); the row is left out when the tracer did not report one. `Speed` is the median decode throughput of the run's generations — output tokens over the time from first token to completion — with the number of calls that were measured. A route change (a faster provider, a nitro variant) shows here as a number.
+
+`Reasoning` sums the reasoning tokens the provider reported, with the largest single call. Both name the call (its span id, which `apo traces show --json` lists), so a change that makes one call verbose shows as a number instead of an average. Reasoning is marked `partial` when some generations errored; when no generation reported reasoning but tokens exist, the row reads `not reported (provider did not send reasoning usage)` — a provider that doesn't report reasoning is unknown, not zero. Runs aggregated before this was recorded show neither row.
+
+A live run also shows a `Last beat` line (the most recent heartbeat and its age; it turns into `— lease at risk` when the heartbeat is stale), and a `Judgments` line appears once the run has re-judged verdicts on record (`apo runs judgments <run-id>` lists them).
 
 With `--verbose`, passing checks are listed with their matchers, and judged checks include the judge's model, prompt, and response, so you can see exactly what the judge was asked and what it said.
 

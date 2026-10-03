@@ -59,3 +59,46 @@ describe("InlineTaskRunRow cohort forwarding", () => {
     );
   });
 });
+
+describe("InlineTaskRunRow serving hosts (issue #307)", () => {
+  it("renders the run's host labels in the Hosts cell", () => {
+    const hostRun = {
+      id: "run_fw",
+      task_id: "code-review",
+      status: "passed",
+      run_configuration: { model: "deepseek-v4.1-flash" },
+      model_providers: [
+        { model: "deepseek-v4.1-flash", provider: "openrouter", route: "openrouter:nitro", calls: 2, total_tokens: 1, cost_micro: 1 },
+      ],
+    } as unknown as AgentTaskRunSummary;
+    render(
+      <InlineTaskRunRow
+        run={hostRun}
+        projectId="p"
+        clientNow={null}
+        canDelete={false}
+        onDeleted={() => {}}
+      />,
+    );
+    expect(screen.getAllByText("openrouter:nitro").length).toBeGreaterThan(0);
+  });
+
+  it("renders an em dash when no host was reported", () => {
+    const legacyRun = {
+      id: "run_old",
+      task_id: "code-review",
+      status: "passed",
+      run_configuration: { model: "gpt-5.6-terra" },
+    } as unknown as AgentTaskRunSummary;
+    const { container } = render(
+      <InlineTaskRunRow
+        run={legacyRun}
+        projectId="p"
+        clientNow={null}
+        canDelete={false}
+        onDeleted={() => {}}
+      />,
+    );
+    expect(container.textContent).toContain("—");
+  });
+});

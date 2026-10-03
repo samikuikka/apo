@@ -50,6 +50,7 @@ def compute_cost(
     raw_usage: dict[str, int],
     project: str,
     at_time: datetime,
+    provider: str | None = None,
 ) -> ComputedCost | None:
     """Resolve model+usage -> per-dimension cost breakdown (micro-USD int).
 
@@ -59,8 +60,12 @@ def compute_cost(
 
     Per-dimension cost: ``round(price_stored * tokens / 1_000_000)`` where
     ``price_stored`` is micro-USD-per-1M tokens.
+
+    ``provider`` (issue #307) is the call's observed serving provider; a
+    pricing row with a ``provider_pattern`` matching it shadows
+    provider-agnostic rows for the same model.
     """
-    model = resolve_model_era(session, model_name, project, at_time)
+    model = resolve_model_era(session, model_name, project, at_time, provider)
     if model is None and "/" in model_name:
         # Routers like OpenRouter prefix the model with a provider slug
         # (e.g. "google/gemini-2.5-flash-lite"), but the pricing table keys on
@@ -68,7 +73,7 @@ def compute_cost(
         # resolve against the same entries as direct-API models.
         stripped = model_name.rsplit("/", 1)[-1]
         if stripped != model_name:
-            model = resolve_model_era(session, stripped, project, at_time)
+            model = resolve_model_era(session, stripped, project, at_time, provider)
     if model is None or model.id is None:
         return None
 

@@ -273,6 +273,7 @@ describe("AgentTasksClient — active view tab in the URL", () => {
     model: "gpt-5.2",
     effort: null,
     since: null,
+    provider: null,
   };
 
   beforeEach(() => {
@@ -349,30 +350,5 @@ describe("AgentTasksClient — active view tab in the URL", () => {
       expect(new URLSearchParams(window.location.search).get("view")).toBeNull();
     });
     expect(screen.queryByText("scoped to this view")).not.toBeInTheDocument();
-  });
-
-  it("view writes leave sibling params alone — ?q= survives the tab switch", async () => {
-    const user = userEvent.setup();
-    const { fetchSavedViews } = await import("@/lib/agent-task-view-api");
-    vi.mocked(fetchSavedViews).mockResolvedValue([savedView]);
-    // Arrive mid-session: a search filter is active alongside the saved tab.
-    window.history.replaceState(null, "", "/?q=invoice&view=v-91");
-    render(
-      <AgentTasksClient
-        tasks={[task()]}
-        error={null}
-        taskSource={taskSource}
-        isDemo={false}
-        initialViewId="v-91"
-      />,
-    );
-
-    // Switching to Main must remove only ?view= — the shallow write reads
-    // the live URL first, so clobbering it down to "?view=" alone would
-    // silently clear the user's search filter.
-    await user.click(await screen.findByRole("button", { name: /^Main/ }));
-    const params = new URLSearchParams(window.location.search);
-    expect(params.get("view")).toBeNull();
-    expect(params.get("q")).toBe("invoice");
   });
 });

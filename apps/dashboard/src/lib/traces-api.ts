@@ -22,6 +22,7 @@ interface TraceSummaryTransport {
   tags: string[];
   user_id: string | null;
   primary_model: string | null;
+  providers: string[] | null;
   service_name: string | null;
   call_count: number;
   duration_ms: number | null;
@@ -47,6 +48,9 @@ export interface TraceSummary {
   tags: string[];
   user_id: string | null;
   primary_model: string | null;
+  /** Distinct serving-host labels (route wins over provider; issue #307).
+   * Empty when no call reported a host. */
+  providers: string[];
   serviceName: string | null;
   call_count: number;
   duration_ms: number | null;
@@ -113,6 +117,8 @@ export interface TraceListParams {
   userId?: string;
   tags?: string;
   models?: string;
+  /** Comma-separated serving provider/route list (issue #307). */
+  providers?: string;
   metricName?: string;
   minScore?: string;
   maxScore?: string;
@@ -163,6 +169,8 @@ export interface FacetBucket {
 export interface TraceFacets {
   status: FacetBucket[];
   models: FacetBucket[];
+  /** Serving-host facet: merged provider + route values (issue #307). */
+  providers: FacetBucket[];
   environments: FacetBucket[];
   tags: FacetBucket[];
   users: FacetBucket[];
@@ -186,6 +194,7 @@ function normalizeTraceSummary(
     tags: trace.tags,
     user_id: trace.user_id,
     primary_model: trace.primary_model,
+    providers: trace.providers ?? [],
     serviceName: trace.service_name ?? null,
     call_count: trace.call_count,
     duration_ms: trace.duration_ms,
@@ -227,6 +236,7 @@ export async function listTraces(
       user_id: params.userId,
       tags: params.tags,
       models: params.models,
+      providers: params.providers,
       metric_name: params.metricName,
       min_score: params.minScore,
       max_score: params.maxScore,

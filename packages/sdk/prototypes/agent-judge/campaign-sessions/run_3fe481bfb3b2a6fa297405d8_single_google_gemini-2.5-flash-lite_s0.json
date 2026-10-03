@@ -1,0 +1,14 @@
+{
+  "judge": "single",
+  "model": "google/gemini-2.5-flash-lite",
+  "outcome": "verdict",
+  "pass": true,
+  "reasoning": "The task asks for the average GlobalCard fee for a 10 EUR credit transaction, computed to 6 decimals. The provided answer is '0.120132'. The tool log shows a calculation for 'avg_fee_10eur_credit' which results in 0.120132. This matches the submitted answer and the task requirements.",
+  "steps": 1,
+  "cost_usd": 0.000059,
+  "latency_ms": 652,
+  "tokens": {
+    "input": 210,
+    "output": 95
+  }
+}

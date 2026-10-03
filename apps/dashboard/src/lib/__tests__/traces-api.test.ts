@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { getAdjacentTraces, getCallDetail, getTraceDetail } from "../traces-api";
+import { getAdjacentTraces, getCallDetail, getTraceDetail, listTraces } from "../traces-api";
 
 const mockFetch = vi.fn();
 globalThis.fetch = mockFetch;
@@ -183,5 +183,96 @@ describe("getCallDetail", () => {
     expect(calledUrl).toContain("/v1/runs/r1/calls/c1");
     expect(calledUrl).toContain("project=proj-123");
     expect(init?.signal).toBe(controller.signal);
+  });
+});
+
+describe("listTraces serving-host dimension (issue #307)", () => {
+  it("sends the providers filter and normalizes host labels onto summaries", async () => {
+    const page = {
+      data: [
+        {
+          id: "t1",
+          project: "p",
+          flow_name: null,
+          task_id: null,
+          version: null,
+          session_id: null,
+          environment: "default",
+          tags: [],
+          user_id: null,
+          primary_model: "deepseek-v4.1-flash",
+          providers: ["fireworks", "openrouter:nitro"],
+          service_name: "svc",
+          call_count: 3,
+          duration_ms: 1000,
+          created_at: "2026-09-01T00:00:00Z",
+          completed_at: null,
+          status: "success",
+          error_count: 0,
+          warning_count: 0,
+          metrics: [],
+          input_preview: null,
+          output_preview: null,
+          bookmarked: false,
+        },
+      ],
+      total_count: 1,
+      page: 0,
+      page_size: 40,
+      total_pages: 1,
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(page),
+    });
+
+    const result = await listTraces({ project: "p", providers: "fireworks" });
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain("providers=fireworks");
+    // Absent on the wire → [] (render nothing, not "unknown").
+    expect(result.data[0]?.providers).toEqual(["fireworks", "openrouter:nitro"]);
+  });
+
+  it("defaults providers to an empty list for payloads that predate the field", async () => {
+    const page = {
+      data: [
+        {
+          id: "t2",
+          project: "p",
+          flow_name: null,
+          task_id: null,
+          version: null,
+          session_id: null,
+          environment: "default",
+          tags: [],
+          user_id: null,
+          primary_model: null,
+          service_name: null,
+          call_count: 0,
+          duration_ms: null,
+          created_at: "2026-09-01T00:00:00Z",
+          completed_at: null,
+          status: "success",
+          error_count: 0,
+          warning_count: 0,
+          metrics: [],
+          input_preview: null,
+          output_preview: null,
+          bookmarked: false,
+        },
+      ],
+      total_count: 1,
+      page: 0,
+      page_size: 40,
+      total_pages: 1,
+    };
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(page),
+    });
+
+    const result = await listTraces({ project: "p" });
+    expect(result.data[0]?.providers).toEqual([]);
   });
 });

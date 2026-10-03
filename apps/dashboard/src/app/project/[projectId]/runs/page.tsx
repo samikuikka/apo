@@ -2,6 +2,7 @@ import {
   listAgentTaskBatchRuns,
   type AgentTaskBatchRunSummary,
   type ModelFacetOption,
+  type ProviderFacetOption,
 } from "@/lib/agent-task-api";
 import { getProject, type ProjectTaskSource } from "@/lib/projects-api";
 import { Suspense } from "react";
@@ -35,11 +36,14 @@ export default async function RunsPage({
   const models = modelParam ? modelParam.split(",").filter(Boolean) : undefined;
   const effortParam = typeof query.effort === "string" ? query.effort : undefined;
   const efforts = effortParam ? effortParam.split(",").filter(Boolean) : undefined;
+  const providerParam = typeof query.provider === "string" ? query.provider : undefined;
+  const providers = providerParam ? providerParam.split(",").filter(Boolean) : undefined;
 
   let batchRuns: AgentTaskBatchRunSummary[] = [];
   let totalCount = 0;
   let totalPages = 0;
   let modelFacets: ModelFacetOption[] = [];
+  let providerFacets: ProviderFacetOption[] = [];
   let error: string | null = null;
   let taskSource: ProjectTaskSource | null = null;
 
@@ -53,6 +57,7 @@ export default async function RunsPage({
       since,
       model: models,
       effort: efforts,
+      provider: providers,
       page,
       page_size: pageSize,
     });
@@ -60,6 +65,7 @@ export default async function RunsPage({
     totalCount = paginated.total_count;
     totalPages = paginated.total_pages;
     modelFacets = paginated.model_facets;
+    providerFacets = paginated.provider_facets;
   } catch (e: unknown) {
     error = e instanceof Error ? e.message : "Failed to fetch runs";
   }
@@ -75,6 +81,7 @@ export default async function RunsPage({
       <Suspense fallback={null}>
         <RunsClient
           batchRuns={batchRuns}
+          providerFacets={providerFacets}
           error={error}
           taskSource={taskSource}
           totalCount={totalCount}

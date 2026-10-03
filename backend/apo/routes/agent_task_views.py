@@ -60,6 +60,7 @@ def _to_response(row: TaskViewDB) -> TaskViewResponse:
         model=row.model,
         effort=row.effort,
         since=row.since,
+        provider=row.provider,
     )
 
 
@@ -304,6 +305,7 @@ async def create_task_view(
         model=body.model,
         effort=body.effort,
         since=body.since,
+        provider=body.provider,
     )
     session.add(row)
     session.commit()
@@ -330,7 +332,7 @@ async def update_task_view(
     # ``label`` is not nullable, so a null label remains a no-op.
     if "label" in body.model_fields_set and body.label is not None:
         row.label = body.label
-    for field in ("model", "effort", "since"):
+    for field in ("model", "effort", "since", "provider"):
         if field in body.model_fields_set:
             setattr(row, field, getattr(body, field))
     row.updated_at = datetime.now(timezone.utc)

@@ -12,8 +12,6 @@ import {
   resolveJudgeTools,
   resolveJudgeToolsFromEnv,
   resolveMcpServerPaths,
-  connectMcpServers,
-  validateMcpServerConfig,
   type McpServerConfig,
 } from "../src/agent-task/checks/mcp-tools.ts";
 
@@ -164,25 +162,6 @@ describe("mcp-tools — pure helpers", () => {
     expect(() => expandSecretPlaceholders({ a: "${MCP_TEST_UNSET_VAR}" })).toThrow(/MCP_TEST_UNSET_VAR/);
   });
 
-  it("rejects filter options that are not tool-name arrays, and non-positive timeouts", () => {
-    const base = { name: "facts", transport: { type: "stdio", command: "node" } };
-    // A string `tools` would degrade to substring matching per tool name —
-    // the validation must fail at load instead.
-    expect(() =>
-      validateMcpServerConfig({ ...base, tools: "get_fact" }, "test"),
-    ).toThrow(/'tools' must be an array of tool names/);
-    expect(() =>
-      validateMcpServerConfig({ ...base, tools: ["get_fact", 7] }, "test"),
-    ).toThrow(/'tools' must be an array of tool names/);
-    expect(() =>
-      validateMcpServerConfig({ ...base, timeoutMs: 0 }, "test"),
-    ).toThrow(/'timeoutMs' must be a positive number/);
-    // Empty arrays are explicit no-ops ("no allowlist"/"no denylist").
-    expect(() =>
-      validateMcpServerConfig({ ...base, tools: ["get_fact"], excludeTools: [], timeoutMs: 1_000 }, "test"),
-    ).not.toThrow();
-  });
-
   it("resolves judge tools layer by layer, arrays replacing never concat", () => {
     const run = { mcp: [factsServerConfig()] };
     const task = { mcp: [factsServerConfig({ name: "other" })] };
@@ -281,7 +260,7 @@ describe("t.agent — MCP evidence tools (real stdio server)", () => {
     expect(assertion.judge?.session?.tools).toContain("mcp__facts__get_fact");
   });
 
-  it("serves a judge server declared with a task-relative path", async () => {
+  it("serves a judge server declared with a task-relative path (P0 regression)", async () => {
     // Reproduces the exact live failure: the eval declares "./"-relative
     // args, the runner's cwd is somewhere else entirely, and only runTask's
     // resolveMcpServerPaths against the task dir makes the spawn work.
@@ -289,33 +268,30 @@ describe("t.agent — MCP evidence tools (real stdio server)", () => {
     // Under the package tree so the copied fixture's bare imports
     // (@modelcontextprotocol/sdk, zod) resolve from packages/sdk/node_modules.
     const taskDir = mkdtempSync(join(__dirname, "__judge-mcp-rel-"));
-    try {
-      copyFileSync(FACTS_SERVER, join(taskDir, "facts-server.mjs"));
+    copyFileSync(FACTS_SERVER, join(taskDir, "facts-server.mjs"));
 
-      scriptFetch([
-        toolCallTurn("1", "mcp__facts__get_fact", { topic: "relative" }),
-        toolCallTurn("2", "finish_verdict", { reasoning: "Relative path resolved to the task dir.", pass: true }),
-      ]);
+    scriptFetch([
+      toolCallTurn("1", "mcp__facts__get_fact", { topic: "relative" }),
+      toolCallTurn("2", "finish_verdict", { reasoning: "Relative path resolved to the task dir.", pass: true }),
+    ]);
 
-      const relative: McpServerConfig = {
-        name: "facts",
-        transport: { type: "stdio", command: "node", args: ["./facts-server.mjs"], env: { FACTS_PID_FILE: "${FACTS_PID_FILE}" } },
-      };
-      // Exactly what resolveJudgeToolsForTask does inside runTask.
-      const resolved = resolveMcpServerPaths([relative], taskDir);
+    const relative: McpServerConfig = {
+      name: "facts",
+      transport: { type: "stdio", command: "node", args: ["./facts-server.mjs"], env: { FACTS_PID_FILE: "${FACTS_PID_FILE}" } },
+    };
+    // Exactly what resolveJudgeToolsForTask does inside runTask.
+    const resolved = resolveMcpServerPaths([relative], taskDir);
 
-      const assertion = await runAgentCheck(
-        async (t) => {
-          await t.agent("PASS if the fact service answers.");
-        },
-        { judgeTools: { mcp: resolved } },
-      );
+    const assertion = await runAgentCheck(
+      async (t) => {
+        await t.agent("PASS if the fact service answers.");
+      },
+      { judgeTools: { mcp: resolved } },
+    );
 
-      expect(assertion.pass).toBe(true);
-      expect(assertion.judge?.session?.tools).toContain("mcp__facts__get_fact");
-    } finally {
-      rmSync(taskDir, { recursive: true, force: true });
-    }
+    expect(assertion.pass).toBe(true);
+    expect(assertion.judge?.session?.tools).toContain("mcp__facts__get_fact");
+    rmSync(taskDir, { recursive: true, force: true });
   });
 
   it("applies allow/deny filtering to the exposed tool names", async () => {
@@ -405,7 +381,7 @@ describe("t.agent — MCP evidence tools (real stdio server)", () => {
     // The manifest preserves the identity of the FULL ~200 KB result…
     const fingerprint = assertion.judge?.session?.evidence?.find((e) => e.tool === "mcp__facts__big_fact");
     expect(fingerprint?.result_bytes).toBeGreaterThan(200_000);
-    // …while the recorded transcript step stays under the 8 KiB record cap.
+    // …while the recorded transcript step stays inside the §10 caps.
     const call = assertion.judge?.session?.steps
       ?.flatMap((s) => s.tool_calls ?? [])
       .find((c) => c.name === "mcp__facts__big_fact");
@@ -429,27 +405,6 @@ describe("t.agent — MCP evidence tools (real stdio server)", () => {
       ?.flatMap((s) => s.tool_calls ?? [])
       .find((c) => c.name === "mcp__facts__slow_fact");
     expect(call?.result).toContain("timed out");
-  });
-
-  it("serves a server-side tool error to the model without breaking the session", async () => {
-    scriptFetch([
-      toolCallTurn("1", "mcp__facts__error_fact", {}),
-      toolCallTurn("2", "finish_verdict", { reasoning: "Tool errored; verdict continues.", pass: true }),
-    ]);
-
-    const assertion = await runAgentCheck(async (t) => {
-      await t.agent("PASS regardless.", { tools: { mcp: [factsServerConfig()] } });
-    });
-
-    // The verdict still lands and the failure is visible evidence, not a
-    // crashed session. The MCP SDK surfaces a thrown handler error as an
-    // isError result, which the recorder keeps verbatim.
-    expect(assertion.pass).toBe(true);
-    const call = assertion.judge?.session?.steps
-      ?.flatMap((s) => s.tool_calls ?? [])
-      .find((c) => c.name === "mcp__facts__error_fact");
-    expect(call?.result).toContain('"isError":true');
-    expect(call?.result).toContain("facts service exploded");
   });
 
   it("fails closed (recorded failure naming the server) when the server cannot start", async () => {
@@ -480,30 +435,6 @@ describe("t.agent — MCP evidence tools (real stdio server)", () => {
     const pid = Number(readFileSync(process.env.FACTS_PID_FILE!, "utf-8"));
     expect(Number.isInteger(pid)).toBe(true);
     // The client's close() must have terminated the child (SIGTERM → exit).
-    let alive = true;
-    for (let i = 0; i < 40 && alive; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      try {
-        process.kill(pid, 0);
-      } catch {
-        alive = false;
-      }
-    }
-    expect(alive).toBe(false);
-  });
-
-  it("closes already-connected servers when a later server fails to connect", async () => {
-    // "facts" connects for real, then "broken" cannot spawn: the failure
-    // must close facts' live process too, not orphan it mid-batch.
-    await expect(
-      connectMcpServers([
-        factsServerConfig(),
-        { name: "broken", transport: { type: "stdio", command: "/nonexistent/mcp-binary" } },
-      ]),
-    ).rejects.toThrow(/"broken" failed to connect/);
-
-    const pid = Number(readFileSync(process.env.FACTS_PID_FILE!, "utf-8"));
-    expect(Number.isInteger(pid)).toBe(true);
     let alive = true;
     for (let i = 0; i < 40 && alive; i++) {
       await new Promise((resolve) => setTimeout(resolve, 50));

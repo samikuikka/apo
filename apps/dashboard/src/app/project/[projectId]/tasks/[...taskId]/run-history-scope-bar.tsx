@@ -29,12 +29,15 @@ export interface TaskRunHistoryScope extends RunCohort {
 export function TaskRunHistoryControls({
   scope,
   facets,
+  hostOptions = [],
   viewLabel,
   onScopeChange,
   onReset,
 }: {
   scope: TaskRunHistoryScope;
   facets: RunConfigModelFacet[];
+  /** Serving-host labels seen on this task's runs (issue #307). */
+  hostOptions?: { label: string; count: number }[];
   viewLabel: string | null;
   onScopeChange: (next: Partial<TaskRunHistoryScope>) => void;
   onReset: () => void;
@@ -49,6 +52,14 @@ export function TaskRunHistoryControls({
       modelOptions={facets}
       selectedModels={scope.model ? new Set([scope.model]) : new Set()}
       onSelectModel={(model) => onScopeChange({ model, effort: null })}
+      hostOptions={hostOptions}
+      selectedHosts={scope.provider ? new Set([scope.provider]) : new Set()}
+      onToggleHost={(host) =>
+        onScopeChange({
+          provider: scope.provider === host ? null : host,
+        })
+      }
+      onClearHosts={() => onScopeChange({ provider: null })}
       effortOptions={
         effortTiers.length >= 2
           ? effortTiers.map((tier) => ({ value: tier.effort, label: tier.effort }))
@@ -100,9 +111,14 @@ function parseStatusParam(searchParams: URLSearchParams): Set<string> {
 export function RunHistoryScopeBar({
   projectId,
   facets,
+  hostOptions = [],
 }: {
   projectId: string;
   facets: RunConfigModelFacet[];
+  /** Serving-host labels over this task's runs (issue #307), from the page's
+   * scoped fetch — options reflect the current view, and a URL-selected host
+   * stays listed even when filtering removed it from the rows. */
+  hostOptions?: { label: string; count: number }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -164,6 +180,7 @@ export function RunHistoryScopeBar({
       model: patch.model !== undefined ? patch.model : scope.model,
       effort: patch.effort !== undefined ? patch.effort : scope.effort,
       since: patch.since !== undefined ? patch.since : scope.since,
+      provider: patch.provider !== undefined ? patch.provider : scope.provider,
       status: patch.status !== undefined ? patch.status : scope.status,
     }),
     [scope],
@@ -212,6 +229,7 @@ export function RunHistoryScopeBar({
     <TaskRunHistoryControls
       scope={{ ...scope, status: statusMirror }}
       facets={facets}
+      hostOptions={hostOptions}
       viewLabel={viewLabel}
       onScopeChange={handleScopeChange}
       onReset={() => {

@@ -27,6 +27,8 @@ from ...models.columns import (
     LOGGED_CALL_LEVEL_COL,
     LOGGED_CALL_MODEL_COL,
     LOGGED_CALL_PROJECT_COL,
+    LOGGED_CALL_PROVIDER_COL,
+    LOGGED_CALL_ROUTE_COL,
     LOGGED_CALL_RUN_ID_COL,
     RUN_CALL_COUNT_COL,
     RUN_CREATED_AT_COL,
@@ -45,6 +47,7 @@ from ...models.columns import (
     RUN_METRIC_SCORE_COL,
 )
 from ...services.projection_io import has_preview_payload
+from ...services.trace_backend import parse_model_providers, provider_labels
 from ...services.trace_search import apply_trace_search
 from .metrics import calculate_run_metrics_from_calls
 
@@ -77,6 +80,7 @@ class RunListFilters:
     session_ids: list[str] = field(default_factory=list)
     user_ids: list[str] = field(default_factory=list)
     models: list[str] = field(default_factory=list)
+    providers: list[str] = field(default_factory=list)
     tags: str | None = None
     search: str | None = None
     # Span-derived search
@@ -197,6 +201,28 @@ def _apply_attribute_filters(statement: Any, filters: RunListFilters) -> Any:
                 RUN_ID_COL.in_(call_model_ids),
             )
         )
+    if filters.providers:
+        # A provider filter matches the observed serving provider OR the
+        # finer-grained route, so "openrouter:nitro" finds runs whose host
+        # identity lives in the route attribute (issue #307). The subquery
+        # is project-correlated because trace ids may collide across
+        # projects (surrogate-PK design) — an unscoped scan would let
+        # another project's copy of a trace satisfy this one's filter.
+        values = [v.lower() for v in filters.providers]
+        run_project = RUN_PROJECT_COL
+        call_provider_ids = (
+            select(LOGGED_CALL_RUN_ID_COL)
+            .where(
+                LOGGED_CALL_RUN_ID_COL.is_not(None),
+                LOGGED_CALL_PROJECT_COL == run_project,
+                or_(
+                    func.lower(LOGGED_CALL_PROVIDER_COL).in_(values),
+                    func.lower(LOGGED_CALL_ROUTE_COL).in_(values),
+                ),
+            )
+            .correlate(RunDB)
+        )
+        statement = statement.where(RUN_ID_COL.in_(call_provider_ids))
     if filters.tags:
         statement = apply_tag_filters(statement, filters.tags)
     if filters.search:
@@ -333,6 +359,9 @@ def _hydrate_summaries(
                 user_id=run.user_id,
                 primary_model=run.primary_model,
                 service_name=run.service_name,
+                providers=provider_labels(
+                    parse_model_providers(run.model_providers_json)
+                ),
                 bookmarked=run.bookmarked,
                 task_run_id=run.task_run_id,
                 call_count=run.call_count,

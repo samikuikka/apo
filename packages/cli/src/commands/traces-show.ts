@@ -8,6 +8,11 @@ import { reportCommandError } from "../lib/command-error.ts";
 type TraceCall = {
   id: string;
   model: string | null;
+  /** Serving host as the emitter reported it (gen_ai.provider.name /
+   * gen_ai.system); null = not reported. */
+  provider?: string | null;
+  /** Finer-grained serving route (apo.llm.route), e.g. "openrouter:nitro". */
+  route?: string | null;
   observation_type: string;
   step_name: string | null;
   level: string;
@@ -44,6 +49,17 @@ type TraceRun = {
   tags: string[];
   created_at: string;
   completed_at: string | null;
+  /** (model, provider/route) pairs the trace served through (issue #307). */
+  model_providers?: ModelProviderPair[];
+};
+
+type ModelProviderPair = {
+  model: string;
+  provider: string | null;
+  route: string | null;
+  calls: number;
+  total_tokens: number | null;
+  cost_micro: number | null;
 };
 
 type TraceDetail = {
@@ -239,8 +255,6 @@ function printTraceDetail(trace: TraceDetail, calls: TraceCall[], view: CallView
   const reporting = generations.filter(
     (c) => c.level !== "ERROR" && c.raw_usage?.reasoning != null,
   );
-  const timed = generations.filter((c) => c.latency_ms != null);
-
   console.log(bold(`Trace: ${run.id}`));
   console.log(`  Task:      ${run.task_id ?? run.flow_name ?? "-"}`);
   console.log(`  Status:    ${run.status}`);
@@ -248,22 +262,16 @@ function printTraceDetail(trace: TraceDetail, calls: TraceCall[], view: CallView
   console.log(`  Calls:     ${trace.calls.length}${errorCount > 0 ? ` (${red(`${errorCount} errors`)})` : ""}${warnCount > 0 ? ` (${warnCount} warnings)` : ""}`);
   console.log(`  Cost:      ${formatCost(totalCost)}`);
   console.log(`  Tokens:    ${totalTokens.toLocaleString()}`);
+  const hosts = formatHosts(run.model_providers);
+  if (hosts) {
+    console.log(`  Hosts:     ${hosts}`);
+  }
   if (reporting.length > 0) {
     const totalReasoning = reporting.reduce((s, c) => s + (c.raw_usage!.reasoning ?? 0), 0);
     const deepest = reporting.reduce((a, b) =>
       (b.raw_usage!.reasoning ?? 0) > (a.raw_usage!.reasoning ?? 0) ? b : a);
     console.log(
       `  Reasoning: ${totalReasoning.toLocaleString()} tok ${dim(`· max ${(deepest.raw_usage!.reasoning ?? 0).toLocaleString()} in one call (observation ${deepest.id})`)}`,
-    );
-  }
-  if (timed.length > 0) {
-    const slowest = timed.reduce((a, b) => (b.latency_ms! > a.latency_ms! ? b : a));
-    const modelTime = timed.reduce((s, c) => s + c.latency_ms!, 0);
-    console.log(
-      `  Slowest call: ${(slowest.latency_ms! / 1000).toFixed(1)}s ${dim(`(observation ${slowest.id})`)}`,
-    );
-    console.log(
-      `  Model time: ${(modelTime / 1000).toFixed(1)}s ${dim("(sum of generation latencies — excludes tool/harness time)")}`,
     );
   }
   console.log(`  Created:   ${formatTime(run.created_at)}`);
@@ -295,6 +303,40 @@ function levelIndicator(level: string): string {
   return " ";
 }
 
+/** tok/s with one decimal under 100 (3.1, 37.5) and integers above — the
+ * precision a host comparison can actually read (issue #307). */
+function formatTokPerS(value: number): string {
+  return `${value < 100 ? value.toFixed(1) : Math.round(value)}tok/s`;
+}
+
+/** Decode throughput of one generation: completion tokens over the decode
+ * window (end - first token), full duration when no TTFT was recorded
+ * (issue #307). Null when tokens or timing are missing. */
+function outputTokPerS(call: TraceCall): number | null {
+  const tokens = call.completion_tokens;
+  const latency = call.latency_ms;
+  if (!tokens || latency == null || latency <= 0) return null;
+  const ttft = call.time_to_first_token_ms;
+  const windowMs = ttft != null && ttft >= 0 && ttft < latency ? latency - ttft : latency;
+  return tokens / (windowMs / 1000);
+}
+
+/** One line of (model, provider/route) pair labels with call counts. Empty
+ * when no pair reported a host — unknown is not worth a line of noise. */
+function formatHosts(pairs: ModelProviderPair[] | undefined): string {
+  if (!pairs || pairs.length === 0) return "";
+  const labeled = pairs.filter((p) => p.route || p.provider);
+  if (labeled.length === 0) return "";
+  const models = new Set(labeled.map((p) => p.model));
+  const showModel = models.size > 1;
+  return labeled
+    .map((p) => {
+      const host = p.route || p.provider || "unknown";
+      return showModel ? `${p.model} @ ${host} ×${p.calls}` : `${host} ×${p.calls}`;
+    })
+    .join(dim(" · "));
+}
+
 function printCall(call: TraceCall, view: CallView, modelWidth: number): void {
   const indent = call.parent_call_id ? "    " : "  ";
   const li = levelIndicator(call.level);
@@ -304,11 +346,18 @@ function printCall(call: TraceCall, view: CallView, modelWidth: number): void {
   const cost = formatCost(call.cost).padStart(10);
   const tokens = call.total_tokens != null ? call.total_tokens.toLocaleString().padStart(8) : "       -";
   const ttft = call.time_to_first_token_ms != null ? ` ttft:${(call.time_to_first_token_ms / 1000).toFixed(1)}s` : "";
+  // Decode speed + serving host (issue #307): the numbers a host comparison
+  // needs, on the calls that actually hit a model. Errored generations skip
+  // the speed — their token count is truncated, so the ratio would read as
+  // fabricated slowness (same rule as the backend's run-level median).
+  const tokPerS = call.level === "ERROR" ? null : outputTokPerS(call);
+  const speed = tokPerS != null ? ` ${formatTokPerS(tokPerS)}` : "";
+  const host = call.route || call.provider;
 
   // Verbose appends the call id: --call takes these ids, so the tree itself
   // must show them — otherwise picking one out means a --json dump.
   const idSuffix = view.verbose ? dim(`  ${call.id}`) : "";
-  console.log(`${dim(indent)}${li} ${step} ${dim(model)} ${latency}  ${cost}  ${tokens}${dim(ttft)}${idSuffix}`);
+  console.log(`${dim(indent)}${li} ${step} ${dim(model)} ${latency}  ${cost}  ${tokens}${dim(ttft)}${dim(speed)}${host ? dim(` @${host}`) : ""}${idSuffix}`);
 
   // Token split
   if (call.prompt_tokens != null || call.completion_tokens != null) {

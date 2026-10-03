@@ -159,7 +159,7 @@ describe("Tasks page cohort handoff", () => {
   it("carries the saved-view identity into the task detail link", async () => {
     const viewApi = await import("@/lib/agent-task-view-api");
     vi.mocked(viewApi.fetchSavedViews).mockResolvedValue([
-      { id: "v1", label: "View 1", model: "claude-opus-5", effort: null, since: null },
+      { id: "v1", label: "View 1", model: "claude-opus-5", effort: null, since: null, provider: null },
     ]);
     const user = userEvent.setup();
     render(
@@ -189,7 +189,7 @@ describe("Tasks page cohort handoff", () => {
   it("restores the saved tab on mount from initialViewId", async () => {
     const viewApi = await import("@/lib/agent-task-view-api");
     vi.mocked(viewApi.fetchSavedViews).mockResolvedValue([
-      { id: "v1", label: "View 1", model: "claude-opus-5", effort: null, since: null },
+      { id: "v1", label: "View 1", model: "claude-opus-5", effort: null, since: null, provider: null },
     ]);
     render(
       <DashboardShell projectId="acme">
