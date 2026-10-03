@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -32,7 +34,7 @@ from uuid import uuid4
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
-from sqlalchemy import inspect, text
+from sqlalchemy import event, inspect, text
 from sqlalchemy.engine import Connection, Engine, make_url
 from sqlalchemy.pool import NullPool
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -40,6 +42,8 @@ from sqlmodel import Session, SQLModel, create_engine, select
 import apo.db as apo_db
 from apo.models.db import (
     AgentTaskBatchRunDB,
+    AgentTaskResultEvidenceDB,
+    AutomationDB,
     AgentTaskJudgmentDB,
     AgentTaskRunDB,
     ApiKeyDB,
@@ -68,6 +72,23 @@ ERRORED_CHECK: dict[str, object] = {
 }
 
 
+def _sqlite_engine(tmp_path: Path, monkeypatch: MonkeyPatch) -> Engine:
+    """A file database configured like the app's (WAL, FK enforcement, NullPool)."""
+    url = f"sqlite:///{tmp_path / 'ladder.db'}"
+    engine = create_engine(url, connect_args={"check_same_thread": False}, poolclass=NullPool)
+    apo_db.attach_sqlite_pragmas(engine)
+    monkeypatch.setattr(apo_db, "DATABASE_URL", url)
+    monkeypatch.setattr(apo_db, "engine", engine)
+    return engine
+
+
+@pytest.fixture(name="sqlite_engine")
+def sqlite_engine_fixture(tmp_path: Path, monkeypatch: MonkeyPatch) -> Iterator[Engine]:
+    engine = _sqlite_engine(tmp_path, monkeypatch)
+    yield engine
+    engine.dispose()
+
+
 @pytest.fixture(
     name="ladder_engine", params=["sqlite", "postgresql", "postgresql-own-schema"]
 )
@@ -75,13 +96,7 @@ def ladder_engine_fixture(
     request: pytest.FixtureRequest, tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> Iterator[Engine]:
     if request.param == "sqlite":
-        url = f"sqlite:///{tmp_path / 'ladder.db'}"
-        engine = create_engine(
-            url, connect_args={"check_same_thread": False}, poolclass=NullPool
-        )
-        apo_db.attach_sqlite_pragmas(engine)
-        monkeypatch.setattr(apo_db, "DATABASE_URL", url)
-        monkeypatch.setattr(apo_db, "engine", engine)
+        engine = _sqlite_engine(tmp_path, monkeypatch)
         yield engine
         engine.dispose()
         return
@@ -159,6 +174,8 @@ def _assert_postgres_types(engine: Engine) -> None:
         ("users", "is_active"): "boolean",
         ("api_keys", "ingest_paused"): "boolean",
         ("executor_pools", "system_managed"): "boolean",
+        ("automations", "was_breached"): "boolean",
+        ("automations", "last_evaluated_at"): "timestamp without time zone",
         ("logged_calls", "raw_usage"): "json",
         ("logged_calls", "cost_breakdown"): "json",
         ("otlp_ingest_batches", "processing_started_at"): "timestamp with time zone",
@@ -175,8 +192,20 @@ def test_fresh_install_reaches_latest(ladder_engine: Engine) -> None:
     _assert_model_columns(ladder_engine)
     _assert_postgres_types(ladder_engine)
 
-    apo_db.init_db()
+    statements: list[str] = []
+
+    def record(_conn, _cursor, statement: str, *_args: object) -> None:
+        statements.append(statement)
+
+    event.listen(ladder_engine, "before_cursor_execute", record)
+    try:
+        apo_db.init_db()
+    finally:
+        event.remove(ladder_engine, "before_cursor_execute", record)
     assert _schema_versions(ladder_engine) == list(range(1, apo_db.LATEST_SCHEMA_VERSION + 1))
+    # A booted schema takes no table locks: on Postgres even ``ADD COLUMN IF
+    # NOT EXISTS`` waits for ACCESS EXCLUSIVE behind every open transaction.
+    assert [s for s in statements if s.lstrip().upper().startswith("ALTER")] == []
 
 
 def _seed(engine: Engine) -> None:
@@ -186,6 +215,8 @@ def _seed(engine: Engine) -> None:
         session.add(UserDB(id="u1", email="u1@example.com", name="U", password_hash="x"))
         session.flush()
         session.add(ProjectDB(id="p1", name="P1", created_by="u1"))
+        # v1's owner backfill skips the demo project.
+        session.add(ProjectDB(id="demo", name="Demo", created_by="u1"))
         session.flush()
         session.add(
             ApiKeyDB(
@@ -198,6 +229,16 @@ def _seed(engine: Engine) -> None:
         )
         session.add(ExecutorPoolDB(id="pool-1", project="p1", name="Pool", slug="pool", kind="bundled"))
         session.add(OtlpIngestBatchDB(id="ingest-1", project_id="p1", payload="{}"))
+        session.add(
+            AutomationDB(
+                id="auto-1",
+                project_id="p1",
+                name="A",
+                event_type="run.failed",
+                action_type="webhook",
+                action_config={},
+            )
+        )
         for batch_id in ("batch-v4", "batch-nv"):
             session.add(
                 AgentTaskBatchRunDB(
@@ -279,9 +320,10 @@ def _seed(engine: Engine) -> None:
         # and a second run row claiming the same task run (v1/v3).
         session.add(RunDB(id="trace-1", project="p1", task_run_id="run-judge"))
         session.add(RunDB(id="trace-stale", project="p1"))
-        for call_id, model, latency, offset in (
-            ("g1", "m-first", 1000.0, 0),
-            ("g2", "m-second", 4000.0, 1),
+        for call_id, model, latency, offset, provided in (
+            ("g1", "m-first", 1000.0, 0, 3),
+            # v10: $5000 is past a Postgres INTEGER in micro-USD.
+            ("g2", "m-second", 4000.0, 1, 5000),
         ):
             session.add(
                 LoggedCallDB(
@@ -294,7 +336,7 @@ def _seed(engine: Engine) -> None:
                     created_at=NOW + timedelta(seconds=offset),
                     latency_ms=latency,
                     cost=2,
-                    provided_cost=3,
+                    provided_cost=provided,
                     internal_model_id=7,
                 )
             )
@@ -412,6 +454,15 @@ _DROPPED_COLUMNS: list[tuple[str, str]] = [
     ("agent_task_runs", "errored_checks"),
     ("agent_task_judgments", "errored_checks"),
     ("agent_task_runs", "no_verdict_reason"),
+    # v51
+    ("automations", "trigger_kind"),
+    ("automations", "window_metric"),
+    ("automations", "window_operator"),
+    ("automations", "window_threshold"),
+    ("automations", "evaluation_window"),
+    ("automations", "was_breached"),
+    ("automations", "last_evaluated_at"),
+    ("automations", "last_evaluated_value"),
     # Constrained columns: dropped on Postgres only (see ``_drop_column``).
     ("run_metrics", "project"),  # v9
     ("agent_task_batch_runs", "requested_by_user_id"),  # v16
@@ -433,15 +484,22 @@ _LEGACY_COLUMNS: list[tuple[str, str, str]] = [
 ]
 
 
-def _sqlite_make_revision_not_null(conn: Connection) -> None:
+def _sqlite_make_revision_not_null(conn: Connection, *, column_before: str = "") -> None:
     """v19's pre-state on SQLite, which has no ``ALTER COLUMN``: rebuild the
     attempts table from its own DDL with the revision ``NOT NULL`` (create,
-    copy, drop, rename — the order that leaves other tables' FKs intact)."""
+    copy, drop, rename — the order that leaves other tables' FKs intact).
+    ``column_before`` is extra column DDL placed just ahead of the revision."""
     ddl = conn.exec_driver_sql(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'task_execution_attempts'"
     ).scalar_one()
-    rebuilt = ddl.replace("task_revision_id VARCHAR,", "task_revision_id VARCHAR NOT NULL,", 1)
+    rebuilt = ddl.replace(
+        "task_revision_id VARCHAR,", f"{column_before}task_revision_id VARCHAR NOT NULL,", 1
+    )
     assert rebuilt != ddl, ddl
+    columns = ", ".join(
+        f'"{row[1]}"'
+        for row in conn.exec_driver_sql("PRAGMA table_info('task_execution_attempts')")
+    )
     rebuilt = rebuilt.replace("task_execution_attempts", "_attempts_rewind", 1)
     indexes = [
         row[0]
@@ -451,7 +509,9 @@ def _sqlite_make_revision_not_null(conn: Connection) -> None:
         )
     ]
     conn.exec_driver_sql(rebuilt)
-    conn.exec_driver_sql("INSERT INTO _attempts_rewind SELECT * FROM task_execution_attempts")
+    conn.exec_driver_sql(
+        f"INSERT INTO _attempts_rewind ({columns}) SELECT {columns} FROM task_execution_attempts"
+    )
     conn.exec_driver_sql("DROP TABLE task_execution_attempts")
     conn.exec_driver_sql("ALTER TABLE _attempts_rewind RENAME TO task_execution_attempts")
     for statement in indexes:
@@ -587,6 +647,9 @@ def _climbed_state(engine: Engine) -> dict[str, object]:
             ),
             "pools": rows("SELECT id, system_managed FROM executor_pools"),
             "keys": rows("SELECT id, ingest_paused FROM api_keys"),
+            "automations": rows(
+                "SELECT id, trigger_kind, was_breached, last_evaluated_at FROM automations"
+            ),
             "users": rows("SELECT id, is_active FROM users"),
             "memberships": rows(
                 "SELECT project_id, user_id, role FROM project_memberships"
@@ -634,8 +697,10 @@ def test_old_database_climbs_the_whole_ladder(ladder_engine: Engine) -> None:
     ]
     assert state["reports"] == [("run-judge",), ("run-v4-a",), ("run-v4-b",)]
     assert state["judgments"] == [("jdg-1", None, 0, 1)]
-    # v10: float USD to micro-USD, free-form model ids cleared.
-    assert state["calls"] == [("g1", 2_000_000, 3_000_000, None), ("g2", 2_000_000, 3_000_000, None)]
+    # v10: float USD to micro-USD, free-form model ids cleared; on Postgres a
+    # cost too large for INTEGER micro-USD is nulled rather than wedging boot.
+    oversized = 5_000_000_000 if ladder_engine.dialect.name == "sqlite" else None
+    assert state["calls"] == [("g1", 2_000_000, 3_000_000, None), ("g2", 2_000_000, oversized, None)]
     assert state["spans"] == [("g1", "svc-a")]  # v36
     if ladder_engine.dialect.name == "postgresql":
         assert state["metrics"] == [("trace-1", "p1")]  # v9 deduplicated + scoped
@@ -643,10 +708,18 @@ def test_old_database_climbs_the_whole_ladder(ladder_engine: Engine) -> None:
     assert state["attempts"] == [("attempt-1", "caller", "rev-1")]  # v16
     assert state["pools"] == [("pool-1", False)]
     assert state["keys"] == [("key-1", False)]
+    assert state["automations"] == [("auto-1", "event", False, None)]  # v51
     assert state["users"] == [("u1", True)]
     assert state["memberships"] == [("p1", "u1", "owner")]  # v1 owner backfill
+    with ladder_engine.connect() as conn:
+        membership_id = conn.exec_driver_sql("SELECT id FROM project_memberships").scalar_one()
+    # SQLite keeps its historical 32-hex id; Postgres takes the model's 16-hex shape.
+    assert len(membership_id) == (32 if ladder_engine.dialect.name == "sqlite" else 16)
     assert state["tables"] == []  # v10, v41
     _assert_attempts_rebuilt(ladder_engine)  # v19
+    with ladder_engine.connect() as conn:
+        automation_indexes = {index["name"] for index in inspect(conn).get_indexes("automations")}
+    assert "ix_automations_trigger_kind" in automation_indexes  # v56
 
     apo_db.init_db()
 
@@ -743,6 +816,9 @@ def test_initial_release_postgres_database_climbs(ladder_engine: Engine) -> None
     finally:
         raw.close()
     assert _schema_versions(ladder_engine) == list(range(1, 8))
+    with ladder_engine.begin() as conn:
+        # ROUND(5000.25 * 1000000)::integer is out of INTEGER range.
+        conn.exec_driver_sql("UPDATE logged_calls SET provided_cost = 5000.25 WHERE id = 'g1'")
 
     apo_db.init_db()
 
@@ -760,7 +836,7 @@ def test_initial_release_postgres_database_climbs(ladder_engine: Engine) -> None
         "internal_model_id": "INTEGER",
     }
     calls = _logged_calls(ladder_engine)
-    assert calls == [("g1", 2500, 3000, None)]  # v10: USD to micro-USD
+    assert calls == [("g1", 2500, None, None)]  # v10: USD to micro-USD; oversized nulled
     with Session(ladder_engine) as session:
         # The repricing lookup (apo/services/reprice.py).
         matched = session.exec(
@@ -785,3 +861,556 @@ def test_initial_release_postgres_database_climbs(ladder_engine: Engine) -> None
     apo_db.init_db()
 
     assert _logged_calls(ladder_engine) == calls
+
+
+# --- v19's SQLite rebuild and the v56 repair ---------------------------------
+
+LEGACY_ATTEMPTS = "_task_execution_attempts_v18_legacy"
+REBUILD_COPY = "INSERT INTO task_execution_attempts SELECT"
+
+
+def _evidence(evidence_id: str, attempt_id: str) -> AgentTaskResultEvidenceDB:
+    return AgentTaskResultEvidenceDB(
+        id=evidence_id,
+        project="p1",
+        task_run_id="run-judge",
+        attempt_id=attempt_id,
+        slot="checks",
+        deliverable_name=evidence_id,
+        slot_key=evidence_id,
+        status="ready",
+        size_bytes=1,
+        sha256="0" * 64,
+        created_at=NOW,
+    )
+
+
+def _stamp(engine: Engine, through: int) -> None:
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE schema_migrations (version INTEGER NOT NULL)")
+        for version in range(1, through + 1):
+            conn.exec_driver_sql(f"INSERT INTO schema_migrations (version) VALUES ({version})")
+
+
+def _pre_v19_database(engine: Engine, *, column_before: str = "") -> None:
+    """Today's schema and rows, with the revision NOT NULL as v13 made it and
+    one evidence row on the attempt; stamped at v18."""
+    _seed(engine)
+    with engine.begin() as conn:
+        _sqlite_make_revision_not_null(conn, column_before=column_before)
+    with Session(engine) as session:
+        session.add(_evidence("ev-1", "attempt-1"))
+        session.commit()
+    _stamp(engine, 18)
+
+
+def _attempts_state(engine: Engine) -> dict[str, object]:
+    with engine.connect() as conn:
+        tables = set(inspect(conn).get_table_names())
+        revision = next(
+            column
+            for column in inspect(conn).get_columns("task_execution_attempts")
+            if column["name"] == "task_revision_id"
+        )
+        return {
+            "attempts": [
+                tuple(row)
+                for row in conn.exec_driver_sql(
+                    "SELECT id, task_revision_id, assignment_kind"
+                    " FROM task_execution_attempts ORDER BY id"
+                )
+            ],
+            "revision_nullable": revision["nullable"],
+            "legacy_table": LEGACY_ATTEMPTS in tables,
+            "evidence": [
+                tuple(row)
+                for row in conn.exec_driver_sql(
+                    "SELECT id, attempt_id FROM agent_task_result_evidence ORDER BY id"
+                )
+            ],
+            "evidence_fk": sorted(
+                fk["referred_table"]
+                for fk in inspect(conn).get_foreign_keys("agent_task_result_evidence")
+            ),
+            "fk_violations": conn.exec_driver_sql("PRAGMA foreign_key_check").fetchall(),
+        }
+
+
+def _attempt_indexes(engine: Engine, table: str = "task_execution_attempts") -> set[str]:
+    with engine.connect() as conn:
+        return {
+            row[0]
+            for row in conn.exec_driver_sql(
+                f"SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = '{table}'"
+            )
+        }
+
+
+UNTOUCHED = {
+    "attempts": [("attempt-1", "rev-1", "bundled")],
+    "revision_nullable": False,
+    "legacy_table": False,
+    "evidence": [("ev-1", "attempt-1")],
+    "evidence_fk": ["agent_task_runs", "task_execution_attempts"],
+    "fk_violations": [],
+}
+
+
+@pytest.mark.parametrize(
+    "failing_statement",
+    [REBUILD_COPY, f"DROP TABLE {LEGACY_ATTEMPTS}", "CREATE INDEX"],
+)
+def test_v19_rebuild_rolls_back_as_one(
+    sqlite_engine: Engine, monkeypatch: MonkeyPatch, failing_statement: str
+) -> None:
+    """A failure part-way through the SQLite rebuild leaves the table as it
+    was, so the next boot runs v19 again instead of stamping past rows left
+    in the renamed table."""
+    _pre_v19_database(sqlite_engine)
+    indexes = _attempt_indexes(sqlite_engine)
+    execute = Connection.exec_driver_sql
+
+    def fail_at(self: Connection, statement: str, *args: object, **kwargs: object):
+        if statement.lstrip().startswith(failing_statement):
+            raise RuntimeError("injected")
+        return execute(self, statement, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Connection, "exec_driver_sql", fail_at)
+        with pytest.raises(RuntimeError, match="injected"):
+            apo_db.init_db()
+
+    assert _schema_versions(sqlite_engine) == list(range(1, 19))
+    assert _attempts_state(sqlite_engine) == UNTOUCHED
+    assert _attempt_indexes(sqlite_engine) == indexes
+
+    apo_db.init_db()
+
+    assert _schema_versions(sqlite_engine) == list(range(1, apo_db.LATEST_SCHEMA_VERSION + 1))
+    assert _attempts_state(sqlite_engine) == {**UNTOUCHED, "revision_nullable": True}
+    assert _attempt_indexes(sqlite_engine) == indexes
+
+
+def test_v19_rebuild_survives_a_kill_at_the_copy(sqlite_engine: Engine) -> None:
+    _pre_v19_database(sqlite_engine)
+    indexes = _attempt_indexes(sqlite_engine)
+    script = (
+        "import os, sys\n"
+        "from sqlalchemy.engine import Connection\n"
+        "import apo.db as apo_db\n"
+        "execute = Connection.exec_driver_sql\n"
+        "def die_at(self, statement, *args, **kwargs):\n"
+        f"    if statement.lstrip().startswith({REBUILD_COPY!r}):\n"
+        "        os._exit(9)\n"
+        "    return execute(self, statement, *args, **kwargs)\n"
+        "Connection.exec_driver_sql = die_at\n"
+        "apo_db.init_db()\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(apo_db.__file__).parents[1],
+        env={**os.environ, "DATABASE_URL": str(sqlite_engine.url)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 9, result.stderr
+
+    assert _attempts_state(sqlite_engine) == UNTOUCHED
+    assert _attempt_indexes(sqlite_engine) == indexes
+
+    apo_db.init_db()
+
+    assert _attempts_state(sqlite_engine) == {**UNTOUCHED, "revision_nullable": True}
+    assert _attempt_indexes(sqlite_engine) == indexes
+
+
+def test_v19_rebuild_restores_the_connection(sqlite_engine: Engine) -> None:
+    """Foreign keys come back on and rename semantics back to modern on the
+    rebuilding connection, and the rebuild refuses to run inside an open
+    transaction, where ``foreign_keys=OFF`` would be ignored."""
+    _pre_v19_database(sqlite_engine)
+    with sqlite_engine.connect() as conn:
+        conn.exec_driver_sql("UPDATE task_execution_attempts SET phase = phase")
+        with pytest.raises(RuntimeError, match="transaction is already open"):
+            apo_db._make_attempt_task_revision_nullable(conn)
+        conn.rollback()
+
+    with sqlite_engine.begin() as conn:
+        apo_db._make_attempt_task_revision_nullable(conn)
+        assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+        assert conn.exec_driver_sql("PRAGMA legacy_alter_table").scalar() == 0
+    assert _attempts_state(sqlite_engine) == {**UNTOUCHED, "revision_nullable": True}
+
+
+def test_v19_rebuild_leaves_a_similarly_named_column_alone(sqlite_engine: Engine) -> None:
+    _pre_v19_database(
+        sqlite_engine, column_before="source_task_revision_id VARCHAR NOT NULL DEFAULT 'src', "
+    )
+
+    apo_db._migrate_to_v19()
+
+    with sqlite_engine.connect() as conn:
+        nullable = {
+            column["name"]: column["nullable"]
+            for column in inspect(conn).get_columns("task_execution_attempts")
+            if column["name"].endswith("task_revision_id")
+        }
+    assert nullable == {"source_task_revision_id": False, "task_revision_id": True}
+
+
+def _break_like_the_old_v19(engine: Engine) -> None:
+    """What v19 did before it ran in one transaction, up to the failed copy:
+    drop the attempts indexes, rename the table (with foreign keys on, which
+    repoints the evidence FK at the renamed table), create the model's
+    nullable table, then fail.
+
+    As on a real v13–v18 database, ``assignment_kind`` sits at the end of the
+    old table, where v16 appended it: the model's column order differs."""
+    with engine.connect() as conn:
+        for (name,) in conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type = 'index'"
+            " AND tbl_name = 'task_execution_attempts' AND sql IS NOT NULL"
+        ).fetchall():
+            conn.exec_driver_sql(f'DROP INDEX "{name}"')
+        conn.exec_driver_sql("ALTER TABLE task_execution_attempts DROP COLUMN assignment_kind")
+        conn.exec_driver_sql(
+            "ALTER TABLE task_execution_attempts ADD COLUMN assignment_kind VARCHAR DEFAULT 'bundled'"
+        )
+        conn.exec_driver_sql("UPDATE task_execution_attempts SET assignment_kind = 'caller'")
+        conn.exec_driver_sql(f"ALTER TABLE task_execution_attempts RENAME TO {LEGACY_ATTEMPTS}")
+        SQLModel.metadata.tables["task_execution_attempts"].create(conn)
+        conn.commit()
+
+
+@pytest.mark.parametrize("stamped_through", [18, 50, 51])
+def test_orphaned_attempts_are_restored(sqlite_engine: Engine, stamped_through: int) -> None:
+    """A database the old v19 broke: its next boot either retries v19 (still at
+    v18) or has already stamped on to v50 or v51 with the Attempts orphaned.
+    v19's entry and v56 put them back."""
+    _pre_v19_database(sqlite_engine)
+    evidence_indexes = _attempt_indexes(sqlite_engine, "agent_task_result_evidence")
+    with sqlite_engine.begin() as conn:
+        conn.exec_driver_sql("DROP TABLE schema_migrations")
+    _break_like_the_old_v19(sqlite_engine)
+    _stamp(sqlite_engine, stamped_through)
+    with Session(sqlite_engine) as session:
+        # Written by the app after the break, into the new empty table.
+        session.add(
+            TaskExecutionAttemptDB(
+                id="attempt-2",
+                project="p1",
+                batch_run_id="batch-v4",
+                task_run_id="run-v4-a",
+                sequence_index=0,
+                target_kind="caller",
+                queue_expires_at=NOW + timedelta(days=1),
+            )
+        )
+        session.commit()
+    broken = _attempts_state(sqlite_engine)
+    assert broken["attempts"] == [("attempt-2", None, "bundled")]
+    assert broken["legacy_table"] is True
+    assert broken["evidence_fk"] == [LEGACY_ATTEMPTS, "agent_task_runs"]
+    repaired = {
+        **UNTOUCHED,
+        "attempts": [("attempt-1", "rev-1", "caller"), ("attempt-2", None, "bundled")],
+        "revision_nullable": True,
+    }
+    if stamped_through == 18:
+        # v19 restores them itself, before any later rung reads the table.
+        apo_db._migrate_to_v19()
+        assert _attempts_state(sqlite_engine) == repaired
+
+    apo_db.init_db()
+
+    assert _schema_versions(sqlite_engine) == list(range(1, apo_db.LATEST_SCHEMA_VERSION + 1))
+    assert _attempts_state(sqlite_engine) == repaired
+    _assert_attempts_rebuilt(sqlite_engine)
+    # The evidence table was rebuilt to repoint its FK; its indexes came back
+    # (a later rung may add more on the way from v18).
+    assert evidence_indexes <= _attempt_indexes(sqlite_engine, "agent_task_result_evidence")
+    with Session(sqlite_engine) as session:
+        session.add(_evidence("ev-2", "attempt-2"))
+        session.commit()
+
+    apo_db.init_db()
+
+    assert _attempts_state(sqlite_engine) == {
+        **repaired,
+        "evidence": [("ev-1", "attempt-1"), ("ev-2", "attempt-2")],
+    }
+
+
+def test_attempt_restore_is_a_no_op_on_postgres(ladder_engine: Engine) -> None:
+    if ladder_engine.dialect.name == "sqlite":
+        pytest.skip("the SQLite repair has its own tests")
+    apo_db.init_db()
+    with ladder_engine.connect() as conn:
+        # The old v19 stopped at its PRAGMA on Postgres, before any rename.
+        assert LEGACY_ATTEMPTS not in set(inspect(conn).get_table_names())
+    with ladder_engine.begin() as conn:
+        apo_db._restore_orphaned_attempts_sqlite(conn)
+    assert _schema_versions(ladder_engine) == list(range(1, apo_db.LATEST_SCHEMA_VERSION + 1))
+
+
+def _damaged(engine: Engine, through: int) -> None:
+    """A database the old v19 broke, stamped through ``through``."""
+    _pre_v19_database(engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql("DROP TABLE schema_migrations")
+    _break_like_the_old_v19(engine)
+    _stamp(engine, through)
+
+
+def _without_foreign_keys(engine: Engine, *statements: str) -> None:
+    with engine.connect() as conn:
+        conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        for statement in statements:
+            conn.exec_driver_sql(statement)
+        conn.commit()
+
+
+def _add_attempt(engine: Engine, attempt_id: str, batch_run_id: str, task_run_id: str) -> None:
+    """An Attempt the app wrote after the damage, into the new empty table."""
+    with Session(engine) as session:
+        session.add(
+            TaskExecutionAttemptDB(
+                id=attempt_id,
+                project="p1",
+                batch_run_id=batch_run_id,
+                task_run_id=task_run_id,
+                sequence_index=0,
+                target_kind="caller",
+                queue_expires_at=NOW + timedelta(days=1),
+            )
+        )
+        session.commit()
+
+
+LATEST = list(range(1, apo_db.LATEST_SCHEMA_VERSION + 1))
+REPAIRED = {
+    **UNTOUCHED,
+    "attempts": [("attempt-1", "rev-1", "caller")],
+    "revision_nullable": True,
+}
+
+
+def test_attempt_of_a_deleted_run_is_left_out(sqlite_engine: Engine) -> None:
+    """While the Attempts sat in the legacy table, retention deleted their
+    Task Run (it found no Attempts to delete with it). Restored, the Attempt
+    would make every lease-reaper sweep fail on the missing run."""
+    from apo.services.execution_leases import recover_expired_attempts
+
+    _damaged(sqlite_engine, 51)
+    _without_foreign_keys(
+        sqlite_engine,
+        "DELETE FROM agent_task_result_evidence WHERE task_run_id = 'run-judge'",
+        "DELETE FROM agent_task_runs WHERE id = 'run-judge'",
+    )
+
+    apo_db.init_db()
+
+    assert _schema_versions(sqlite_engine) == LATEST
+    state = _attempts_state(sqlite_engine)
+    assert state["attempts"] == []
+    assert state["legacy_table"] is False
+    with sqlite_engine.connect() as conn:
+        assert (
+            conn.exec_driver_sql("PRAGMA foreign_key_check('task_execution_attempts')").fetchall()
+            == []
+        )
+    with Session(sqlite_engine) as session:
+        recover_expired_attempts(session, now=NOW + timedelta(days=365))
+
+
+@pytest.mark.parametrize(
+    "parent",
+    [
+        f"UPDATE {LEGACY_ATTEMPTS} SET project = 'gone' WHERE id = 'attempt-1'",
+        f"UPDATE {LEGACY_ATTEMPTS} SET batch_run_id = 'gone' WHERE id = 'attempt-1'",
+    ],
+    ids=["project", "batch"],
+)
+def test_attempt_of_a_missing_parent_is_left_out(sqlite_engine: Engine, parent: str) -> None:
+    """Its staging evidence goes with it."""
+    _damaged(sqlite_engine, 51)
+    _without_foreign_keys(sqlite_engine, parent)
+
+    apo_db.init_db()
+
+    assert _schema_versions(sqlite_engine) == LATEST
+    assert _attempts_state(sqlite_engine) == {**REPAIRED, "attempts": [], "evidence": []}
+
+
+@pytest.mark.parametrize(
+    ("column", "damage"),
+    [
+        ("task_revision_id", "DELETE FROM task_revisions WHERE id = 'rev-1'"),
+        ("target_user_id", f"UPDATE {LEGACY_ATTEMPTS} SET target_user_id = 'gone'"),
+        ("executor_pool_id", f"UPDATE {LEGACY_ATTEMPTS} SET executor_pool_id = 'gone'"),
+        ("executor_id", f"UPDATE {LEGACY_ATTEMPTS} SET executor_id = 'gone'"),
+    ],
+    ids=["revision", "target-user", "executor-pool", "executor"],
+)
+def test_restored_attempt_drops_a_deleted_optional_reference(
+    sqlite_engine: Engine, column: str, damage: str
+) -> None:
+    """The row is restored with the reference nulled, and the whole database
+    passes ``PRAGMA foreign_key_check``."""
+    _damaged(sqlite_engine, 51)
+    _without_foreign_keys(sqlite_engine, damage)
+
+    apo_db.init_db()
+
+    assert _schema_versions(sqlite_engine) == LATEST
+    revision = None if column == "task_revision_id" else "rev-1"
+    assert _attempts_state(sqlite_engine) == {
+        **REPAIRED,
+        "attempts": [("attempt-1", revision, "caller")],
+    }
+    with sqlite_engine.connect() as conn:
+        assert conn.exec_driver_sql(
+            "SELECT task_revision_id, target_user_id, executor_pool_id, executor_id"
+            " FROM task_execution_attempts"
+        ).fetchall() == [(revision, None, None, None)]
+
+
+def test_attempt_whose_run_has_a_newer_attempt_is_left_out(
+    sqlite_engine: Engine, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The run was given a new Attempt after the damage; restoring the old one
+    too would hit ``uq_task_execution_attempt_run`` on every boot. The old
+    Attempt's staging evidence goes with it."""
+    _damaged(sqlite_engine, 51)
+    _add_attempt(sqlite_engine, "attempt-new", "batch-nv", "run-judge")
+
+    with caplog.at_level("WARNING", logger="apo.db"):
+        apo_db.init_db()
+
+    assert _schema_versions(sqlite_engine) == LATEST
+    assert _attempts_state(sqlite_engine) == {
+        **REPAIRED,
+        "attempts": [("attempt-new", None, "bundled")],
+        "evidence": [],
+    }
+    assert "1 left out because their Task Run has a newer Attempt" in caplog.text
+    apo_db.init_db()
+    assert _schema_versions(sqlite_engine) == LATEST
+
+
+def test_restore_keeps_a_row_already_present(sqlite_engine: Engine) -> None:
+    """An id written after the damage keeps its current row."""
+    _damaged(sqlite_engine, 51)
+    _add_attempt(sqlite_engine, "attempt-1", "batch-v4", "run-v4-a")
+
+    apo_db.init_db()
+
+    assert _schema_versions(sqlite_engine) == LATEST
+    assert _attempts_state(sqlite_engine) == {
+        **REPAIRED,
+        "attempts": [("attempt-1", None, "bundled")],
+    }
+    with sqlite_engine.connect() as conn:
+        assert conn.exec_driver_sql(
+            "SELECT task_run_id FROM task_execution_attempts"
+        ).fetchall() == [("run-v4-a",)]
+
+
+def test_restore_rolls_back_when_a_reference_still_dangles(sqlite_engine: Engine) -> None:
+    _damaged(sqlite_engine, 51)
+    _add_attempt(sqlite_engine, "attempt-ghost", "batch-v4", "run-v4-a")
+    _without_foreign_keys(
+        sqlite_engine,
+        "UPDATE task_execution_attempts SET project = 'ghost' WHERE id = 'attempt-ghost'",
+    )
+
+    with pytest.raises(RuntimeError, match="dangling foreign keys"):
+        apo_db.init_db()
+
+    state = _attempts_state(sqlite_engine)
+    assert state["legacy_table"] is True
+    assert state["attempts"] == [("attempt-ghost", None, "bundled")]
+
+
+def test_referencing_only_damage_is_repaired(sqlite_engine: Engine) -> None:
+    """A v19 that copied the rows but renamed with foreign keys on: the legacy
+    table is gone, and the evidence FK still names it."""
+    _pre_v19_database(sqlite_engine)
+    with sqlite_engine.begin() as conn:
+        conn.exec_driver_sql("DROP TABLE schema_migrations")
+        conn.exec_driver_sql("DELETE FROM agent_task_result_evidence")
+    with sqlite_engine.connect() as conn:
+        assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+        for (name,) in conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type = 'index'"
+            " AND tbl_name = 'task_execution_attempts' AND sql IS NOT NULL"
+        ).fetchall():
+            conn.exec_driver_sql(f'DROP INDEX "{name}"')
+        conn.exec_driver_sql(f"ALTER TABLE task_execution_attempts RENAME TO {LEGACY_ATTEMPTS}")
+        SQLModel.metadata.tables["task_execution_attempts"].create(conn)
+        columns = ", ".join(
+            f'"{row[1]}"'
+            for row in conn.exec_driver_sql(f"PRAGMA table_info('{LEGACY_ATTEMPTS}')")
+        )
+        conn.exec_driver_sql(
+            f"INSERT INTO task_execution_attempts ({columns})"
+            f" SELECT {columns} FROM {LEGACY_ATTEMPTS}"
+        )
+        conn.exec_driver_sql(f"DROP TABLE {LEGACY_ATTEMPTS}")
+        conn.commit()
+    _stamp(sqlite_engine, 51)
+    assert _attempts_state(sqlite_engine)["evidence_fk"] == [LEGACY_ATTEMPTS, "agent_task_runs"]
+
+    apo_db.init_db()
+
+    assert _schema_versions(sqlite_engine) == LATEST
+    assert _attempts_state(sqlite_engine) == {
+        **UNTOUCHED,
+        "revision_nullable": True,
+        "evidence": [],
+    }
+    with Session(sqlite_engine) as session:
+        session.add(_evidence("ev-2", "attempt-1"))
+        session.commit()
+
+
+def test_trigger_on_evidence_survives_repair(sqlite_engine: Engine) -> None:
+    _pre_v19_database(sqlite_engine)
+    with sqlite_engine.begin() as conn:
+        conn.exec_driver_sql("DROP TABLE schema_migrations")
+        conn.exec_driver_sql("CREATE TABLE ev_audit (id VARCHAR)")
+        conn.exec_driver_sql(
+            "CREATE TRIGGER ev_ins AFTER INSERT ON agent_task_result_evidence"
+            " BEGIN INSERT INTO ev_audit VALUES (new.id); END"
+        )
+    _break_like_the_old_v19(sqlite_engine)
+    _stamp(sqlite_engine, 51)
+
+    apo_db.init_db()
+
+    with Session(sqlite_engine) as session:
+        session.add(_evidence("ev-2", "attempt-1"))
+        session.commit()
+    with sqlite_engine.connect() as conn:
+        assert conn.exec_driver_sql("SELECT id FROM ev_audit").fetchall() == [("ev-2",)]
+
+
+def test_v19_killed_between_rename_and_create_boots(sqlite_engine: Engine) -> None:
+    """#343's v19 committed its RENAME on its own. Killed before the CREATE
+    TABLE, it left no attempts table and the legacy table holding every
+    attempt index name, which ``create_all`` then failed to create."""
+    _pre_v19_database(sqlite_engine)
+    indexes = _attempt_indexes(sqlite_engine)
+    named = {name for name in indexes if not name.startswith("sqlite_autoindex_")}
+    with sqlite_engine.connect() as conn:
+        conn.exec_driver_sql(f"ALTER TABLE task_execution_attempts RENAME TO {LEGACY_ATTEMPTS}")
+        conn.commit()
+    assert named <= _attempt_indexes(sqlite_engine, LEGACY_ATTEMPTS)
+
+    apo_db.init_db()
+
+    assert _schema_versions(sqlite_engine) == LATEST
+    assert _attempts_state(sqlite_engine) == {**UNTOUCHED, "revision_nullable": True}
+    assert indexes <= _attempt_indexes(sqlite_engine)
+    _assert_attempts_rebuilt(sqlite_engine)

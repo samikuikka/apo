@@ -2,7 +2,8 @@
 
 import os
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import cast
 
 from sqlalchemy import Integer, bindparam, event, inspect, text
@@ -241,22 +242,27 @@ def _migrate_task_catalog_columns():
 
     Guarded per column rather than try/except around the ALTER: on Postgres a
     failed statement aborts the transaction, so every later ADD would be
-    silently lost. Postgres uses ``ADD COLUMN IF NOT EXISTS``, so two processes
-    booting at once cannot both pass the guard and collide on the second ALTER.
+    silently lost. This runs on every boot, so a present column issues no
+    ALTER at all (on Postgres even ``ADD COLUMN IF NOT EXISTS`` takes an
+    ACCESS EXCLUSIVE lock). A missing one is added with ``IF NOT EXISTS`` on
+    Postgres, so two processes booting at once cannot collide on it.
     """
     with engine.begin() as conn:
+        existing = _get_column_names(conn, "project_task_sources")
+        if not existing:
+            return
         for col, coltype in [
             ("catalog_digest", "TEXT"),
             ("task_count", "INTEGER"),
             ("published_at", _timestamp_type(conn)),
             ("published_by_user_id", "TEXT"),
         ]:
-            if _is_sqlite_conn(conn):
-                _add_column_if_missing(conn, "project_task_sources", col, coltype)
-            else:
-                conn.exec_driver_sql(
-                    f"ALTER TABLE project_task_sources ADD COLUMN IF NOT EXISTS {col} {coltype}"
-                )
+            if col in existing:
+                continue
+            if_not_exists = "" if _is_sqlite_conn(conn) else " IF NOT EXISTS"
+            conn.exec_driver_sql(
+                f"ALTER TABLE project_task_sources ADD COLUMN{if_not_exists} {col} {coltype}"
+            )
 
 
 def init_db():
@@ -277,6 +283,7 @@ def init_db():
     # reset_apo_file_db for the full failure mode). Harmless at startup,
     # where the pool is cold anyway.
     engine.dispose()
+    _free_legacy_attempt_index_names()
     SQLModel.metadata.create_all(engine)
     _run_migrations()
     _migrate_task_catalog_columns()
@@ -2256,8 +2263,13 @@ def _migrate_to_v51() -> None:
     (``was_breached`` rising-edge gate, ``last_evaluated_at`` /
     ``last_evaluated_value``). All new columns are nullable or defaulted,
     so no backfill is needed.
+
+    The boolean default and the timestamp type are per dialect: Postgres
+    rejects ``BOOLEAN DEFAULT 0`` and has no ``DATETIME``. The rung as first
+    released failed there, so no Postgres database is stamped past it.
     """
     with engine.begin() as conn:
+        naive_ts = "DATETIME" if _is_sqlite_conn(conn) else "TIMESTAMP"
         _add_column_if_missing(
             conn, "automations", "trigger_kind", "VARCHAR NOT NULL DEFAULT 'event'"
         )
@@ -2266,9 +2278,9 @@ def _migrate_to_v51() -> None:
         _add_column_if_missing(conn, "automations", "window_threshold", "FLOAT")
         _add_column_if_missing(conn, "automations", "evaluation_window", "VARCHAR")
         _add_column_if_missing(
-            conn, "automations", "was_breached", "BOOLEAN NOT NULL DEFAULT 0"
+            conn, "automations", "was_breached", f"BOOLEAN NOT NULL DEFAULT {_sql_false(conn)}"
         )
-        _add_column_if_missing(conn, "automations", "last_evaluated_at", "DATETIME")
+        _add_column_if_missing(conn, "automations", "last_evaluated_at", naive_ts)
         _add_column_if_missing(conn, "automations", "last_evaluated_value", "FLOAT")
 
 
@@ -2774,7 +2786,13 @@ def _make_attempt_task_revision_nullable(conn: Connection) -> None:
     SQLite: ``ALTER COLUMN`` is unavailable, so rebuild the table from its own
     DDL without the constraint and copy every row without transformation.
     Idempotent on both.
+
+    A database an earlier v19 left half-rebuilt has its rows in the renamed
+    legacy table and an empty nullable table in its place; those rows are
+    restored first, or this rung would see the nullable column and stamp past
+    them.
     """
+    _restore_orphaned_attempts_sqlite(conn)
     if "task_execution_attempts" not in _get_table_names(conn):
         return
 
@@ -2807,57 +2825,301 @@ def _rebuild_attempts_table_sqlite(conn: Connection) -> None:
     indexes the ladder created (``uq_task_execution_attempt_run``, the claim
     indexes) are recreated from their saved SQL. Rows are copied unchanged.
 
-    Other tables' foreign keys must keep naming this table. With enforcement
-    on, SQLite rewrites ``agent_task_result_evidence.attempt_id`` to the
-    renamed legacy table, which is then dropped, and every later evidence
-    insert fails with ``no such table``. ``legacy_alter_table`` with
-    enforcement off leaves those references alone. The ``foreign_keys`` pragma
-    only takes effect outside a transaction; pysqlite has not begun one yet,
-    as this migration has only read so far.
+    The rebuild runs in one transaction (``_sqlite_rebuild_transaction``),
+    with the foreign-key and rename semantics that keep other tables'
+    references to this table intact.
     """
     ddl = conn.exec_driver_sql(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='task_execution_attempts'"
     ).scalar_one()
     nullable_ddl, replaced = re.subn(
-        r'("?task_revision_id"?\s+\w+(?:\(\d+\))?)\s+NOT\s+NULL', r"\1", ddl, count=1
+        r'(?<![\w"])("?task_revision_id"?\s+\w+(?:\(\d+\))?)\s+NOT\s+NULL',
+        r"\1",
+        ddl,
+        count=1,
     )
     if not replaced:
         raise RuntimeError("v19: task_revision_id NOT NULL not found in the attempts DDL")
-    index_ddl = [
-        row[0]
-        for row in conn.exec_driver_sql(
-            "SELECT sql FROM sqlite_master WHERE type='index'"
-            " AND tbl_name='task_execution_attempts' AND sql IS NOT NULL"
-        )
-    ]
+    index_ddl = _sqlite_index_ddl(conn, "task_execution_attempts")
 
-    enforced = bool(conn.exec_driver_sql("PRAGMA foreign_keys").scalar())
-    conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
-    if conn.exec_driver_sql("PRAGMA foreign_keys").scalar():
-        raise RuntimeError(
-            "v19 must rebuild task_execution_attempts with foreign keys off, "
-            "but a transaction is already open"
-        )
-    conn.exec_driver_sql("PRAGMA legacy_alter_table=ON")
-    try:
+    with _sqlite_rebuild_transaction(conn, "v19"):
         conn.exec_driver_sql(
-            "ALTER TABLE task_execution_attempts RENAME TO _task_execution_attempts_v18_legacy"
+            f"ALTER TABLE task_execution_attempts RENAME TO {_ATTEMPTS_LEGACY_TABLE}"
         )
         conn.exec_driver_sql(nullable_ddl)
         # Same DDL, same column order.
         conn.exec_driver_sql(
-            "INSERT INTO task_execution_attempts SELECT * FROM _task_execution_attempts_v18_legacy"
+            f"INSERT INTO task_execution_attempts SELECT * FROM {_ATTEMPTS_LEGACY_TABLE}"
         )
         # Takes the legacy table's indexes with it, freeing their names.
-        conn.exec_driver_sql("DROP TABLE _task_execution_attempts_v18_legacy")
+        conn.exec_driver_sql(f"DROP TABLE {_ATTEMPTS_LEGACY_TABLE}")
         for statement in index_ddl:
             conn.exec_driver_sql(statement)
+
+
+_ATTEMPTS_LEGACY_TABLE = "_task_execution_attempts_v18_legacy"
+
+
+def _sqlite_index_ddl(conn: Connection, table_name: str) -> list[str]:
+    """The saved SQL of a table's explicit indexes and triggers, which a DROP
+    TABLE takes with it."""
+    return [
+        row[0]
+        for row in conn.exec_driver_sql(
+            "SELECT sql FROM sqlite_master WHERE type IN ('index', 'trigger')"
+            f" AND tbl_name='{table_name}' AND sql IS NOT NULL"
+        )
+    ]
+
+
+@contextmanager
+def _sqlite_rebuild_transaction(conn: Connection, rung: str) -> Iterator[None]:
+    """One explicit transaction for a SQLite table rebuild.
+
+    pysqlite opens a transaction only before DML, so without ``BEGIN`` each
+    RENAME and CREATE TABLE commits on its own. A failure or kill at the copy
+    then leaves the rows in a renamed table, and the next boot stamps past it.
+    Here the whole rebuild commits or rolls back as one.
+
+    Other tables' foreign keys must keep naming the rebuilt table. With
+    enforcement on, a RENAME rewrites them to the renamed table, which is
+    then dropped, and every later insert there fails with ``no such table``.
+    ``legacy_alter_table`` with enforcement off leaves those references
+    alone. The ``foreign_keys`` pragma is a no-op inside a transaction, so it
+    is switched off before ``BEGIN`` (pysqlite has not opened one: the rung has
+    only read so far) and back on after ``COMMIT``.
+    """
+    dbapi_connection = conn.connection.dbapi_connection
+    if getattr(dbapi_connection, "in_transaction", False):
+        raise RuntimeError(
+            f"{rung} must rebuild with foreign keys off, but a transaction is already open"
+        )
+    enforced = bool(conn.exec_driver_sql("PRAGMA foreign_keys").scalar())
+    conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+    conn.exec_driver_sql("PRAGMA legacy_alter_table=ON")
+    try:
+        conn.exec_driver_sql("BEGIN")
+        try:
+            yield
+        except BaseException:
+            # SQLite rolls some failures back itself; a second ROLLBACK would
+            # raise and hide the original error.
+            if getattr(dbapi_connection, "in_transaction", False):
+                conn.exec_driver_sql("ROLLBACK")
+            raise
+        conn.exec_driver_sql("COMMIT")
     finally:
         conn.exec_driver_sql("PRAGMA legacy_alter_table=OFF")
         if enforced:
-            # A no-op until the transaction ends; SQLite engines use NullPool,
-            # so this connection is not reused afterwards.
             conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+
+def _ensure_attempt_ladder_indexes(conn: Connection) -> None:
+    """The indexes v13 and v16 put on ``task_execution_attempts``."""
+    table = "task_execution_attempts"
+    for column in (
+        "project",
+        "batch_run_id",
+        "task_run_id",
+        "task_revision_id",
+        "target_kind",
+        "executor_pool_id",
+        "executor_id",
+        "status",
+        "lease_expires_at",
+        "queue_expires_at",
+    ):
+        _create_index_if_not_exists(conn, f"ix_task_execution_attempts_{column}", table, column)
+    _create_unique_index_if_not_exists(conn, "uq_task_execution_attempt_run", table, "task_run_id")
+    _create_index_if_not_exists(conn, "ix_task_attempt_claim", table, "status, executor_pool_id, queued_at")
+    _create_index_if_not_exists(conn, "ix_task_attempt_lease", table, "status, lease_expires_at")
+    _create_index_if_not_exists(conn, "ix_task_attempt_assignment_kind", table, "assignment_kind")
+    _create_index_if_not_exists(conn, "ix_task_attempt_target_user_id", table, "target_user_id")
+    _create_index_if_not_exists(
+        conn,
+        "ix_task_attempt_source_owned_claim",
+        table,
+        "status, assignment_kind, executor_pool_id, target_user_id, queued_at",
+    )
+
+
+# Optional references an Attempt restored from the legacy table may name
+# after the row they named was deleted while it sat there.
+_ATTEMPT_OPTIONAL_REFERENCES = (
+    ("task_revision_id", "task_revisions"),
+    ("target_user_id", "users"),
+    ("executor_pool_id", "executor_pools"),
+    ("executor_id", "executors"),
+)
+
+
+def _restore_orphaned_attempts_sqlite(conn: Connection) -> None:
+    """Undo a v19 rebuild that died after its RENAME had committed.
+
+    Before the rebuild ran in one transaction, a failed copy (on v13–v18 era
+    databases: ``NOT NULL constraint failed: task_execution_attempts.
+    assignment_kind``) left every Attempt in ``_task_execution_attempts_v18_legacy``
+    beside an empty nullable ``task_execution_attempts``, and the RENAME had
+    pointed ``agent_task_result_evidence.attempt_id`` at the legacy table.
+    The next boot found the column nullable and stamped on to the latest
+    version with no Attempts.
+
+    The legacy rows are copied back by column name, every table whose
+    foreign keys name the legacy table is rebuilt to name
+    ``task_execution_attempts`` again, the legacy table is dropped, and the
+    indexes the failed rebuild dropped are recreated. A no-op when nothing
+    references the legacy table, and on Postgres, where that v19 failed at
+    its ``PRAGMA`` before renaming anything.
+
+    The app ran on without the legacy rows, and the copy runs with foreign
+    keys off, so only rows that still fit are restored: an id already present
+    keeps its current row; a Task Run that has been given a new Attempt keeps
+    it (one Attempt per run); a row whose Task Run, Batch or project was
+    deleted (retention found no Attempts to delete with them) is left out.
+    A deleted revision, user, pool or executor is nulled on the restored row,
+    and staging evidence of an Attempt left out is dropped. The repair ends
+    with a foreign-key check of the attempts table and rolls back if anything
+    still dangles.
+    """
+    if not _is_sqlite_conn(conn):
+        return
+    legacy = _ATTEMPTS_LEGACY_TABLE
+    tables = _get_table_names(conn)
+    referencing = [
+        (row[0], row[1])
+        for row in conn.exec_driver_sql(
+            "SELECT name, sql FROM sqlite_master WHERE type='table'"
+            f" AND name != '{legacy}' AND sql LIKE '%{legacy}%'"
+        )
+    ]
+    if legacy not in tables and not referencing:
+        return
+    if "task_execution_attempts" not in tables:
+        raise RuntimeError(
+            f"{legacy} holds the Attempts but task_execution_attempts is missing"
+        )
+
+    current = [
+        row[1]
+        for row in conn.exec_driver_sql("PRAGMA table_info('task_execution_attempts')")
+    ]
+    referencing_indexes = {name: _sqlite_index_ddl(conn, name) for name, _ in referencing}
+    counts = {"restored": 0, "kept": 0, "superseded": 0, "parentless": 0, "nulled": 0}
+    dropped_evidence = 0
+    with _sqlite_rebuild_transaction(conn, "attempt restore"):
+        if legacy in tables:
+            saved = {
+                row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info('{legacy}')")
+            }
+            present = "id IN (SELECT id FROM task_execution_attempts)"
+            superseded = "task_run_id IN (SELECT task_run_id FROM task_execution_attempts)"
+            parented = (
+                "task_run_id IN (SELECT id FROM agent_task_runs)"
+                " AND batch_run_id IN (SELECT id FROM agent_task_batch_runs)"
+                " AND project IN (SELECT id FROM projects)"
+            )
+            for key, where in (
+                ("kept", present),
+                ("superseded", f"NOT {present} AND {superseded}"),
+                ("parentless", f"NOT {present} AND NOT {superseded} AND NOT ({parented})"),
+            ):
+                counts[key] = conn.exec_driver_sql(
+                    f"SELECT count(*) FROM {legacy} WHERE {where}"
+                ).scalar_one()
+            columns = ", ".join(f'"{column}"' for column in current if column in saved)
+            counts["restored"] = conn.exec_driver_sql(
+                f"INSERT INTO task_execution_attempts ({columns})"
+                f" SELECT {columns} FROM {legacy}"
+                f" WHERE NOT {present} AND NOT {superseded} AND {parented}"
+            ).rowcount
+            for column, parent in _ATTEMPT_OPTIONAL_REFERENCES:
+                counts["nulled"] += conn.exec_driver_sql(
+                    f'UPDATE task_execution_attempts SET "{column}" = NULL'
+                    f' WHERE "{column}" IS NOT NULL'
+                    f' AND "{column}" NOT IN (SELECT id FROM "{parent}")'
+                    f" AND id IN (SELECT id FROM {legacy})"
+                ).rowcount
+        for name, ddl in referencing:
+            # Rebuilt from its own DDL with the reference renamed back, so the
+            # column order is unchanged and SELECT * copies straight across.
+            scratch = f"_{name}_attempt_restore"
+            conn.exec_driver_sql(f'ALTER TABLE "{name}" RENAME TO "{scratch}"')
+            conn.exec_driver_sql(ddl.replace(legacy, "task_execution_attempts"))
+            conn.exec_driver_sql(f'INSERT INTO "{name}" SELECT * FROM "{scratch}"')
+            conn.exec_driver_sql(f'DROP TABLE "{scratch}"')
+            for statement in referencing_indexes[name]:
+                conn.exec_driver_sql(statement)
+            # Rows naming an Attempt that was left out above.
+            for row in conn.exec_driver_sql(f"PRAGMA foreign_key_check('{name}')").fetchall():
+                if row[2] == "task_execution_attempts":
+                    dropped_evidence += conn.exec_driver_sql(
+                        f'DELETE FROM "{name}" WHERE rowid = {int(row[1])}'
+                    ).rowcount
+        if legacy in tables:
+            conn.exec_driver_sql(f"DROP TABLE {legacy}")
+        _ensure_attempt_ladder_indexes(conn)
+        dangling = conn.exec_driver_sql(
+            "PRAGMA foreign_key_check('task_execution_attempts')"
+        ).fetchall()
+        if dangling:
+            raise RuntimeError(
+                f"attempt restore left {len(dangling)} dangling foreign keys on"
+                f" task_execution_attempts: {sorted({str(row[2]) for row in dangling})}"
+            )
+
+    import logging
+
+    logging.getLogger(__name__).warning(
+        "Restored %d Attempts from %s (%d kept the row already present, %d left out"
+        " because their Task Run has a newer Attempt, %d left out because their Task"
+        " Run, Batch or project is gone; %d dangling references nulled), repointed %d"
+        " foreign-key tables and dropped %d of their rows naming a left-out Attempt",
+        counts["restored"],
+        legacy,
+        counts["kept"],
+        counts["superseded"],
+        counts["parentless"],
+        counts["nulled"],
+        len(referencing),
+        dropped_evidence,
+    )
+
+
+def _free_legacy_attempt_index_names() -> None:
+    """Let ``create_all`` recreate the attempts table a killed v19 left missing.
+
+    A v19 killed between its RENAME and its CREATE TABLE left the Attempts in
+    the legacy table with every attempt index still on it under its own name,
+    so ``create_all`` failed on "index … already exists" before the ladder
+    could repair anything. The repair drops the legacy table and recreates the
+    indexes on ``task_execution_attempts``, so the legacy copies can go first.
+    """
+    if not is_sqlite():
+        return
+    with engine.begin() as conn:
+        tables = _get_table_names(conn)
+        if _ATTEMPTS_LEGACY_TABLE not in tables or "task_execution_attempts" in tables:
+            return
+        for (name,) in conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='index'"
+            f" AND tbl_name='{_ATTEMPTS_LEGACY_TABLE}' AND sql IS NOT NULL"
+        ).fetchall():
+            conn.exec_driver_sql(f'DROP INDEX "{name}"')
+
+
+def _migrate_to_v56() -> None:
+    """Version 56: repair databases an earlier v19 left half-rebuilt, and add
+    the ``automations.trigger_kind`` index v51 left out (the model indexes
+    it, so fresh installs have it; climbed databases did not).
+
+    Originally numbered 52; renumbered because the serving-provider line
+    took 52–55 first. Both flavours of a v52-stamped database converge
+    here: the repair re-processes idempotently."""
+    with engine.begin() as conn:
+        _restore_orphaned_attempts_sqlite(conn)
+        _create_index_if_not_exists(
+            conn, "ix_automations_trigger_kind", "automations", "trigger_kind"
+        )
 
 
 def _migrate_to_v19() -> None:
@@ -3504,18 +3766,37 @@ def _migrate_cost_schema(conn: Connection) -> None:
     # SQLite's loose typing hides that; Postgres then rejects
     # ``internal_model_id = 5``. There the rewrite is a type change, so the
     # values are converted exactly once.
+    #
+    # A Postgres INTEGER holds micro-USD below $2147.483647; a larger cost
+    # would abort the rung (``integer out of range``) on every boot, so it is
+    # nulled and counted instead. SQLite's integers are 64-bit.
     legacy_types = _postgres_non_integer_columns(
         conn, "logged_calls", ("cost", "provided_cost", "internal_model_id")
     )
+    postgres = not _is_sqlite_conn(conn)
     for column in ("cost", "provided_cost"):
+        micro_usd = f"ROUND({column} * 1000000)"
+        if postgres:
+            oversized = conn.exec_driver_sql(
+                f"SELECT count(*) FROM logged_calls WHERE abs({column}) >= 2147.483647"
+            ).scalar()
+            if oversized:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "v10: nulled %d logged_calls.%s values too large for micro-USD INTEGER",
+                    oversized,
+                    column,
+                )
+            micro_usd = f"CASE WHEN abs({column}) < 2147.483647 THEN {micro_usd} END"
         if column in legacy_types:
             conn.exec_driver_sql(
                 f"ALTER TABLE logged_calls ALTER COLUMN {column} TYPE INTEGER "
-                f"USING ROUND({column} * 1000000)::integer"
+                f"USING ({micro_usd})::integer"
             )
         else:
             conn.exec_driver_sql(
-                f"UPDATE logged_calls SET {column} = ROUND({column} * 1000000) "
+                f"UPDATE logged_calls SET {column} = {micro_usd} "
                 f"WHERE {column} IS NOT NULL"
             )
 
@@ -3637,7 +3918,7 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 55
+LATEST_SCHEMA_VERSION = 56
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -3695,6 +3976,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     53: _migrate_to_v53,
     54: _migrate_to_v54,
     55: _migrate_to_v55,
+    56: _migrate_to_v56,
 }
 
 
