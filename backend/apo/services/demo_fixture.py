@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -77,6 +78,9 @@ class DemoFixtureError(RuntimeError):
     """The fixture file is malformed. Startup must fail hard, not limp."""
 
 
+logger = logging.getLogger(__name__)
+
+
 def load_demo_fixture(session: Session, *, path: Path | None = None) -> bool:
     """Reconcile the demo project to the shipped fixture.
 
@@ -124,6 +128,13 @@ def load_demo_fixture(session: Session, *, path: Path | None = None) -> bool:
     source.last_synced_at = datetime.now(timezone.utc)
     session.add(source)
     session.commit()
+    # A freshly seeded install carrying pre-dated runs and spans confuses
+    # anyone (human or agent) expecting an empty database — say it happened
+    # and how to turn it off.
+    logger.info(
+        "Seeded demo workspace from %s (disable with APO_DEMO_ENABLED=false)",
+        fixture_path.name,
+    )
     return True
 
 
