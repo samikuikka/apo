@@ -105,9 +105,18 @@ class TelemetryAdmissionLimits:
 
 # Each tuple: (env_var, default). Token-bucket pairs are grouped so the
 # loader can construct TokenBucketPolicy objects.
+#
+# Request-dimension calibration: apo's own task client batches exports but
+# still flushes ~2 requests/s per run, and task suites run many runs
+# back-to-back on one API key — a per-key budget at that exact rate never
+# refills, so consecutive runs overdraft the bucket and spans are dropped to
+# 429s (observed live: 472 throttles across three consecutive probe runs,
+# including a cancelled run's final root-span flush). The request dimension
+# must sit comfortably above the client's sustained rate so the units
+# (spans) dimension remains the real quota.
 _BUCKET_SPECS: tuple[tuple[str, int, str, int], ...] = (
-    ("APO_TELEMETRY_REQUESTS_PER_MINUTE", 120, "APO_TELEMETRY_REQUEST_BURST", 20),
-    ("APO_TELEMETRY_GLOBAL_REQUESTS_PER_MINUTE", 600, "APO_TELEMETRY_GLOBAL_REQUEST_BURST", 50),
+    ("APO_TELEMETRY_REQUESTS_PER_MINUTE", 600, "APO_TELEMETRY_REQUEST_BURST", 60),
+    ("APO_TELEMETRY_GLOBAL_REQUESTS_PER_MINUTE", 2400, "APO_TELEMETRY_GLOBAL_REQUEST_BURST", 200),
     ("APO_TELEMETRY_UNITS_PER_MINUTE", 12_000, "APO_TELEMETRY_UNIT_BURST", 2048),
     ("APO_TELEMETRY_GLOBAL_UNITS_PER_MINUTE", 30_000, "APO_TELEMETRY_GLOBAL_UNIT_BURST", 4096),
     ("APO_TELEMETRY_BYTES_PER_MINUTE", 31_457_280, "APO_TELEMETRY_BYTE_BURST", 10_485_760),

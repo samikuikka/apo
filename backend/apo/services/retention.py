@@ -46,7 +46,7 @@ from fastapi import HTTPException
 
 from ..db import DATA_DIR, SQLITE_FILE_NAME, engine, is_sqlite
 from ..db_helpers import as_column, table_exists
-from ..models.db import AgentTaskDeliverableDB, MaintenanceStateDB
+from ..models.db import AgentTaskDeliverableDB, MaintenanceStateDB, OtlpSpanDB
 from .artifact_stores.registry import artifact_limits, get_store
 
 logger = logging.getLogger(__name__)
@@ -180,6 +180,82 @@ def reap_old_ingest_batch_rows(session: Session, cutoff: datetime) -> int:
         ),
     )
     return result.rowcount or 0
+
+
+def adopt_orphan_traces_for_terminal_task_runs(session: Session) -> int:
+    """Link surviving traces to terminal Task Runs that never claimed one.
+
+    A cancelled or failed run's final trace flush often arrives AFTER the
+    failure submission finalized the run row — a local span-buffering
+    collector may deliver seconds or hours later (backend outage), and the
+    collector forwards with a project API key, which by design cannot claim
+    a task run at ingest (telemetry attributes are never authorization).
+    The result submission that normally carries ``trace_run_id`` never
+    happens for these runs, so the run row stays unlinked even though every
+    span survived.
+
+    This pass is the control-plane half of that contract: for a terminal run
+    (``completed_at`` set) with no trace, find an ingested ``apo.task.run``
+    root span whose ``apo.task.run.id`` attribute names exactly this run and
+    whose trace no other run owns, and claim it — newest first when retries
+    produced several. The attribute only identifies the candidate; the
+    one-trace invariant still gates the claim.
+    """
+    if not table_exists(session, "otlp_spans"):
+        return 0
+    rows = cast(
+        CursorResult[Any],
+        session.execute(
+            text(
+                "SELECT s.trace_id, s.project_id FROM otlp_spans s "
+                "JOIN agent_task_runs r "
+                "  ON r.id = json_extract(s.attributes, '$.\"apo.task.run.id\"') "
+                "JOIN agent_task_batch_runs b ON b.id = r.batch_run_id "
+                "WHERE s.parent_span_id IS NULL "
+                "  AND s.span_name = 'apo.task.run' "
+                "  AND r.trace_run_id IS NULL "
+                "  AND r.completed_at IS NOT NULL "
+                "  AND b.project = s.project_id "
+                "  AND NOT EXISTS ("
+                "    SELECT 1 FROM agent_task_runs r2 "
+                "    WHERE r2.trace_run_id = s.trace_id)"
+                "ORDER BY s.start_time DESC"
+            )
+        ),
+    ).fetchall()
+    if not rows:
+        return 0
+
+    from .trace_ownership import claim_trace_in_session
+
+    adopted = 0
+    claimed_runs: set[str] = set()
+    for row in rows:  # type: ignore[any]
+        trace_id = str(row[0])  # pyright: ignore[reportAny]
+        span = session.exec(
+            select(OtlpSpanDB).where(
+                as_column(OtlpSpanDB.trace_id) == trace_id,
+                as_column(OtlpSpanDB.span_name) == "apo.task.run",
+            )
+        ).first()
+        if span is None:
+            continue
+        task_run_id_attr = (span.attributes or {}).get("apo.task.run.id")
+        if not isinstance(task_run_id_attr, str) or task_run_id_attr in claimed_runs:
+            continue
+        task_run_id: str = task_run_id_attr
+        try:
+            claim_trace_in_session(session, task_run_id, trace_id)
+        except ValueError as exc:
+            logger.info("Trace adoption skipped for run %s: %s", task_run_id, exc)
+            continue
+        claimed_runs.add(task_run_id)
+        adopted += 1
+        logger.info(
+            "Adopted orphan trace %s for terminal task run %s", trace_id, task_run_id
+        )
+    session.commit()
+    return adopted
 
 
 def delete_orphaned_spans(session: Session, cutoff: datetime) -> int:
@@ -1280,6 +1356,12 @@ def run_maintenance_cleanup() -> dict[str, int]:
             reap_unreferenced_artifact_objects(session)
         )
         session.commit()
+
+        # Before any deletes: cancelled/failed runs whose trace drained in
+        # after finalization get linked, so the evidence outlives the outage.
+        summary["adopted_task_run_traces"] = adopt_orphan_traces_for_terminal_task_runs(
+            session
+        )
 
         evidence_windows = project_evidence_windows(session)
         if evidence_windows:

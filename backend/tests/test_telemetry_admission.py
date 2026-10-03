@@ -56,10 +56,10 @@ class TestAdmissionDefaults:
         _clear_admission_env(monkeypatch)
         limits = load_telemetry_admission_limits()
 
-        assert limits.requests.tokens_per_minute == 120
-        assert limits.requests.burst == 20
-        assert limits.global_requests.tokens_per_minute == 600
-        assert limits.global_requests.burst == 50
+        assert limits.requests.tokens_per_minute == 600
+        assert limits.requests.burst == 60
+        assert limits.global_requests.tokens_per_minute == 2400
+        assert limits.global_requests.burst == 200
         assert limits.units.tokens_per_minute == 12_000
         assert limits.units.burst == 2048
         assert limits.global_units.tokens_per_minute == 30_000
