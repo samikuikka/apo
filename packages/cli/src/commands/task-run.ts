@@ -285,6 +285,9 @@ async function runCallerRecorded(
   });
   process.env.AGENT_TASK_TRACE_ENDPOINT =
     (collector.traceEndpoint ?? config.backendUrl).replace(/\/$/, "");
+  // Backend base for SDK API consumers (projection reads, history, scores):
+  // with span buffering on, the trace endpoint is the OTLP-only collector.
+  process.env.APO_BACKEND_URL = config.backendUrl.replace(/\/$/, "");
   // AGENT_TASK_PROJECT is the name the SDK reads (task-runtime.ts gates tracing on
   // endpoint && AGENT_TASK_PROJECT). This used to set AGENT_TASK_TRACE_PROJECT,
   // which nothing reads, so caller execution fell through to noop tracing: no
@@ -597,8 +600,9 @@ async function runCallerRecorded(
     process.removeListener("SIGTERM", onRunSigterm);
     if ((await collector.stop()) === "left-running") {
       console.log(dim(
-        "Local collector left running — it is still delivering queued traces " +
-          "(backend was unreachable or throttling); the next apo command reuses it.",
+        "Local collector left running — it is still delivering queued traces, " +
+        "or another apo command may be using it; the next command that spawns it " +
+        "stops it once drained.",
       ));
     }
   }

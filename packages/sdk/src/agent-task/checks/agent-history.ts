@@ -63,7 +63,9 @@ export function createBackendReaderFromEnv(env = process.env): BackendReader | u
       : undefined;
   if (!headers) return undefined;
 
-  const endpoint = env.AGENT_TASK_TRACE_ENDPOINT ?? "http://127.0.0.1:8000";
+  // Backend base, not the trace endpoint: the local span-buffering
+  // collector 404s API routes (only the OTLP traces path is served).
+  const endpoint = env.APO_BACKEND_URL ?? env.AGENT_TASK_TRACE_ENDPOINT ?? "http://127.0.0.1:8000";
   return {
     async get(path: string): Promise<unknown> {
       const res = await fetch(`${endpoint.replace(/\/$/, "")}/v1${path}`, { headers });

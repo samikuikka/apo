@@ -110,13 +110,17 @@ export function createOtelAgentTaskTraceClient(
 
   async function cancelActiveRun(reason = "cancelled"): Promise<void> {
     const root = activeRoot;
-    if (!root) return;
-    root.end({
-      output: { error: reason },
-      status_message: reason,
-      level: "ERROR",
-      metadata: { cancelled: true },
-    });
+    if (root) {
+      root.end({
+        output: { error: reason },
+        status_message: reason,
+        level: "ERROR",
+        metadata: { cancelled: true },
+      });
+    }
+    // Flush whenever a provider exists — not only when the root is active:
+    // traceRun's tail clears activeRoot BEFORE its own forceFlush, and a
+    // signal landing in that window must still flush the batched export.
     const handle = myHandle;
     if (!handle) return;
     try {
@@ -469,13 +473,18 @@ export function createOtelAgentTaskTraceClient(
           catch (e) { const m = e instanceof Error ? e.message : String(e); endSpan({ id: spanId, output: { error: m }, level: "ERROR" }); throw e; }
         },
         async score(scoreParams: CreateScoreParams): Promise<void> {
-          // Scores are domain records via the score API
+          // Scores are domain records via the score API. The backend base is
+          // APO_BACKEND_URL when set: config.endpoint may be the local
+          // span-buffering collector, which 404s every API route.
           const { score: scoreFn } = await import("../otel/index.ts");
           const scoreHeaders = config.headers
             ?? (config.authToken ? { Authorization: `Bearer ${config.authToken}` } : {});
           await scoreFn(
             { traceId: runId, ...scoreParams },
-            { endpoint: config.endpoint, headers: scoreHeaders },
+            {
+              endpoint: process.env.APO_BACKEND_URL ?? config.endpoint,
+              headers: scoreHeaders,
+            },
           );
         },
       };

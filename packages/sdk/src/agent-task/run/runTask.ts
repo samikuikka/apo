@@ -209,6 +209,11 @@ async function readCanonicalSnapshot(
   minObservations?: number,
 ): Promise<CapturedExecution["snapshot"] | null> {
   if (!trace.taskRunId) return null; // offline/local run — no backend read
+  // NOTE: deliberately still the trace endpoint, not APO_BACKEND_URL. In
+  // the caller path the root span (whose ingest-side claim this read waits
+  // for) only ends AFTER this read runs, so a reachable backend turns the
+  // instant 404 into a guaranteed 30s "not ready" wait — the local tee
+  // fallback is the effective design here either way.
   const endpoint = process.env.AGENT_TASK_TRACE_ENDPOINT;
   const authToken = process.env.APO_AUTH_TOKEN;
   if (!endpoint || !authToken) return null;
