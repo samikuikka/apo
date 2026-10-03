@@ -9,6 +9,7 @@
  * step names active when it started, which makes nesting assertions direct.
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { basename, join } from "path";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { runTask } from "../src/agent-task/run/runTask";
@@ -31,23 +32,25 @@ interface RecordedStep {
 }
 
 const steps: RecordedStep[] = [];
-const stepStack: string[] = [];
+// Ancestry is tracked through AsyncLocalStorage — the propagation mechanism
+// the real OTel client uses — so concurrently running checks each carry
+// their own ancestry instead of sharing one mutable stack.
+const ancestry = new AsyncLocalStorage<{ stack: string[] }>();
 
 const traceRun = vi.fn(async (_params: unknown, fn: (trace: object) => Promise<unknown>) =>
   fn({
     runId: "trace-run-checks",
     rootSpanId: "root-span",
     async step(options: TraceStepOptions, stepFn: (spanId: string) => Promise<unknown>) {
-      const recorded: RecordedStep = { options, stack: [...stepStack] };
+      const stack = ancestry.getStore()?.stack ?? [];
+      const recorded: RecordedStep = { options, stack };
       steps.push(recorded);
-      stepStack.push(options.step_name ?? "?");
-      try {
-        const result = await stepFn(`span-${steps.length}`);
-        recorded.summary = options.summarize?.(result);
-        return result;
-      } finally {
-        stepStack.pop();
-      }
+      const result = await ancestry.run(
+        { stack: [...stack, options.step_name ?? "?"] },
+        () => stepFn(`span-${steps.length}`),
+      );
+      recorded.summary = options.summarize?.(result);
+      return result;
     },
     recordEvent() {
       return "event-1";
@@ -61,7 +64,6 @@ const traceRun = vi.fn(async (_params: unknown, fn: (trace: object) => Promise<u
 
 beforeEach(() => {
   steps.length = 0;
-  stepStack.length = 0;
   traceRun.mockClear();
   if (existsSync(TMP_ROOT)) {
     rmSync(TMP_ROOT, { recursive: true, force: true });
@@ -167,8 +169,10 @@ describe("checks.run evaluation-phase span", () => {
 
     const judge = steps.find((s) => s.options.step_name?.startsWith("judge:"));
     expect(judge).toBeDefined();
-    // The judge span nests directly under checks.run — the grouping boundary.
-    expect(judge!.stack).toEqual(["checks.run"]);
+    // The judge span nests under the check that issued it, which itself sits
+    // inside the checks.run phase (issue #344) — the grouping boundary still
+    // owns it, one level deeper.
+    expect(judge!.stack).toEqual(["checks.run", "check:overview-quality"]);
 
     // Execution-phase work must stay outside the evaluation span.
     const turn = steps.find((s) => s.options.step_name === "task.turn");

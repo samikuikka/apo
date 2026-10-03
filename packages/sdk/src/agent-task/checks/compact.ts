@@ -55,7 +55,7 @@ export function compactChecksForSubmission(
     const next: Record<string, unknown> = { ...check };
     if ("received" in next && next.received !== undefined) {
       // Legacy top-level shape — mirrors _normalize_check.
-      const replaced = truncateValue(next.received);
+      const replaced = truncateReceivedValue(next.received);
       if (replaced !== next.received) {
         next.received = replaced;
         truncatedValues += 1;
@@ -73,7 +73,7 @@ export function compactChecksForSubmission(
       const assertions = sourceAssertions.map((assertion) => {
         const nextAssertion: Record<string, unknown> = { ...assertion };
         if (nextAssertion.received !== undefined) {
-          const replaced = truncateValue(nextAssertion.received);
+          const replaced = truncateReceivedValue(nextAssertion.received);
           if (replaced !== nextAssertion.received) {
             nextAssertion.received = replaced;
             truncatedValues += 1;
@@ -138,8 +138,11 @@ function truncateJudge(judge: unknown): { value: JudgeMetadata; truncated: numbe
 /**
  * Truncate a structured ``received`` value when its compact JSON exceeds the
  * limit — the same subject the backend hashes (compact JSON bytes).
+ *
+ * Exported for span summaries (trace-view check nodes), which must respect
+ * the same size contract as submitted reports.
  */
-function truncateValue(value: unknown): unknown {
+export function truncateReceivedValue(value: unknown): unknown {
   if (value === undefined) return value;
   let bytes: Uint8Array;
   try {
