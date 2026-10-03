@@ -89,6 +89,46 @@ describe("t.judge", () => {
     });
   });
 
+  it("expect:'fail' inverts polarity — the check passes when the judge fails a known-bad value", async () => {
+    stubJudgeResponse({
+      content: JSON.stringify({ pass: false, reasoning: "the figure is fabricated" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("fabricated report", "PASS when every figure is supported", { expect: "fail" });
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+    });
+
+    expect(result).toMatchObject({ pass: true });
+    expect(result?.assertions?.[0]).toMatchObject({
+      pass: true,
+      reasoning: "the figure is fabricated",
+    });
+  });
+
+  it("expect:'fail' records a disagreement when the judge passes a known-bad value", async () => {
+    stubJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "reads coherently" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("fabricated report", "PASS when every figure is supported", { expect: "fail" });
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+    });
+
+    expect(result?.pass).toBe(false);
+    expect(result?.reasoning).toContain("ground truth is FAIL");
+    expect(result?.reasoning).toContain("reads coherently");
+  });
+
   it("fails as an LLM check when no judge is configured", async () => {
     defineCheck("quality", async (t) => {
       await t.judge("answer", "PASS when correct");

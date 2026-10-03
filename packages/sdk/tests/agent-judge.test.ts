@@ -130,6 +130,56 @@ describe("t.agent — agentic judge sessions", () => {
     expect(session?.usage?.input_tokens).toBe(240);
   });
 
+  it("expect:'fail' passes when the judge catches a known-bad deliverable", async () => {
+    scriptFetch([
+      toolCallTurn("1", "read_deliverable", { name: "answer", offset: 0, limit: 6000 }),
+      toolCallTurn("2", "finish_verdict", { reasoning: "The claimed figure appears nowhere in the log.", pass: false }),
+    ]);
+
+    const result = await runAgentCheck(async (t) => {
+      await t.agent("PASS only if the figure is supported.", { label: "catches-fabrication", expect: "fail" });
+    });
+
+    // The judge FAILed the deliverable; ground truth is "fail", so the check
+    // records agreement as a pass with the judge's own reasoning.
+    const assertion = result.assertions[0]!;
+    expect(assertion.pass).toBe(true);
+    expect(assertion.reasoning).toContain("nowhere");
+    expect(assertion.judge?.session?.outcome).toBe("verdict");
+  });
+
+  it("expect:'fail' records a disagreement when the judge passes a known-bad deliverable", async () => {
+    scriptFetch([
+      toolCallTurn("1", "finish_verdict", { reasoning: "Reads plausibly; nothing contradicts it.", pass: true }),
+    ]);
+
+    const result = await runAgentCheck(async (t) => {
+      await t.agent("PASS only if the figure is supported.", { expect: "fail" });
+    });
+
+    const assertion = result.assertions[0]!;
+    expect(assertion.pass).toBe(false);
+    expect(assertion.reasoning).toContain("ground truth is FAIL");
+    expect(assertion.reasoning).toContain("Reads plausibly");
+  });
+
+  it("expect never reaches the session — the instruction is sent unchanged", async () => {
+    const fetchMock = scriptFetch([
+      toolCallTurn("1", "finish_verdict", { reasoning: "unsupported figure", pass: false }),
+    ]);
+
+    await runAgentCheck(async (t) => {
+      await t.agent("PASS only if the figure is supported.", { expect: "fail" });
+    });
+
+    const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string) as {
+      messages: Array<{ content: unknown }>;
+    };
+    const prompt = String(body.messages.at(-1)?.content);
+    expect(prompt).toContain("PASS only if the figure is supported.");
+    expect(prompt).not.toContain("ground truth");
+  });
+
   it("keys every step of a session with one prompt_cache_key, distinct per criterion", async () => {
     const fetchMock = scriptFetch([
       toolCallTurn("1", "read_deliverable", { name: "answer", offset: 0, limit: 6000 }),

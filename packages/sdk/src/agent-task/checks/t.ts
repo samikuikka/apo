@@ -160,6 +160,11 @@ export interface TestContext {
    * only, when the full value exceeds its context limit: the primary judge
    * still sees all of ``value``, so other criteria that need the complete
    * deliverable are unaffected.
+   *
+   * ``opts.expect`` pins the ground-truth verdict (``"pass"`` default, or
+   * ``"fail"``): the judge still decides independently, but the check passes
+   * only when its verdict matches — how a known-bad value yields a passing
+   * check exactly when the judge catches it.
    */
   judge(
     values: unknown | unknown[],
@@ -174,6 +179,14 @@ export interface TestContext {
        * the second judge sees exactly what the primary judge sees.
        */
       secondJudgeValue?: unknown | unknown[];
+      /**
+       * The ground-truth verdict this check asserts: `"pass"` (default) or
+       * `"fail"`. The judge never sees it — the instruction is sent
+       * unchanged. The check passes only when the judge's verdict matches
+       * the author's ground truth, so a known-bad value becomes a passing
+       * check exactly when the judge catches it.
+       */
+      expect?: "pass" | "fail";
     },
   ): Promise<void>;
 
@@ -190,6 +203,10 @@ export interface TestContext {
    * 2 MiB read) and fail-closed: a session that ends without a verdict is a
    * recorded failure, never a silent pass. Costs more and runs minutes, not
    * seconds — reserve it for rubrics that need investigation.
+   *
+   * ``opts.expect`` pins the ground-truth verdict (``"pass"`` default, or
+   * ``"fail"``): the judge still investigates and decides independently, but
+   * the check passes only when its verdict matches.
    */
   agent(instruction: string, opts?: AgentJudgeOptions): Promise<void>;
 }
@@ -543,7 +560,22 @@ function createJudgeMethod(
     try {
       const { pass, reasoning, judge, unavailable } = await traced;
       if (isTraceableSpanId(judgeSpanId)) judge.span_id = judgeSpanId;
-      rec.record(label, pass, reasoning, {
+      // Verdict polarity (`expect`): only when the author pins a ground
+      // truth does the recorded outcome become agreement — otherwise it is
+      // the verdict itself. An unreachable judge (unavailable) fails
+      // regardless — there is no agreement to score.
+      const agreed =
+        opts?.expect === undefined
+          ? pass
+          : unavailable
+            ? false
+            : pass === (opts.expect === "pass");
+      const recordedReasoning =
+        opts?.expect === undefined || agreed || unavailable
+          ? reasoning
+          : `judge ${pass ? "PASSed" : "FAILed"} where ground truth is ` +
+            `${opts.expect.toUpperCase()} — judge reasoning: ${reasoning}`;
+      rec.record(label, agreed, recordedReasoning, {
         evaluator_type: "llm",
         judge,
         expected: instruction,

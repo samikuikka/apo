@@ -53,6 +53,17 @@ export type AgentJudgeOptions = {
   tools?: { trace?: boolean; mcp?: McpServerConfig[] };
   budget?: AgentBudget;
   label?: string;
+  /**
+   * The ground-truth verdict this check asserts: `"pass"` (default) or
+   * `"fail"`. The session never sees it — the instruction is sent unchanged,
+   * so the judge still decides independently. What changes is the recorded
+   * outcome: the check passes only when the judge's verdict matches the
+   * author's ground truth. `"fail"` is how a known-bad deliverable (a
+   * fabricated figure, a claim the trace contradicts) becomes a passing
+   * check when the judge catches it — judging the judge against cases whose
+   * correct verdict is fixed by construction.
+   */
+  expect?: "pass" | "fail";
 };
 
 /** The local evidence plane a session can investigate. */
@@ -847,7 +858,22 @@ export function createAgentMethod(
             `${result.session.usage?.steps ?? "?"} steps; last tool: ` +
             `${result.session.steps?.at(-1)?.tool_calls?.map((c) => c.name).join(", ") ?? "none"})`;
 
-      rec.record(label, result.verdict?.pass ?? false, result.verdict?.reasoning ?? detail, {
+      // Verdict polarity (`expect`): only when the author pins a ground
+      // truth does the recorded outcome become agreement — otherwise it is
+      // the verdict itself. A verdict-less session fails regardless.
+      const agreed =
+        opts?.expect === undefined
+          ? (result.verdict?.pass ?? false)
+          : result.verdict
+            ? result.verdict.pass === (opts.expect === "pass")
+            : false;
+      const reasoning =
+        opts?.expect === undefined || agreed || !result.verdict
+          ? (result.verdict?.reasoning ?? detail)
+          : `judge ${result.verdict.pass ? "PASSed" : "FAILed"} where ground truth is ` +
+            `${opts.expect.toUpperCase()} — judge reasoning: ${result.verdict.reasoning}`;
+
+      rec.record(label, agreed, reasoning, {
         evaluator_type: "agent",
         judge,
         expected: instruction,
