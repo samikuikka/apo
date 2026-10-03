@@ -132,7 +132,7 @@ t.check(deliverables.answer, includes("acme-corp"), "answer names acme");
 
 ### `t.judge(value, instruction, opts?)`, async
 
-- **Signature:** `(value: unknown | unknown[], instruction: string, opts?: { label?: string; judge?: Partial<JudgeConfig> }) → Promise<void>`
+- **Signature:** `(value: unknown | unknown[], instruction: string, opts?: { label?: string; judge?: Partial<JudgeConfig>; expect?: "pass" | "fail" }) → Promise<void>`
 - **Asserts:** the configured judge model grades `value` against `instruction` (a natural-language rubric). **Must be awaited**: the check function must be `async`.
 
 ```typescript title="my-task.eval.ts"
@@ -169,6 +169,29 @@ test("answer-quality", async (t, { deliverables }) => {
 ```
 
 Absent fields inherit from the run's judge config (`runTask({ judge })`, or a task-level `judge` layer), whose env defaults depend on the runner: `OPENROUTER_MODEL` / `OPENAI_MODEL` for local runs (`apo task run`, `apo connect`), `AGENT_TASK_JUDGE_MODEL` for backend-spawned runs. So `{ model }` alone is usually enough, `baseURL` and `apiKey` flow through unchanged. The overridden model is stamped on the assertion metadata and shown in the dashboard breakdown.
+
+#### Ground-truth polarity: `{ expect }`
+
+By default a check's outcome *is* the judge's verdict — which makes a case whose correct verdict is FAIL inexpressible: a fabricated figure, a claim the trace contradicts, could only ever look like a failing check, so "the judge got it right" is invisible in the run. `{ expect }` pins the author's ground truth:
+
+```typescript title="my-task.eval.ts"
+test("catches-fabricated-figures", async (t) => {
+  await t.agent(
+    "PASS only if every figure in the report is supported by the work log.",
+    { expect: "fail" }, // the deliverable is known-bad: passing means the judge caught it
+  );
+});
+```
+
+```bash title="terminal"
+apo task run jq-contradicted-figures
+
+→ PASS jq-contradicted-figures
+  Checks:
+    PASS figures-supported
+```
+
+The judge never sees the expectation — the instruction reaches the session unchanged and it investigates and verdicts independently. What changes is the recorded outcome: the check passes only when the verdict matches the ground truth, and a disagreement records a failure whose reasoning names both sides (`judge PASSed where ground truth is FAIL — judge reasoning: …`). This is how apo tests its own judge: the `judge-quality` battery in the example service is nine stub-agent cases with verdicts fixed by construction, and a passing run there means *judge agreed with ground truth*, never that the deliverable was good.
 
 #### Timeouts
 
@@ -226,7 +249,7 @@ The session's tool surface:
 | `get_task_definition` | The task's id, description, and deliverable names |
 | `finish_verdict` | The only exit besides the budget — ends the session with the verdict |
 
-Options: `opts.budget` overrides each ceiling (defaults: 12 turns, 24 tool calls, 300 s wall clock, 2 MiB total read); `opts.tools: { trace: false }` drops `get_trace` (deliverables are always readable); `opts.judge` overrides the judge model for this call only, merging field-by-field like `t.judge`; `opts.label` names the assertion in the breakdown.
+Options: `opts.budget` overrides each ceiling (defaults: 12 turns, 24 tool calls, 300 s wall clock, 2 MiB total read); `opts.tools: { trace: false }` drops `get_trace` (deliverables are always readable); `opts.judge` overrides the judge model for this call only, merging field-by-field like `t.judge`; `opts.label` names the assertion in the breakdown; `opts.expect` pins the ground-truth verdict — [ground-truth polarity](#ground-truth-polarity-expect) works identically here.
 
 The session is fail-closed: one that ends without a verdict records a **failure** with its explanation — `budget exhausted after N steps; last tool: …` — never a silent pass. Without a judge model configured, the check records a setup failure naming the env vars to set (`OPENROUTER_MODEL` + `OPENROUTER_API_KEY`, or `OPENAI_MODEL` + `OPENAI_API_KEY`); the model must be tool-calling capable.
 
