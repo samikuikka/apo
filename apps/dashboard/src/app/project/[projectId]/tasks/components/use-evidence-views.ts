@@ -119,7 +119,9 @@ export function useEvidenceViews({
         setStatsByView((prev) => (key in prev ? prev : { ...prev, [key]: null }));
       });
     return () => controller.abort();
-  }, [projectId, activeView.model, activeView.effort, activeView.since, activeView.provider, isDemoProject, viewIsDerived, viewStatsKey]);
+    // `tasks` changes identity only when the server page re-runs (refresh or
+    // resync), which is when the derived overlay must be refetched too.
+  }, [projectId, activeView.model, activeView.effort, activeView.since, activeView.provider, isDemoProject, viewIsDerived, viewStatsKey, tasks]);
 
   // Derived per active tab: no effect-time syncing, so a tab switch never
   // renders one frame with the previous view's overlay still applied.

@@ -2,6 +2,7 @@
 
 import { Pencil, Play, RefreshCw } from "lucide-react";
 
+import { RefreshControls, useRouterRefresh } from "@/components/refresh-controls";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ProjectTaskSource } from "@/lib/projects-api";
@@ -30,9 +31,19 @@ export function TasksToolbar({
   onSync: () => void;
   onRun: () => void;
 }) {
+  const { refresh, isRefreshing, autoRefreshInterval, setAutoRefreshInterval } = useRouterRefresh();
   return (
     <div className="border-b border-border bg-muted/10">
       <div className="flex flex-wrap items-center justify-end gap-2 px-6 py-3">
+        <RefreshControls
+          label="tasks"
+          testIdPrefix="tasks"
+          size="md"
+          onRefresh={refresh}
+          isRefreshing={isRefreshing}
+          autoRefreshInterval={autoRefreshInterval}
+          onAutoRefreshChange={setAutoRefreshInterval}
+        />
         {taskSource && !isDemoProject && canRunTasks && (
           <>
             <Button
