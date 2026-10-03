@@ -374,13 +374,11 @@ async function runCallerRecorded(
   // branch so its diagnostic can name bytes/limit/fields (issue #249).
   let measuredSize: ResultBodySize | null = null;
   try {
-    summary = await runTaskDirImpl(taskDir, {
+    summary = withNoVerdict(await runTaskDirImpl(taskDir, {
       registerCancel: (cancel) => {
         cancelTrace = cancel;
       },
-    }) as LocalRunSummary;
-
-    summary = withNoVerdict(await runTaskDirImpl(taskDir) as LocalRunSummary);
+    }) as LocalRunSummary);
 
     // Upload file artifacts after checks, before result submission.
     // Issue #176: the heartbeat stays alive through this and the /result
