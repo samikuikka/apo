@@ -248,8 +248,9 @@ export async function run(argv: string[]): Promise<number> {
   }
   if ((await collector.stop()) === "left-running") {
     console.log(dim(
-      "Local collector left running — it is still delivering queued traces " +
-        "(backend was unreachable or throttling); the next apo command reuses it.",
+      "Local collector left running — it is still delivering queued traces, " +
+        "or another apo command may be using it; the next command that spawns it " +
+        "stops it once drained.",
     ));
   }
   console.log(green("Disconnected."));

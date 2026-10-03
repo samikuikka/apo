@@ -64,19 +64,35 @@ export interface CollectorPaths {
   config: string;
   log: string;
   pid: string;
+  /** Fingerprint of the forwarding target the running collector was built for. */
+  target: string;
   queueDir: string;
 }
 
 export function collectorPaths(): CollectorPaths {
-  const home = join(homedir(), ".apo", "collector");
+  // APO_COLLECTOR_DATA_DIR overrides the whole collector home — the seam
+  // tests use to keep spawned collectors out of the developer's ~/.apo.
+  const home = process.env.APO_COLLECTOR_DATA_DIR
+    ?? join(homedir(), ".apo", "collector");
   return {
     home,
     bin: join(home, "bin", "otelcol-contrib"),
     config: join(home, "config.yaml"),
     log: join(home, "collector.log"),
     pid: join(home, "collector.pid"),
+    target: join(home, "target.fingerprint"),
     queueDir: join(home, "queue"),
   };
+}
+
+/**
+ * Stable fingerprint of (backend, credential): a left-running collector is
+ * only reusable when the next command forwards to the same target under the
+ * same identity — otherwise it would ship spans to the previous backend or
+ * project, silently.
+ */
+function targetFingerprint(backendUrl: string, authHeader: string): string {
+  return createHash("sha256").update(`${backendUrl}\n${authHeader}`).digest("hex");
 }
 
 export interface CollectorRenderOptions {
@@ -313,10 +329,11 @@ export interface CollectorHandle {
   reused: boolean;
   /**
    * Stop the collector once its queue is provably drained. Resolves with
-   * "stopped", or "left-running" when the backend is unreachable / the queue
-   * will not drain (bounded): in-flight retries are dropped at collector
-   * shutdown, so the only safe stop is a fully drained one — otherwise the
-   * process keeps retrying on its own and the next apo command reuses it.
+   * "stopped", or "left-running" — when the backend is unreachable or the
+   * queue will not drain (bounded: in-flight retries are dropped at
+   * collector shutdown), or when this command only REUSED a collector that
+   * may be serving sibling apo commands. Only the spawning process stops
+   * it; everyone else leaves it running.
    */
   stop(): Promise<"stopped" | "left-running">;
 }
@@ -339,16 +356,23 @@ export async function startCollector(opts: StartCollectorOptions): Promise<Colle
   // the health port alone must not trick us into pointing traces at a dead
   // receiver.
   if ((await isHealthy(healthPort)) && (await isReceiverUp(otlpPort))) {
-    // The reused collector is not our child process, but with its pidfile we
-    // can still stop it once drained — otherwise a collector left running by
-    // an earlier outage-era command would linger forever.
-    const pid = readCollectorPid();
+    // Reuse only when the running collector forwards to the same backend
+    // under the same credential — a mismatched one would ship this run's
+    // spans to the previous target, silently.
+    const wanted = targetFingerprint(opts.backendUrl, opts.authHeader);
+    if (readFingerprint() !== wanted) {
+      throw new Error(
+        "a collector for a different backend/credential is already running " +
+          "(left over after an outage) — export directly; it keeps draining its own target",
+      );
+    }
+    // A reused collector may be serving OTHER concurrent apo commands, so
+    // only the process that spawned it stops it — stopping here could kill
+    // it mid-run under a sibling command's feet.
     return {
       traceEndpoint: `http://127.0.0.1:${otlpPort}`,
       reused: true,
-      stop: pid === null
-        ? async () => "left-running" as const
-        : makeStop({ pid }, metricsPort, opts.backendUrl),
+      stop: async () => "left-running" as const,
     };
   }
 
@@ -416,11 +440,16 @@ export async function startCollector(opts: StartCollectorOptions): Promise<Colle
   earlyExit.catch(() => undefined);
 
   writeFileSync(paths.pid, `${child.pid}\n`);
+  writeFileSync(
+    paths.target,
+    targetFingerprint(opts.backendUrl, opts.authHeader) + "\n",
+    { mode: 0o600 },
+  );
 
   return {
     traceEndpoint: `http://127.0.0.1:${otlpPort}`,
     reused: false,
-    stop: makeStop({ child }, metricsPort, opts.backendUrl),
+    stop: makeStop(child, metricsPort, opts.backendUrl),
   };
 }
 
@@ -462,33 +491,12 @@ async function waitForHealth(healthPort: number, timeoutMs: number): Promise<voi
   );
 }
 
-/** Who to terminate: our own child process, or a reused collector by pid. */
-type CollectorTarget = { child: ChildProcess } | { pid: number };
-
-/** Read the pid of a previously started collector, or null when unknown. */
-function readCollectorPid(): number | null {
+/** The fingerprint of the target the running collector was built for, or null. */
+function readFingerprint(): string | null {
   try {
-    const pid = Number.parseInt(readFileSync(collectorPaths().pid, "utf8").trim(), 10);
-    // Probe liveness; ESRCH means the pidfile is stale.
-    process.kill(pid, 0);
-    return pid;
+    return readFileSync(collectorPaths().target, "utf8").trim() || null;
   } catch {
     return null;
-  }
-}
-
-/**
- * Best-effort identity check before signaling a reused pid: a recycled pid
- * must never be killed as "the collector". When /proc is readable and the
- * process name does not match, refuse.
- */
-function pidLooksLikeCollector(pid: number): boolean {
-  try {
-    const comm = readFileSync(`/proc/${pid}/comm`, "utf8").trim();
-    return comm.startsWith("otelcol");
-  } catch {
-    // No /proc (macOS) or unreadable — fall back to trusting the pidfile.
-    return true;
   }
 }
 
@@ -502,7 +510,7 @@ function pidLooksLikeCollector(pid: number): boolean {
  * once drained.
  */
 function makeStop(
-  target: CollectorTarget,
+  child: ChildProcess,
   metricsPort: number,
   backendUrl: string,
 ): () => Promise<"stopped" | "left-running"> {
@@ -514,7 +522,7 @@ function makeStop(
     if (!drained) {
       return "left-running";
     }
-    await terminateCollector(target);
+    await terminateCollector(child);
     return "stopped";
   };
 }
@@ -559,7 +567,7 @@ async function waitForQueueDrain(metricsPort: number): Promise<boolean> {
       await new Promise((resolve) => setTimeout(resolve, 500));
       continue;
     }
-    if (metrics.queued > 0) {
+    if (metrics.queued > 0 || metrics.inFlight > 0) {
       emptySince = null;
       await new Promise((resolve) => setTimeout(resolve, 250));
       continue;
@@ -571,10 +579,10 @@ async function waitForQueueDrain(metricsPort: number): Promise<boolean> {
   return false;
 }
 
-/** Exporter queue depth and cumulative failed-span count, or null when unreadable. */
+/** Exporter queue depth, in-flight requests, and failed-span count, or null. */
 async function scrapeExporterMetrics(
   metricsPort: number,
-): Promise<{ queued: number; failedSpans: number } | null> {
+): Promise<{ queued: number; inFlight: number; failedSpans: number } | null> {
   try {
     const response = await fetch(`http://127.0.0.1:${metricsPort}/metrics`, {
       signal: AbortSignal.timeout(1_000),
@@ -582,71 +590,42 @@ async function scrapeExporterMetrics(
     if (!response.ok) return null;
     const text = await response.text();
     let queued: number | null = null;
+    let inFlight = 0;
     let failedSpans = 0;
     for (const line of text.split("\n")) {
       const value = Number.parseFloat(line.slice(line.lastIndexOf(" ") + 1));
       if (!Number.isFinite(value)) continue;
       if (line.startsWith("otelcol_exporter_queue_size")) {
         queued = (queued ?? 0) + value;
+      } else if (line.startsWith("otelcol_exporter_in_flight_requests")) {
+        inFlight += value;
       } else if (line.startsWith("otelcol_exporter_send_failed_spans")) {
         failedSpans += value;
       }
     }
-    return queued === null ? null : { queued, failedSpans };
+    return queued === null ? null : { queued, inFlight, failedSpans };
   } catch {
     return null;
   }
 }
 
-function terminateCollector(target: CollectorTarget): Promise<void> {
+function terminateCollector(child: ChildProcess): Promise<void> {
   return new Promise((resolve) => {
-    if ("child" in target) {
-      const child = target.child;
-      if (child.exitCode !== null) return resolve();
-      const timer = setTimeout(() => {
-        killCollector(child);
-        resolve();
-      }, STOP_TIMEOUT_MS);
-      child.once("exit", () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      try {
-        child.kill("SIGTERM");
-      } catch {
-        clearTimeout(timer);
-        resolve();
-      }
-      return;
-    }
-    // Reused collector by pid: no exit event, poll liveness instead.
-    const pid = target.pid;
-    if (!pidLooksLikeCollector(pid)) {
-      return resolve(); // pid recycled — do not kill an unrelated process
-    }
-    const started = Date.now();
-    const finishWhenDead = (): void => {
-      if (Date.now() - started > STOP_TIMEOUT_MS) {
-        try {
-          process.kill(pid, "SIGKILL");
-        } catch {
-          // already gone
-        }
-        return resolve();
-      }
-      try {
-        process.kill(pid, 0);
-        setTimeout(finishWhenDead, 200);
-      } catch {
-        resolve();
-      }
-    };
+    if (child.exitCode !== null) return resolve();
+    const timer = setTimeout(() => {
+      killCollector(child);
+      resolve();
+    }, STOP_TIMEOUT_MS);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
     try {
-      process.kill(pid, "SIGTERM");
+      child.kill("SIGTERM");
     } catch {
-      return resolve();
+      clearTimeout(timer);
+      resolve();
     }
-    finishWhenDead();
   });
 }
 
