@@ -399,8 +399,27 @@ describe("t.agent — budget accounting", () => {
     expect(reads[0]!.result).toBe(reads[1]!.result);
   });
 
-  it("marks a verdict that read no evidence as vacuous, not one that did", async () => {
+  it("accepts a self-corrected verdict: the first finish_verdict is malformed, the second is valid", async () => {
     scriptFetch([
+      toolCallTurn("1", "read_deliverable", { name: "answer", offset: 0, limit: 6000 }),
+      // Missing `pass` — the engine keeps the loop open and the model retries.
+      toolCallTurn("2", "finish_verdict", { reasoning: "Figures contradict the log." }),
+      toolCallTurn("3", "finish_verdict", { reasoning: "Figures contradict the log.", pass: false }),
+    ]);
+
+    const result = await runAgentCheck(async (t) => {
+      await t.agent("rubric", { expect: "fail" });
+    });
+
+    // The valid second call is the verdict; extraction must not stop at the
+    // malformed first one and record a budget_exhausted failure.
+    const assertion = result.assertions[0]!;
+    expect(assertion.judge?.session?.outcome).toBe("verdict");
+    expect(assertion.pass).toBe(true);
+    expect(assertion.reasoning).toContain("contradict");
+  });
+
+  it("marks a verdict that read no evidence as vacuous, not one that did", async () => {    scriptFetch([
       toolCallTurn("1", "finish_verdict", { reasoning: "Looks fine to me.", pass: true }),
     ]);
     const vacuous = await runAgentCheck(async (t) => {

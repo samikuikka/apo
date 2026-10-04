@@ -206,17 +206,29 @@ function recordedCost(steps: AgentJudgeStep[]): number | undefined {
   return known.reduce((a, s) => a + (s.tokens?.cost as number), 0);
 }
 
-/** Parse the finish_verdict call's args out of a transcript, tolerantly. */
+/**
+ * Parse the finish_verdict call's args out of a transcript, tolerantly.
+ *
+ * A model can emit a malformed done-tool call (e.g. missing `pass`) and
+ * self-correct with a complete one on the next turn — the engine keeps
+ * the loop open until a call validates, and both land in the transcript.
+ * The verdict is therefore the first call whose ARGS validate, not the
+ * first call: matching on call order alone silently discards the
+ * correction (found by the judge-quality battery: a correct FAIL verdict
+ * recorded as budget_exhausted because only the malformed first call was
+ * read).
+ */
 function extractVerdict(steps: AgentJudgeStep[]): { reasoning: string; pass: boolean } | undefined {
-  const call = steps.flatMap((s) => s.tool_calls ?? []).find((c) => c.name === "finish_verdict");
-  if (!call?.input) return undefined;
-  try {
-    const args = JSON.parse(call.input) as { reasoning?: unknown; pass?: unknown };
-    if (typeof args.reasoning === "string" && args.reasoning.length > 0 && typeof args.pass === "boolean") {
-      return { reasoning: args.reasoning, pass: args.pass };
+  for (const call of steps.flatMap((s) => s.tool_calls ?? [])) {
+    if (call.name !== "finish_verdict" || !call.input) continue;
+    try {
+      const args = JSON.parse(call.input) as { reasoning?: unknown; pass?: unknown };
+      if (typeof args.reasoning === "string" && args.reasoning.length > 0 && typeof args.pass === "boolean") {
+        return { reasoning: args.reasoning, pass: args.pass };
+      }
+    } catch {
+      // Malformed JSON — a later call may carry the valid verdict.
     }
-  } catch {
-    // Malformed verdict args — no verdict.
   }
   return undefined;
 }
