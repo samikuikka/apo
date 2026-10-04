@@ -25,6 +25,7 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.0.2",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

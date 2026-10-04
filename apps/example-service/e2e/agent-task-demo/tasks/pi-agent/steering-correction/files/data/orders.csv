@@ -1,0 +1,9 @@
+order_id,customer,product,status,amount_usd
+ORD-1001,Nova Systems,Cloud Hosting,completed,1450.00
+ORD-1002,Atlas Labs,API Gateway,completed,890.50
+ORD-1003,Orion Media,Managed Database,completed,1250.25
+ORD-1004,Helix Corp,SSL Certificate,completed,2100.00
+ORD-1005,Vantage LLC,Data Migration,completed,1204.25
+ORD-1006,Nova Systems,Priority Support,completed,2305.00
+ORD-1007,Atlas Labs,Cloud Hosting,cancelled,780.00
+ORD-1008,Orion Media,API Gateway,cancelled,1500.00

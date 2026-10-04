@@ -3,8 +3,13 @@ packages:
   - 'packages/*'
   - 'backend'
 allowBuilds:
+  # pi's tree pulls @google/genai (its postinstall is optional telemetry
+  # setup) and protobufjs (a donation-notice postinstall) — neither needs
+  # its script for anything apo or pi reads.
+  '@google/genai': false
   esbuild: true
   msw: true
+  protobufjs: false
   # sharp's install script only picks source-vs-prebuilt; when it picks
   # source (global libvips present, or a Node too new for its check) the
   # node-gyp build fails and aborts the whole workspace install (#153),
@@ -24,6 +29,14 @@ minimumReleaseAgeExclude:
   - vitest@4.1.9
   - '@vitest/ui@4.1.9'
   - '@opentelemetry/semantic-conventions@1.43.0'
+  - '@earendil-works/chord@1.0.2'
+  - '@earendil-works/pi-agent-core@1.0.2'
+  - '@earendil-works/pi-ai@1.0.2'
+  - '@earendil-works/pi-codemode@1.0.2'
+  - '@earendil-works/pi-coding-agent@1.0.2'
+  - '@earendil-works/pi-mcp@1.0.2'
+  - '@earendil-works/pi-telemetry@1.0.2'
+  - '@earendil-works/pi-tui@1.0.2'
 overrides:
   '@apo-ai/cli': link:packages/cli
   '@apo-ai/sdk': link:packages/sdk
