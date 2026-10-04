@@ -4,7 +4,6 @@ import { useCallback, useMemo, useState } from "react";
 import {
   type AutomationActionType,
   type AutomationCondition,
-  type AutomationEventType,
   type AutomationSummary,
   type EvaluationWindow,
   type WindowMetricId,
@@ -22,16 +21,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
-  type ConditionDraft,
-  type TriggerId,
   EVENT_TYPES,
-  fieldsForEvent,
-  OPERATORS,
   parseConditionValue,
   SELECT_CLASS,
   TRIGGER_CHOICES,
-  triggerToRule,
 } from "./automation-presets";
+import { useRuleDraft } from "./use-rule-draft";
+import { TriggerChoices } from "./components/TriggerChoices";
+import { AdvancedRuleEditor } from "./components/AdvancedRuleEditor";
 
 interface CreateAutomationDialogProps {
   projectId: string;
@@ -77,8 +74,28 @@ export default function CreateAutomationDialog({
 }: CreateAutomationDialogProps) {
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [outcome, setOutcome] = useState<AutomationActionType | null>(null);
-  const [trigger, setTrigger] = useState<TriggerId>("scheduled");
-  const [taskFilter, setTaskFilter] = useState("");
+
+  const draft = useRuleDraft();
+  const {
+    trigger,
+    taskFilter,
+    advancedOpen,
+    advancedEvent,
+    advancedConditions,
+    selectTrigger,
+    setTaskFilter,
+    patchDraft,
+    selectAdvancedEvent,
+    updateCondition,
+    removeCondition,
+    addCondition,
+    resetDraft,
+    rule,
+  } = draft;
+
+  // Local alias so TypeScript's aliased-condition narrowing rules out the
+  // empty-event sentinel at the submit sites below.
+  const useAdvanced = advancedOpen && advancedEvent !== "";
 
   // Window ("monitor") triggers: the evaluator watches an aggregate over a
   // time window instead of matching single events.
@@ -87,11 +104,6 @@ export default function CreateAutomationDialog({
   const [windowOperator, setWindowOperator] = useState<WindowOperator>("lt");
   const [windowThreshold, setWindowThreshold] = useState("80");
   const [windowEval, setWindowEval] = useState<EvaluationWindow>("24h");
-
-  // Advanced overrides — when used they replace the plain-language trigger.
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [advancedEvent, setAdvancedEvent] = useState<AutomationEventType | "">("");
-  const [advancedConditions, setAdvancedConditions] = useState<ConditionDraft[]>([]);
 
   // GitHub action.
   const [githubToken, setGithubToken] = useState("");
@@ -106,26 +118,17 @@ export default function CreateAutomationDialog({
 
   const [submitting, setSubmitting] = useState(false);
 
-  const rule = useMemo(
-    () => triggerToRule(trigger, taskFilter),
-    [trigger, taskFilter],
-  );
   const triggerLabel = TRIGGER_CHOICES.find((t) => t.id === trigger)?.label ?? "";
-  const useAdvanced = advancedOpen && advancedEvent !== "";
 
   const reset = useCallback(() => {
     setStep(0);
     setOutcome(null);
-    setTrigger("scheduled");
-    setTaskFilter("");
+    resetDraft();
     setWindowMode(false);
     setWindowMetric("suite_pass_rate");
     setWindowOperator("lt");
     setWindowThreshold("80");
     setWindowEval("24h");
-    setAdvancedOpen(false);
-    setAdvancedEvent("");
-    setAdvancedConditions([]);
     setGithubToken("");
     setRepoSearch("");
     setRepos(null);
@@ -133,7 +136,7 @@ export default function CreateAutomationDialog({
     setRepoOwner("");
     setRepoName("");
     setUrl("");
-  }, []);
+  }, [resetDraft]);
 
   const searchRepos = useCallback(async () => {
     setRepoSearchError(null);
@@ -312,17 +315,6 @@ export default function CreateAutomationDialog({
     windowThreshold,
   ]);
 
-  const updateCondition = useCallback(
-    (index: number, patch: Partial<ConditionDraft>) => {
-      setAdvancedConditions((prev) =>
-        prev.map((condition, i) =>
-          i === index ? { ...condition, ...patch } : condition,
-        ),
-      );
-    },
-    [],
-  );
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
@@ -374,51 +366,16 @@ export default function CreateAutomationDialog({
 
         {step === 1 ? (
           <div className="flex flex-col gap-2">
-            {TRIGGER_CHOICES.map((choice) => {
-              const selected = trigger === choice.id && !useAdvanced;
-              return (
-                <button
-                  key={choice.id}
-                  type="button"
-                  aria-pressed={selected}
-                  className={`border p-3 text-left text-sm transition-colors ${
-                    selected
-                      ? "border-foreground bg-muted/30"
-                      : "border-border bg-background hover:border-foreground/40"
-                  }`}
-                  onClick={() => {
-                    setTrigger(choice.id);
-                    setAdvancedOpen(false);
-                    setWindowMode(false);
-                  }}
-                >
-                  <span>
-                    {choice.label}
-                    <span className="block text-xs text-muted-foreground">
-                      {choice.hint}
-                    </span>
-                  </span>
-                  {selected ? (
-                    <span aria-hidden className="float-right">
-                      ●
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-
-            {trigger === "task" && !useAdvanced ? (
-              <label className="mt-1 flex flex-col gap-1 text-xs">
-                <span className="text-muted-foreground">Task id</span>
-                <Input
-                  aria-label="Task id to watch"
-                  className="h-8 text-xs"
-                  value={taskFilter}
-                  onChange={(e) => setTaskFilter(e.target.value)}
-                  placeholder="data-extraction"
-                />
-              </label>
-            ) : null}
+            <TriggerChoices
+              trigger={trigger}
+              taskFilter={taskFilter}
+              useAdvanced={useAdvanced}
+              onSelectTrigger={(next) => {
+                selectTrigger(next);
+                setWindowMode(false);
+              }}
+              onTaskFilterChange={setTaskFilter}
+            />
 
             <div className="mt-3 border-t border-border pt-3">
               <p className="text-xs font-semibold text-muted-foreground">
@@ -512,7 +469,7 @@ export default function CreateAutomationDialog({
               <button
                 type="button"
                 className="text-xs text-muted-foreground underline hover:text-foreground"
-                onClick={() => setAdvancedOpen(!advancedOpen)}
+                onClick={() => patchDraft({ advancedOpen: !advancedOpen })}
                 aria-expanded={advancedOpen}
               >
                 {advancedOpen ? "Hide" : "Advanced"} — pick the raw event and
@@ -520,101 +477,15 @@ export default function CreateAutomationDialog({
               </button>
               {advancedOpen ? (
                 <div className="mt-3 flex flex-col gap-2">
-                  <select
-                    aria-label="Raw event type"
-                    className={SELECT_CLASS}
-                    value={advancedEvent}
-                    onChange={(e) => {
-                      setAdvancedEvent(e.target.value as AutomationEventType);
-                      setAdvancedConditions([]);
-                    }}
-                  >
-                    <option value="">Choose an event…</option>
-                    {EVENT_TYPES.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  {advancedEvent ? (
-                    <div className="flex flex-col gap-2">
-                      {advancedConditions.map((condition, index) => (
-                        <div
-                          key={index}
-                          className="flex flex-col gap-1 sm:flex-row sm:items-center"
-                        >
-                          <select
-                            aria-label={`Condition ${index + 1} field`}
-                            className={`${SELECT_CLASS} sm:flex-1`}
-                            value={condition.field}
-                            onChange={(e) =>
-                              updateCondition(index, { field: e.target.value })
-                            }
-                          >
-                            {fieldsForEvent(advancedEvent).map((field) => (
-                              <option key={field} value={field}>
-                                {field}
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            aria-label={`Condition ${index + 1} operator`}
-                            className={SELECT_CLASS}
-                            value={condition.operator}
-                            onChange={(e) =>
-                              updateCondition(index, { operator: e.target.value })
-                            }
-                          >
-                            {OPERATORS.map((operator) => (
-                              <option key={operator} value={operator}>
-                                {operator}
-                              </option>
-                            ))}
-                          </select>
-                          <Input
-                            aria-label={`Condition ${index + 1} value`}
-                            className="h-8 flex-1 text-xs"
-                            value={condition.value}
-                            onChange={(e) =>
-                              updateCondition(index, { value: e.target.value })
-                            }
-                            placeholder="false, schedule, 2…"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-7"
-                            onClick={() =>
-                              setAdvancedConditions((prev) =>
-                                prev.filter((_, i) => i !== index),
-                              )
-                            }
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 self-start"
-                        onClick={() =>
-                          setAdvancedConditions((prev) => [
-                            ...prev,
-                            {
-                              field: fieldsForEvent(advancedEvent)[0],
-                              operator: "eq",
-                              value: "",
-                            },
-                          ])
-                        }
-                      >
-                        Add Condition
-                      </Button>
-                    </div>
-                  ) : null}
+                  <AdvancedRuleEditor
+                    event={advancedEvent}
+                    conditions={advancedConditions}
+                    onSelectEvent={selectAdvancedEvent}
+                    onUpdateCondition={updateCondition}
+                    onRemoveCondition={removeCondition}
+                    onAddCondition={addCondition}
+                    valuePlaceholder="false, schedule, 2…"
+                  />
                 </div>
               ) : null}
             </div>

@@ -2,14 +2,12 @@
 
 import { useCallback, useMemo, useState } from "react";
 import {
+  type AutomationSummary,
   type EvaluationWindow,
   type WindowMetricId,
   type WindowOperator,
   WINDOW_METRIC_LABELS,
   formatWindowValue,
-} from "@/lib/automations-api";
-import {
-  type AutomationSummary,
   updateAutomation,
 } from "@/lib/automations-api";
 import { Button } from "@/components/ui/button";
@@ -24,18 +22,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  type ConditionDraft,
-  type TriggerId,
-  EVENT_TYPES,
-  fieldsForEvent,
-  OPERATORS,
   parseConditionValue,
   ruleFromAutomation,
   SELECT_CLASS,
   stringifyConditionValue,
-  TRIGGER_CHOICES,
-  triggerToRule,
 } from "./automation-presets";
+import { useRuleDraft } from "./use-rule-draft";
+import { TriggerChoices } from "./components/TriggerChoices";
+import { AdvancedRuleEditor } from "./components/AdvancedRuleEditor";
 
 interface EditAutomationDialogProps {
   automation: AutomationSummary;
@@ -45,9 +39,10 @@ interface EditAutomationDialogProps {
   onError: (message: string | null) => void;
 }
 
-// Edit mirrors the create wizard's two questions with current values
-// pre-filled. The action type is immutable (delete + recreate to switch);
-// the GitHub token field starts empty and stays empty to keep the stored
+// Edit mirrors the create wizard's questions with current values pre-filled
+// (trigger + action config now share the same components and rule-draft
+// hook). The action type is immutable (delete + recreate to switch); the
+// GitHub token field starts empty and stays empty to keep the stored
 // token — the same masked-keep semantics as rotation.
 export default function EditAutomationDialog({
   automation,
@@ -59,19 +54,36 @@ export default function EditAutomationDialog({
   const source = useMemo(() => ruleFromAutomation(automation), [automation]);
 
   const [name, setName] = useState(automation.name);
-  const [trigger, setTrigger] = useState<TriggerId>(
-    source.mode === "preset" ? source.trigger : "scheduled",
+  const {
+    trigger,
+    taskFilter,
+    advancedOpen,
+    advancedEvent,
+    advancedConditions,
+    selectTrigger,
+    setTaskFilter,
+    patchDraft,
+    selectAdvancedEvent,
+    updateCondition,
+    removeCondition,
+    addCondition,
+    rule,
+  } = useRuleDraft(
+    source.mode === "advanced"
+      ? {
+          advancedOpen: true,
+          advancedEvent: source.event,
+          advancedConditions: source.conditions,
+        }
+      : {
+          trigger: source.mode === "preset" ? source.trigger : "scheduled",
+          taskFilter: source.mode === "preset" ? source.taskFilter : "",
+        },
   );
-  const [taskFilter, setTaskFilter] = useState(
-    source.mode === "preset" ? source.taskFilter : "",
-  );
-  const [advancedOpen, setAdvancedOpen] = useState(source.mode === "advanced");
-  const [advancedEvent, setAdvancedEvent] = useState<
-    AutomationSummary["event_type"] | ""
-  >(source.mode === "advanced" ? source.event : "");
-  const [advancedConditions, setAdvancedConditions] = useState<ConditionDraft[]>(
-    source.mode === "advanced" ? source.conditions : [],
-  );
+
+  // Local alias so TypeScript's aliased-condition narrowing rules out the
+  // empty-event sentinel at the submit sites below.
+  const useAdvanced = advancedOpen && advancedEvent !== "";
 
   const isUrlAction =
     automation.action_type === "webhook" || automation.action_type === "slack";
@@ -116,12 +128,6 @@ export default function EditAutomationDialog({
     automation.evaluation_window ?? "24h",
   );
 
-  const rule = useMemo(
-    () => triggerToRule(trigger, taskFilter),
-    [trigger, taskFilter],
-  );
-  const useAdvanced = advancedOpen && advancedEvent !== "";
-
   const canSubmit = useMemo(() => {
     if (submitting || !name.trim()) return false;
     if (advancedOpen && advancedEvent === "") return false;
@@ -137,6 +143,7 @@ export default function EditAutomationDialog({
     return owner.trim().length > 0 && repo.trim().length > 0;
   }, [
     advancedEvent,
+    advancedOpen,
     automation.action_type,
     name,
     owner,
@@ -233,17 +240,6 @@ export default function EditAutomationDialog({
     windowOperator,
     windowThreshold,
   ]);
-
-  const updateCondition = useCallback(
-    (index: number, patch: Partial<ConditionDraft>) => {
-      setAdvancedConditions((prev) =>
-        prev.map((condition, i) =>
-          i === index ? { ...condition, ...patch } : condition,
-        ),
-      );
-    },
-    [],
-  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -345,50 +341,13 @@ export default function EditAutomationDialog({
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">When exactly?</p>
-            {TRIGGER_CHOICES.map((choice) => {
-              const selected = trigger === choice.id && !useAdvanced;
-              return (
-                <button
-                  key={choice.id}
-                  type="button"
-                  aria-pressed={selected}
-                  className={`border p-3 text-left text-sm transition-colors ${
-                    selected
-                      ? "border-foreground bg-muted/30"
-                      : "border-border bg-background hover:border-foreground/40"
-                  }`}
-                  onClick={() => {
-                    setTrigger(choice.id);
-                    setAdvancedOpen(false);
-                  }}
-                >
-                  <span>
-                    {choice.label}
-                    <span className="block text-xs text-muted-foreground">
-                      {choice.hint}
-                    </span>
-                  </span>
-                  {selected ? (
-                    <span aria-hidden className="float-right">
-                      ●
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-
-            {trigger === "task" && !useAdvanced ? (
-              <label className="mt-1 flex flex-col gap-1 text-xs">
-                <span className="text-muted-foreground">Task id</span>
-                <Input
-                  aria-label="Task id to watch"
-                  className="h-8 text-xs"
-                  value={taskFilter}
-                  onChange={(e) => setTaskFilter(e.target.value)}
-                  placeholder="data-extraction"
-                />
-              </label>
-            ) : null}
+            <TriggerChoices
+              trigger={trigger}
+              taskFilter={taskFilter}
+              useAdvanced={useAdvanced}
+              onSelectTrigger={selectTrigger}
+              onTaskFilterChange={setTaskFilter}
+            />
 
             <button
               type="button"
@@ -397,18 +356,19 @@ export default function EditAutomationDialog({
                 if (!advancedOpen) {
                   // Seed the raw editor from the current selection so opening
                   // Advanced never silently broadens or drops the rule.
-                  setAdvancedEvent((prev) => prev || rule.event);
-                  setAdvancedConditions((prev) =>
-                    prev.length > 0
-                      ? prev
-                      : rule.conditions.map((condition) => ({
-                          field: condition.field,
-                          operator: condition.operator,
-                          value: stringifyConditionValue(condition.value),
-                        })),
-                  );
+                  patchDraft({
+                    advancedEvent: advancedEvent || rule.event,
+                    advancedConditions:
+                      advancedConditions.length > 0
+                        ? advancedConditions
+                        : rule.conditions.map((condition) => ({
+                            field: condition.field,
+                            operator: condition.operator,
+                            value: stringifyConditionValue(condition.value),
+                          })),
+                  });
                 }
-                setAdvancedOpen(!advancedOpen);
+                patchDraft({ advancedOpen: !advancedOpen });
               }}
               aria-expanded={advancedOpen}
             >
@@ -416,100 +376,14 @@ export default function EditAutomationDialog({
             </button>
             {advancedOpen ? (
               <div className="flex flex-col gap-2">
-                <select
-                  aria-label="Raw event type"
-                  className={SELECT_CLASS}
-                  value={advancedEvent}
-                  onChange={(e) => {
-                    setAdvancedEvent(e.target.value as AutomationSummary["event_type"]);
-                    setAdvancedConditions([]);
-                  }}
-                >
-                  <option value="">Choose an event…</option>
-                  {EVENT_TYPES.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                {advancedEvent ? (
-                  <div className="flex flex-col gap-2">
-                    {advancedConditions.map((condition, index) => (
-                      <div
-                        key={index}
-                        className="flex flex-col gap-1 sm:flex-row sm:items-center"
-                      >
-                        <select
-                          aria-label={`Condition ${index + 1} field`}
-                          className={`${SELECT_CLASS} sm:flex-1`}
-                          value={condition.field}
-                          onChange={(e) =>
-                            updateCondition(index, { field: e.target.value })
-                          }
-                        >
-                          {fieldsForEvent(advancedEvent).map((field) => (
-                            <option key={field} value={field}>
-                              {field}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          aria-label={`Condition ${index + 1} operator`}
-                          className={SELECT_CLASS}
-                          value={condition.operator}
-                          onChange={(e) =>
-                            updateCondition(index, { operator: e.target.value })
-                          }
-                        >
-                          {OPERATORS.map((operator) => (
-                            <option key={operator} value={operator}>
-                              {operator}
-                            </option>
-                          ))}
-                        </select>
-                        <Input
-                          aria-label={`Condition ${index + 1} value`}
-                          className="h-8 flex-1 text-xs"
-                          value={condition.value}
-                          onChange={(e) =>
-                            updateCondition(index, { value: e.target.value })
-                          }
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7"
-                          onClick={() =>
-                            setAdvancedConditions((prev) =>
-                              prev.filter((_, i) => i !== index),
-                            )
-                          }
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 self-start"
-                      onClick={() =>
-                        setAdvancedConditions((prev) => [
-                          ...prev,
-                          {
-                            field: fieldsForEvent(advancedEvent)[0],
-                            operator: "eq",
-                            value: "",
-                          },
-                        ])
-                      }
-                    >
-                      Add Condition
-                    </Button>
-                  </div>
-                ) : null}
+                <AdvancedRuleEditor
+                  event={advancedEvent}
+                  conditions={advancedConditions}
+                  onSelectEvent={selectAdvancedEvent}
+                  onUpdateCondition={updateCondition}
+                  onRemoveCondition={removeCondition}
+                  onAddCondition={addCondition}
+                />
               </div>
             ) : null}
           </div>
