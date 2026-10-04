@@ -177,6 +177,17 @@ function isAbortError(error: unknown): boolean {
   return name === "TimeoutError" || name === "AbortError" || name === "ResponseAborted";
 }
 
+// Models trained on PCRE conventions prefix patterns with inline flags
+// ((?i), (?im), …); JS RegExp rejects that group as invalid. The search tool
+// always compiles case-insensitive + multiline, so a leading flag group is
+// redundant — strip it rather than fail the call. Scoped groups like (?i:…)
+// and named groups ((?<name>…)) are not matched and still error honestly.
+const LEADING_PCRE_FLAGS = /^\(\?[a-z]+\)/;
+
+function stripLeadingPcreFlags(pattern: string): string {
+  return pattern.replace(LEADING_PCRE_FLAGS, "");
+}
+
 /** Aggregate a recorded transcript's per-step usage — works for partial runs. */
 function aggregateUsage(steps: AgentJudgeStep[]): { input_tokens: number; output_tokens: number } {
   return steps.reduce(
@@ -302,8 +313,9 @@ function buildEvidenceTools(args: {
 
     search_deliverable: tool({
       description:
-        "Regex-search one of this run's deliverables; returns up to 8 matches with surrounding context. " +
-        "Cheaper than reading a large deliverable end to end — use it to locate the relevant part first.",
+        "Regex-search one of this run's deliverables (case-insensitive; ^ and $ match line starts/ends); " +
+        "returns up to 8 matches with surrounding context. Cheaper than reading a large deliverable " +
+        "end to end — use it to locate the relevant part first.",
       inputSchema: z.object({ name: z.string(), pattern: z.string() }),
       execute: async (input: never) => {
         const { name, pattern } = input as { name: string; pattern: string };
@@ -318,9 +330,13 @@ function buildEvidenceTools(args: {
         }
         let re: RegExp;
         try {
-          re = new RegExp(pattern, "gi");
+          re = new RegExp(stripLeadingPcreFlags(pattern), "gim");
         } catch (error) {
-          return { error: `invalid regex: ${error instanceof Error ? error.message : String(error)}` };
+          return {
+            error:
+              `invalid regex: ${error instanceof Error ? error.message : String(error)}` +
+              " — patterns compile as case-insensitive multiline; leading PCRE flags like (?i) are stripped automatically",
+          };
         }
         const content = renderValue(evidence.deliverables[name]).slice(0, SEARCH_SCAN_LIMIT);
         const hits: { at_byte: number; context: string }[] = [];

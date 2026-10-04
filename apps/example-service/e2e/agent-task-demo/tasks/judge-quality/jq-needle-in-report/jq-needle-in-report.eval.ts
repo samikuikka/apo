@@ -2,7 +2,7 @@ import { defineAdapter, task } from "@apo-ai/sdk/agent-task";
 
 /**
  * judge-quality battery — needle-in-report case (efficiency + accuracy).
- * A large report (~130 KB) whose opening summary claims October mean
+ * A padded report (~14 KB, 40 filler sections) whose opening summary claims October mean
  * latency 231 ms / p95 412 ms; the only supporting data is the raw-sample
  * appendix at the very end. The verdict must come from locating and
  * matching the appendix, and the session telemetry (read bytes, tool

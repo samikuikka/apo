@@ -347,6 +347,28 @@ describe("t.agent — budget accounting", () => {
     expect(assertion.judge?.session?.evidence?.length).toBe(0);
   });
 
+  it("search_deliverable anchors ^ to line starts and translates PCRE (?i) flags", async () => {
+    scriptFetch([
+      // "^step2" only matches when the regex compiles multiline — without the
+      // m flag it hits the string start only and returns 0 matches.
+      toolCallTurn("1", "search_deliverable", { name: "log", pattern: "^step2" }),
+      // "(?i)STEP1" is PCRE convention; JS rejects the group unless stripped.
+      toolCallTurn("2", "search_deliverable", { name: "log", pattern: "(?i)STEP1" }),
+      toolCallTurn("3", "finish_verdict", { reasoning: "Both searches matched.", pass: true }),
+    ]);
+
+    const result = await runAgentCheck(async (t) => {
+      await t.agent("search rubric");
+    });
+
+    const calls =
+      result.assertions[0]!.judge?.session?.steps?.flatMap((s) => s.tool_calls ?? []) ?? [];
+    const anchored = calls.find((c) => c.input.includes("^step2"));
+    const pcre = calls.find((c) => c.input.includes("(?i)"));
+    expect(anchored?.result).toContain('"match_count":1');
+    expect(pcre?.result).toContain('"match_count":1');
+  });
+
   async function runAgentCheckWithBudget(budget: { maxTurns?: number; maxToolCalls?: number; maxReadBytes?: number }) {
     resetFlowChecks();
     defineCheck("agent-budget", async (t) => {
