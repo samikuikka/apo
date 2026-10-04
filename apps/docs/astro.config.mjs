@@ -36,6 +36,7 @@ export default defineConfig({
 						{ label: 'Tasks', slug: 'concepts/tasks' },
 						{ label: 'Adapters', slug: 'concepts/adapters' },
 						{ label: 'Tests', slug: 'concepts/tests' },
+						{ label: 'Judging', slug: 'concepts/judging' },
 						{ label: 'Traces', slug: 'concepts/traces' },
 						{ label: 'Schedules', slug: 'concepts/schedules' },
 						{ label: 'Automations', slug: 'concepts/automations' },
