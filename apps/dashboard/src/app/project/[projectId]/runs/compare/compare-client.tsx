@@ -12,7 +12,6 @@ import {
 
 import {
   type AgentTaskBatchRunDetail,
-  type AgentTaskBatchRunSummary,
   type AgentTaskRunSummary,
   type AgentTaskSummary,
 } from "@/lib/agent-task-api";
@@ -26,6 +25,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useComparison, type CheckTally } from "./use-comparison";
 import { FlowSection } from "./components/FlowSection";
 import { TaskColumns } from "./components/TaskColumns";
+import { getBatchName } from "../components/runs-utils";
 
 interface CompareClientProps {
   projectId: string;
@@ -34,25 +34,6 @@ interface CompareClientProps {
   inventory: AgentTaskSummary[];
   leftRuns: AgentTaskRunSummary[];
   rightRuns: AgentTaskRunSummary[];
-}
-
-/** A meaningful identity for a batch in lists where the model may be
- *  unknown. Mirrors the /runs page's getBatchName: prefer the task
- *  selection label, fall back to the selection type. */
-function batchLabel(batch: AgentTaskBatchRunDetail | AgentTaskBatchRunSummary): string {
-  const q = batch.selection_query;
-  if (q && typeof q === "object" && "task_paths" in q) {
-    const paths = q.task_paths;
-    if (Array.isArray(paths) && paths.length > 0) {
-      if (paths.length === 1) {
-        const seg = String(paths[0]).split("/").pop();
-        return seg ?? String(paths[0]);
-      }
-      return `${paths.length} tasks`;
-    }
-  }
-  if (batch.selection_type === "all") return "All tasks";
-  return batch.selection_type;
 }
 
 /**
@@ -303,7 +284,7 @@ function BatchSlot({
       </div>
 
       <div className="mt-2 flex items-baseline gap-2">
-        <span className="text-[15px] font-medium text-foreground">{batchLabel(batch)}</span>
+        <span className="text-[15px] font-medium text-foreground">{getBatchName(batch)}</span>
         <span className="font-mono text-[12px] tabular-nums text-muted-foreground" title="Adapter-reported configuration">
           {executionLabel}
         </span>
@@ -616,7 +597,7 @@ function RunIdentityStrip({
             <span className={cn("h-2 w-2 shrink-0 rounded-full", sideDot(batch))} aria-hidden />
             <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
             <span className="truncate text-[13px] font-medium text-foreground">
-              {batchLabel(batch)}{" "}
+              {getBatchName(batch)}{" "}
               <span className="font-mono text-[11px] font-normal text-muted-foreground/60">
                 #{batch.id.slice(0, 8)}
               </span>
