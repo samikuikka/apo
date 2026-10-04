@@ -276,14 +276,49 @@ export function decisionsEndpoint(chatBaseURL: string): string {
  * every failure mode becomes `error` on the returned evidence so a broken
  * second opinion cannot break the check it accompanies.
  */
+/**
+ * OpenRouter's decisions endpoint reports an input that exceeds the model's
+ * context limit as `error_type: "max_tokens_exceeded"` (wrapped in an HTTP
+ * 400); OpenAI-style providers say `context_length_exceeded`. Both mean the
+ * same thing here: the second judge could not read the state.
+ */
+const INPUT_TOO_LARGE_MARKERS = [
+  "max_tokens_exceeded",
+  "context_length_exceeded",
+  "maximum context length",
+] as const;
+
+function isInputTooLargeRejection(status: number, body: string): boolean {
+  if (status !== 400 && status !== 413) return false;
+  return INPUT_TOO_LARGE_MARKERS.some((marker) => body.includes(marker));
+}
+
+/**
+ * Rough token estimate (chars/4) for the skip message only. The provider
+ * already told us the input doesn't fit — this number explains the
+ * magnitude, it decides nothing.
+ */
+function estimateTokens(text: string): number {
+  return Math.round(text.length / 4 / 1000) * 1000;
+}
+
 export async function callSecondJudge(args: {
   state: string;
   model: string;
   baseURL: string;
   apiKey?: string;
+  /** Set when the state was built from a `secondJudgeValue` projection. */
+  projected?: boolean;
 }): Promise<SecondJudgeEvidence> {
   const startedAt = Date.now();
-  const evidence: SecondJudgeEvidence = { model: args.model };
+  // `projected` must survive onto the evidence: judge.ts marks projection
+  // calls this way, and cascade mode refuses to let a projected view decide
+  // a verdict — a flag lost in transport would hand verdict authority to a
+  // partial reading of the deliverable.
+  const evidence: SecondJudgeEvidence = {
+    model: args.model,
+    ...(args.projected ? { projected: true } : {}),
+  };
   try {
     const provider = resolveSecondJudgeProvider(args.baseURL);
     if (provider.reserved) {
@@ -303,6 +338,17 @@ export async function callSecondJudge(args: {
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
+      // An input the second judge cannot read is a skip, not a transport
+      // error: distinct state, distinct rendering, never "failed to
+      // arrive" (issue #311). Detected from the provider's own rejection —
+      // a turned-away request is unbilled and exact, unlike an estimate.
+      if (isInputTooLargeRejection(response.status, body)) {
+        evidence.skipped =
+          `input ~${estimateTokens(args.state).toLocaleString("en-US")} tokens ` +
+          `exceeds ${args.model}'s context limit — project a smaller view ` +
+          `with t.judge(value, instruction, { secondJudgeValue })`;
+        return evidence;
+      }
       evidence.error = `Second judge API ${response.status}: ${body.slice(0, 200)}`;
       return evidence;
     }

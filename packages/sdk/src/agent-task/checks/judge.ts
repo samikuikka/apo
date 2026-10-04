@@ -6,7 +6,7 @@
 
 import { createHash } from "node:crypto";
 
-import type { JudgeMetadata } from "../run/types.ts";
+import type { JudgeMetadata, SecondJudgeEvidence } from "../run/types.ts";
 import { callSecondJudge, resolveSecondJudgeAPIKey, resolveSecondJudgeBaseURL, resolveSecondJudgeModel } from "./second-judge.ts";
 
 export type JudgeCallResult = {
@@ -501,25 +501,24 @@ export async function callJudge(args: {
    * second judge sees exactly what the primary sees.
    */
   secondJudgeValue?: unknown[];
+  /**
+   * Evidence from a second-judge call the caller already made (cascade
+   * preflight). Attached instead of dispatching another decisions call, so
+   * cascade mode issues exactly one second-judge request per check.
+   */
+  prefetchedSecondJudge?: SecondJudgeEvidence;
 }): Promise<JudgeCallResult> {
   const baseURL = args.baseURL ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
   const apiKey = args.apiKey ?? process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY;
 
-  // Structure the request so the (often huge) deliverable is a cacheable
-  // prefix and only the small per-criterion instruction varies. Many criteria
-  // judge the same deliverable; without a cache breakpoint the deliverable is
-  // re-billed in full on every call. cache_control is an Anthropic/Gemini
-  // extension that OpenRouter passes through, and is ignored harmlessly by
-  // providers without prompt caching. See issue #21.
-  const deliverableText = `Values to evaluate:\n${formatJudgeValues(args.values)}`;
-
-  // Briefing: today's fixed one-liner, or a caller's builder. The SDK always
-  // appends its own response contract (#161): a builder that elicited
-  // `{"verdict": "pass"}` instead would make every criterion silently FAIL,
-  // so the contract is never the caller's to write.
-  const { briefingText, instructionText } = assembleBriefing(args);
-
-  const systemPromptText = `${briefingText}\n\n${deliverableText}`;
+  const { briefingText, instructionText, systemPromptText, deliverableText, secondJudgeState, secondJudgeProjected } =
+    buildJudgePromptParts({
+      values: args.values,
+      instruction: args.instruction,
+      ...(args.prompt ? { prompt: args.prompt } : {}),
+      ...(args.context ? { context: args.context } : {}),
+      ...(args.secondJudgeValue !== undefined ? { secondJudgeValue: args.secondJudgeValue } : {}),
+    });
 
   // Second grader (opt-in): dispatch alongside the primary call so its
   // sub-second latency adds nothing to the check. The state is exactly what
@@ -529,25 +528,23 @@ export async function callJudge(args: {
   // never change the verdict — the evidence is attached and the check
   // moves on regardless of its outcome.
   const secondJudgeModel = resolveSecondJudgeModel();
-  const secondJudgeProjected = args.secondJudgeValue !== undefined;
-  const secondJudgeValues = args.secondJudgeValue ?? args.values;
-  const secondJudgeDeliverableText = `Values to evaluate:\n${formatJudgeValues(secondJudgeValues)}`;
-  const secondJudgePromise = secondJudgeModel
-    ? callSecondJudge({
-        state: `${briefingText}\n\n${secondJudgeDeliverableText}\n\n${instructionText}`,
-        model: secondJudgeModel,
-        baseURL: resolveSecondJudgeBaseURL(baseURL),
-        apiKey: resolveSecondJudgeAPIKey(apiKey),
-        ...(secondJudgeProjected ? { projected: true } : {}),
-      })
-    : undefined;
+  const secondJudgePromise = args.prefetchedSecondJudge
+    ? Promise.resolve(args.prefetchedSecondJudge)
+    : secondJudgeModel
+      ? callSecondJudge({
+          state: secondJudgeState,
+          model: secondJudgeModel,
+          baseURL: resolveSecondJudgeBaseURL(baseURL),
+          apiKey: resolveSecondJudgeAPIKey(apiKey),
+          ...(secondJudgeProjected ? { projected: true } : {}),
+        })
+      : undefined;
 
   // The cached prefix is model + briefing + system blocks; the varying
   // instruction lives in the user message, so it's excluded from the key.
   // The briefing must be part of the key: once prompts vary per task, two
   // different briefings grading one deliverable would otherwise collide (#161).
   const cacheKey = `${args.model}\u0000${briefingText}\u0000${deliverableText}`;
-
   const requestBody = (stream: boolean): string =>
     JSON.stringify({
       model: args.model,
@@ -780,6 +777,59 @@ function transportFailure(
  * merged in here, so callers never duplicate it.
  */
 export type JudgeCallContext = Omit<JudgeContext, "instruction">;
+
+/**
+ * Everything both judge paths need from one graded call: the primary's
+ * prompt frame, the cached-prefix deliverable text, and the exact state the
+ * second judge sees. Shared by `callJudge` (dual mode) and the cascade
+ * preflight so the two paths can never drift apart on what the second
+ * judge was shown.
+ */
+export type JudgePromptParts = {
+  briefingText: string;
+  instructionText: string;
+  /** Briefing + full deliverable text — the primary judge's system prompt. */
+  systemPromptText: string;
+  /** The deliverable block alone (cache-prefix key component). */
+  deliverableText: string;
+  /** Briefing + second-judge deliverable + instruction — the decision state. */
+  secondJudgeState: string;
+  /** True when the state grades a `secondJudgeValue` projection. */
+  secondJudgeProjected: boolean;
+};
+
+/**
+ * Build the prompt frame for one judge call. With no builder (or a builder
+ * that returns nothing) this is today's prompt byte-for-byte, so no existing
+ * score moves until a caller opts in (#161 compatibility).
+ */
+export function buildJudgePromptParts(args: {
+  values: unknown[];
+  instruction: string;
+  prompt?: JudgePromptBuilder;
+  context?: JudgeCallContext;
+  secondJudgeValue?: unknown[];
+}): JudgePromptParts {
+  // Structure the request so the (often huge) deliverable is a cacheable
+  // prefix and only the small per-criterion instruction varies. Many criteria
+  // judge the same deliverable; without a cache breakpoint the deliverable is
+  // re-billed in full on every call. cache_control is an Anthropic/Gemini
+  // extension that OpenRouter passes through, and is ignored harmlessly by
+  // providers without prompt caching. See issue #21.
+  const deliverableText = `Values to evaluate:\n${formatJudgeValues(args.values)}`;
+  const { briefingText, instructionText } = assembleBriefing(args);
+  const secondJudgeProjected = args.secondJudgeValue !== undefined;
+  const secondJudgeValues = args.secondJudgeValue ?? args.values;
+  const secondJudgeDeliverableText = `Values to evaluate:\n${formatJudgeValues(secondJudgeValues)}`;
+  return {
+    briefingText,
+    instructionText,
+    systemPromptText: `${briefingText}\n\n${deliverableText}`,
+    deliverableText,
+    secondJudgeState: `${briefingText}\n\n${secondJudgeDeliverableText}\n\n${instructionText}`,
+    secondJudgeProjected,
+  };
+}
 
 /**
  * Resolve the briefing + user text for one judge call. With no builder (or a

@@ -143,7 +143,7 @@ const commands: Record<string, CommandEntry> = {
   },
   "task run": {
     handler: loadCommand("task-run"),
-    help: "Run a task. With APO_SECOND_JUDGE_MODEL set, judged checks also get a second judge: ✓✗ marks per check + a split count after the checks",
+    help: "Run a task. With APO_SECOND_JUDGE_MODEL set, judged checks also get a second judge: ✓✗ marks per check + a split count after the checks. With APO_JUDGE_MODE=cascade, a confident second judge (≥ 0.95) decides without calling the primary judge",
     args: [
       ["<task-id | path>", "Task id or filesystem path"],
     ],

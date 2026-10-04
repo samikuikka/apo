@@ -11,11 +11,17 @@
 
 import { TraceView, type TokenKind } from "../trace-projection/view.ts";
 import type { TraceProjectionCapabilities } from "../trace-projection/types.ts";
-import type { AssertionOutcome } from "../run/types.ts";
+import type { AssertionOutcome, SecondJudgeEvidence } from "../run/types.ts";
 import type { Recorder } from "./recorder.ts";
 import type { Matcher, ValueMatcher } from "./matchers.ts";
 import { describeValue, matchValue } from "./matchers.ts";
 import { callJudge, type JudgeCallContext, type JudgePromptBuilder } from "./judge.ts";
+import {
+  cascadeDecides,
+  cascadePreflight,
+  cascadeVerdict,
+  isCascadeActive,
+} from "./judge-cascade.ts";
 import { createAgentMethod, type AgentEvidence, type AgentJudgeOptions } from "./agent-session.ts";
 import type { JudgeToolsConfig } from "./mcp-tools.ts";
 import type { JudgeTracer } from "../tracing.ts";
@@ -68,6 +74,13 @@ export type JudgeConfig = {
    * {@link JudgePromptBuilder}.
    */
   prompt?: JudgePromptBuilder;
+  /**
+   * `"cascade"`: the second judge (decision model, `APO_SECOND_JUDGE_MODEL`)
+   * answers first and a confident verdict (native confidence ≥ 0.95) stands
+   * without calling the primary judge — the cost tier. Unset = the default
+   * dual behavior (second judge as parallel, evidence-only shadow).
+   */
+  mode?: "cascade";
 };
 
 /**
@@ -104,6 +117,7 @@ export function resolveJudgeConfig(
     baseURL: override?.baseURL ?? judgeConfig?.baseURL,
     apiKey: override?.apiKey ?? judgeConfig?.apiKey,
     prompt: override?.prompt ?? judgeConfig?.prompt,
+    mode: override?.mode ?? judgeConfig?.mode,
   };
 }
 
@@ -499,6 +513,52 @@ function createJudgeMethod(
     const judgeServing = servingHostFromBaseURL(effective.baseURL);
 
     const secondJudgeValue = opts?.secondJudgeValue;
+    // Cascade preflight (opt-in `judge.mode: "cascade"`): the second judge
+    // answers first; a confident verdict stands without a primary call and
+    // without a judge span (there is nothing LLM-generated to trace or
+    // price). Anything else falls through to the primary path carrying the
+    // evidence, so cascade mode issues exactly one decisions call per check
+    // and can only fail open to the primary judge.
+    let prefetchedSecondJudge: SecondJudgeEvidence | undefined;
+    if (isCascadeActive(effective)) {
+      const preflight = await cascadePreflight({
+        values: valueArray,
+        instruction,
+        effective,
+        ...(context ? { context } : {}),
+        ...(secondJudgeValue !== undefined
+          ? {
+              secondJudgeValue: Array.isArray(secondJudgeValue)
+                ? secondJudgeValue
+                : [secondJudgeValue],
+            }
+          : {}),
+      });
+      if (preflight.kind === "ran" && cascadeDecides(preflight.evidence)) {
+        const { pass, reasoning, judge } = cascadeVerdict(
+          preflight.evidence,
+          preflight.parts,
+        );
+        // Verdict polarity (`expect`) mirrors the primary path: a pinned
+        // ground truth scores agreement, not the raw verdict.
+        const agreed =
+          opts?.expect === undefined ? pass : pass === (opts.expect === "pass");
+        const recordedReasoning =
+          opts?.expect === undefined || agreed
+            ? reasoning
+            : `second judge ${pass ? "PASSed" : "FAILed"} where ground truth is ` +
+              `${opts.expect.toUpperCase()} — ${reasoning}`;
+        rec.record(label, agreed, recordedReasoning, {
+          evaluator_type: "llm",
+          judge,
+          expected: instruction,
+          received: valueArray.length === 1 ? valueArray[0] : valueArray,
+          location,
+        });
+        return;
+      }
+      if (preflight.kind === "ran") prefetchedSecondJudge = preflight.evidence;
+    }
     const call = () =>
       callJudge({
         values: valueArray,
@@ -508,6 +568,7 @@ function createJudgeMethod(
         apiKey: effective.apiKey,
         prompt: effective.prompt,
         ...(context ? { context } : {}),
+        ...(prefetchedSecondJudge ? { prefetchedSecondJudge } : {}),
         ...(secondJudgeValue !== undefined
           ? {
               secondJudgeValue: Array.isArray(secondJudgeValue)

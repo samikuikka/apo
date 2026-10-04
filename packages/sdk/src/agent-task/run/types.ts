@@ -72,6 +72,13 @@ export type JudgeMetadata = {
    * as extra signals per check, not a second vote.
    */
   secondJudge?: SecondJudgeEvidence;
+  /**
+   * Present only when the second judge's verdict decided this check (cascade
+   * mode, `judge.mode: "cascade"`): the primary LLM judge was not called.
+   * Absent = the primary judge decided. The `model` field above then names
+   * the decision model, and `response` carries its typed verdict.
+   */
+  verdict_by?: "second-judge";
 };
 
 /**

@@ -55,6 +55,11 @@ function resolveJudgeFromEnv(): JudgeConfig | undefined {
     apiKey: openRouterModel
       ? process.env.OPENROUTER_API_KEY
       : process.env.OPENAI_API_KEY,
+    // "cascade" turns on second-judge-first judging (a confident decision
+    // model verdict stands without calling the primary judge); any other
+    // value is ignored so a typo degrades to the default dual mode, never
+    // an error.
+    ...(process.env.APO_JUDGE_MODE?.trim() === "cascade" ? { mode: "cascade" as const } : {}),
   };
 }
 

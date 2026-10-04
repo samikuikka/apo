@@ -161,6 +161,25 @@ Agents reading `--json` get the raw evidence instead of marks: every check carri
 Everything works without the second judge. Unset, `APO_SECOND_JUDGE_MODEL` changes nothing: no marks, no lines, output byte-identical. Code-assertion and agentic (`t.agent`) tests never get a second judge — only `t.judge` calls do.
 :::
 
+### Cascade mode: let the confident second judge decide
+
+The default pairing keeps a strict division: the LLM judge decides, the second judge corroborates. **Cascade mode** flips the order for cost: the second judge answers *first*, and when it returns a verdict at ≥ 0.95 confidence, that verdict stands and the primary judge is never called. Every other outcome — low confidence, transport error, an oversize skip, a projected `secondJudgeValue` view — falls back to the primary judge exactly as in dual mode. The mode can only fail open.
+
+The exchange is measured, not hoped for: at that confidence band the second judge agreed with the flash primary on 99.5% of 2,094 production checks, and 72% of checks landed in the band — so a cascade-enabled suite pays ~1% of the primary's price on ~7 checks in 10 and gets sub-second verdicts instead of ~25-second ones, with ~0.5% of verdicts differing from what the primary alone would have said.
+
+```ts
+t.judge(value, instruction, { judge: { mode: "cascade" } }) // one call
+task("id", { judge: { mode: "cascade" }, /* … */ })          // one task
+```
+
+```bash
+export APO_JUDGE_MODE=cascade # every t.judge call in the run
+```
+
+A cascade-decided check says so in its report: `judge.verdict_by: "second-judge"`, the decision model in `judge.model`, and a reasoning line that names the confidence and states that the primary judge was not called — so a wrong confident verdict is as visible as a wrong primary verdict, never a silent substitution.
+
+Use it where judging bills and latency compound — CI on every commit, monitors re-running suites, stability replays. Keep the default pairing while you are still engineering a suite's criteria: disagreement between two judges is exactly the signal that a criterion is soft, and cascade mode spends it for money. And never point cascade at derived-verdict criteria (is this computed number right, is this code correct): decision models measured near coin-flip there — write those checks as `t.agent` or deterministic assertions, where the verdict is worked out rather than read off. Cascade mode never escalates beyond the primary judge; it only skips paying it.
+
 ## The agentic judge
 
 `t.judge` hands the judge a value. `t.agent` hands it a question. The agentic judge is a tool-using LLM session that investigates the run's own evidence — the deliverables, the trace, this task's prior runs — and only then verdicts. Where `t.judge` asks "is this value good?", `t.agent` asks "go find out whether the run holds up."

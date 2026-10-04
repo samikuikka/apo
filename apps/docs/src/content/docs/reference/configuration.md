@@ -115,6 +115,7 @@ Read by the SDK's check engine during `apo task run` and `apo runs rejudge`:
 | `APO_SECOND_JUDGE_BASE_URL` | OpenAI-compatible base URL for the second judge (defaults to the primary judge's base URL). |
 | `APO_SECOND_JUDGE_API_KEY` | API key for the second judge (defaults to the primary judge's key). |
 | `APO_JUDGE_VERDICT_FIRST` | `true` makes `t.judge` ask for the verdict before the commentary, so a mid-response failure still leaves a usable verdict. |
+| `APO_JUDGE_MODE` | `cascade` lets a confident second judge (native confidence ≥ 0.95) decide `t.judge` checks without calling the primary judge; any other value is ignored. |
 
 ## Task runner
 
