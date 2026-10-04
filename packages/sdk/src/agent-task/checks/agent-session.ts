@@ -278,8 +278,25 @@ function buildEvidenceTools(args: {
 
   // An agentic judge is an agent (issue #288): every tool execution is a
   // TOOL child span under the session span, exactly like the main agent's.
-  const span = <T>(name: string, input: unknown, fn: () => Promise<T>): Promise<T> =>
-    tracer ? tracer.traceTool(name, input as Record<string, unknown>, fn) : fn();
+  //
+  // Intra-turn dedupe: models fan out several tool calls in ONE step, and
+  // briefing discipline cannot stop identical calls written before any
+  // result is seen (measured: seven identical read_deliverable calls on a
+  // 261-byte deliverable). Identical name+args within one step execute
+  // once — the promise is shared, so concurrent duplicates resolve to the
+  // same result and the read budget is drawn once. The step index in the
+  // key separates turns; finish_verdict has no execute and never lands here.
+  const dedupeCache = new Map<string, Promise<unknown>>();
+  const span = <T>(name: string, input: unknown, fn: () => Promise<T>): Promise<T> => {
+    const key = `${stepIndexOf()}|${name}|${JSON.stringify(input ?? {})}`;
+    const cached = dedupeCache.get(key);
+    if (cached) return cached as Promise<T>;
+    const execution: Promise<unknown> = tracer
+      ? tracer.traceTool(name, input as Record<string, unknown>, fn)
+      : fn();
+    dedupeCache.set(key, execution);
+    return execution as Promise<T>;
+  };
 
   const tools: Record<string, unknown> = {
     read_deliverable: tool({
@@ -903,7 +920,22 @@ export function createAgentMethod(
           : `judge ${result.verdict.pass ? "PASSed" : "FAILed"} where ground truth is ` +
             `${opts.expect.toUpperCase()} — judge reasoning: ${result.verdict.reasoning}`;
 
-      rec.record(label, agreed, reasoning, {
+      // Vacuous-verdict marker: a verdict reached with an empty evidence
+      // manifest while deliverables existed to read is diligence signal.
+      // Surfaced in the recorded reasoning so a lazy judge cannot hide
+      // behind agreement — measured: verdicts with zero reads agreeing
+      // with ground truth by prior alone on a fail-heavy battery. Not a
+      // scoring change; the outcome is untouched.
+      const readNothing =
+        result.verdict !== undefined &&
+        (result.session.evidence?.length ?? 0) === 0 &&
+        evidence !== undefined &&
+        Object.keys(evidence.deliverables).length > 0;
+      const recorded = readNothing
+        ? `${reasoning} — [vacuous verdict: the session read no deliverable evidence before deciding]`
+        : reasoning;
+
+      rec.record(label, agreed, recorded, {
         evaluator_type: "agent",
         judge,
         expected: instruction,

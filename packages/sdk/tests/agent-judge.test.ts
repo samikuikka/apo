@@ -33,6 +33,11 @@ const snapshot: TraceProjectionSnapshot = {
 };
 
 function toolCallTurn(id: string, name: string, args: unknown) {
+  return multiToolCallTurn(id, [[name, args]]);
+}
+
+/** A turn fanning out several tool calls at once — one response, N calls. */
+function multiToolCallTurn(id: string, calls: Array<[string, unknown]>) {
   return {
     id: `chatcmpl-${id}`,
     object: "chat.completion",
@@ -44,9 +49,11 @@ function toolCallTurn(id: string, name: string, args: unknown) {
         message: {
           role: "assistant",
           content: null,
-          tool_calls: [
-            { id: `call-${id}`, type: "function", function: { name, arguments: JSON.stringify(args) } },
-          ],
+          tool_calls: calls.map(([name, args], i) => ({
+            id: `call-${id}-${i}`,
+            type: "function",
+            function: { name, arguments: JSON.stringify(args) },
+          })),
         },
         finish_reason: "tool_calls",
       },
@@ -367,6 +374,48 @@ describe("t.agent — budget accounting", () => {
     const pcre = calls.find((c) => c.input.includes("(?i)"));
     expect(anchored?.result).toContain('"match_count":1');
     expect(pcre?.result).toContain('"match_count":1');
+  });
+
+  it("collapses identical intra-turn tool calls into one execution", async () => {
+    // Fan-out of two byte-identical reads in ONE step — the transcript
+    // records both calls, but the evidence manifest and read budget must
+    // see a single execution.
+    scriptFetch([
+      multiToolCallTurn("1", [
+        ["read_deliverable", { name: "answer", offset: 0, limit: 6000 }],
+        ["read_deliverable", { name: "answer", offset: 0, limit: 6000 }],
+      ]),
+      toolCallTurn("2", "finish_verdict", { reasoning: "Answer verified.", pass: true }),
+    ]);
+
+    const result = await runAgentCheck(async (t) => {
+      await t.agent("dup rubric");
+    });
+
+    const session = result.assertions[0]!.judge?.session;
+    expect(session?.evidence?.length).toBe(1);
+    const reads = (session?.steps ?? [])[0]?.tool_calls ?? [];
+    expect(reads.length).toBe(2);
+    expect(reads[0]!.result).toBe(reads[1]!.result);
+  });
+
+  it("marks a verdict that read no evidence as vacuous, not one that did", async () => {
+    scriptFetch([
+      toolCallTurn("1", "finish_verdict", { reasoning: "Looks fine to me.", pass: true }),
+    ]);
+    const vacuous = await runAgentCheck(async (t) => {
+      await t.agent("rubric");
+    });
+    expect(vacuous.assertions[0]!.reasoning).toContain("vacuous verdict");
+
+    scriptFetch([
+      toolCallTurn("1", "read_deliverable", { name: "answer", offset: 0, limit: 6000 }),
+      toolCallTurn("2", "finish_verdict", { reasoning: "Answer verified.", pass: true }),
+    ]);
+    const diligent = await runAgentCheck(async (t) => {
+      await t.agent("rubric");
+    });
+    expect(diligent.assertions[0]!.reasoning).not.toContain("vacuous verdict");
   });
 
   async function runAgentCheckWithBudget(budget: { maxTurns?: number; maxToolCalls?: number; maxReadBytes?: number }) {
