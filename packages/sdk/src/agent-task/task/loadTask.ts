@@ -6,6 +6,7 @@ import { getTaskAdapterDefinition, getRegisteredTask, resetTaskRegistry } from "
 import { resetFlowChecks } from "../checks/flow-runner.ts";
 import { validateMcpServerConfig } from "../checks/mcp-tools.ts";
 import { resetTaskTurn } from "../turn.ts";
+import { resetTaskSteers } from "../steer.ts";
 import type { TaskDefinition, FileEntry } from "./types.ts";
 
 export type LoadedTask = {
@@ -135,6 +136,7 @@ async function loadTaskDefinition(
     resetTaskRegistry();
     resetFlowChecks();
     resetTaskTurn();
+    resetTaskSteers();
 
     // eslint-disable-next-line react-doctor/no-dynamic-import-path -- runtime loading of user task file
     const loaded = (await import(moduleUrl)) as { default?: TaskDefinition };

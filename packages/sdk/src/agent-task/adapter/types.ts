@@ -24,6 +24,41 @@ export type AgentTurnResult = {
 };
 
 /**
+ * Live progress signal from the agent under test, fired while a turn runs.
+ * The adapter forwards these from its harness's event stream via the
+ * `notifyAgentEvent` callback on `sendUserTurn`'s context — the runner cannot
+ * observe subprocess spans live (the projection tee only sees spans created
+ * through the runner's trace context), so the adapter is the source of
+ * progress. `run_start` MUST be the first event a turn emits.
+ */
+export type AgentProgressEvent =
+  | { kind: "run_start" }
+  | { kind: "tool_result"; toolName?: string }
+  | { kind: "assistant_reply" };
+
+/** Where the harness actually queued/landed an injected message. */
+export type SteerDeliveryBoundary =
+  | "run_start"
+  | "tool_results"
+  | "assistant_reply";
+
+export type SteerResult = {
+  /**
+   * The boundary the harness reports for the injection. Harness truth wins
+   * over the scheduler's trigger intent — a `{ toolResults: 2 }` steer may
+   * land at `assistant_reply` on a harness that drains its queue there.
+   */
+  boundary: SteerDeliveryBoundary;
+};
+
+/** Context handed to `session.steer()`. */
+export type SteerContext = {
+  trace: AgentTaskTraceContext;
+  turnNumber: number;
+  steerNumber: number;
+};
+
+/**
  * The adapter-reported identity of the agent under test for one Task Run
  * The adapter resolves its configuration (env vars, aliases,
  * defaults), constructs the agent from that same resolved object, and reports
@@ -115,8 +150,23 @@ export type AdapterSession = {
       trace: AgentTaskTraceContext;
       turnNumber: number;
       parentSpanId?: string;
+      /**
+       * The adapter calls this for every agent progress event while the turn
+       * runs. Fire-and-forget (sync void); the runner serializes internally
+       * and never lets scheduler errors break the turn. MUST be called with
+       * `{ kind: "run_start" }` before the first model call.
+       */
+      notifyAgentEvent: (event: AgentProgressEvent) => void;
     },
   ) => Promise<AgentTurnResult>;
+  /**
+   * Mid-run injection primitive. Optional = negotiated capability: a task
+   * with registered steers fails closed before turn 1 when this is absent.
+   * Resolve when the harness has accepted/queued the message, not when the
+   * agent has reacted to it — reaction is asserted afterward by
+   * `t.steerDelivered` / `t.afterSteer`.
+   */
+  steer?: (input: unknown, context: SteerContext) => Promise<SteerResult>;
   close?: () => Promise<void>;
 };
 

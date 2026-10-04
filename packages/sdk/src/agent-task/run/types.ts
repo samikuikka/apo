@@ -1,5 +1,7 @@
 import type { FileEntry, TaskDefinition } from "../task/types.ts";
 import type { AgentTaskRunConfiguration } from "../adapter/types.ts";
+import type { SteerTrigger } from "../steer.ts";
+import type { SteerDeliveryBoundary } from "../adapter/types.ts";
 
 /**
  * The outcome of a single assertion.
@@ -321,10 +323,37 @@ export type TaskTranscript = {
   turns: TaskTranscriptTurn[];
 };
 
+/**
+ * Outcome of one scripted steer . Steers never fail the run by
+ * themselves — a dropped or errored steer is recorded here and on the trace,
+ * and `t.steerDelivered` is what turns it red.
+ */
+export type SteerRecord = {
+  /** 1-based, registration order across the whole run. */
+  number: number;
+  /** Scripted turn the steer targeted. */
+  turn: number;
+  label?: string;
+  trigger: SteerTrigger;
+  message: unknown;
+  status: "delivered" | "undelivered" | "error";
+  /** ISO timestamp of successful delivery. */
+  deliveredAt?: string;
+  boundary?: SteerDeliveryBoundary;
+  /**
+   * Why undelivered ("turn ended before trigger fired", "no progress events
+   * observed for this turn", "target turn never ran"), or the injection
+   * error message when status === "error".
+   */
+  reason?: string;
+};
+
 export type TaskTranscriptTurn = {
   turnNumber: number;
   userAction: unknown;
   agentResponse: unknown;
+  /** Steers that targeted this turn, in steerNumber order. */
+  steers?: SteerRecord[];
 };
 
 export type TaskRunResult = {

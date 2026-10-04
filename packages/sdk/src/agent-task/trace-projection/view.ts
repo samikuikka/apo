@@ -26,6 +26,120 @@ import type {
 /** The span name `runTask` gives each Task Turn (one `sendUserTurn` call). */
 export const TASK_TURN_SPAN_NAME = "task.turn";
 
+/** The span name the steer scheduler gives each steer event . */
+export const TASK_STEER_SPAN_NAME = "task.steer";
+
+/** One mid-run steer, derived from a `task.steer` observation. */
+export interface TraceSteer {
+  /** 1-based, registration order across the run. */
+  number: number;
+  /** Scripted turn the steer targeted. */
+  turn: number;
+  label?: string;
+  /** Parsed from the event's JSON-stringified trigger metadata. */
+  trigger: string;
+  message: unknown;
+  status: "delivered" | "undelivered" | "error";
+  /** ISO timestamp of successful delivery (wall clock, display only). */
+  deliveredAt?: string;
+  /**
+   * The steer observation's own `startedAt` — the snapshot-clock position of
+   * the delivery. Window/delivery comparisons use THIS, not `deliveredAt`:
+   * local tee snapshots timestamp with a monotonic clock (performance.now
+   * epoch), so a wall-clock deliveredAt is not comparable to sibling
+   * observations, while the steer observation's own timestamp always is.
+   */
+  spanStartedAt?: string;
+  /** The steer observation's span id — the deterministic tie-breaker. */
+  spanId: string;
+  boundary?: string;
+  reason?: string;
+}
+
+/**
+ * Extract the SteerRecord from a `task.steer` observation's output.
+ *
+ * Two shapes exist, one per snapshot source:
+ * - local tee: the record object sits directly in `output`.
+ * - canonical backend: `recordEvent` output exports as `gen_ai.output.messages`
+ *   / `gen_ai.response.text`, so the record arrives JSON-stringified inside
+ *   `{ text, messages: [{ role: "assistant", content }] }`.
+ * Recognized by the presence of a numeric `number` — anything else is not a
+ * steer record and yields undefined (the observation is then skipped).
+ */
+function steerRecordFrom(
+  obs: TraceProjectionObservation,
+): Record<string, unknown> | undefined {
+  const output = obs.output;
+  if (!output || typeof output !== "object") return undefined;
+
+  const asRecord = (v: unknown): Record<string, unknown> | undefined =>
+    v !== null && typeof v === "object" &&
+    typeof (v as { number?: unknown }).number === "number"
+      ? (v as Record<string, unknown>)
+      : undefined;
+
+  const direct = asRecord(output);
+  if (direct) return direct;
+
+  const tryParse = (text: unknown): Record<string, unknown> | undefined => {
+    if (typeof text !== "string") return undefined;
+    try {
+      return asRecord(JSON.parse(text));
+    } catch {
+      return undefined;
+    }
+  };
+
+  const fromText = tryParse((output as { text?: unknown }).text);
+  if (fromText) return fromText;
+
+  const messages = (output as { messages?: unknown }).messages;
+  if (Array.isArray(messages)) {
+    const content = (messages[0] as { content?: unknown } | undefined)?.content;
+    const fromMessage = tryParse(content);
+    if (fromMessage) return fromMessage;
+  }
+  return undefined;
+}
+
+/** Parse a `task.steer` observation's output into a TraceSteer. */
+function traceSteerFrom(obs: TraceProjectionObservation): TraceSteer | undefined {
+  const meta = obs.metadata as Record<string, unknown> | undefined;
+  const record = steerRecordFrom(obs);
+  const number =
+    typeof record?.number === "number" ? record.number
+    : typeof meta?.steerNumber === "number" ? meta.steerNumber
+    : undefined;
+  if (number === undefined) return undefined;
+  const source: Record<string, unknown> = record ?? {};
+  const read = (key: string): unknown =>
+    source[key] !== undefined ? source[key] : meta?.[key];
+  const status = read("status");
+  const steer: TraceSteer = {
+    number,
+    spanId: obs.spanId,
+    turn: typeof read("turn") === "number" ? (read("turn") as number) : 1,
+    trigger: typeof read("trigger") === "string" ? (read("trigger") as string) : "unknown",
+    message: source.message,
+    ...(isSteerStatus(status) ? { status } : { status: "undelivered" }),
+  };
+  const label = read("label");
+  if (typeof label === "string") steer.label = label;
+  const deliveredAt = read("deliveredAt");
+  if (typeof deliveredAt === "string") steer.deliveredAt = deliveredAt;
+  if (obs.startedAt !== undefined) steer.spanStartedAt = obs.startedAt;
+  const boundary = read("boundary");
+  if (typeof boundary === "string") steer.boundary = boundary;
+  const reason = read("reason");
+  if (typeof reason === "string") steer.reason = reason;
+  return steer;
+}
+
+function isSteerStatus(v: unknown): v is TraceSteer["status"] {
+  return v === "delivered" || v === "undelivered" || v === "error";
+}
+
 /** A tool call derived from a `TOOL` observation. */
 export interface TraceToolCall {
   spanId: string;
@@ -161,6 +275,62 @@ export class TraceView {
         status: o.status,
         startedAt: o.startedAt,
       }));
+  }
+
+  /**
+   * Mid-run steers, derived from `task.steer` observations, in number order.
+   * Empty when the trace carries none — steering assertions fail closed on
+   * the empty case instead of passing vacuously.
+   */
+  get steers(): readonly TraceSteer[] {
+    const out: TraceSteer[] = [];
+    for (const obs of this.sortedObservations) {
+      if (obs.name !== TASK_STEER_SPAN_NAME) continue;
+      const steer = traceSteerFrom(obs);
+      if (steer) out.push(steer);
+    }
+    return out.sort((a, b) => a.number - b.number);
+  }
+
+  /**
+   * A TraceView over the run after steer n was delivered: observations that
+   * started after the steer's delivery timestamp (the first generation that
+   * consumed it through run end). Missing timestamps sort after timestamped
+   * observations per the projection contract, so they belong to the window
+   * too. An undelivered steer yields an empty view — assertions inside it
+   * fail on missing evidence rather than passing vacuously.
+   */
+  /**
+   * Whether an observation started after the steer observation, using the
+   * same ordering key as everywhere else in this class (startedAt, then
+   * span id). The id tie-break matters on the local tee path, whose ISO
+   * timestamps truncate to milliseconds — a steer and the generation that
+   * consumes it can share one.
+   */
+  private static startedAfter(
+    obs: TraceProjectionObservation,
+    steer: TraceSteer,
+  ): boolean {
+    if (obs.startedAt == null) return true;
+    if (steer.spanStartedAt == null) return false;
+    if (obs.startedAt !== steer.spanStartedAt) {
+      return obs.startedAt > steer.spanStartedAt;
+    }
+    return obs.spanId > steer.spanId;
+  }
+
+  windowAfterSteer(n: number): TraceView {
+    const steer = this.steers.find((s) => s.number === n);
+    if (!steer) {
+      throw new Error(`No steer number ${n} in this trace.`);
+    }
+    if (steer.spanStartedAt === undefined) {
+      return new TraceView({ ...this.snapshot, observations: [] });
+    }
+    const filtered = this.snapshot.observations.filter(
+      (o) => o.spanId !== steer.spanId && TraceView.startedAfter(o, steer),
+    );
+    return new TraceView({ ...this.snapshot, observations: filtered });
   }
 
   /** Last assistant message content — the agent's "reply". Empty if none. */

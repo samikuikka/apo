@@ -3,6 +3,8 @@ import { generateText, stepCountIs, tool, type ModelMessage } from "ai";
 import { readFileSync } from "fs";
 import { z } from "zod";
 
+export type { ModelMessage };
+
 /**
  * The example agent — the single home for the agent's logic.
  *
@@ -200,6 +202,131 @@ export type ChatResponse = {
   tool_calls: Array<{ tool: string; args: Record<string, unknown>; result: unknown }>;
   usage: { input_tokens: number; output_tokens: number } | null;
 };
+
+// ── Steerable variant (mid-run steering demo plane) ────────────────────────────────
+
+/** Queue of user messages injected mid-run; drained at tool boundaries. */
+export type SteerableInbox = { take(): ModelMessage | null };
+
+/** Mirrors the SDK's AgentProgressEvent (structural — no SDK import here). */
+export type SteerableProgress =
+  | { kind: "run_start" }
+  | { kind: "tool_result"; toolName?: string }
+  | { kind: "assistant_reply" };
+
+/**
+ * Run one agent turn with a mid-run injection point. The multi-step loop is
+ * explicit — one `generateText` per step — so between steps the caller's
+ * inbox is drained: a steered user message joins the conversation at exactly
+ * the boundary a real harness (pi's `session.steer()`) would use. Progress
+ * events after every step are what apo's steer scheduler counts to decide
+ * when a steer is due.
+ *
+ * Same tools, model selection, telemetry, and response contract as
+ * `handleChat`; production code keeps using `handleChat` — this is the
+ * e2e-adapter entry point.
+ */
+export async function runSteerableChat(
+  request: ChatRequest,
+  opts: { onProgress: (event: SteerableProgress) => void; inbox: SteerableInbox },
+): Promise<ChatResponse> {
+  const client = getClient();
+  const model = getModel();
+  const files = request.files ?? {};
+  const tools = { ...buildTools(files, request.taskDir), ...request.extraTools };
+  const telemetryEnabled = request.telemetry ?? true;
+  const effort = getReasoningEffort();
+
+  const messages: ModelMessage[] = request.messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+  })) as ModelMessage[];
+
+  opts.onProgress({ kind: "run_start" });
+  // Macrotask yield: apo's scheduler delivers runStart steers on a microtask
+  // chain fired from the run_start notify — one macrotask beat guarantees the
+  // inbox holds them before the first model call.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  const allToolCalls: Array<{ tool: string; args: Record<string, unknown>; result: unknown }> = [];
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let sawUsage = false;
+  let responseText = "";
+  const maxSteps = request.maxSteps ?? 8;
+
+  for (let step = 0; step < maxSteps; step++) {
+    // The injection boundary: steered messages land here, between steps.
+    for (let injected = opts.inbox.take(); injected !== null; injected = opts.inbox.take()) {
+      messages.push(injected);
+    }
+
+    const result = await generateText({
+      model: client.chat(model),
+      system: request.system ?? SYSTEM_PROMPT,
+      messages,
+      tools,
+      stopWhen: stepCountIs(1),
+      ...(effort ? { providerOptions: { openai: { reasoningEffort: effort } } } : {}),
+      experimental_telemetry: { isEnabled: telemetryEnabled },
+    });
+
+    messages.push(...(result.response.messages as ModelMessage[]));
+    if (result.usage) {
+      sawUsage = true;
+      inputTokens += result.usage.inputTokens ?? 0;
+      outputTokens += result.usage.outputTokens ?? 0;
+    }
+    for (const s of result.steps) {
+      for (const tc of s.toolCalls) {
+        const input = "input" in tc ? (tc as { input: Record<string, unknown> }).input : {};
+        const toolResult = s.toolResults[s.toolCalls.indexOf(tc)];
+        const output =
+          toolResult && "output" in toolResult
+            ? (toolResult as { output: unknown }).output
+            : toolResult;
+        allToolCalls.push({ tool: tc.toolName, args: input as Record<string, unknown>, result: output });
+        opts.onProgress({ kind: "tool_result", toolName: tc.toolName });
+      }
+    }
+    if (result.text) {
+      responseText = result.text;
+      opts.onProgress({ kind: "assistant_reply" });
+    }
+    // Same beat as after run_start: lets due steers land in the inbox before
+    // the next step drains it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (result.finishReason === "stop") break;
+  }
+
+  // Recover text when the loop exhausted its budget mid-tool-use — same
+  // synthesis fallback contract as handleChat.
+  if (!responseText) {
+    const synthesis = await generateText({
+      model: client.chat(model),
+      system: request.system ?? SYSTEM_PROMPT,
+      ...(effort ? { providerOptions: { openai: { reasoningEffort: effort } } } : {}),
+      messages: [
+        ...messages,
+        {
+          role: "user",
+          content:
+            "You have finished using tools. Now produce your final answer. " +
+            "Do not call any more tools — synthesize everything you found into a clear, complete response.",
+        } satisfies ModelMessage,
+      ],
+      experimental_telemetry: { isEnabled: telemetryEnabled },
+    });
+    responseText = synthesis.text;
+    opts.onProgress({ kind: "assistant_reply" });
+  }
+
+  return {
+    response: responseText,
+    tool_calls: allToolCalls,
+    usage: sawUsage ? { input_tokens: inputTokens, output_tokens: outputTokens } : null,
+  };
+}
 
 /**
  * Run the agent for one turn. Handles the multi-step tool-calling loop and a

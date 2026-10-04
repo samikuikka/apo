@@ -23,6 +23,8 @@ export const TEST_METHOD_NAMES = [
   "maxDurationMs",
   "maxTokens",
   "minTokens",
+  "steerDelivered",
+  "afterSteer",
   "assert",
   "check",
   "judge",

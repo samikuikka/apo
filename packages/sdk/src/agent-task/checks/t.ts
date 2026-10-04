@@ -141,6 +141,22 @@ export interface TestContext {
   /** Escape hatch for a named predicate over the complete normalized run. */
   assert(label: string, predicate: (flow: TraceView) => boolean): void;
 
+  // ── steering  ────────────────────────────────────────────────
+  /**
+   * Asserts steer n was delivered AND consumed: at least one generation
+   * observation started after the steer's delivery timestamp. Fails closed —
+   * a trace with no steering evidence at all is a failure, never a pass.
+   */
+  steerDelivered(n: number): void;
+  /**
+   * Scopes trace-based assertions to what the agent did after steer n: the
+   * fn receives a TestContext over `view.windowAfterSteer(n)`, and every
+   * existing matcher works unchanged inside it. When the steer is missing
+   * from the trace, records one failure and skips fn (inner assertions must
+   * not run — they would pass vacuously against an empty window).
+   */
+  afterSteer(n: number, fn: (t: TestContext) => void): void;
+
   // ── values / deliverables ──────────────────────────────────────────────
   /** Grades any value (a deliverable, parsed JSON, anything) with a matcher. */
   check<T>(value: T, matcher: Matcher<T>, label?: string): void;
@@ -237,6 +253,8 @@ export const TEST_METHOD_NAMES = [
   "maxDurationMs",
   "maxTokens",
   "minTokens",
+  "steerDelivered",
+  "afterSteer",
   "assert",
   "check",
   "judge",
@@ -436,6 +454,12 @@ export function createTestContext(
       });
     },
 
+    ...createSteerAssertions(
+      view,
+      rec,
+      (window) => createTestContext(window, rec, judgeConfig, agentEvidence),
+    ),
+
     judge: trackPending(rec, createJudgeMethod(rec, judgeConfig)),
     agent: trackPending(rec, createAgentMethod(rec, judgeConfig, undefined, agentEvidence ?? { deliverables: {}, view })),
   };
@@ -456,6 +480,86 @@ function trackPending<T extends (...args: never[]) => Promise<unknown>>(
     rec.track(promise);
     return promise;
   }) as T;
+}
+
+/**
+ * The steering assertion pair , shared by both test-context
+ * factories. `makeNested` builds the scoped context for `afterSteer`'s
+ * window — each factory passes itself so inner assertions keep its gating
+ * behavior.
+ */
+function createSteerAssertions(
+  view: TraceView,
+  rec: Recorder,
+  makeNested: (window: TraceView) => TestContext,
+): Pick<TestContext, "steerDelivered" | "afterSteer"> {
+  const findSteer = (n: number, id: string): TraceView["steers"][number] | undefined => {
+    const steers = view.steers;
+    if (steers.length === 0) {
+      rec.record(
+        id,
+        false,
+        "steering evidence unavailable — no task.steer events in this trace",
+        { expected: `steer ${n} delivered and consumed`, received: "no steering evidence" },
+      );
+      return undefined;
+    }
+    const steer = steers.find((s) => s.number === n);
+    if (!steer) {
+      rec.record(
+        id,
+        false,
+        `no steer number ${n} in this trace (found: ${steers.map((s) => s.number).join(", ")})`,
+        { expected: `steer ${n} exists`, received: steers.map((s) => s.number).join(", ") || "none" },
+      );
+    }
+    return steer;
+  };
+
+  return {
+    steerDelivered(n) {
+      const steer = findSteer(n, `steerDelivered(${n})`);
+      if (!steer) return;
+      if (steer.status !== "delivered") {
+        const why = steer.reason ? ` — ${steer.reason}` : "";
+        rec.record(`steerDelivered(${n})`, false, `steer ${n} was ${steer.status}${why}`, {
+          expected: "delivered",
+          received: steer.status,
+        });
+        return;
+      }
+      // "Consumed" = a generation observation ordered after the steer's own
+      // observation (startedAt with the tee's span-id tie-break — its ISO
+      // timestamps truncate to milliseconds, so the pair can share one).
+      const consumed = view.snapshot.observations.some(
+        (o) =>
+          o.type === "GENERATION" &&
+          steer.spanStartedAt != null &&
+          o.startedAt != null &&
+          (o.startedAt > steer.spanStartedAt ||
+            (o.startedAt === steer.spanStartedAt && o.spanId > steer.spanId)),
+      );
+      rec.record(
+        `steerDelivered(${n})`,
+        consumed,
+        consumed
+          ? ""
+          : `steer ${n} was delivered but no generation observation started after it — the harness queued the message, no model call demonstrably consumed it`,
+        { expected: `≥1 generation after steer ${n}`, received: consumed ? "1+" : "0" },
+      );
+    },
+
+    afterSteer(n, fn) {
+      const steer = findSteer(n, `afterSteer(${n})`);
+      if (!steer) return;
+      // An undelivered steer yields an empty window: evidence-demanding
+      // matchers inside fail, but ceiling-only matchers would pass vacuously
+      // — pair afterSteer with t.steerDelivered to close that gap. The fn
+      // runs against the windowed view with the SAME recorder, so its
+      // assertions land in this check's records.
+      fn(makeNested(view.windowAfterSteer(n)));
+    },
+  };
 }
 
 /**
@@ -864,6 +968,21 @@ export function createTraceTestContext(
         received: pass ? "true" : "false",
       });
     },
+
+    ...createSteerAssertions(
+      view,
+      rec,
+      (window) =>
+        createTraceTestContext(
+          window,
+          rec,
+          judgeConfig,
+          judgeScope,
+          agentEvidence,
+          judgeTracer,
+          judgeTools,
+        ),
+    ),
 
     check(value, matcher, label) {
       const pass = matcher.test(value);

@@ -21,6 +21,10 @@ export type {
   CollectedDeliverables,
   AgentTurnResult,
   AgentTaskRunConfiguration,
+  AgentProgressEvent,
+  SteerResult,
+  SteerDeliveryBoundary,
+  SteerContext,
   InitializeContext,
   StartSessionContext,
   CollectDeliverablesContext,
@@ -126,6 +130,7 @@ export type {
   TaskRunResult,
   TaskTranscript,
   TaskTranscriptTurn,
+  SteerRecord,
 } from "./run/types.ts";
 export { runTask, AgentTaskRunError, type RunTaskOptions } from "./run/runTask.ts";
 export { NO_CHECKS_REGISTERED_MESSAGE } from "./run/aggregate.ts";
@@ -163,6 +168,15 @@ export {
   type TurnContext,
   type TurnRecord,
 } from "./turn.ts";
+
+// ── Mid-run steering ──────────────────────────────────────────
+export {
+  steer,
+  getTaskSteers,
+  resetTaskSteers,
+  type SteerSpec,
+  type SteerTrigger,
+} from "./steer.ts";
 
 export type { DeliverableValidationResult } from "./deliverables/types.ts";
 

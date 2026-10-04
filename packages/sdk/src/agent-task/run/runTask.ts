@@ -17,6 +17,9 @@ import {
   resolveTurn,
   type TurnRecord,
 } from "../turn.ts";
+import { getTaskSteers, resetTaskSteers } from "../steer.ts";
+import { createSteerScheduler } from "./steer-scheduler.ts";
+import type { SteerRecord } from "./types.ts";
 import { TaskFiles } from "../task/TaskFiles.ts";
 import { validateDeliverables } from "../deliverables/validate.ts";
 import {
@@ -104,6 +107,8 @@ export type RunTaskOptions = {
     userAction: TaskTranscriptTurn["userAction"],
     agentResponse: unknown,
   ) => void;
+  /** Called for every steer outcome (delivered / undelivered / error). */
+  onSteer?: (record: SteerRecord) => void;
   /**
    * Skip the internal `loadTask(taskDir)` call and reuse an already-loaded
    * task definition.
@@ -772,6 +777,7 @@ async function runTurnLoop(
   // already registered it while loadTask imported the .eval.ts file.
   if (!inlineChecks && checksPath) {
     resetTaskTurn();
+    resetTaskSteers();
     resetFlowChecks();
     await loadChecksModule(checksPath);
   }
@@ -781,10 +787,38 @@ async function runTurnLoop(
   const turnFn = resolveTurn(adapter.turn, taskTurn);
   if (!turnFn) return [];
 
+  // Steers register from the eval file (inline) or checks.ts (legacy), the
+  // same registry lifecycle as turn(). A task with steers against a harness
+  // that cannot inject fails closed before turn 1 — unrunnable, not silently
+  // steer-less.
+  const steerSpecs = getTaskSteers();
+  resetTaskSteers();
+  if (steerSpecs.length > 0 && typeof session.steer !== "function") {
+    // Thrown directly as AgentTaskRunError: withRunConfiguration only wraps
+    // plain errors when a run configuration exists, and steer-less adapters
+    // often report none — the CLI must still see the typed error.
+    throw new AgentTaskRunError(
+      `Task "${task.id}" registers ${steerSpecs.length} steer(s) but adapter "${adapter.name}" does not implement session.steer(). ` +
+        `Implement steer() on the adapter session, or remove the steer() registrations.`,
+      {},
+    );
+  }
+  // Steer events nest under their turn's span; the id lands in this map the
+  // moment the turn's step opens, before any progress event can fire.
+  const turnSpanIds = new Map<number, string>();
+  const scheduler = createSteerScheduler({
+    specs: steerSpecs,
+    session,
+    trace,
+    turnSpanId: (turnNumber) => turnSpanIds.get(turnNumber),
+    onSteer: options?.onSteer,
+  });
+
   const taskFiles = new TaskFiles(files);
   const turnTranscript: TurnRecord[] = [];
   const transcriptTurns: TaskTranscriptTurn[] = [];
   let lastTurnResponse: unknown;
+  let lastTurnNumber = 0;
   // Precedence: explicit run override → task config → default 10.
   const maxTurns = options?.maxTurnsOverride ?? task.maxTurns ?? 10;
 
@@ -792,6 +826,7 @@ async function runTurnLoop(
     const userTurn = await turnFn({ files: taskFiles, transcript: turnTranscript });
     if (userTurn === null || userTurn === undefined) break;
 
+    await scheduler.onTurnStart(turnNum);
     const result = await trace.step(
       {
         step_name: "task.turn",
@@ -802,17 +837,33 @@ async function runTurnLoop(
       // processor captures parent under the turn span, not the run root —
       // turn-scoped assertions (t.maxTokens({ turn })) walk that chain.
       async (spanId) => {
+        turnSpanIds.set(turnNum, spanId);
         const run = getActiveApoRun();
         const send = () =>
           session.sendUserTurn(userTurn, {
             trace,
             turnNumber: turnNum,
             parentSpanId: spanId,
+            // Progress events drive the steer scheduler. Fire-and-forget:
+            // the adapter never waits on steering, and scheduler errors are
+            // contained (they must not break the agent's turn).
+            notifyAgentEvent: (event) => {
+              void scheduler.onProgressEvent(turnNum, event).catch((error) => {
+                console.error(
+                  "[AgentTask] Steer scheduler error:",
+                  error instanceof Error ? error.message : String(error),
+                );
+              });
+            },
           });
         return run ? withApoRun({ ...run, parentSpanId: spanId, turnNumber: turnNum }, send) : send();
       },
     );
+    // Awaits any in-flight delivery before the turn's steers are finalized —
+    // a boundary-race steer the harness accepted still lands.
+    await scheduler.onTurnEnd(turnNum);
 
+    const turnSteers = scheduler.recordsByTurn().get(turnNum);
     turnTranscript.push({
       turnNumber: turnNum,
       input: userTurn,
@@ -822,10 +873,15 @@ async function runTurnLoop(
       turnNumber: turnNum,
       userAction: userTurn,
       agentResponse: result.response,
+      ...(turnSteers !== undefined && turnSteers.length > 0 ? { steers: turnSteers } : {}),
     });
     options?.onTurn?.(turnNum, userTurn, result.response);
     lastTurnResponse = result.response;
+    lastTurnNumber = turnNum;
   }
+
+  // Steers whose target turn never ran (maxTurns cut the loop short).
+  await scheduler.onRunEnd(lastTurnNumber);
 
   if (lastTurnResponse !== undefined) {
     rawTrace.endRoot({ output: { response: lastTurnResponse } });

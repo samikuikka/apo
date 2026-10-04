@@ -17,7 +17,11 @@
  * deliverable parsing), see `real-agent-adapter.ts`.
  */
 import { defineAdapter, registerApoTracing, connectMcpServers } from "@apo-ai/sdk/agent-task";
-import { handleChat, type ChatRequest } from "../../app/lib/agent/service.ts";
+import {
+  runSteerableChat,
+  type ChatRequest,
+  type ModelMessage,
+} from "../../app/lib/agent/service.ts";
 import { loadFiles } from "./lib/files.ts";
 import { deliverableSchemas, collectDeliverablesFromState } from "./lib/deliverables.ts";
 import { resolveMcpServerPaths } from "./lib/mcp.ts";
@@ -57,24 +61,42 @@ export const aiSdkAdapter = defineAdapter({
       ? await connectMcpServers(resolveMcpServerPaths(ctx.task.mcpServers, ctx.taskDir))
       : undefined;
 
+    // Mid-run steering: the inbox is drained between the agent's
+    // model steps by runSteerableChat — this adapter's injection boundary.
+    const steerInbox: ModelMessage[] = [];
+
     return {
       runConfiguration: { model, ...(effort ? { effort } : {}) },
       ...(mcp ? { close: () => mcp.cleanup() } : {}),
-      async sendUserTurn(turn: unknown) {
+      async sendUserTurn(turn: unknown, context) {
         state.turnCount++;
         const messages: ChatRequest["messages"] = [
           { role: "user", content: `${turn}\n\nAvailable files: ${Object.keys(state.fileContents).join(", ")}` },
         ];
-        // The agent owns its tools, model, and prompt. The adapter just calls it.
-        const result = await handleChat({
-          messages,
-          files: state.fileContents,
-          taskDir: ctx.taskDir,
-          ...(mcp ? { extraTools: mcp.tools } : {}),
-        });
+        // The agent owns its tools, model, and prompt. The adapter just calls
+        // it — through the steerable entry point so progress events flow to
+        // apo's steer scheduler and injected messages land mid-run.
+        const result = await runSteerableChat(
+          {
+            messages,
+            files: state.fileContents,
+            taskDir: ctx.taskDir,
+            ...(mcp ? { extraTools: mcp.tools } : {}),
+          },
+          {
+            onProgress: context.notifyAgentEvent,
+            inbox: { take: () => steerInbox.shift() ?? null },
+          },
+        );
         state.agentResponses.push(result.response);
         state.allToolCalls.push(...result.tool_calls);
         return { response: result.response };
+      },
+      async steer(input: unknown) {
+        steerInbox.push({ role: "user", content: String(input) });
+        // runSteerableChat drains the queue between model steps — the same
+        // boundary pi's session.steer() uses.
+        return { boundary: "tool_results" as const };
       },
     };
   },

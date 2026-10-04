@@ -37,7 +37,7 @@ export const deliverableSchemas = {
  */
 export function collectDeliverablesFromState(state: AgentState) {
   const summary =
-    state.agentResponses[state.agentResponses.length - 1]?.slice(0, 500) ??
+    state.agentResponses[state.agentResponses.length - 1]?.slice(0, 4000) ??
     "No response.";
   const findings = state.allToolCalls
     .filter((tc) => tc.tool === "extract_entities")
@@ -142,7 +142,7 @@ export function collectRealAgentDeliverables(state: AgentState, fileCount: numbe
   const uniqueTools = [...new Set(state.allToolCalls.map((tc) => tc.tool))];
   return {
     result: {
-      summary: lastResponse.slice(0, 500) || "Agent completed task",
+      summary: lastResponse.slice(0, 4000) || "Agent completed task",
       findings: parseFindings(state),
     },
     tool_log: {
