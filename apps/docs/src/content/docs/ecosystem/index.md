@@ -37,13 +37,14 @@ See the [Flow normalizers](/reference/flow-normalizers/) for signatures.
 
 ## Example adapters
 
-The repo ships five reference adapters, from minimal to full-featured. Read them to learn the pattern:
+The repo ships six reference adapters, from minimal to full-featured. Read them to learn the pattern:
 
 | Adapter | What it shows | Location |
 |---|---|---|
 | **ai-sdk** | The minimal "plug your agent into apo" example, a thin membrane over the app's own agent (`app/lib/agent/service.ts`). The adapter knows nothing about the model, tools, or prompt. | `apps/example-service/e2e/agent-task-demo/ai-sdk-adapter.ts` |
 | **real-agent** | The full pattern, `initialize` loads inputs, `sendUserTurn` drives a Vercel AI SDK agent with tools (`read_file`, `search_content`, etc.), `collectDeliverables` shapes the output. | `apps/example-service/e2e/agent-task-demo/real-agent-adapter.ts` |
 | **claude** | The native-OpenTelemetry pattern, the adapter owns only the lifecycle wiring; the agent itself (prompt, tools, the `query()` call) is plain user code in `agent/claude-agent.ts`. | `apps/example-service/e2e/agent-task-demo/claude-adapter.ts` |
+| **pi** | Driving a real third-party harness, the pi coding agent runs in-process via its SDK; mid-run steering maps onto pi's native `session.steer()`, progress events forward from pi's own stream, and observed tools/generations mirror into the trace. | `apps/example-service/e2e/agent-task-demo/pi-adapter.ts` |
 | **harbor** | Wrapping an external runner as a subprocess, the adapter drives the `harbor` CLI in a child process instead of an in-process function. | `apps/example-service/e2e/agent-task-demo/harbor-adapter.ts` |
 | **reasoning** | Recording the GENERATION span yourself, with apo's own trace API: a plain-`fetch` model call whose usage object (including `reasoning_tokens`) lands in apo exactly as a GenAI-convention SDK would deliver it — built because the Vercel AI SDK's telemetry drops reasoning tokens on the `generateText` path. | `apps/example-service/e2e/agent-task-demo/reasoning-adapter.ts` |
 

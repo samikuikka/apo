@@ -14,6 +14,7 @@ import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 - **Token usage**: input/output tokens per call, with cost.
 - **Model parameters**: temperature, model, all params actually used.
 - **The messages**: the actual system, user, assistant, and tool messages exchanged.
+- **Mid-run steers**: every scripted correction is its own `task.steer` event inside its turn, between the tool call that triggered it and the generation that consumed it (see [Steer a running agent](/guides/steer-a-running-agent/)).
 
 Cost and token totals are honest about gaps: when generations ended in error or calls had no pricing entry, the affected calls are excluded and the total is marked **partial** (see [Verdict validity](/concepts/tests/#verdict-validity)).
 

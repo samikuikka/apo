@@ -17,6 +17,8 @@ If you skip this, your tests can't run. The agent under test is not a fixture; i
 
 apo drives every adapter through the same sequence: **`initialize`** (optional, set up state) → **`startSession`** (return an object with `sendUserTurn`) → **the turn loop** (apo calls `sendUserTurn` once per turn, inside it, you invoke your real agent) → **`collectDeliverables`** (mine the accumulated state and return the structured deliverables the tests assert on) → **`cleanup`** (optional, tear down).
 
+Sessions may also implement **`steer`** — the mid-run injection primitive tasks schedule corrections with. It's optional and negotiated: a task that steers against a session that can't fails before turn 1 instead of running silently steer-less. See [Adapter API → Steering](/reference/adapter/#steering).
+
 ## An adapter
 
 One adapter, wired to a real agent. This is the shape, `initialize` loads inputs, `sendUserTurn` calls the LLM with tools and threads the trace, `collectDeliverables` shapes what the tests will see:

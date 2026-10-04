@@ -29,6 +29,10 @@ These read the run's trace, what the agent *did*. Fast, deterministic, free.
 | [`t.messageIncludes(token)`](#tmessageincludestoken) | The agent's reply contains a substring or matches the RegExp. |
 | [`t.maxTurns(n)`](#tmaxturnsn) | The run took at most `n` turns, anti-flail. |
 | [`t.maxDurationMs(n)`](#tmaxdurationmsn) | The run took at most `n` milliseconds, anti-flail. |
+| [`t.maxTokens(n, opts?)`](#tmaxtokensn-opts) | At most `n` tokens of the given kind were spent. |
+| [`t.minTokens(n, opts?)`](#tmintokensn-opts) | At least `n` tokens were spent — the run did real work. |
+| [`t.steerDelivered(n)`](#tsteerdeliveredn) | Steer n was delivered and consumed by a later model call. |
+| [`t.afterSteer(n, fn)`](#taftersteern-fn) | Scope assertions to what the agent did after steer n. |
 | [`t.assert(label, predicate)`](#tassertlabel-predicate) | Escape hatch: a named predicate over the full normalized run. |
 
 ### `t.calledTool(name, opts?)`
@@ -87,6 +91,39 @@ Matches the name of a `SKILL` observation. Produce one by marking the span that 
 
 - **Signature:** `(n: number) → void`
 - **Asserts:** the run took at most `n` milliseconds, anti-flail.
+
+### `t.maxTokens(n, opts?)`
+
+- **Signature:** `(n: number, opts?: { kind?: "input" | "output" | "total"; turn?: number }) → void`
+- **Asserts:** the agent under test spent at most `n` tokens of the given kind (default `total`). `{ turn }` scopes to one scripted turn. Judge and evaluation-phase spend is never counted — only the agent's own calls inside the turn spans.
+
+### `t.minTokens(n, opts?)`
+
+- **Signature:** `(n: number, opts?: { kind?: "input" | "output" | "total"; turn?: number }) → void`
+- **Asserts:** at least `n` tokens were spent — the run did real work rather than answering from nothing. The counterpart to `t.maxTokens` for catching runs that skipped the work entirely.
+
+### `t.steerDelivered(n)`
+
+- **Signature:** `(n: number) → void`
+- **Asserts:** steer n was delivered **and consumed**: at least one generation observation started after the steer's `task.steer` event. This is the check that catches the silent drop — a harness that accepted the message while no model call ever saw it.
+
+Fails closed on every gap: no steering evidence in the trace at all, no steer with that number, the steer recorded `undelivered` or `error` (with its reason), or no post-steer generation. See [Steer a running agent](/guides/steer-a-running-agent/).
+
+### `t.afterSteer(n, fn)`
+
+- **Signature:** `(n: number, fn: (t: TestContext) => void) → void`
+- **Asserts:** nothing by itself — it scopes. `fn` receives a full `t` whose trace view is the **post-steer window**: the first generation that consumed the steer through run end. Every method works unchanged inside; a `t2.calledTool("read_file")` counts only tool calls after the steer landed.
+
+```typescript
+test("reacted-to-correction", (t) => {
+  t.afterSteer(1, (t2) => {
+    t2.messageIncludes(/cancelled/i);   // the reply talks about the correction
+    t2.maxToolCalls(12);                // …without thrashing
+  });
+});
+```
+
+An undelivered steer yields an empty window: evidence-demanding assertions inside fail, but ceiling-only assertions would pass vacuously — pair `t.afterSteer` with `t.steerDelivered` in the same task.
 
 ### `t.assert(label, predicate)`
 
@@ -152,7 +189,7 @@ A purely factual criterion ("every `Finland` was replaced by `Sweden`", "the JSO
 
 #### Overriding the judge model per call
 
-apo's only built-in judge fallback is deliberately cheap (`google/gemini-2.5-flash` in the packaged task runtime; local runs use the model you configured): stronger models are always opt-in, never a surprise (see [Cost-aware defaults](/self-hosting/configuration/#cost-aware-defaults)). `opts.judge` is the most surgical opt-in: it overrides the run's judge config for **this call only**, merging field-by-field, use it to escalate one finicky criterion without switching the whole run onto an expensive model.
+apo's only built-in judge fallback is deliberately cheap (`deepseek/deepseek-v4.1-flash` in the packaged task runtime; local runs use the model you configured): stronger models are always opt-in, never a surprise (see [Cost-aware defaults](/self-hosting/configuration/#cost-aware-defaults)). `opts.judge` is the most surgical opt-in: it overrides the run's judge config for **this call only**, merging field-by-field, use it to escalate one finicky criterion without switching the whole run onto an expensive model.
 
 ```typescript title="my-task.eval.ts"
 test("answer-quality", async (t, { deliverables }) => {

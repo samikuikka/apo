@@ -67,6 +67,8 @@ turn(async ({ files, transcript }) => {
 
 `turn(...)` decides what the agent sees each turn. Files placed in the task's `files/` directory are auto-discovered and available here. **Returning `null` ends the turn loop.** Without it, the task keeps re-sending input until `maxTurns` cuts it off.
 
+Tasks can also script corrections that arrive *while the agent is working* — `steer({ when: { toolResults: 2 }, message: "..." })` next to `turn()`. That's its own guide: [Steer a running agent](/guides/steer-a-running-agent/).
+
 ## 3. Write the tests
 
 ```typescript

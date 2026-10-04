@@ -1,0 +1,110 @@
+---
+title: Steer a running agent
+description: "Script a mid-run correction and assert what the harness did about it: steer() schedules the message, t.steerDelivered and t.afterSteer grade the reaction."
+---
+
+Every coding-agent user steers: the agent is mid-task and you type "wait, exclude the cancelled orders." Whether the harness *responds correctly* — delivers the message, re-does the affected work, updates the deliverable instead of just acknowledging it — is a real capability, and until now an untested one. In apo it is a line in the task file: you script **when** the correction lands and assert **what the agent did about it**.
+
+This guide adds steering to a task, run against any adapter that implements the steer primitive (apo's demo agent and the pi coding agent both do — see [Adapter API → Steering](/reference/adapter/#steering)).
+
+## 1. Register a steer next to `turn()`
+
+`steer()` is called at the top level of the `.eval.ts` file, exactly where `turn()` is. The `when` field says at which boundary of the run the message is injected:
+
+```typescript title="my-task.eval.ts"
+import { task, turn, steer, test } from "@apo-ai/sdk/agent-task";
+
+turn(async (ctx) => {
+  if (ctx.transcript.length > 0) return null;
+  return "Build the monthly revenue report from data/orders.csv. Include every order status.";
+});
+
+steer({
+  when: { toolResults: 2 },        // after the 2nd tool result of turn 1
+  label: "exclude-cancelled",
+  message: "Correction: exclude cancelled orders from all revenue totals.",
+});
+```
+
+Triggers are **countable boundaries, never wall-clock time** — a run must stay reproducible in CI. A steer that never fires (the run finished too fast) is recorded as `undelivered` and fails your delivery check, which is exactly the verdict you want.
+
+| Trigger | Fires when |
+|---|---|
+| `{ toolResults: n }` | After the n-th completed tool result of the target turn. |
+| `{ assistantReply: n }` | After the n-th completed assistant message of the target turn. |
+| `"runStart"` | The moment the turn's input is handed to the agent. |
+| `turn: n` (field, not a trigger) | Which scripted turn the steer belongs to. Default 1. |
+
+## 2. Assert the reaction
+
+Three failure modes matter, and each has its own assertion. Register all of them:
+
+```typescript title="my-task.eval.ts"
+const { test } = task("steering-correction", { adapter: myAdapter, deliverables: ["report"] });
+
+// Dropped silently: the harness queued it but no model call ever saw it.
+test("correction-was-delivered", (t) => {
+  t.steerDelivered(1);
+});
+
+// Acknowledged but ignored: check what the agent DID after the steer.
+test("reacted-without-thrashing", (t) => {
+  t.afterSteer(1, (t2) => {
+    t2.maxToolCalls(12);           // t2 is the normal t.*, scoped to the post-steer window
+  });
+});
+
+// Talked the talk: the deliverable itself must carry the correction.
+test("report-incorporates-correction", (t, { deliverables }) => {
+  const total = /Total revenue:\s*([\d,.]+)/.exec(String(deliverables.report))?.[1];
+  t.check(total ?? "(no total)", satisfies((s) => s.includes("9,200.00"), "be the corrected total"));
+});
+```
+
+Every `t.*` method works inside `t.afterSteer`'s window — `calledTool`, `toolOrder`, `messageIncludes` — they just read the part of the trace that happened after the steer landed. Signatures: [Assertions API](/reference/assertions/#tsteerdeliveredn).
+
+## 3. Run it, and read the trace
+
+```bash title="terminal"
+apo task run steering-correction
+
+→ steering-correction
+  ✓ correction-was-delivered
+  ✓ reacted-without-thrashing
+  ✓ report-incorporates-correction
+  ✓ correction-is-coherent
+```
+
+The steer is a first-class event in the trace (`task.steer`), nested inside its turn, between the tool span that triggered it and the generation that consumed it:
+
+``` title="apo traces show <trace-id>"
+task.turn                7.2s
+  read (tool)
+  grep (tool)
+  task.steer             ← the scripted correction, delivered here
+  read (tool)            ← the agent re-did the affected work
+  chat (generation)      ← and produced the corrected total
+```
+
+If the run fails, the check breakdown tells you which failure mode: `steerDelivered` failing with *"no generation observation started after it"* means the harness accepted the message but no model call consumed it — the classic silent drop.
+
+## What your adapter needs
+
+Steering is a negotiated capability. The adapter's session must implement `steer(input)` (queue the message at your harness's tool boundary) and report progress via the `notifyAgentEvent` callback on `sendUserTurn`'s context — that is what the scheduler counts to decide *when* the trigger is satisfied. A task with steers against an adapter that cannot inject **fails before turn 1** with a clear error, rather than silently running steer-less:
+
+``` title="terminal"
+Error: Task "steering-correction" registers 1 steer(s) but adapter "my-adapter"
+does not implement session.steer().
+```
+
+The full contract, including the three progress events, is in [Adapter API → Steering](/reference/adapter/#steering). Two real implementations ship in the example service: the ai-sdk demo agent (an explicit step-loop with an inbox drained between steps) and the pi coding agent (pi's native `session.steer()`, which delivers "after the current assistant turn finishes executing its tool calls, before the next LLM call" — the same boundary the triggers count).
+
+:::note[apo schedules, the harness delivers]
+apo's scheduler decides when the steer fires; the adapter only provides the injection primitive. A `when: { toolResults: 2 }` schedule means the same thing on every harness — the runner counts progress events, the harness queues the message its own way.
+:::
+
+## See also
+
+- [Task API → `steer(spec)`](/reference/task/#steerspec): the full field reference.
+- [Assertions API](/reference/assertions/#tsteerdeliveredn): `t.steerDelivered` and `t.afterSteer` signatures.
+- [Adapter API → Steering](/reference/adapter/#steering): implementing `session.steer()` and `notifyAgentEvent` for your harness.

@@ -177,8 +177,10 @@ type AdapterSession = {
       trace: AgentTaskTraceContext;
       turnNumber: number;
       parentSpanId?: string;
+      notifyAgentEvent: (event: AgentProgressEvent) => void;
     },
   ) => Promise<AgentTurnResult>;
+  steer?: (input: unknown, context: SteerContext) => Promise<SteerResult>;
   close?: () => Promise<void>;
 };
 ```
@@ -192,6 +194,33 @@ runtime model identifier. Include `effort` only when the selected model/provider
 actually applies that control; omit defaults or accepted-but-ignored values.
 See [Report the run's model and effort](/concepts/adapters/#report-the-runs-model-and-effort)
 for the reporting rules and examples.
+
+## Steering
+
+Optional, negotiated per session. Two pieces:
+
+**`steer(input, context)`** — the injection primitive. Queue the message into your harness at its natural boundary (typically after the current tool batch, before the next model call) and resolve when the harness has *accepted* it — not when the agent has reacted; reaction is what `t.steerDelivered` asserts afterwards. Return `{ boundary }` reporting where it actually landed (`"run_start" | "tool_results" | "assistant_reply"`). Harness truth wins over the scheduler's intent.
+
+**`notifyAgentEvent(event)`** — on `sendUserTurn`'s context. Report progress while the turn runs; apo's scheduler counts these to decide when a `steer({ when })` trigger is satisfied:
+
+```typescript
+async sendUserTurn(turn, { trace, notifyAgentEvent }) {
+  notifyAgentEvent({ kind: "run_start" });              // first, always
+  // … your harness streams; for each tool result:
+  notifyAgentEvent({ kind: "tool_result", toolName: "read_file" });
+  // … for each completed assistant message:
+  notifyAgentEvent({ kind: "assistant_reply" });
+  return { response: finalText };
+}
+```
+
+The adapter is the source of progress because apo cannot observe subprocess harness spans live — the runner stays the single arbiter of *when* a steer fires, so a `when: { toolResults: 2 }` schedule means the same thing on every harness. Fire-and-forget: never `await` inside `notifyAgentEvent`, apo serializes internally and scheduler errors never break your turn.
+
+:::caution[Fail-closed negotiation]
+A task that registers `steer()` against an adapter whose session has no `steer` method fails **before turn 1** — the task is unrunnable, not silently steer-less. If your harness cannot inject mid-run, say so by not implementing the method.
+:::
+
+Two real implementations ship in the example service: `ai-sdk-adapter.ts` (an explicit one-step loop that drains an inbox between model calls) and `pi-adapter.ts` (pi's native `session.steer()`, which delivers exactly at apo's `tool_results` boundary). The steering flow end to end is [Steer a running agent](/guides/steer-a-running-agent/).
 
 ## Context fields
 

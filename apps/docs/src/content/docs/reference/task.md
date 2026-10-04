@@ -3,10 +3,10 @@ title: Task API
 description: "task(), turn(), test(), describe(): the calls that make up a .eval.ts file. Signatures, fields, and examples."
 ---
 
-The calls that make up a `.eval.ts` file: `task()`, `turn()`, `test()`, and `describe()`. Together they define *what* to run, *what the agent sees* each turn, and *what good means*. For the folder convention and writing flow, see [Tasks](/concepts/tasks/) and [Define a Task](/guides/define-a-task/).
+The calls that make up a `.eval.ts` file: `task()`, `turn()`, `steer()`, `test()`, and `describe()`. Together they define *what* to run, *what the agent sees* each turn, *what corrections arrive mid-run*, and *what good means*. For the folder convention and writing flow, see [Tasks](/concepts/tasks/) and [Define a Task](/guides/define-a-task/).
 
 ```typescript title="my-task.eval.ts"
-import { task, turn } from "@apo-ai/sdk/agent-task";
+import { task, turn, steer } from "@apo-ai/sdk/agent-task";
 ```
 
 ## `task(name, config)`
@@ -148,6 +148,41 @@ function turn<TUserTurn>(fn: TurnFn<TUserTurn>): void;
 :::note[Returning null or undefined ends the loop]
 If `turn` returns `null` (or `undefined`), the turn loop stops. Without this, apo keeps re-sending the same input until `maxTurns` cuts it off. For a single-turn task, return your input on the first call and `null` thereafter.
 :::
+
+## `steer(spec)`
+
+Script a mid-run correction: a user message injected into a turn that is already running, at a boundary you name. apo's scheduler counts the adapter's progress events and delivers the message through `session.steer()` when the trigger fires — the interaction every coding-agent user has daily, as a reproducible part of the specification. See [Steer a running agent](/guides/steer-a-running-agent/) for the flow.
+
+```typescript title="my-task.eval.ts"
+steer({
+  when: { toolResults: 2 },
+  label: "exclude-cancelled",
+  message: "Correction: exclude cancelled orders from all revenue totals.",
+});
+```
+
+```typescript
+type SteerTrigger =
+  | { toolResults: number }   // after the n-th tool result of the target turn
+  | { assistantReply: number } // after the n-th assistant message
+  | "runStart";               // the moment the turn starts
+
+function steer(spec: {
+  when: SteerTrigger;
+  message: unknown;          // same shape a turn() return value has
+  label?: string;            // shown in the trace, transcript, and failures
+  turn?: number;             // 1-based scripted turn. Default 1.
+}): void;
+```
+
+| Field | Type | Purpose |
+|---|---|---|
+| `when` | `SteerTrigger` | The boundary the steer fires at. Countable events only — never wall-clock, so runs stay reproducible. |
+| `message` | `unknown` | The injected user message. |
+| `label` | `string` | Human label on the `task.steer` trace event and check failures. |
+| `turn` | `number` | Which scripted turn the steer belongs to (default 1). |
+
+Each spec fires at most once per run. Triggers that never fire (the run ended first) are recorded as `undelivered` with the reason — and `t.steerDelivered` turns that red. Steers require an adapter that implements `session.steer()`; against one that cannot inject, the run fails closed before turn 1 (see [Adapter API → Steering](/reference/adapter/#steering)).
 
 ## `test(id, fn)`
 

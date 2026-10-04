@@ -35,6 +35,9 @@ turn(async ({ files, transcript }) => {
   return await files.read("contract.pdf");
 });
 
+// Mid-run steering: a correction injected while the agent is still working,
+// at a boundary the task names. See "Steer a running agent" (linked below).
+
 // Deterministic: did the agent open the contract, with nothing errored?
 test("used-source-document", (t) => {
   t.calledTool("read_file", { input: { path: "contract.pdf" } });
@@ -60,3 +63,4 @@ The task name is the folder name. Discovery scans for `.eval.ts` files: drop the
 - [Adapters](/concepts/adapters/): what the `adapter` option actually is, and why you write it.
 - [Tests](/concepts/tests/): the assertion vocabulary (`t.calledTool`, `t.check`, `t.judge`, matchers).
 - [Define a Task](/guides/define-a-task/): the step-by-step recipe.
+- [Steer a running agent](/guides/steer-a-running-agent/): script a mid-run correction and assert the harness handled it.

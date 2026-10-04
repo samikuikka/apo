@@ -36,6 +36,8 @@ test("parties-are-complete", async (t, { deliverables }) => {
 
 The `t` object carries assertions like `calledTool`, `noFailedActions`, and `check`. The second argument to the callback is a context with `{ deliverables, files, task }`: `deliverables` is the task-selected subset of what your adapter returned, inferred automatically; `files` is the task's inputs. The full method list lives in the [Assertions API](/reference/assertions/).
 
+Trace assertions can also be **scoped in time**: when a task [steers the agent mid-run](/guides/steer-a-running-agent/), `t.steerDelivered(n)` asserts the correction reached a model call and `t.afterSteer(n, fn)` runs any assertion against only the part of the trace that happened after it — "what did the agent do about the correction" as a first-class question.
+
 ## How the result is computed
 
 If every test passes, the run passes. If any test fails, the run fails. No weighting, no scores, no partial credit.
