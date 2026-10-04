@@ -1,6 +1,6 @@
 [project]
 name = "apo-backend"
-version = "0.2.0"
+version = "0.3.0"
 description = "Backend services for apo"
 requires-python = ">=3.13,<3.15"
 dependencies = [
