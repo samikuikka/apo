@@ -87,6 +87,12 @@ export type {
 } from "./checks/judge.ts";
 export { TEST_METHOD_NAMES } from "./checks/t.ts";
 export {
+  secondJudgeFacts,
+  secondJudgeTakeaway,
+  type SecondJudgeFacts,
+  type SecondJudgeFactsInput,
+} from "./checks/second-judge.ts";
+export {
   type AgentBudget,
   type AgentEvidence,
   type AgentJudgeOptions,
@@ -122,6 +128,7 @@ export type {
   TaskTranscriptTurn,
 } from "./run/types.ts";
 export { runTask, AgentTaskRunError, type RunTaskOptions } from "./run/runTask.ts";
+export { NO_CHECKS_REGISTERED_MESSAGE } from "./run/aggregate.ts";
 export {
   rejudgeTaskRun,
   RejudgeError,

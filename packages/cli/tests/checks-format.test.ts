@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { formatChecks, isNoVerdict, NO_CHECKS_REGISTERED_MESSAGE } from "../src/lib/checks-format.ts";
+import { formatChecks, isNoVerdict } from "../src/lib/checks-format.ts";
+import { NO_CHECKS_REGISTERED_MESSAGE } from "@apo-ai/sdk/agent-task";
 import { stripAnsi } from "../src/lib/format.ts";
 import type { CheckResult } from "../src/lib/agent-task-types.ts";
 

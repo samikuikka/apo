@@ -5,11 +5,8 @@
  * and the run gets one fact line.
  */
 import { describe, expect, it } from "vitest";
-import {
-  formatChecks,
-  secondJudgeFacts,
-  secondJudgeSummary,
-} from "../src/lib/checks-format.ts";
+import { formatChecks, secondJudgeSummary } from "../src/lib/checks-format.ts";
+import { secondJudgeFacts } from "@apo-ai/sdk/agent-task";
 import type { CheckResult, SecondJudgeEvidence } from "../src/lib/agent-task-types.ts";
 
 function check(overrides: Partial<CheckResult> = {}): CheckResult {

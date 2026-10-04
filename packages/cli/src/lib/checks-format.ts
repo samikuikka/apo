@@ -5,31 +5,15 @@ import type {
 } from "./agent-task-types.ts";
 import { dim, green, passFail, red, yellow } from "./format.ts";
 import { RECEIVED_PREVIEW_CHARS, previewString, segmentText } from "./runs-truncate.ts";
+import { secondJudgeFacts, secondJudgeTakeaway } from "@apo-ai/sdk/agent-task";
 
 //─ Second judge: measurements, not diagnoses ──────────────────────────
 //
-// The same language as the dashboard run page: corroborated checks stay
+// The facts and takeaway sentences come from the SDK
+// (`secondJudgeFacts` / `secondJudgeTakeaway`) so the CLI, the dashboard,
+// and the SDK can never fork the language: corroborated checks stay
 // silent; a split shows both verdicts plus the second judge's confidence
 // (the number is the measurement — no label claims *why* they differ).
-
-type SecondJudgeFacts =
-  | { kind: "none" }
-  | { kind: "error" }
-  | { kind: "skipped" }
-  | { kind: "split"; confidence: number }
-  | { kind: "agree"; confidence: number }
-  | { kind: "unsure"; confidence: number };
-
-export function secondJudgeFacts(check: CheckResult): SecondJudgeFacts {
-  const sj = check.judge?.secondJudge;
-  if (!sj) return { kind: "none" };
-  if (sj.skipped) return { kind: "skipped" };
-  if (sj.error || sj.choice == null) return { kind: "error" };
-  const conf = sj.confidence ?? 0;
-  if ((sj.choice === "pass") !== check.pass) return { kind: "split", confidence: conf };
-  if (conf < 0.6) return { kind: "unsure", confidence: conf };
-  return { kind: "agree", confidence: conf };
-}
 
 /** Row suffix: `✓✗ 0.99` (amber) for splits, `✓✓ ·0.31` (dim) for unsure,
  *  `2nd ✕` for a failed second opinion, `2nd ⊘` for one that could not read
@@ -48,23 +32,6 @@ function secondJudgeMark(check: CheckResult): string {
   if (facts.kind === "error") return ` ${dim("2nd ✕")}`;
   if (facts.kind === "skipped") return ` ${dim("2nd ⊘")}`;
   return "";
-}
-
-/** One honest sentence about the relation — the same takeaway the dashboard expand shows. */
-function secondJudgeTakeaway(check: CheckResult): string | null {
-  const facts = secondJudgeFacts(check);
-  switch (facts.kind) {
-    case "split":
-      return `Verdicts differ — second judge contradicts at ${facts.confidence.toFixed(2)} confidence.`;
-    case "unsure":
-      return `Second judge unsure (${facts.confidence.toFixed(2)}) — weak corroboration.`;
-    case "error":
-      return `Second opinion failed to arrive${check.judge?.secondJudge?.error ? ` (${check.judge.secondJudge.error})` : ""}.`;
-    case "skipped":
-      return `Second opinion skipped${check.judge?.secondJudge?.skipped ? ` — ${check.judge.secondJudge.skipped}` : ""}.`;
-    default:
-      return null;
-  }
 }
 
 /** Run-level fact line, or null when no second judge ran on any check. */
@@ -87,21 +54,6 @@ export function secondJudgeSummary(checks: CheckResult[]): string | null {
   if (skipped > 0) parts.push(`${skipped} skipped (value too large)`);
   return `Second judge: ${parts.join(" · ")}`;
 }
-
-/**
- * Issue #8: shown when a run ends with zero registered checks. A bare
- * `FAIL <task>` with no Checks section looked like a real failure but was
- * almost always a silent registration bug (e.g. a double-import that wiped
- * the check registry). Naming `test()` matches the documented registration
- * function — `apps/docs` reference/task.md.
- *
- * Kept in sync with the SDK's copy in `packages/sdk/src/agent-task/run/aggregate.ts`.
- * The CLI can't import the SDK's constant directly because vitest resolves
- * `@apo-ai/sdk/agent-task` without the `development` export condition (no source
- * build in tests), so the value would be `undefined` at test time.
- */
-export const NO_CHECKS_REGISTERED_MESSAGE =
-  "No tests were registered by the eval module — a task must define at least one test().";
 
 /**
  * Render a run's `checks_json` section, terminal-style.

@@ -10,7 +10,8 @@ import { run } from "../src/commands/runs-rejudge.ts";
 import { rejudgeTaskRun } from "@apo-ai/sdk/agent-task";
 import { stripAnsi } from "../src/lib/format.ts";
 
-vi.mock("@apo-ai/sdk/agent-task", () => ({
+vi.mock("@apo-ai/sdk/agent-task", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@apo-ai/sdk/agent-task")>()),
   rejudgeTaskRun: vi.fn(),
 }));
 

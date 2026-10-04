@@ -1,8 +1,15 @@
 import type { CheckResult, SecondJudgeEvidence } from "@/lib/agent-task-api";
 
 /**
- * Second-judge facts — measurements, not diagnoses. The UI mirrors the CLI
- * mark language: corroborated checks stay silent; a split shows both verdicts
+ * Second-judge facts — measurements, not diagnoses. A client-bundle-safe
+ * local copy of the SDK's `secondJudgeFacts` / `secondJudgeTakeaway`
+ * (`packages/sdk/src/agent-task/checks/second-judge.ts` is the single
+ * source of truth — ``@apo-ai/sdk/agent-task`` is a server-runtime entry
+ * that must never enter the browser bundle, so this module re-implements
+ * the derivations instead of importing them).
+ * ``__tests__/second-judge-drift.test.ts`` asserts behavior equality with
+ * the SDK export so any divergence fails CI instead of forking the
+ * language. Corroborated checks stay silent; a split shows both verdicts
  * plus the second judge's confidence; nothing claims *why* they differ.
  */
 

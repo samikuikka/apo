@@ -22,6 +22,72 @@
 
 import type { SecondJudgeEvidence } from "../run/types.ts";
 
+//─ Facts derived from recorded evidence ────────────────────────────────
+//
+// Pure, dependency-free classifications of how a recorded second-judge
+// opinion relates to the check's verdict. Every renderer of second-judge
+// evidence — the CLI's terminal output, and the dashboard's run page via a
+// client-bundle-safe local copy guarded by a drift test — derives from
+// these so the language can never fork. They are measurements, not
+// diagnoses: corroborated checks stay silent, a split shows both verdicts
+// plus confidence, and nothing claims *why* they differ.
+
+/** How a recorded second-judge opinion relates to the check's verdict. */
+export type SecondJudgeFacts =
+  | { kind: "none" } // no second judge ran (code/agentic check, or feature off)
+  | { kind: "error" } // second opinion failed to arrive
+  | { kind: "skipped" } // no verdict possible — the value exceeded the model's context
+  | { kind: "split"; confidence: number } // verdicts differ — look closer
+  | { kind: "agree"; confidence: number } // corroborated
+  | { kind: "unsure"; confidence: number }; // agreed, but weakly (conf < 0.6)
+
+/**
+ * Structural input for {@link secondJudgeFacts}: any check shape carrying a
+ * verdict and optional judge evidence — the SDK's own results and the wire
+ * types the CLI and dashboard read from the backend are all assignable.
+ */
+export type SecondJudgeFactsInput = {
+  pass: boolean;
+  judge?: {
+    secondJudge?: {
+      choice?: "pass" | "fail";
+      confidence?: number;
+      skipped?: string;
+      error?: string;
+    };
+  };
+};
+
+export function secondJudgeFacts(check: SecondJudgeFactsInput): SecondJudgeFacts {
+  const sj = check.judge?.secondJudge;
+  if (!sj) return { kind: "none" };
+  if (sj.skipped) return { kind: "skipped" };
+  if (sj.error || sj.choice == null) return { kind: "error" };
+  const conf = sj.confidence ?? 0;
+  if ((sj.choice === "pass") !== (check.pass === true)) {
+    return { kind: "split", confidence: conf };
+  }
+  if (conf < 0.6) return { kind: "unsure", confidence: conf };
+  return { kind: "agree", confidence: conf };
+}
+
+/** One honest sentence about the relation; null when corroborated. */
+export function secondJudgeTakeaway(check: SecondJudgeFactsInput): string | null {
+  const facts = secondJudgeFacts(check);
+  switch (facts.kind) {
+    case "split":
+      return `Verdicts differ — second judge contradicts at ${facts.confidence.toFixed(2)} confidence.`;
+    case "unsure":
+      return `Second judge unsure (${facts.confidence.toFixed(2)}) — weak corroboration.`;
+    case "error":
+      return `Second opinion failed to arrive${check.judge?.secondJudge?.error ? ` (${check.judge.secondJudge.error})` : ""}.`;
+    case "skipped":
+      return `Second opinion skipped${check.judge?.secondJudge?.skipped ? ` — ${check.judge.secondJudge.skipped}` : ""}.`;
+    default:
+      return null;
+  }
+}
+
 /**
  * Decision calls are sub-second; this ceiling only guards against a hung
  * connection delaying check submission after the primary judge resolved.

@@ -3,12 +3,8 @@ import { resolveConfig } from "../lib/config.ts";
 import { bold, dim, formatCost, formatJson, formatTime, yellow } from "../lib/format.ts";
 import { apiGet } from "../lib/api.ts";
 import type { CheckResult, DeliverableSummary } from "../lib/agent-task-types.ts";
-import {
-  formatChecks,
-  formatRunResult,
-  NO_CHECKS_REGISTERED_MESSAGE,
-  secondJudgeSummary,
-} from "../lib/checks-format.ts";
+import { formatChecks, formatRunResult, secondJudgeSummary } from "../lib/checks-format.ts";
+import { NO_CHECKS_REGISTERED_MESSAGE } from "@apo-ai/sdk/agent-task";
 import { conciseChecks, conciseDeliverables } from "../lib/runs-truncate.ts";
 import { resolveRunId, resolveLatestRunId } from "../lib/runs-resolve.ts";
 import { reportCommandError } from "../lib/command-error.ts";

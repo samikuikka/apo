@@ -6,13 +6,8 @@ import { apiGet, isBackendReachable } from "../lib/api.ts";
 import { discoverTaskMeta, findTaskMetaById } from "../lib/task-meta.ts";
 import { bold, dim, formatJson, red, runVerdict, verdictExitCode } from "../lib/format.ts";
 import type { CheckResult } from "../lib/agent-task-types.ts";
-import {
-  NO_VERDICT_MESSAGE_PREFIX,
-  formatChecks,
-  isNoVerdict,
-  NO_CHECKS_REGISTERED_MESSAGE,
-  secondJudgeSummary,
-} from "../lib/checks-format.ts";
+import { NO_VERDICT_MESSAGE_PREFIX, formatChecks, isNoVerdict, secondJudgeSummary } from "../lib/checks-format.ts";
+import { NO_CHECKS_REGISTERED_MESSAGE } from "@apo-ai/sdk/agent-task";
 import { walkWorkspaceForRevision } from "../lib/task-revision.ts";
 import { prepareTaskDefinition } from "../lib/task-definition.ts";
 import { readGitProvenance, buildCallerIdentity } from "../lib/git-provenance.ts";
