@@ -271,12 +271,6 @@ export function decisionsEndpoint(chatBaseURL: string): string {
 }
 
 /**
- * Ask the decision model for a pass/fail verdict on the same state the
- * primary judge saw (briefing + values + instruction). Never throws —
- * every failure mode becomes `error` on the returned evidence so a broken
- * second opinion cannot break the check it accompanies.
- */
-/**
  * OpenRouter's decisions endpoint reports an input that exceeds the model's
  * context limit as `error_type: "max_tokens_exceeded"` (wrapped in an HTTP
  * 400); OpenAI-style providers say `context_length_exceeded`. Both mean the
@@ -302,6 +296,12 @@ function estimateTokens(text: string): number {
   return Math.round(text.length / 4 / 1000) * 1000;
 }
 
+/**
+ * Ask the decision model for a pass/fail verdict on the same state the
+ * primary judge saw (briefing + values + instruction). Never throws —
+ * every failure mode becomes `error` on the returned evidence so a broken
+ * second opinion cannot break the check it accompanies.
+ */
 export async function callSecondJudge(args: {
   state: string;
   model: string;

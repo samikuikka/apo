@@ -251,6 +251,7 @@ export async function runSteerableChat(
   const allToolCalls: Array<{ tool: string; args: Record<string, unknown>; result: unknown }> = [];
   let inputTokens = 0;
   let outputTokens = 0;
+  let reasoningTokens = 0;
   let sawUsage = false;
   let responseText = "";
   const maxSteps = request.maxSteps ?? 8;
@@ -276,11 +277,13 @@ export async function runSteerableChat(
       sawUsage = true;
       inputTokens += result.usage.inputTokens ?? 0;
       outputTokens += result.usage.outputTokens ?? 0;
+      reasoningTokens +=
+        result.usage.outputTokenDetails?.reasoningTokens ?? result.usage.reasoningTokens ?? 0;
     }
     for (const s of result.steps) {
-      for (const tc of s.toolCalls) {
+      for (const [i, tc] of s.toolCalls.entries()) {
         const input = "input" in tc ? (tc as { input: Record<string, unknown> }).input : {};
-        const toolResult = s.toolResults[s.toolCalls.indexOf(tc)];
+        const toolResult = s.toolResults[i];
         const output =
           toolResult && "output" in toolResult
             ? (toolResult as { output: unknown }).output
@@ -319,6 +322,27 @@ export async function runSteerableChat(
     });
     responseText = synthesis.text;
     opts.onProgress({ kind: "assistant_reply" });
+  }
+
+  // Same span stamping contract as handleChat: without ai.response.text the
+  // generation span carries no output, and the AI SDK's generateText
+  // telemetry drops reasoning tokens — apo's reasoning rollups would read
+  // the steering run as "not reported" while the plain chat path reports.
+  if (telemetryEnabled && responseText) {
+    try {
+      // @ts-ignore — @opentelemetry/api is a transitive dep of `ai`;
+      // resolves in some environments but not others.
+      const { trace } = await import("@opentelemetry/api");
+      const activeSpan = trace.getActiveSpan();
+      if (activeSpan) {
+        activeSpan.setAttribute("ai.response.text", responseText);
+        if (sawUsage && reasoningTokens > 0) {
+          activeSpan.setAttribute("ai.usage.reasoningTokens", reasoningTokens);
+        }
+      }
+    } catch {
+      // opentelemetry/api not available — tracing is optional
+    }
   }
 
   return {

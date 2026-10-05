@@ -134,8 +134,8 @@ const SEARCH_MAX_PATTERN = 200;
 const SEARCH_SCAN_LIMIT = 64 * 1024;
 const SEARCH_MAX_EXEC = 10_000;
 
-// Recording caps (design §10): the stored transcript is an index; sha256 +
-// byte size preserve identity for every truncated field.
+// Recording caps: the stored transcript is an index; sha256 + byte size
+// preserve identity for every truncated field.
 const RECORD_RESULT_LIMIT = 4 * 1024;
 const RECORD_INPUT_LIMIT = 2 * 1024;
 const RECORD_TEXT_LIMIT = 2 * 1024;
@@ -179,13 +179,39 @@ function isAbortError(error: unknown): boolean {
 
 // Models trained on PCRE conventions prefix patterns with inline flags
 // ((?i), (?im), …); JS RegExp rejects that group as invalid. The search tool
-// always compiles case-insensitive + multiline, so a leading flag group is
-// redundant — strip it rather than fail the call. Scoped groups like (?i:…)
-// and named groups ((?<name>…)) are not matched and still error honestly.
-const LEADING_PCRE_FLAGS = /^\(\?[a-z]+\)/;
+// always compiles case-insensitive + multiline, so `i` and `m` in a leading
+// flag group are redundant and stripped; `s` (dotall) maps onto the compile
+// flags so `.` crosses newlines as the model expects. Any other leading flag
+// has no JS equivalent and fails the call honestly rather than compiling to
+// a quietly different pattern. Scoped groups like (?i:…) and named groups
+// ((?<name>…)) are not matched and still error honestly.
+const LEADING_PCRE_FLAGS = /^\(\?([a-z]+)\)/;
+const PCRE_FLAGS_JS_SUPPORTS = new Set(["i", "m", "s"]);
 
-function stripLeadingPcreFlags(pattern: string): string {
-  return pattern.replace(LEADING_PCRE_FLAGS, "");
+function stripLeadingPcreFlags(pattern: string): { pattern: string; flags: string } {
+  const m = LEADING_PCRE_FLAGS.exec(pattern);
+  if (!m) return { pattern, flags: "gim" };
+  const unsupported = [...m[1]!].filter((f) => !PCRE_FLAGS_JS_SUPPORTS.has(f));
+  if (unsupported.length > 0) {
+    throw new Error(`leading flag group (?${m[1]}) — JS RegExp has no equivalent for ${unsupported.join(", ")}`);
+  }
+  return {
+    pattern: pattern.slice(m[0].length),
+    flags: m[1]!.includes("s") ? "gims" : "gim",
+  };
+}
+
+// PCRE string anchors and quote constructs compile fine in JS but match
+// something else entirely (\A is an identity escape for literal "A"), so a
+// pattern using them would return silently wrong match counts. Reject with
+// a rewrite hint instead.
+const UNSUPPORTED_PCRE_CONSTRUCTS = /\\[AQZz]/;
+
+function rejectUnsupportedPcreConstructs(pattern: string): string | undefined {
+  const m = UNSUPPORTED_PCRE_CONSTRUCTS.exec(pattern);
+  return m
+    ? `unsupported PCRE construct ${m[0]} — JS RegExp has no equivalent; anchor with ^ / $ (the search is multiline) or rewrite the pattern`
+    : undefined;
 }
 
 /** Aggregate a recorded transcript's per-step usage — works for partial runs. */
@@ -323,19 +349,19 @@ function buildEvidenceTools(args: {
       execute: async (input: never) => {
         const { name, offset, limit } = input as { name: string; offset: number; limit: number };
         return span("read_deliverable", input, async () => {
-        const guard = budgetGuard();
-        if (guard) return { error: guard };
-        if (!Object.prototype.hasOwnProperty.call(evidence.deliverables, name)) {
-          return { error: `unknown deliverable: ${name}` };
-        }
-        const content = renderValue(evidence.deliverables[name]);
-        const slice = content.slice(offset, offset + limit);
-        const overflow = accountRead(
-          "read_deliverable", JSON.stringify({ name, offset, limit }), slice,
-          () => `read budget exhausted (${budget.maxReadBytes} bytes); call finish_verdict now`,
-        );
-        if (overflow) return { error: overflow };
-        return { name, total_bytes: content.length, offset, returned: slice.length, content: slice };
+          const guard = budgetGuard();
+          if (guard) return { error: guard };
+          if (!Object.prototype.hasOwnProperty.call(evidence.deliverables, name)) {
+            return { error: `unknown deliverable: ${name}` };
+          }
+          const content = renderValue(evidence.deliverables[name]);
+          const slice = content.slice(offset, offset + limit);
+          const overflow = accountRead(
+            "read_deliverable", JSON.stringify({ name, offset, limit }), slice,
+            () => `read budget exhausted (${budget.maxReadBytes} bytes); call finish_verdict now`,
+          );
+          if (overflow) return { error: overflow };
+          return { name, total_bytes: content.length, offset, returned: slice.length, content: slice };
         });
       },
     }),
@@ -349,41 +375,44 @@ function buildEvidenceTools(args: {
       execute: async (input: never) => {
         const { name, pattern } = input as { name: string; pattern: string };
         return span("search_deliverable", input, async () => {
-        const guard = budgetGuard();
-        if (guard) return { error: guard };
-        if (!Object.prototype.hasOwnProperty.call(evidence.deliverables, name)) {
-          return { error: `unknown deliverable: ${name}` };
-        }
-        if (pattern.length > SEARCH_MAX_PATTERN) {
-          return { error: `pattern too long (max ${SEARCH_MAX_PATTERN} chars)` };
-        }
-        let re: RegExp;
-        try {
-          re = new RegExp(stripLeadingPcreFlags(pattern), "gim");
-        } catch (error) {
-          return {
-            error:
-              `invalid regex: ${error instanceof Error ? error.message : String(error)}` +
-              " — patterns compile as case-insensitive multiline; leading PCRE flags like (?i) are stripped automatically",
-          };
-        }
-        const content = renderValue(evidence.deliverables[name]).slice(0, SEARCH_SCAN_LIMIT);
-        const hits: { at_byte: number; context: string }[] = [];
-        let m: RegExpExecArray | null;
-        let execs = 0;
-        while ((m = re.exec(content)) && hits.length < SEARCH_HITS) {
-          if (++execs > SEARCH_MAX_EXEC) break;
-          const start = Math.max(0, m.index - SEARCH_CONTEXT);
-          hits.push({ at_byte: m.index, context: content.slice(start, m.index + m[0].length + SEARCH_CONTEXT) });
-          if (m.index === re.lastIndex) re.lastIndex++;
-        }
-        const served = JSON.stringify({ total_bytes: content.length, match_count: hits.length, matches: hits });
-        const overflow = accountRead(
-          "search_deliverable", JSON.stringify({ name, pattern }), served,
-          () => `read budget exhausted (${budget.maxReadBytes} bytes); call finish_verdict now`,
-        );
-        if (overflow) return { error: overflow };
-        return { total_bytes: content.length, match_count: hits.length, matches: hits };
+          const guard = budgetGuard();
+          if (guard) return { error: guard };
+          if (!Object.prototype.hasOwnProperty.call(evidence.deliverables, name)) {
+            return { error: `unknown deliverable: ${name}` };
+          }
+          if (pattern.length > SEARCH_MAX_PATTERN) {
+            return { error: `pattern too long (max ${SEARCH_MAX_PATTERN} chars)` };
+          }
+          const unsupported = rejectUnsupportedPcreConstructs(pattern);
+          if (unsupported) return { error: unsupported };
+          let re: RegExp;
+          try {
+            const stripped = stripLeadingPcreFlags(pattern);
+            re = new RegExp(stripped.pattern, stripped.flags);
+          } catch (error) {
+            return {
+              error:
+                `invalid regex: ${error instanceof Error ? error.message : String(error)}` +
+                " — patterns compile as case-insensitive multiline; leading PCRE flags like (?i) are stripped automatically",
+            };
+          }
+          const content = renderValue(evidence.deliverables[name]).slice(0, SEARCH_SCAN_LIMIT);
+          const hits: { at_byte: number; context: string }[] = [];
+          let m: RegExpExecArray | null;
+          let execs = 0;
+          while ((m = re.exec(content)) && hits.length < SEARCH_HITS) {
+            if (++execs > SEARCH_MAX_EXEC) break;
+            const start = Math.max(0, m.index - SEARCH_CONTEXT);
+            hits.push({ at_byte: m.index, context: content.slice(start, m.index + m[0].length + SEARCH_CONTEXT) });
+            if (m.index === re.lastIndex) re.lastIndex++;
+          }
+          const served = JSON.stringify({ total_bytes: content.length, match_count: hits.length, matches: hits });
+          const overflow = accountRead(
+            "search_deliverable", JSON.stringify({ name, pattern }), served,
+            () => `read budget exhausted (${budget.maxReadBytes} bytes); call finish_verdict now`,
+          );
+          if (overflow) return { error: overflow };
+          return { total_bytes: content.length, match_count: hits.length, matches: hits };
         });
       },
     }),
@@ -397,9 +426,9 @@ function buildEvidenceTools(args: {
             inputSchema: z.object({}),
             execute: async () => {
               return span("list_runs", {}, async () => {
-                const guard = budgetGuard();
-                if (guard) return { error: guard };
-                return evidence.history!.runs;
+                  const guard = budgetGuard();
+                  if (guard) return { error: guard };
+                  return evidence.history!.runs;
               });
             },
           }),
@@ -413,16 +442,16 @@ function buildEvidenceTools(args: {
             execute: async (input: never) => {
               const { run_id } = input as { run_id: string };
               return span("get_run", input, async () => {
-              const guard = budgetGuard();
-              if (guard) return { error: guard };
-              const detail = await evidence.history!.getRun(run_id);
-              const served = JSON.stringify(detail);
-              const overflow = accountRead(
-                "get_run", JSON.stringify({ run_id }), served,
-                () => `read budget exhausted (${budget.maxReadBytes} bytes); call finish_verdict now`,
-              );
-              if (overflow) return { error: overflow };
-              return detail;
+                const guard = budgetGuard();
+                if (guard) return { error: guard };
+                const detail = await evidence.history!.getRun(run_id);
+                const served = JSON.stringify(detail);
+                const overflow = accountRead(
+                  "get_run", JSON.stringify({ run_id }), served,
+                  () => `read budget exhausted (${budget.maxReadBytes} bytes); call finish_verdict now`,
+                );
+                if (overflow) return { error: overflow };
+                return detail;
               });
             },
           }),
@@ -434,13 +463,13 @@ function buildEvidenceTools(args: {
       inputSchema: z.object({}),
       execute: async () => {
         return span("get_task_definition", {}, async () => {
-        const guard = budgetGuard();
-        if (guard) return { error: guard };
-        return {
-          task_id: scope?.taskId,
-          description: scope?.taskDescription ?? "(unavailable)",
-          deliverables: Object.keys(evidence.deliverables),
-        };
+          const guard = budgetGuard();
+          if (guard) return { error: guard };
+          return {
+            task_id: scope?.taskId,
+            description: scope?.taskDescription ?? "(unavailable)",
+            deliverables: Object.keys(evidence.deliverables),
+          };
         });
       },
     }),
@@ -454,27 +483,27 @@ function buildEvidenceTools(args: {
       execute: async (input: never) => {
         const { query } = input as { query: string };
         return span("get_trace", input, async () => {
-        const guard = budgetGuard();
-        if (guard) return { error: guard };
-        const view = evidence.view;
-        if (!view) {
-          return {
-            status: "unsupported",
-            detail: "no trace projection exists for this run — judge on deliverables instead",
-          };
-        }
-        if (view.requireCapability("tools") !== "available") {
-          return { status: "unsupported", detail: "tool-call evidence is unavailable in this trace projection" };
-        }
-        const calls = view.toolCalls
-          .filter((c) => (query ? c.name.includes(query) : true))
-          .slice(0, 30)
-          .map((c) => ({ name: c.name, input: renderValue(c.input).slice(0, 200) }));
-        const reply =
-          view.requireCapability("messages") === "available" && view.reply
-            ? view.reply.slice(0, 1500)
-            : undefined;
-        return { turns: view.turnCount, tool_calls: calls, ...(reply !== undefined ? { final_reply: reply } : {}) };
+          const guard = budgetGuard();
+          if (guard) return { error: guard };
+          const view = evidence.view;
+          if (!view) {
+            return {
+              status: "unsupported",
+              detail: "no trace projection exists for this run — judge on deliverables instead",
+            };
+          }
+          if (view.requireCapability("tools") !== "available") {
+            return { status: "unsupported", detail: "tool-call evidence is unavailable in this trace projection" };
+          }
+          const calls = view.toolCalls
+            .filter((c) => (query ? c.name.includes(query) : true))
+            .slice(0, 30)
+            .map((c) => ({ name: c.name, input: renderValue(c.input).slice(0, 200) }));
+          const reply =
+            view.requireCapability("messages") === "available" && view.reply
+              ? view.reply.slice(0, 1500)
+              : undefined;
+          return { turns: view.turnCount, tool_calls: calls, ...(reply !== undefined ? { final_reply: reply } : {}) };
         });
       },
     });
@@ -551,7 +580,7 @@ function truncateForRecord(text: string | undefined, limit: number): string | un
 }
 
 /**
- * Shape a recorded session under the §10 caps: fields truncated with
+ * Shape a recorded session under the recording caps: fields truncated with
  * identity preserved (sha256 + bytes stay), step count head+tail preserved so
  * early orientation AND the final verdict always survive.
  */
@@ -932,19 +961,29 @@ export function createAgentMethod(
           : `judge ${result.verdict.pass ? "PASSed" : "FAILed"} where ground truth is ` +
             `${opts.expect.toUpperCase()} — judge reasoning: ${result.verdict.reasoning}`;
 
-      // Vacuous-verdict marker: a verdict reached with an empty evidence
-      // manifest while deliverables existed to read is diligence signal.
-      // Surfaced in the recorded reasoning so a lazy judge cannot hide
-      // behind agreement — measured: verdicts with zero reads agreeing
-      // with ground truth by prior alone on a fail-heavy battery. Not a
-      // scoring change; the outcome is untouched.
+      // Vacuous-verdict marker: a verdict that consulted no run evidence at
+      // all — no deliverable read (manifest), no get_trace/get_run/list_runs
+      // call, no exhibits rendered into the briefing — while deliverables
+      // existed to read is diligence signal. Surfaced in the recorded
+      // reasoning so a lazy judge cannot hide behind agreement — measured:
+      // verdicts with zero reads agreeing with ground truth by prior alone
+      // on a fail-heavy battery. Not a scoring change; the outcome is
+      // untouched. The manifest alone cannot express this: get_trace and
+      // list_runs investigate without appending to it, and a judge that
+      // verdicts off shown exhibits did consider evidence.
+      const consultedEvidence =
+        (result.session.evidence?.length ?? 0) > 0 ||
+        exhibits.length > 0 ||
+        (result.session.steps?.some((s) =>
+          s.tool_calls?.some((c) => c.name === "get_trace" || c.name === "list_runs" || c.name === "get_run"),
+        ) ?? false);
       const readNothing =
         result.verdict !== undefined &&
-        (result.session.evidence?.length ?? 0) === 0 &&
+        !consultedEvidence &&
         evidence !== undefined &&
         Object.keys(evidence.deliverables).length > 0;
       const recorded = readNothing
-        ? `${reasoning} — [vacuous verdict: the session read no deliverable evidence before deciding]`
+        ? `${reasoning} — [vacuous verdict: the session consulted no run evidence before deciding]`
         : reasoning;
 
       rec.record(label, agreed, recorded, {

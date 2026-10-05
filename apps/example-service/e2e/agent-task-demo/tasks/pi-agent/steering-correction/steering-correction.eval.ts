@@ -3,8 +3,9 @@
  *
  * Identical ground truth to the ai-sdk steering demo, but the agent under
  * test is the pi coding agent with its NATIVE session.steer(): apo scripts
- * WHEN the correction lands and asserts WHAT pi did about it. This is the
- * interaction respan can only observe; here it is a specification.
+ * WHEN the correction lands and asserts WHAT pi did about it. An
+ * observability tool can only watch this interaction; here it is a
+ * specification.
  *
  * Arithmetic anchor: completed orders sum to 9,200.00, cancelled to
  * 2,280.00, everything to 11,480.00. A harness that drops the steer or

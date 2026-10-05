@@ -9,17 +9,17 @@
  * mode can only fail open.
  *
  * Why 0.95 and not lower: the threshold is only honest at the band it was
- * measured on. The second-judge shadow study (project/jev-second-judge)
- * measured 99.5% agreement between this confident band (72% of prod checks)
- * and the flash primary — lower bands drop off fast (94.5% at 0.6–0.95,
- * 71.3% below 0.6), and paper-scale evidence (arXiv:2609.26550) says
- * workload-specific thresholds are exactly the part that doesn't transfer.
- * One fixed, conservative number; no tuning surface.
+ * measured on. A shadow study of production checks measured 99.5% agreement
+ * between this confident band (72% of checks) and the flash primary — lower
+ * bands drop off fast (94.5% at 0.6–0.95, 71.3% below 0.6), and paper-scale
+ * evidence (arXiv:2609.26550) says workload-specific thresholds are exactly
+ * the part that doesn't transfer. One fixed, conservative number; no tuning
+ * surface.
  */
 
 import type { JudgeConfig } from "./t.ts";
 import type { JudgeCallContext, JudgePromptParts } from "./judge.ts";
-import { buildJudgePromptParts } from "./judge.ts";
+import { buildJudgePromptParts, defaultJudgeAPIKey, defaultJudgeBaseURL } from "./judge.ts";
 import type { JudgeMetadata, SecondJudgeEvidence } from "../run/types.ts";
 import { callSecondJudge, resolveSecondJudgeAPIKey, resolveSecondJudgeBaseURL, resolveSecondJudgeModel } from "./second-judge.ts";
 
@@ -74,12 +74,8 @@ export async function cascadePreflight(args: {
   const evidence = await callSecondJudge({
     state: parts.secondJudgeState,
     model,
-    baseURL: resolveSecondJudgeBaseURL(
-      args.effective.baseURL ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
-    ),
-    apiKey: resolveSecondJudgeAPIKey(
-      args.effective.apiKey ?? process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY,
-    ),
+    baseURL: resolveSecondJudgeBaseURL(defaultJudgeBaseURL(args.effective.baseURL)),
+    apiKey: resolveSecondJudgeAPIKey(defaultJudgeAPIKey(args.effective.apiKey)),
     ...(parts.secondJudgeProjected ? { projected: true } : {}),
   });
   return { kind: "ran", evidence, parts };

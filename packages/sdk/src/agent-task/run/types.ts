@@ -331,9 +331,9 @@ export type TaskTranscript = {
 };
 
 /**
- * Outcome of one scripted steer . Steers never fail the run by
- * themselves — a dropped or errored steer is recorded here and on the trace,
- * and `t.steerDelivered` is what turns it red.
+ * Outcome of one scripted steer. Steers never fail the run by themselves —
+ * a dropped or errored steer is recorded here and on the trace, and
+ * `t.steerDelivered` is what turns it red.
  */
 export type SteerRecord = {
   /** 1-based, registration order across the whole run. */

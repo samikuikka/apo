@@ -497,10 +497,10 @@ function trackPending<T extends (...args: never[]) => Promise<unknown>>(
 }
 
 /**
- * The steering assertion pair , shared by both test-context
- * factories. `makeNested` builds the scoped context for `afterSteer`'s
- * window — each factory passes itself so inner assertions keep its gating
- * behavior.
+ * The steering assertion pair (`steerDelivered` + `afterSteer`), shared by
+ * both test-context factories. `makeNested` builds the scoped context for
+ * `afterSteer`'s window — each factory passes itself so inner assertions
+ * keep its gating behavior.
  */
 function createSteerAssertions(
   view: TraceView,
@@ -619,25 +619,47 @@ function createJudgeMethod(
     const secondJudgeValue = opts?.secondJudgeValue;
     // Cascade preflight (opt-in `judge.mode: "cascade"`): the second judge
     // answers first; a confident verdict stands without a primary call and
-    // without a judge span (there is nothing LLM-generated to trace or
-    // price). Anything else falls through to the primary path carrying the
-    // evidence, so cascade mode issues exactly one decisions call per check
-    // and can only fail open to the primary judge.
+    // without a judge span — the one decisions call is recorded on the
+    // check's judge metadata (model, tokens, cost) rather than projected as
+    // a trace generation. Anything else falls through to the primary path
+    // carrying the evidence, so cascade mode issues exactly one decisions
+    // call per check and can only fail open to the primary judge.
     let prefetchedSecondJudge: SecondJudgeEvidence | undefined;
     if (isCascadeActive(effective)) {
-      const preflight = await cascadePreflight({
-        values: valueArray,
-        instruction,
-        effective,
-        ...(context ? { context } : {}),
-        ...(secondJudgeValue !== undefined
-          ? {
-              secondJudgeValue: Array.isArray(secondJudgeValue)
-                ? secondJudgeValue
-                : [secondJudgeValue],
-            }
-          : {}),
-      });
+      let preflight: Awaited<ReturnType<typeof cascadePreflight>>;
+      try {
+        preflight = await cascadePreflight({
+          values: valueArray,
+          instruction,
+          effective,
+          ...(context ? { context } : {}),
+          ...(secondJudgeValue !== undefined
+            ? {
+                secondJudgeValue: Array.isArray(secondJudgeValue)
+                  ? secondJudgeValue
+                  : [secondJudgeValue],
+              }
+            : {}),
+        });
+      } catch (error) {
+        // Preflight runs the user's prompt builder (fall-through dispatches
+        // the primary call), so its failures are judge failures. Recorded
+        // with the same shape as the primary path's catch — a check error
+        // here would lose the judge-shaped record and the evaluated value.
+        rec.record(
+          label,
+          false,
+          `judge failed: ${error instanceof Error ? error.message : String(error)}`,
+          {
+            evaluator_type: "llm",
+            expected: instruction,
+            received: valueArray.length === 1 ? valueArray[0] : valueArray,
+            location,
+            outcome: "error",
+          },
+        );
+        return;
+      }
       if (preflight.kind === "ran" && cascadeDecides(preflight.evidence)) {
         const { pass, reasoning, judge } = cascadeVerdict(
           preflight.evidence,

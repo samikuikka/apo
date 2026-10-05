@@ -63,7 +63,6 @@ export type PiSessionEvent = {
 
 /** Everything one run accumulates for deliverables. */
 interface PiRunState {
-  turnCount: number;
   lastResponse: string;
   toolLog: string[];
 }
@@ -108,11 +107,11 @@ export function createPiAdapter(options: PiAdapterOptions = {}) {
     async initialize() {
       // Fresh containers per run — a spread of EMPTY_STATE would share the
       // toolLog array across every session in the process.
-      return { turnCount: 0, lastResponse: "", toolLog: [] as string[] };
+      return { lastResponse: "", toolLog: [] as string[] };
     },
 
     async startSession(ctx) {
-      const state = (ctx.state ?? { turnCount: 0, lastResponse: "", toolLog: [] }) as unknown as PiRunState;
+      const state = (ctx.state ?? { lastResponse: "", toolLog: [] }) as unknown as PiRunState;
       const { session } = await createSession({ cwd: ctx.taskDir });
 
       await selectModel(session);
@@ -178,7 +177,6 @@ export function createPiAdapter(options: PiAdapterOptions = {}) {
         runConfiguration: { model: session.model?.id ?? "pi-default" },
 
         async sendUserTurn(turn: unknown, context) {
-          state.turnCount++;
           currentTrace = context.trace;
           currentNotify = context.notifyAgentEvent;
           turnActive = true;
@@ -209,7 +207,7 @@ export function createPiAdapter(options: PiAdapterOptions = {}) {
     },
 
     async collectDeliverables(ctx) {
-      const state = (ctx.state ?? { turnCount: 0, lastResponse: "", toolLog: [] }) as unknown as PiRunState;
+      const state = (ctx.state ?? { lastResponse: "", toolLog: [] }) as unknown as PiRunState;
       return {
         result: {
           // Full text — never sliced: reports longer than a few hundred chars

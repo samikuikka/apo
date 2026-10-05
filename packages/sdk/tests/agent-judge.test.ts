@@ -376,6 +376,46 @@ describe("t.agent — budget accounting", () => {
     expect(pcre?.result).toContain('"match_count":1');
   });
 
+  it("translates PCRE (?s) to dotall so . crosses newlines", async () => {
+    scriptFetch([
+      // Under PCRE semantics (?s)step1.+step2 matches across the newline;
+      // stripping the flag without adding `s` silently returns 0 matches.
+      toolCallTurn("1", "search_deliverable", { name: "log", pattern: "(?s)step1.+step2" }),
+      toolCallTurn("2", "finish_verdict", { reasoning: "Dotall matched.", pass: true }),
+    ]);
+
+    const result = await runAgentCheck(async (t) => {
+      await t.agent("search rubric");
+    });
+
+    const calls =
+      result.assertions[0]!.judge?.session?.steps?.flatMap((s) => s.tool_calls ?? []) ?? [];
+    const dotall = calls.find((c) => c.input.includes("(?s)"));
+    expect(dotall?.result).toContain('"match_count":1');
+  });
+
+  it("rejects PCRE constructs JS compiles to a different meaning, with a hint", async () => {
+    scriptFetch([
+      // \A is a PCRE string-start anchor; in non-unicode JS it compiles as a
+      // literal "A" and silently mismatches — an honest error beats a lie.
+      toolCallTurn("1", "search_deliverable", { name: "log", pattern: "\\Astep1" }),
+      // (?x) extended mode has no JS equivalent at all.
+      toolCallTurn("2", "search_deliverable", { name: "log", pattern: "(?x) step1" }),
+      toolCallTurn("3", "finish_verdict", { reasoning: "Both rejected honestly.", pass: true }),
+    ]);
+
+    const result = await runAgentCheck(async (t) => {
+      await t.agent("search rubric");
+    });
+
+    const calls =
+      result.assertions[0]!.judge?.session?.steps?.flatMap((s) => s.tool_calls ?? []) ?? [];
+    const anchor = calls.find((c) => c.input.includes("\\A"));
+    expect(anchor?.result).toContain("unsupported PCRE construct");
+    const extended = calls.find((c) => c.input.includes("(?x)"));
+    expect(extended?.result).toContain("no equivalent");
+  });
+
   it("collapses identical intra-turn tool calls into one execution", async () => {
     // Fan-out of two byte-identical reads in ONE step — the transcript
     // records both calls, but the evidence manifest and read budget must
@@ -419,7 +459,8 @@ describe("t.agent — budget accounting", () => {
     expect(assertion.reasoning).toContain("contradict");
   });
 
-  it("marks a verdict that read no evidence as vacuous, not one that did", async () => {    scriptFetch([
+  it("marks a verdict that read no evidence as vacuous, not one that did", async () => {
+    scriptFetch([
       toolCallTurn("1", "finish_verdict", { reasoning: "Looks fine to me.", pass: true }),
     ]);
     const vacuous = await runAgentCheck(async (t) => {
@@ -435,6 +476,29 @@ describe("t.agent — budget accounting", () => {
       await t.agent("rubric");
     });
     expect(diligent.assertions[0]!.reasoning).not.toContain("vacuous verdict");
+  });
+
+  it("does not stamp a vacuous marker on trace-only or exhibits-only verdicts", async () => {
+    // get_trace investigates without touching the deliverable manifest —
+    // stamping it "read no deliverable evidence" was a false accusation.
+    scriptFetch([
+      toolCallTurn("1", "get_trace", { query: "" }),
+      toolCallTurn("2", "finish_verdict", { reasoning: "Trace shows the tool ran; judged on it.", pass: true }),
+    ]);
+    const traceOnly = await runAgentCheck(async (t) => {
+      await t.agent("rubric");
+    });
+    expect(traceOnly.assertions[0]!.reasoning).not.toContain("vacuous verdict");
+
+    // Exhibits are evidence the check author chose to show — a judge that
+    // verdicts off them consulted evidence, even with deliverables unread.
+    scriptFetch([
+      toolCallTurn("1", "finish_verdict", { reasoning: "The shown exhibit settles it.", pass: true }),
+    ]);
+    const exhibitsOnly = await runAgentCheck(async (t) => {
+      await t.agent("rubric", { exhibits: [{ total: 42 }] });
+    });
+    expect(exhibitsOnly.assertions[0]!.reasoning).not.toContain("vacuous verdict");
   });
 
   async function runAgentCheckWithBudget(budget: { maxTurns?: number; maxToolCalls?: number; maxReadBytes?: number }) {

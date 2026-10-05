@@ -50,7 +50,6 @@ describe("steer scheduler", () => {
     const scheduler = makeScheduler(session, [
       { when: { toolResults: 2 }, message: "stop", label: "correct" },
     ]);
-    const onSteerRecords: SteerRecord[] = [];
 
     await scheduler.onTurnStart(1);
     expect(injections).toHaveLength(0); // nothing fires on turn start alone
@@ -68,7 +67,6 @@ describe("steer scheduler", () => {
     expect(records[0]?.status).toBe("delivered");
     expect(records[0]?.boundary).toBe("tool_results");
     expect(records[0]?.deliveredAt).toBeDefined();
-    void onSteerRecords;
   });
 
   it("fires runStart steers on the adapter's run_start event", async () => {
@@ -196,7 +194,7 @@ describe("steer scheduler", () => {
     expect(record?.status).toBe("undelivered");
   });
 
-  it("thread-1 steer counters are independent of other turns", async () => {
+  it("per-turn steer counters are independent of other turns", async () => {
     const { session, injections } = fakeSession();
     const scheduler = makeScheduler(session, [
       { when: { toolResults: 1 }, message: "t1", turn: 1 },
@@ -255,6 +253,32 @@ describe("steer scheduler", () => {
     await scheduler.onTurnEnd(1);
 
     expect(seen.map((r) => r.status)).toEqual(["delivered", "undelivered"]);
+  });
+
+  it("a throwing onSteer callback never fails the turn or the run", async () => {
+    const { session, injections } = fakeSession();
+    const scheduler = makeScheduler(session, [{ when: "runStart", message: "x" }], () => {
+      throw new Error("host consumer bug");
+    });
+
+    await scheduler.onTurnStart(1);
+    // The delivery path (onProgressEvent) is contained by the runner's own
+    // .catch — but onTurnEnd/onRunEnd are awaited unwrapped in runTask, so
+    // every entry point must resolve even when the host callback throws.
+    void scheduler.onProgressEvent(1, { kind: "run_start" }).catch(() => {});
+    await expect(scheduler.onTurnEnd(1)).resolves.toBeUndefined();
+    await expect(scheduler.onRunEnd(1)).resolves.toBeUndefined();
+
+    // The steer itself still delivered despite the broken consumer.
+    expect(injections).toHaveLength(1);
+    const [record] = scheduler.recordsByTurn().get(1) ?? [];
+    expect(record?.status).toBe("delivered");
+  });
+
+  it("rejects steer() registrations that could never fire", () => {
+    expect(() => steer({ when: { toolResults: 1 }, message: "x", turn: 0 })).toThrow(/turn/);
+    expect(() => steer({ when: { toolResults: 0 }, message: "x" })).toThrow(/toolResults/);
+    expect(() => steer({ when: { assistantReply: -1 }, message: "x" })).toThrow(/assistantReply/);
   });
 
   it("task-plane steer() registrations feed the scheduler unchanged", async () => {

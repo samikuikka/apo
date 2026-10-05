@@ -5,6 +5,14 @@ name: Publish CLI
 # Authentication is OIDC trusted publishing only — no stored npm token.
 # Requires a separate trusted-publisher registration on the npm side for
 # @apo-ai/cli (per-package, not per-org).
+#
+# Release ordering: the CLI bundles with @apo-ai/sdk external and resolves
+# it from the registry at install time, so a CLI that hard-imports SDK
+# exports must ship AFTER the SDK release carrying them — publish the SDK
+# (sdk-v* tag) first, and keep packages/cli's `@apo-ai/sdk` floor at (or
+# below) the newest published SDK version until then. CI's clean-consumer
+# gate (pnpm --filter @apo-ai/cli package:check) installs the CLI tarball
+# against the registry and fails when the floor outruns reality.
 
 on:
   push:

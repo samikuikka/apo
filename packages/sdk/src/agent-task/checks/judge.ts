@@ -484,6 +484,20 @@ function runWithSharedPrefix<T>(key: string, task: () => Promise<T>): Promise<T>
   return next;
 }
 
+/**
+ * Default judge endpoint resolution, shared by the primary judge call and
+ * cascade preflight so both can never disagree: explicit config, then env,
+ * then OpenRouter. Extracted because a duplicated default chain drifts — the
+ * cascade gate must judge through the same endpoint as the primary it gates.
+ */
+export function defaultJudgeBaseURL(baseURL?: string): string {
+  return baseURL ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
+}
+
+export function defaultJudgeAPIKey(apiKey?: string): string | undefined {
+  return apiKey ?? process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY;
+}
+
 export async function callJudge(args: {
   values: unknown[];
   instruction: string;
@@ -508,8 +522,8 @@ export async function callJudge(args: {
    */
   prefetchedSecondJudge?: SecondJudgeEvidence;
 }): Promise<JudgeCallResult> {
-  const baseURL = args.baseURL ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
-  const apiKey = args.apiKey ?? process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY;
+  const baseURL = defaultJudgeBaseURL(args.baseURL);
+  const apiKey = defaultJudgeAPIKey(args.apiKey);
 
   const { briefingText, instructionText, systemPromptText, deliverableText, secondJudgeState, secondJudgeProjected } =
     buildJudgePromptParts({

@@ -112,11 +112,26 @@ export function createSteerScheduler(options: {
     }
   }
 
+  // The host callback is a notification about delivery, not part of it: a
+  // throwing consumer (e.g. a live-progress relay) must not fail the turn,
+  // same containment as the trace emit. Logged like runTask's scheduler
+  // containment rather than swallowed — a dead consumer is worth seeing.
+  function notifyHost(record: SteerRecord): void {
+    try {
+      options.onSteer?.(record);
+    } catch (error) {
+      console.error(
+        "[AgentTask] onSteer callback failed:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
   function finalize(state: SteerState, reason: string): void {
     state.record.status = "undelivered";
     state.record.reason = reason;
     emitSteerEvent(state.record);
-    options.onSteer?.(state.record);
+    notifyHost(state.record);
   }
 
   async function deliver(state: SteerState, turnNumber: number): Promise<void> {
@@ -135,7 +150,7 @@ export function createSteerScheduler(options: {
       state.record.reason = error instanceof Error ? error.message : String(error);
     }
     emitSteerEvent(state.record);
-    options.onSteer?.(state.record);
+    notifyHost(state.record);
   }
 
   function triggerSatisfied(trigger: SteerTrigger, turnNumber: number): boolean {

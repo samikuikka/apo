@@ -22,12 +22,10 @@ import type {
   TraceProjectionObservation,
   TraceProjectionSnapshot,
 } from "./types.ts";
+import { TASK_STEER_SPAN_NAME } from "../run/steer-scheduler.ts";
 
 /** The span name `runTask` gives each Task Turn (one `sendUserTurn` call). */
 export const TASK_TURN_SPAN_NAME = "task.turn";
-
-/** The span name the steer scheduler gives each steer event . */
-export const TASK_STEER_SPAN_NAME = "task.steer";
 
 /** One mid-run steer, derived from a `task.steer` observation. */
 export interface TraceSteer {
@@ -36,7 +34,12 @@ export interface TraceSteer {
   /** Scripted turn the steer targeted. */
   turn: number;
   label?: string;
-  /** Parsed from the event's JSON-stringified trigger metadata. */
+  /**
+   * The serialized trigger (`{"toolResults":2}`, `"runStart"`). Records
+   * carry the trigger as an object — the local tee embeds the SteerRecord
+   * directly and the canonical path re-parses its JSON — while the event
+   * metadata carries the pre-stringified form; both render identically.
+   */
   trigger: string;
   message: unknown;
   status: "delivered" | "undelivered" | "error";
@@ -120,7 +123,7 @@ function traceSteerFrom(obs: TraceProjectionObservation): TraceSteer | undefined
     number,
     spanId: obs.spanId,
     turn: typeof read("turn") === "number" ? (read("turn") as number) : 1,
-    trigger: typeof read("trigger") === "string" ? (read("trigger") as string) : "unknown",
+    trigger: triggerToString(read("trigger")),
     message: source.message,
     ...(isSteerStatus(status) ? { status } : { status: "undelivered" }),
   };
@@ -138,6 +141,23 @@ function traceSteerFrom(obs: TraceProjectionObservation): TraceSteer | undefined
 
 function isSteerStatus(v: unknown): v is TraceSteer["status"] {
   return v === "delivered" || v === "undelivered" || v === "error";
+}
+
+/**
+ * The trigger as text. Real records carry it as an object (see
+ * {@link TraceSteer.trigger}); metadata carries the JSON string. Anything
+ * else — absent, or unserializable — reads as `"unknown"`.
+ */
+function triggerToString(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (v !== null && typeof v === "object") {
+    try {
+      return JSON.stringify(v) ?? "unknown";
+    } catch {
+      // Unserializable (e.g. cyclic) — treat as unparsed.
+    }
+  }
+  return "unknown";
 }
 
 /** A tool call derived from a `TOOL` observation. */
@@ -196,9 +216,6 @@ export interface TraceTokenTally {
    */
   unreported: number;
 }
-
-/** Sentinel that sorts before every real timestamp in string comparison. */
-const TIMESTAMPED_MIN = "";
 
 /**
  * Comparison key for deterministic ordering by invocation time then span ID.
@@ -293,14 +310,6 @@ export class TraceView {
   }
 
   /**
-   * A TraceView over the run after steer n was delivered: observations that
-   * started after the steer's delivery timestamp (the first generation that
-   * consumed it through run end). Missing timestamps sort after timestamped
-   * observations per the projection contract, so they belong to the window
-   * too. An undelivered steer yields an empty view — assertions inside it
-   * fail on missing evidence rather than passing vacuously.
-   */
-  /**
    * Whether an observation started after the steer observation, using the
    * same ordering key as everywhere else in this class (startedAt, then
    * span id). The id tie-break matters on the local tee path, whose ISO
@@ -319,6 +328,14 @@ export class TraceView {
     return obs.spanId > steer.spanId;
   }
 
+  /**
+   * A TraceView over the run after steer n was delivered: observations that
+   * started after the steer's delivery timestamp (the first generation that
+   * consumed it through run end). Missing timestamps sort after timestamped
+   * observations per the projection contract, so they belong to the window
+   * too. An undelivered steer yields an empty view — assertions inside it
+   * fail on missing evidence rather than passing vacuously.
+   */
   windowAfterSteer(n: number): TraceView {
     const steer = this.steers.find((s) => s.number === n);
     if (!steer) {
@@ -580,7 +597,3 @@ function tokenCount(
     complete: input !== undefined && output !== undefined,
   };
 }
-
-// Keep the timestamp sentinel referenced for clarity — documents that empty
-// string is the "earliest" timestamp in lexicographic ordering.
-void TIMESTAMPED_MIN;

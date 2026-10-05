@@ -103,7 +103,7 @@ describe("TraceView steering evidence", () => {
         number: 1,
         turn: 1,
         label: "exclude-cancelled",
-        trigger: '{"toolResults":2}',
+        trigger: { toolResults: 2 },
         message: "exclude cancelled orders",
         status: "delivered",
         deliveredAt: "2026-10-04T10:00:00.000Z",
@@ -117,6 +117,7 @@ describe("TraceView steering evidence", () => {
     expect(steer.number).toBe(1);
     expect(steer.label).toBe("exclude-cancelled");
     expect(steer.status).toBe("delivered");
+    expect(steer.trigger).toBe('{"toolResults":2}');
     expect(steer.boundary).toBe("tool_results");
     expect(steer.spanStartedAt).toBeDefined();
     expect(steer.spanId).toMatch(/^root-/);
@@ -175,7 +176,7 @@ describe("TraceView steering evidence", () => {
       number: 1,
       turn: 1,
       label: "exclude-cancelled",
-      trigger: '{"toolResults":2}',
+      trigger: { toolResults: 2 },
       message: "Correction: exclude cancelled orders.",
       status: "delivered",
       deliveredAt: "2026-10-04T10:06:46.777Z",
@@ -323,7 +324,7 @@ describe("t.afterSteer", () => {
       t2.check(2, {
         test: (v) => v === 2,
         label: "be 2",
-      } as never);
+      });
     });
     expect(rec.all[0]?.pass).toBe(true);
   });

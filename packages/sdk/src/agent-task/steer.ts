@@ -35,6 +35,21 @@ const STEERS_KEY = Symbol.for("@apo-ai/sdk/agent-task/task-steers");
 
 /** Register a mid-run steer. Call at eval-file top level, next to turn(). */
 export function steer(spec: SteerSpec): void {
+  // Fail fast at registration: a trigger that can never fire (turn 0,
+  // non-positive counts) would otherwise sit silently undelivered — the run
+  // finishes with no `task.steer` evidence that anything was scheduled.
+  if (spec.turn !== undefined && (!Number.isInteger(spec.turn) || spec.turn < 1)) {
+    throw new Error(`steer: turn must be a positive integer, got ${spec.turn}`);
+  }
+  const count =
+    spec.when === "runStart"
+      ? undefined
+      : "toolResults" in spec.when
+        ? (["toolResults", spec.when.toolResults] as const)
+        : (["assistantReply", spec.when.assistantReply] as const);
+  if (count !== undefined && (!Number.isInteger(count[1]) || count[1] < 1)) {
+    throw new Error(`steer: ${count[0]} must be a positive integer, got ${count[1]}`);
+  }
   const registry = (globalThis as Record<symbol, unknown>)[STEERS_KEY];
   const list = Array.isArray(registry) ? (registry as SteerSpec[]) : [];
   list.push(spec);

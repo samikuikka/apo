@@ -147,6 +147,29 @@ describe("cascade mode", () => {
     expect(chatCalls(calls)).toHaveLength(0);
   });
 
+  it("a throwing prompt builder is recorded as the judge failure, not a check error", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    const { result } = await runOne(
+      {
+        ...cascadeConfig,
+        // Preflight builds the prompt frame before any network call, so the
+        // user's builder runs inside cascadePreflight — outside the primary
+        // path's catch. A check-error here would lose the judge-shaped
+        // record; it must mirror the dual mode's "judge failed" assertion.
+        prompt: () => {
+          throw new Error("builder exploded");
+        },
+      },
+      () => jevResponse("fail", 0.4, 0.72),
+    );
+
+    expect(result.id).toBe("criterion");
+    expect(result.outcome).toBe("error");
+    expect(result.evaluator_type).toBe("llm");
+    expect(result.reasoning).toContain("judge failed: builder exploded");
+    expect(result.assertions?.[0]?.received).toBe("the deliverable");
+  });
+
   it("low confidence defers to the primary judge, evidence attached, one decisions call", async () => {
     vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
     const { result, calls } = await runOne(cascadeConfig, () => jevResponse("fail", 0.4, 0.72));
