@@ -414,6 +414,9 @@ describe("t.agent — budget accounting", () => {
     expect(anchor?.result).toContain("unsupported PCRE construct");
     const extended = calls.find((c) => c.input.includes("(?x)"));
     expect(extended?.result).toContain("no equivalent");
+    // The unsupported-flag error must not end with the generic "flags are
+    // stripped" hint — that contradiction invites a retry of the same pattern.
+    expect(extended?.result).not.toContain("stripped automatically");
   });
 
   it("collapses identical intra-turn tool calls into one execution", async () => {

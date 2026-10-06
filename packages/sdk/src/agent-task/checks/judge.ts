@@ -811,9 +811,9 @@ export async function callJudge(args: {
       return {
         pass: false,
         reasoning:
-          "Judge reply carried no verdict (no boolean `pass`) on two draws. The " +
-          "verdict is unknown, so this check is recorded as a judge error, not a " +
-          "verdict. The raw reply is on the judge metadata.",
+          "Judge reply carried no verdict (no boolean `pass`). The verdict is " +
+          "unknown, so this check is recorded as a judge error, not a verdict. " +
+          "The raw reply is on the judge metadata.",
         judge,
         unavailable: true,
       };

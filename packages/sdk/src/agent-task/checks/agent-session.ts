@@ -385,10 +385,17 @@ function buildEvidenceTools(args: {
           }
           const unsupported = rejectUnsupportedPcreConstructs(pattern);
           if (unsupported) return { error: unsupported };
+          let translated: { pattern: string; flags: string };
+          try {
+            translated = stripLeadingPcreFlags(pattern);
+          } catch (error) {
+            // The unsupported-flag message already says what to do; the
+            // compile hint below would contradict it.
+            return { error: `invalid regex: ${error instanceof Error ? error.message : String(error)}` };
+          }
           let re: RegExp;
           try {
-            const stripped = stripLeadingPcreFlags(pattern);
-            re = new RegExp(stripped.pattern, stripped.flags);
+            re = new RegExp(translated.pattern, translated.flags);
           } catch (error) {
             return {
               error:

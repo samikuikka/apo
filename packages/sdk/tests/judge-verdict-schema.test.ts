@@ -2,7 +2,7 @@
  * The judge's verdict is bound by the decoder, and a reply without one is never
  * a FAIL.
  *
- * Measured on bind's harvey-lab runs (4,309 judged checks on deepseek-v4.1-flash
+ * Measured on a production battery (4,309 judged checks on deepseek-v4.1-flash
  * via Fireworks): under `json_object`, 25 replies were `{"reasoning": "..."}` with
  * no `pass` key, and the old `parsed.pass === true` recorded each as FAIL even
  * though 19 of their reasonings concluded the criterion was satisfied. No reply
