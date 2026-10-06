@@ -1,0 +1,54 @@
+---
+/**
+ * PROTOTYPE — throwaway landing-page prototype. Do not link from anywhere.
+ *
+ * Question: should apo's first page present the product as the complete
+ * application window (ported shell + pages) with a scripted live loop,
+ * respan-style but interactive? One tour strip navigates four real
+ * surfaces; everything runs on the scripted fixture in
+ * src/components/prototype/capability-sim.ts — no backend, no model calls.
+ *
+ * Verdict pending; see NOTES.md next to the components when this is
+ * resolved, then delete or absorb (see .agents/skills/prototype).
+ */
+import "../../styles/custom.css";
+import "../../components/prototype/prototype-landing.css";
+import "../../components/prototype/native.css";
+import { CapabilityShowcase } from "../../components/prototype/CapabilityShowcase.tsx";
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>apo — landing prototype</title>
+		<meta name="robots" content="noindex" />
+		<link rel="icon" href="/brand/signal-sphere-favicon-32.png" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans:wght@400;500;600;700&display=swap"
+			rel="stylesheet"
+		/>
+	</head>
+	<body>
+		<CapabilityShowcase client:load />
+	</body>
+</html>
+
+<style is:global>
+	html,
+	body {
+		margin: 0;
+		padding: 0;
+		background: var(--sl-color-black);
+		overflow-x: hidden;
+	}
+
+	*,
+	*::before,
+	*::after {
+		box-sizing: border-box;
+	}
+</style>
