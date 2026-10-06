@@ -51,21 +51,34 @@ export type HistoryRunDetail = {
  * Build a reader from the executor's environment. Returns undefined when no
  * credentials are present — callers surface that honestly (the history plane
  * is simply unavailable) rather than degrading to anonymous requests.
+ *
+ * Credential preference: a project API key (`APO_API_KEY`) beats the attempt
+ * JWT (`APO_AUTH_TOKEN`) because run-read routes accept project credentials
+ * while the attempt token is executor-protocol-scoped — with only the JWT
+ * present every history read 401s and the plane silently degrades to
+ * "unavailable" (found by the judge-quality battery's history case). The
+ * spawned-task child deliberately sees neither key; that path stays without
+ * history until the parent pre-freezes the plane.
  */
 export function createBackendReaderFromEnv(env = process.env): BackendReader | undefined {
+  const apiKey = env.APO_API_KEY;
   const token = env.APO_AUTH_TOKEN;
   const publicKey = env.APO_PUBLIC_KEY;
   const secretKey = env.APO_SECRET_KEY;
-  const headers: Record<string, string> | undefined = token
-    ? { Authorization: `Bearer ${token}` }
-    : publicKey && secretKey
-      ? { Authorization: `Basic ${Buffer.from(`${publicKey}:${secretKey}`).toString("base64")}` }
-      : undefined;
+  const headers: Record<string, string> | undefined = apiKey
+    ? { Authorization: `Bearer ${apiKey}` }
+    : token
+      ? { Authorization: `Bearer ${token}` }
+      : publicKey && secretKey
+        ? { Authorization: `Basic ${Buffer.from(`${publicKey}:${secretKey}`).toString("base64")}` }
+        : undefined;
   if (!headers) return undefined;
 
-  // Backend base, not the trace endpoint: the local span-buffering
-  // collector 404s API routes (only the OTLP traces path is served).
-  const endpoint = env.APO_BACKEND_URL ?? env.AGENT_TASK_TRACE_ENDPOINT ?? "http://127.0.0.1:8000";
+  // Backend base only — never the trace endpoint: the local span-buffering
+  // collector 404s API routes (it serves just the OTLP traces path), so the
+  // old AGENT_TASK_TRACE_ENDPOINT fallback turned every history read into a
+  // swallowed 404.
+  const endpoint = env.APO_BACKEND_URL ?? "http://127.0.0.1:8000";
   return {
     async get(path: string): Promise<unknown> {
       const res = await fetch(`${endpoint.replace(/\/$/, "")}/v1${path}`, { headers });
@@ -104,10 +117,32 @@ export function freezeHistoryPlane(args: {
   const { reader, taskId, selfRunId } = args;
   const detailCache = new Map<string, HistoryRunDetail>();
 
-  const loadRuns = (async () => {
-    const raw = (await reader.get(
-      `/agent-task-runs?task_id=${encodeURIComponent(taskId)}&limit=50`,
+  const listByTaskId = async (id: string): Promise<Array<Record<string, unknown>>> =>
+    (await reader.get(
+      `/agent-task-runs?task_id=${encodeURIComponent(id)}&limit=50`,
     )) as Array<Record<string, unknown>>;
+
+  const loadRuns = (async () => {
+    let raw = await listByTaskId(taskId);
+    // The task id known locally is the bare one ("my-task"); the backend
+    // inventories tasks folder-scoped ("tasks/group/my-task"). An empty
+    // list with our own run id at hand means the id shape, not the
+    // history, is missing — resolve the canonical id from the run record
+    // itself and re-list (found live: a task with three recorded runs
+    // froze an empty history plane and the judge saw "0 run(s)").
+    if ((raw ?? []).length === 0 && selfRunId) {
+      try {
+        const self = (await reader.get(
+          `/agent-task-runs/${encodeURIComponent(selfRunId)}`,
+        )) as Record<string, unknown> | null;
+        const canonical = self?.task_id;
+        if (typeof canonical === "string" && canonical !== taskId) {
+          raw = await listByTaskId(canonical);
+        }
+      } catch {
+        // Self-run resolution is best-effort; an empty history stays empty.
+      }
+    }
     return (raw ?? []).map(
       (r): FrozenRunSummary => ({
         id: String(r.id),
@@ -193,7 +228,13 @@ export async function freezeHistoryPlaneFromEnv(
       taskId,
       ...(env.AGENT_TASK_RUN_ID ? { selfRunId: env.AGENT_TASK_RUN_ID } : {}),
     });
-  } catch {
+  } catch (error) {
+    // A failed read is not "no credentials", and silence here previously
+    // printed exactly that lie in the judge briefing while the history
+    // tools quietly vanished. Warn with the real reason; the plane stays
+    // unavailable (judging must not crash on evidence-plane failure).
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`apo: judge history plane unavailable — ${reason}`);
     return undefined;
   }
 }

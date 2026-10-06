@@ -23,7 +23,7 @@ function jsonResponse(body: unknown): Response {
 
 function stubEnv(env: Record<string, string | undefined>): void {
   const original = { ...process.env };
-  for (const key of ["APO_AUTH_TOKEN", "APO_PUBLIC_KEY", "APO_SECRET_KEY", "AGENT_TASK_TRACE_ENDPOINT", "AGENT_TASK_RUN_ID"]) {
+  for (const key of ["APO_AUTH_TOKEN", "APO_PUBLIC_KEY", "APO_SECRET_KEY", "AGENT_TASK_TRACE_ENDPOINT", "AGENT_TASK_RUN_ID", "APO_API_KEY", "APO_BACKEND_URL"]) {
     delete process.env[key];
     if (env[key] !== undefined) process.env[key] = env[key]!;
   }
@@ -44,11 +44,14 @@ const SUMMARY = (id: string, over: Partial<FrozenRunSummary> = {}): Record<strin
 });
 
 describe("BackendReader — credential resolution", () => {
-  it("uses Bearer for APO_AUTH_TOKEN and joins the /v1 prefix", async () => {
-    stubEnv({ APO_AUTH_TOKEN: "tok", AGENT_TASK_TRACE_ENDPOINT: "http://x:9/" });
+  it("uses Bearer for APO_AUTH_TOKEN, joins /v1, and never the trace endpoint", async () => {
+    stubEnv({ APO_AUTH_TOKEN: "tok", AGENT_TASK_TRACE_ENDPOINT: "http://collector:9/", APO_BACKEND_URL: "http://api:8/" });
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(input)).toBe("http://x:9/v1/agent-task-runs");
-      expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+      // API reads must land on the backend base — the loopback collector
+      // 404s every route but the OTLP traces path.
+      expect(String(input)).toBe("http://api:8/v1/agent-task-runs");
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      expect(headers.Authorization).toBe("Bearer tok");
       return jsonResponse([]);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -57,6 +60,32 @@ describe("BackendReader — credential resolution", () => {
     expect(reader).toBeDefined();
     await reader!.get("/agent-task-runs");
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("prefers APO_API_KEY over the attempt JWT (run reads reject executor tokens)", async () => {
+    stubEnv({ APO_API_KEY: "sk-user", APO_AUTH_TOKEN: "attempt-jwt" });
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      expect(headers.Authorization).toBe("Bearer sk-user");
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const reader = createBackendReaderFromEnv();
+    await reader!.get("/agent-task-runs");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("freezeHistoryPlaneFromEnv warns with the read failure instead of dying silently", async () => {
+    stubEnv({ APO_API_KEY: "sk-user", APO_BACKEND_URL: "http://api:8/" });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 401 })));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const plane = await freezeHistoryPlaneFromEnv("t1");
+
+    expect(plane).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("history plane unavailable"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("401"));
   });
 
   it("uses Basic for the key pair; undefined with no credentials", () => {
@@ -93,6 +122,26 @@ describe("freezeHistoryPlane — frozen snapshot + merged detail", () => {
     // The backend "grows" after the freeze; the plane must not notice.
     list = [SUMMARY("run_a"), SUMMARY("run_b")];
     expect(plane.runs).toHaveLength(1);
+  });
+
+  it("resolves the backend's folder-scoped task id when the bare id lists empty", async () => {
+    const calls: string[] = [];
+    const reader: BackendReader = {
+      async get(path: string) {
+        calls.push(path);
+        if (path === "/agent-task-runs?task_id=my-task&limit=50") return []; // bare id: nothing
+        if (path === "/agent-task-runs/run_self") return { id: "run_self", task_id: "tasks/group/my-task" };
+        if (path === "/agent-task-runs?task_id=tasks%2Fgroup%2Fmy-task&limit=50")
+          return [SUMMARY("run_self"), SUMMARY("run_prior")];
+        throw new Error(`unexpected path ${path}`);
+      },
+    };
+    const plane = await freezeHistoryPlane({ reader, taskId: "my-task", selfRunId: "run_self" });
+
+    // The prior run is visible; the run under judgment is flagged, not listed as history.
+    expect(plane.runs.map((r) => r.id)).toEqual(["run_self", "run_prior"]);
+    expect(plane.runs.find((r) => r.id === "run_self")?.is_run_under_judgment).toBe(true);
+    expect(calls).toContain("/agent-task-runs?task_id=tasks%2Fgroup%2Fmy-task&limit=50");
   });
 
   it("merges checks + corrections in one get_run and caches the detail", async () => {

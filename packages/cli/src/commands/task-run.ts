@@ -293,6 +293,14 @@ async function runCallerRecorded(
   process.env.AGENT_TASK_RUN_ID = created.taskRunId;
   process.env.AGENT_TASK_TRACE_REQUIRED = "true";
   process.env.APO_AUTH_TOKEN = created.lease.token;
+  // The judge's history plane reads run reports from the backend, which
+  // accepts project credentials — not the executor-protocol attempt token
+  // above. Export the caller's own API key for those in-process reads (the
+  // SDK prefers it over APO_AUTH_TOKEN); restored in the cleanup paths next
+  // to APO_AUTH_TOKEN. Only injected when not already present so a caller's
+  // explicit APO_API_KEY is never clobbered or deleted.
+  const injectedApiKey = config.apiKey && !process.env.APO_API_KEY ? config.apiKey : undefined;
+  if (injectedApiKey) process.env.APO_API_KEY = injectedApiKey;
 
   // 4. Import the SDK BEFORE /start (issue #108). Startup failures (package
   // not found, module-resolution errors) must happen pre-start so the lease
@@ -314,6 +322,7 @@ async function runCallerRecorded(
     const message = error instanceof Error ? error.message : String(error);
     console.error(red(`Error: failed to load task SDK: ${message}`));
     delete process.env.APO_AUTH_TOKEN;
+    if (injectedApiKey) delete process.env.APO_API_KEY;
     return 2;
   }
 
@@ -591,6 +600,7 @@ async function runCallerRecorded(
     // exactly once, for every path through the try/catch above.
     await heartbeat.stop();
     delete process.env.APO_AUTH_TOKEN;
+    if (injectedApiKey) delete process.env.APO_API_KEY;
     process.removeListener("SIGINT", onRunSigint);
     process.removeListener("SIGTERM", onRunSigterm);
     if ((await collector.stop()) === "left-running") {
