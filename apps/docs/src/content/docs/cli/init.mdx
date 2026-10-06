@@ -43,6 +43,14 @@ apo init [--agent <id>] [--no-launch]
 2. **Installs the apo authoring skill** into `~/.agents/skills/apo/` (Codex, Gemini, OpenCode, Cursor) and `~/.claude/skills/apo/` (Claude Code) — for **all** agents, regardless of which one you launch. The skill teaches the whole loop: adapter, task, checks, publish, run, repair.
 3. **Launches** the selected agent in your project root with a kickoff prompt: set up apo, write the adapter and the first `*.eval.ts` task, publish, run, iterate to PASS. Claude Code opens with `--permission-mode acceptEdits` so it can write files; Cursor opens the project and you type `/apo` in the agent chat.
 
+## After the launch
+
+The kickoff prompt names the installed skill's path, so the agent always has a source for the authoring API. When the repo already carries `@apo-ai/sdk`, agents usually learn from the package's own types while exploring — the skill is the floor, not the ceiling.
+
+:::caution[Fresh repo, login captured elsewhere]
+A login remembers the task root it was created with. If your saved login points at another checkout, `apo task run <task-id>` fails here with *Task directory not found*. Pass the root explicitly — `apo task run <task-id> --dir ./e2e` — or run `apo login` again in this repo to capture its task root.
+:::
+
 ## Ownership rules
 
 - A skill directory the CLI installed carries a marker file; re-running `apo init` updates those in place.
