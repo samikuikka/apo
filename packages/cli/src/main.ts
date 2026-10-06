@@ -23,6 +23,20 @@ type CommandEntry = {
 };
 
 const commands: Record<string, CommandEntry> = {
+  init: {
+    handler: loadCommand("init"),
+    help: "Onboard this repo — install the agent skill, launch your agent to write your first task",
+    options: [
+      ["--agent <id>", "Launch this agent (claude-code, cursor, codex-cli, gemini-cli, opencode); skips the picker"],
+      ["--no-launch", "Install the skill only — no agent selection or spawn"],
+    ],
+    examples: [
+      "apo init",
+      "apo init --agent claude-code",
+      "apo init --no-launch",
+    ],
+    note: "Detects installed coding agents, installs the apo authoring skill to ~/.agents/skills/apo and ~/.claude/skills/apo for all of them (a hand-installed apo skill is left untouched), then opens the selected agent pointed at writing your first adapter and task. Run it after apo login.",
+  },
   login: {
     handler: loadCommand("login"),
     help: "Authenticate with email + password",
@@ -664,6 +678,7 @@ function printHelp(): void {
   console.log("");
   console.log(bold("Quick start:"));
   console.log("  apo login                Authenticate");
+  console.log("  apo init                 Onboard this repo: agent skill + your first task");
   console.log("  apo profile use prod     Switch backend + project in one word");
   console.log("  apo project use          Pick a project");
   console.log("  apo task list            See available tasks");

@@ -11,6 +11,10 @@ The `apo` CLI is the primary interface to the platform. It runs tasks, reads ver
 # Authenticate (email + password, picks a project)
 apo login
 
+# Onboard this repo agent-first: install the skill, launch your
+# coding agent to write your first adapter + task
+apo init
+
 # List discovered tasks
 apo task list
 
@@ -75,6 +79,7 @@ React to events without watching the dashboard.
 
 | Command | Purpose |
 |---|---|
+| [`apo init`](/cli/init/) | Onboard a repo agent-first: install the apo authoring skill for every detected coding agent, then launch one to write your first adapter and task. |
 | [`apo login`](/cli/auth/) | Log in, sets the backend, project, and task root every command uses. Remembered per backend; switch with `apo login --backend <url>`. |
 | [`apo profile`](/cli/auth/) | Named connection contexts — save a login (backend, key, project, task root) under a short name and switch with one word. |
 | [`apo logout`](/cli/auth/) | Clear saved credentials. |

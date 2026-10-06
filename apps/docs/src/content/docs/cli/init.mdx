@@ -1,0 +1,60 @@
+---
+title: "apo init"
+description: "Onboard a repository agent-first: install the apo authoring skill for your coding agents, then launch one to write your first adapter and task."
+---
+
+import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
+
+`apo init` finishes onboarding by handing the job to your own coding agent. It detects which coding agents are installed (Claude Code, Cursor, Codex CLI, Gemini CLI, OpenCode), installs the apo authoring skill where all of them can read it, and opens the one you pick pointed at a single task: **write an adapter and your first task for this repo.** The agent explores your real code and scaffolds against it — no templates to copy from docs.
+
+<TerminalDemo
+  command="apo init"
+  lines={[
+    { text: "apo init — set up this repo for agent-driven testing" },
+    { parts: [{ text: "Project root: /repo/acme-agent", tone: "dim" }] },
+    { text: "" },
+    { parts: [{ text: "  ✓ Claude Code    binary on PATH, config directory found", tone: "dim" }] },
+    { parts: [{ text: "  · Cursor         not detected", tone: "dim" }] },
+    { text: "" },
+    { parts: [{ text: "  ✓ /home/dev/.agents/skills/apo", tone: "success" }] },
+    { parts: [{ text: "    installed (Codex, Gemini, OpenCode, Cursor)", tone: "dim" }] },
+    { parts: [{ text: "  ✓ /home/dev/.claude/skills/apo", tone: "success" }] },
+    { parts: [{ text: "    installed (Claude Code)", tone: "dim" }] },
+    { text: "" },
+    { parts: [{ text: "Opening Claude Code...", tone: "dim" }] },
+    { parts: [{ text: "The launched agent writes an adapter + first task, publishes, and runs it.", tone: "dim" }] },
+  ]}
+/>
+
+## Synopsis
+
+```bash
+apo init [--agent <id>] [--no-launch]
+```
+
+| Flag | Meaning |
+|---|---|
+| `--agent <id>` | Launch this agent without the picker: `claude-code`, `cursor`, `codex-cli`, `gemini-cli`, `opencode`. |
+| `--no-launch` | Install the skill only — no agent selection, no spawn. |
+
+## What it does
+
+1. **Detects** installed coding agents. A tool counts as detected when its binary is on `PATH` or one of its config directories exists (`~/.claude`, `.cursor`, …).
+2. **Installs the apo authoring skill** into `~/.agents/skills/apo/` (Codex, Gemini, OpenCode, Cursor) and `~/.claude/skills/apo/` (Claude Code) — for **all** agents, regardless of which one you launch. The skill teaches the whole loop: adapter, task, checks, publish, run, repair.
+3. **Launches** the selected agent in your project root with a kickoff prompt: set up apo, write the adapter and the first `*.eval.ts` task, publish, run, iterate to PASS. Claude Code opens with `--permission-mode acceptEdits` so it can write files; Cursor opens the project and you type `/apo` in the agent chat.
+
+## Ownership rules
+
+- A skill directory the CLI installed carries a marker file; re-running `apo init` updates those in place.
+- A hand-installed apo skill (no marker) or a **symlink** is reported and **left untouched** — the CLI never deletes what it didn't write.
+
+## When to run it
+
+- **After `apo login`**, in the repository that holds the agent you want to test. Login isn't required to install the skill, but the launched agent needs it before it can publish or run tasks — init says so if it's missing.
+- **Headless / scripted**: the picker picks the detected agent but nothing spawns without a terminal; pass `--agent <id>` explicitly to launch for real.
+
+## See also
+
+- [`apo login`](/cli/auth/): writes the credentials the launched agent relies on.
+- [Define a Task](/guides/define-a-task/): the authoring flow the installed skill walks your agent through.
+- [Quickstart](/quickstart/): the manual path, for when you'd rather write the adapter yourself.
