@@ -41,3 +41,6 @@ Judge model comes from the environment (OPENROUTER_MODEL etc.).
 | `jq-deceptively-supported` | PASS | figures look fabricated but all match the work log |
 | `jq-true-trend-claim` | PASS | genuine acceleration, correctly characterized |
 | `jq-many-claims` | PASS | ten claims; diligence and budget stress |
+| `jq-history-recurring` | FAIL | recurring flaw; rubric asks for list_runs/get_run (run twice) |
+| `jq-cross-doc-conflict` | FAIL | two reports that disagree with each other |
+| `jq-cascade-readoff` | mixed | read-off criteria under cascade mode (needs APO_SECOND_JUDGE_MODEL) |
