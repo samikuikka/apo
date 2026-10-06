@@ -6,13 +6,19 @@
  * never throw out of maybeStartCollector.
  */
 
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   APO_TRACES_PATH,
   COLLECTOR_VERSION,
   collectorDownloadUrls,
+  collectorPaths,
   collectorPlatform,
   decideCollectorEnabled,
+  ensureCollectorBinary,
   maybeStartCollector,
   renderCollectorConfig,
 } from "../src/lib/collector.ts";
@@ -42,6 +48,7 @@ afterEach(() => {
     else process.env[key] = savedEnv[key];
   }
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("decideCollectorEnabled", () => {
@@ -128,6 +135,42 @@ describe("collectorPlatform / download urls", () => {
       `https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download` +
         `/v${COLLECTOR_VERSION}/otelcol-contrib_${COLLECTOR_VERSION}_${platform.os}_${platform.arch}.tar.gz`,
     );
+  });
+});
+
+describe("ensureCollectorBinary", () => {
+  it("installs the downloaded release where collectorPaths().bin expects it", async () => {
+    // The shared-ownership split moved the running collector's state under
+    // <root>/shared while the binary stayed at <root>/bin to remain shared
+    // with older CLIs. The installer must extract to the recorded bin path —
+    // a tarball extracted under paths.home leaves paths.bin missing, so every
+    // start re-downloads ~95 MB and the collector never comes up.
+    const dataDir = mkdtempSync(join(tmpdir(), "apo-collector-bin-test-"));
+    process.env.APO_COLLECTOR_DATA_DIR = dataDir;
+    // A tiny tarball standing in for the ~95 MB release. The installer itself
+    // shells out to tar, so tar being present is a precondition already.
+    const staging = mkdtempSync(join(tmpdir(), "apo-collector-tarball-"));
+    writeFileSync(join(staging, "otelcol-contrib"), "#!/bin/sh\n", { mode: 0o755 });
+    const tar = spawnSync("tar", ["-czf", "release.tar.gz", "otelcol-contrib"], { cwd: staging });
+    expect(tar.status).toBe(0);
+    const tarball = readFileSync(join(staging, "release.tar.gz"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) =>
+        String(url).endsWith(".sha256")
+          // Checksum unreachable: the install proceeds unverified (noticed).
+          ? new Response(null, { status: 404 })
+          : new Response(tarball)),
+    );
+
+    try {
+      const bin = await ensureCollectorBinary();
+      expect(bin).toBe(collectorPaths().bin);
+      expect(existsSync(collectorPaths().bin)).toBe(true);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(staging, { recursive: true, force: true });
+    }
   });
 });
 

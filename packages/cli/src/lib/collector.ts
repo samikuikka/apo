@@ -36,7 +36,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 
 /** Pinned upstream release — validated config values below target this. */
@@ -289,7 +289,7 @@ export async function ensureCollectorBinary(
   onNotice?.(
     `Downloading otelcol-contrib v${COLLECTOR_VERSION} (one-time, ~95 MB)…`,
   );
-  mkdirSync(join(paths.home, "bin"), { recursive: true });
+  mkdirSync(dirname(paths.bin), { recursive: true });
   await downloadAndExtract(urls, paths, onNotice);
   return existsSync(paths.bin) ? paths.bin : null;
 }
@@ -303,7 +303,7 @@ async function downloadAndExtract(
   if (!response.ok || !response.body) {
     throw new Error(`collector download failed: HTTP ${response.status}`);
   }
-  const tarball = join(paths.home, "otelcol-contrib.tar.gz");
+  const tarball = join(dirname(paths.bin), "otelcol-contrib.tar.gz");
   await pipeline(response.body, createWriteStream(tarball));
 
   // Verify against the published checksum; a mismatch means a corrupted or
@@ -328,7 +328,7 @@ async function downloadAndExtract(
     );
   }
 
-  const extracted = spawnSync("tar", ["-xzf", tarball, "-C", join(paths.home, "bin")], {
+  const extracted = spawnSync("tar", ["-xzf", tarball, "-C", dirname(paths.bin)], {
     stdio: "pipe",
   });
   rmSync(tarball, { force: true });
