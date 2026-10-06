@@ -98,6 +98,8 @@ LATEST_SCHEMA_VERSION = 21
 _SCHEMA_MIGRATIONS[21] = _migrate_to_v21
 ```
 
+Version numbers above are illustrative — read the current `LATEST_SCHEMA_VERSION` from `backend/apo/db.py` before adding a migration.
+
 ### JSON Fields Pattern
 
 Use `Field(default_factory=list, sa_column=Column("tags", JSON))` for list/dict fields.
@@ -145,12 +147,10 @@ Current example layout:
 
 ```text
 apps/example-service/e2e/agent-task-demo/tasks/
-  demo-agent/
-    meeting-summary/
-  real-agent/
+  real-agent/                  # real LLM-backed agents grouped by product area
     documents/
-      document-qa/
       data-extraction/
+      document-qa/
     engineering/
       api-testing/
       bug-triage/
@@ -163,6 +163,22 @@ apps/example-service/e2e/agent-task-demo/tasks/
       research-synthesis/
     security/
       security-audit/
+  ai-sdk-agent/                # minimal adapter pattern
+    data-extraction/
+  claude-agent/                # Claude Agent SDK adapter on the same task
+    data-extraction/
+  claude-code-replay/          # no-OTel transcript replay
+    invoice-replay/
+  harbor/                      # external benchmark runner as a subprocess
+    terminal-bench/
+      count-dataset-tokens/
+  reasoning-demo/              # raw-fetch adapter recording its own spans
+  issue-302-probe/
+  judge-flip-probe/
+  judge-trace-probe/
+  t-agent-demo/
+  t-agent-mcp/
+  t-jev-split/
 ```
 
 This keeps dashboard grouping aligned with real product areas instead of flattening everything into one task bucket.
@@ -260,6 +276,7 @@ Current route grouping:
   - `/project/[projectId]/tasks`
   - `/project/[projectId]/runs`
   - `/project/[projectId]/schedules`
+  - `/project/[projectId]/automations`
   - `/project/[projectId]/traces`
   - `/project/[projectId]/compare-views`
 - Workspace:
@@ -441,13 +458,14 @@ entrypoint and can accidentally execute library code as a second CLI.
 
 ### Local Development
 
-The fastest path is the root `pnpm dev`, which starts all five services concurrently (dashboard, backend, executor, example-service, example-service-py) and frees ports 3000–8000 first:
+The fastest path is the root `pnpm dev`, which starts all four services concurrently (dashboard, backend, example-service, example-service-py) and kills anything on ports 3000, 3001, 3002, and 8000 first:
 
 1. **Start everything**: `pnpm dev` (from the repo root)
 2. **Individual services** (if needed):
    - Backend: `pnpm --filter backend dev` (runs `uvicorn apo.api:app --reload --port 8000` via `uv`)
    - Dashboard: `pnpm --filter dashboard dev`
    - Example service: `pnpm --filter example-service dev` (configure `.env.local` from `.env.example`)
+   - Example service (Python): `pnpm --filter example-service-py dev` (port 3002)
 3. **Installing dependencies**: `pnpm i` after `package.json` changes; `cd backend && uv sync` after backend dependency changes.
 
 ### Verification Guidelines
