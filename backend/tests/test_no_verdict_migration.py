@@ -229,7 +229,7 @@ def _batch(session: Session, total: int) -> None:
 
 
 def test_v50_backfills_the_reason(engine: Engine, monkeypatch: MonkeyPatch) -> None:
-    assert apo_db.LATEST_SCHEMA_VERSION == 56
+    assert apo_db.LATEST_SCHEMA_VERSION == 57
     assert apo_db._SCHEMA_MIGRATIONS[50] is apo_db._migrate_to_v50
     with Session(engine) as session:
         _batch(session, 7)
