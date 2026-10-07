@@ -24,6 +24,8 @@ apo connect [--dir <path>] [--project <id>] [--name <name>] [--concurrency <n>]
 
 The server never receives your source code, repository credentials, environment variables, or file paths. It receives only Task identity, bounded results, and trace telemetry.
 
+Against a remote backend, `apo connect` starts the same [local collector sidecar](/cli/task-run/#trace-durability-on-remote-backends) as `apo task run`, so queued traces survive network drops and backend restarts while assignments keep flowing. `APO_COLLECTOR=1`/`0` forces it on or off.
+
 ## Prerequisites
 
 - A published Task Catalog (`apo task publish`)

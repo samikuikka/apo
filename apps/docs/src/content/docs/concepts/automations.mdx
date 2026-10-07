@@ -1,9 +1,9 @@
 ---
 title: Automations
-description: "Deliver the verdict where repair happens: event triggers, conditions, typed actions."
+description: "Deliver the verdict where repair happens: event and window triggers, conditions, typed actions."
 ---
 
-An **automation** is a project-scoped rule that watches run events, matches them against conditions, and delivers a typed action — "when a *scheduled* batch fails, open a GitHub issue with the failing tasks and a trace link."
+An **automation** is a project-scoped rule that watches run events — or an aggregate over recent runs — matches them against conditions, and delivers a typed action: "when a *scheduled* batch fails, open a GitHub issue with the failing tasks and a trace link," or "when the suite pass rate drops below 80% over 24 hours, page the channel."
 
 apo produces one verdict plus evidence. The repair loop lives outside apo — in your harness repo, your team chat, your issue tracker. Automations are the bridge: they make the verdict *travel* to where repair actually happens, instead of sitting in the dashboard waiting for someone to look.
 
@@ -13,15 +13,43 @@ That job belongs to [schedules](/concepts/schedules/) — the runs nobody is wat
 
 | Part | Answers | Example |
 |---|---|---|
-| **Event** | When something happened | `batch_run.failed` |
-| **Conditions** | Only if — field matches on that event | `trigger.source` eq `schedule` |
+| **Trigger** | When to look | `batch_run.failed` — or *suite pass rate under 80% over the last 24h* |
+| **Conditions** | Only if — the trigger's scope matches | `trigger.source` eq `schedule` |
 | **Action** | Then deliver | open a GitHub issue, POST a signed webhook |
 
-Conditions are AND-combined; an empty condition list fires on every event of that type. Every firing is recorded in the automation's **execution log** — the exact input that matched, the action's output (like the created issue URL), or the error if delivery failed.
+Conditions are AND-combined; an empty condition list fires on every occurrence the trigger covers. Every firing is recorded in the automation's **execution log** — the exact input that matched, the action's output (like the created issue URL), or the error if delivery failed.
+
+## Two trigger kinds: event and window
+
+A trigger is one of two kinds, and the kind decides what "matching" means.
+
+**Event** triggers watch the same run events webhooks see, one event at a time — a batch fails, a task run errors, a trace is claimed. Event automations are the right shape for *incidents*: something happened, route the evidence to where repair happens.
+
+**Window** triggers ask an aggregate question over recent history — "is the suite pass rate below 80% over the last 24h?" — and fire when the answer crosses a threshold. They are the right shape for *rot*: a capability sliding from 96% to 89% over a week never produces one dramatic event to match, but the graded signal across runs — [the signal that says whether a change helped](/concepts/tests/) — crosses any threshold you name. Window automations watch that signal instead of waiting for a single failure to escalate into an alert.
+
+A window trigger is four knobs, set together:
+
+| Knob | Values |
+|---|---|
+| **Metric** | `suite_pass_rate`, `checks_pass_rate`, `failed_tasks`, `failed_checks`, `errored_tasks`, `error_rate`, `total_cost`, `avg_cost`, `peak_cost`, `avg_duration_s`, `peak_duration_s`, `p95_duration_s`, `total_tokens` |
+| **Operator** | `lt`, `gt`, `gte` |
+| **Threshold** | any number — `0.8` with `suite_pass_rate` + `lt` is "below 80%" |
+| **Window** | `1h`, `6h`, `24h`, `7d` |
+
+The aggregate runs over the batch runs that finished inside the window — status `completed` or `error`, in-flight batches excluded. Every metric computes from stored columns only — which is why `reasoning_tokens` is deliberately not on the list: it is a projection over generation usage, not a stored fact, and a monitor that mixes the two would drift from the runs it claims to describe.
+
+Conditions on a window automation scope the history it aggregates, from a smaller vocabulary than event conditions: `environment` (=), `task` (contains), `model` (=), and `trigger.source` (=) — "watch only scheduled runs of the extraction family" is `task` contains `extract` + `trigger.source` eq `schedule`.
+
+Two behaviors keep window alerts signal instead of noise:
+
+- **Rising-edge firing.** A breach fires once, when the threshold is crossed — not on every evaluation while it stays breached. The suite does not un-break itself; a sustained breach is one alert, and the next one only fires after the metric recovers and falls again.
+- **A cadence you own.** The backend re-evaluates every window automation every 5 minutes by default (`AUTOMATION_WINDOW_EVALUATION_INTERVAL_SECONDS` — see [configuration](/reference/configuration/)). The automation record carries the state — `was_breached`, `last_evaluated_at`, `last_evaluated_value` — and `GET /v1/automations/{id}/evaluation` computes the metric live for the editor's readout.
+
+When a window automation fires, it delivers a `window.breached` event through the same action machinery as any event: the payload carries the metric, its value, the threshold, and the window, so the GitHub issue or Slack message says *"suite pass rate 0.74 < 0.80 over 24h"* rather than asking the reader to go compute it.
 
 ## Events and conditions
 
-Automations watch the same run events webhooks see: batch runs completing or failing, task runs starting, completing, or erroring, and task-run traces being claimed (`task_run.trace_claimed`). Task-run events expose the run's verdict fields (`pass_result`, `failed_checks`, `task_id`, …); batch events expose the rollup counts plus the *trigger* — so you can route scheduled runs separately from manual ones:
+Event triggers match against the run-event payload — the same events webhooks see: batch runs completing or failing, task runs starting, completing, or erroring, and task-run traces being claimed (`task_run.trace_claimed`). Task-run events expose the run's verdict fields (`pass_result`, `failed_checks`, `task_id`, …); batch events expose the rollup counts plus the *trigger* — so you can route scheduled runs separately from manual ones:
 
 | Condition | Fires on |
 |---|---|
@@ -46,7 +74,7 @@ Secrets are Fernet-encrypted at rest: GitHub tokens (the server refuses to store
 
 ## Reliability contract
 
-- **Test before you trust** — every automation has a Test button (and the API route behind it) that fires a synthetic event through the full pipeline. On a GitHub-issue automation a test opens a *real* issue; on a webhook it delivers a real signed POST.
+- **Test before you trust** — every automation has a Test button (and the API route behind it) that fires a synthetic delivery through the full pipeline. On a GitHub-issue automation a test opens a *real* issue; on a webhook it delivers a real signed POST; on a window automation it delivers a synthetic breach with the last evaluated value (or one just past the threshold), so the alert renders exactly as a real one would.
 - **Failures are counted, then the rule steps aside** — ten consecutive failed deliveries disable the automation and the dashboard says why. Re-enabling is a deliberate human "I fixed it" and resets the counter.
 - **No double side effects** — a delivery interrupted by a restart is marked `error` ("delivery interrupted by restart") and is never retried. A duplicate GitHub issue is worse than a missed notification.
 - **Bounded history** — each automation keeps its newest 100 executions.
@@ -57,7 +85,7 @@ Not a workflow engine. Actions deliver *information*; they never run tasks, edit
 
 ## Managing automations
 
-The dashboard's **Automations** page — reached from the Schedules page ("Manage Automations"), not the main nav, because it's configuration for the unattended loop — manages rules: toggle, rotate secrets, run tests, and read the execution log. Creation is outcome-first: pick what should happen (issue or webhook), answer *when exactly* — four plain-language triggers, scheduled-only by default — then fill only the fields that action needs (paste a GitHub token and pick your repository from a searchable list). The full event and condition vocabulary lives behind the dialog's **Advanced** disclosure. New rules start scoped to `trigger.source = schedule`; widen them if you really want manual runs paging you. Project members can see rules and their history; only project admins create and modify them. The CLI covers scripting:
+The dashboard's **Automations** page — reached from the Schedules page ("Manage Automations"), not the main nav, because it's configuration for the unattended loop — manages rules: toggle, rotate secrets, run tests, and read the execution log. Creation is outcome-first: pick what should happen (issue or webhook), answer *when exactly* — event automations pick an event type, window automations pick metric, threshold, and window — then fill only the fields that action needs (paste a GitHub token and pick your repository from a searchable list). The full event and condition vocabulary lives behind the dialog's **Advanced** disclosure. New rules start scoped to `trigger.source = schedule`; widen them if you really want manual runs paging you. Window automation cards show their trigger as a sentence ("suite pass rate < 0.80 over 24h") with the last evaluated value and time, and wear a **breached** marker while the threshold stays crossed — the rising-edge rule means that marker pages you once, not every five minutes. Project members can see rules and their history; only project admins create and modify them. The CLI covers scripting:
 
 ```bash
 apo automations list

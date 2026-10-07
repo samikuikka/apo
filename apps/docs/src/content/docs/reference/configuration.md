@@ -39,6 +39,12 @@ credentials are read from the local environment:
 |---|---|---|
 | `SCHEDULER_ENABLED` | `true` | Set `false` to disable schedule dispatch. Schedules stay visible but don't fire. **Never run two backends with this `true` against the same database**: the scheduler is in-process and single-owner. |
 
+### Automations
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AUTOMATION_WINDOW_EVALUATION_INTERVAL_SECONDS` | `300` | How often the backend re-evaluates [window automations](/concepts/automations/). Each pass computes every enabled window automation's metric over its window; a threshold crossing fires on the rising edge, so shortening the interval speeds detection but never sends more than one alert per breach. |
+
 ### Task source
 
 | Variable | Default | Purpose |
@@ -86,6 +92,8 @@ The `apo` CLI reads these. Precedence: flag > env > stored credentials (`~/.apo/
 | `APO_PROJECT_ID` | Active project id. |
 | `APO_ACTOR` | Actor name for runs (who triggered them). |
 | `APO_API_KEY` | API key for backend auth. |
+| `APO_COLLECTOR` | `1`/`true` or `0` forces the [local collector sidecar](/cli/task-run/#trace-durability-on-remote-backends) on or off for `apo task run` / `apo connect`. Unset, the sidecar runs only when the backend is remote — a loopback backend is the same reliability class as local disk, so the sidecar would only add a process. |
+| `APO_COLLECTOR_BIN`, `APO_COLLECTOR_DATA_DIR`, `APO_COLLECTOR_PORT`, `APO_COLLECTOR_HEALTH_PORT`, `APO_COLLECTOR_METRICS_PORT`, `APO_COLLECTOR_MAX_QUEUE_BYTES` | Override seams for the sidecar: where the `otelcol` binary lives (default: downloaded and pinned by the CLI), where its root directory sits, and its ports and queue cap (default 512 MiB). For debugging and constrained machines, not day-to-day configuration. |
 
 ## SDK (`@apo-ai/sdk`)
 

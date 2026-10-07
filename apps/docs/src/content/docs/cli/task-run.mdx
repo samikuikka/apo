@@ -134,6 +134,14 @@ If a configured recorded run cannot reach the backend, the command exits `2`.
 Never silently downgrade a configured recorded run to unrecorded.
 :::
 
+### Trace durability on remote backends
+
+A span is only durable once the backend accepts it. A run against a remote backend over a flaky network — or while the backend is restarting — would lose every span whose export retry window (seconds) expires, silently. So when the configured backend is remote, `apo task run` starts a **local collector sidecar** first: a pinned OpenTelemetry Collector the CLI downloads and manages, listening on loopback. The task process exports to localhost, and the sidecar forwards to the backend through a bounded disk queue (512 MiB by default) that retries until the backend accepts.
+
+The sidecar never puts a run at risk. If it fails to start, or dies mid-run, tracing falls back to direct export — exactly the behavior before the sidecar existed. It is shared across concurrent apo commands: each command reuses a healthy sidecar instead of spawning its own, and the last command out stops it. A command that exits while traces are still queued (or another command is using it) prints a dim note that the collector was *left running* to keep delivering — the next command that spawns it stops it once drained.
+
+A loopback backend (`localhost`, `127.0.0.1`, `::1`) skips the sidecar entirely — handing spans to a local backend is the same reliability class as handing them to a local process. `APO_COLLECTOR=1`/`0` forces the decision either way (to enable it in local tests, or disable it on a remote setup); see [configuration](/reference/configuration/).
+
 For persistent execution (dashboard and scheduled runs), use
 [`apo connect`](/cli/connect/) instead.
 

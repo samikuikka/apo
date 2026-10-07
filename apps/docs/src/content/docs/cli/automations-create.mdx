@@ -85,3 +85,4 @@ Each failing scheduled batch then opens one issue whose body carries the pass/fa
 
 - Test the rule from the dashboard's Automations page (Test button) — it fires a synthetic event through the full pipeline. On a `github_issue` automation a test opens a real issue.
 - List what you've built with [`apo automations list`](/cli/automations-list/). Delete and edit live in the dashboard or via `DELETE`/`PATCH /v1/automations/{id}`.
+- The CLI creates **event** automations. Window automations (`trigger_kind: "window"` — metric over a time window, threshold, rising-edge firing) are built in the dashboard's Automations page or via `POST /v1/automations` with `trigger_kind: "window"` plus `window_metric`, `window_operator`, `window_threshold`, and `evaluation_window`; see [Automations](/concepts/automations/#two-trigger-kinds-event-and-window).
