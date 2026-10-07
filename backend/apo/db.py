@@ -3918,7 +3918,66 @@ def _migrate_to_v25() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 56
+def _migrate_to_v57() -> None:
+    """Version 57: served-model column on logged calls.
+
+    ``logged_calls.model`` holds the model the caller requested
+    (``gen_ai.request.model`` — often a gateway alias). The model the
+    provider reports as having served the call (``gen_ai.response.model`` /
+    ``ai.response.model``) was read nowhere, so a gateway fallback that
+    served a different model than requested was invisible: the call was
+    priced as the alias and no surface could flag the drift. New DBs get the
+    column from ``create_all``; existing DBs add it here and backfill from
+    the canonical span attributes, which survive losslessly in
+    ``otlp_spans``. Spans without a response model skip the write — their
+    calls keep NULL, which reads as "provider did not report".
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(conn, "logged_calls", "served_model", "VARCHAR")
+
+    import logging
+
+    from sqlmodel import Session as SQLModelSession
+    from sqlmodel import col
+    from sqlmodel import select as sqlmodel_select
+    from sqlmodel import update as sqlmodel_update
+
+    from .models.db import LoggedCallDB, OtlpSpanDB
+    from .services.otel_normalization import extract_served_model
+
+    logger = logging.getLogger(__name__)
+    updated = 0
+    with SQLModelSession(engine) as session:
+        last_id = 0
+        while True:
+            spans = session.exec(
+                sqlmodel_select(OtlpSpanDB)
+                .where(col(OtlpSpanDB.id) > last_id)
+                .order_by(col(OtlpSpanDB.id))
+                .limit(500)
+            ).all()
+            if not spans:
+                break
+            last_id = spans[-1].id or 0
+            for span in spans:
+                served = extract_served_model(span.attributes or {})
+                if served is None:
+                    continue
+                session.exec(
+                    sqlmodel_update(LoggedCallDB)
+                    .where(
+                        col(LoggedCallDB.id) == span.span_id,
+                        col(LoggedCallDB.project) == span.project_id,
+                    )
+                    .values(served_model=served)
+                )
+                updated += 1
+            session.commit()
+    if updated:
+        logger.info("Schema v57 backfill: %d calls got a served model", updated)
+
+
+LATEST_SCHEMA_VERSION = 57
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -3977,6 +4036,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     54: _migrate_to_v54,
     55: _migrate_to_v55,
     56: _migrate_to_v56,
+    57: _migrate_to_v57,
 }
 
 

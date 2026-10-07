@@ -138,6 +138,9 @@ export function createApoAnthropic<T extends AnthropicClientLike>(
 
       emitGenerationAndTools(trace, spanId, startedAt, {
         text: text || undefined,
+        // The provider reports the model that actually served the response —
+        // the only signal a gateway fallback gives.
+        servedModel: response.model,
         promptTokens: response.usage?.input_tokens,
         completionTokens: response.usage?.output_tokens,
         toolCalls,

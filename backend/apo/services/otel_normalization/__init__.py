@@ -33,6 +33,7 @@ from ._shared import (
     extract_output,
     extract_provider,
     extract_route,
+    extract_served_model,
     extract_tokens,
 )
 from . import _apo, _claude, _genai, _openinference, _vercel, _generic
@@ -45,6 +46,7 @@ __all__ = [
     "NORMALIZER_VERSION",
     "extract_provider",
     "extract_route",
+    "extract_served_model",
 ]
 
 # Ordered list of (module, mapper_name) pairs. First match wins.
@@ -99,6 +101,7 @@ def normalize_span(span: OtlpSpanDB) -> NormalizedSpan:
     normalized.model = extract_model(attrs)
     normalized.provider = extract_provider(attrs)
     normalized.route = extract_route(attrs)
+    normalized.served_model = extract_served_model(attrs)
     normalized.token_usage = _token_usage(attrs, normalized.model)
     normalized.error_message = extract_error(span, attrs)
     normalized.input = extract_input(attrs)

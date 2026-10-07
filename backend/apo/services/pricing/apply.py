@@ -63,8 +63,16 @@ def apply_cost_to_call(
     """
     from ..usage_normalization import normalize_usage  # local import; avoid cycle
 
+    # Price what served the call. When a gateway fell back, the requested
+    # name is an alias and the served model (gen_ai.response.model) is the
+    # billable identity — for usage normalization too, since the usage
+    # attributes on the span come from the provider that actually served.
+    effective_model = call.served_model or call.model
+
     try:
-        raw_usage = normalize_usage(attributes, provider, model_name=call.model or None)
+        raw_usage = normalize_usage(
+            attributes, provider, model_name=effective_model or None
+        )
     except Exception:  # normalization must never break ingestion
         logger.debug("usage normalization failed for call %s; skipping cost", call.id)
         return
@@ -91,7 +99,12 @@ def apply_cost_to_call(
 
     try:
         result = compute_cost(
-            session, call.model, raw_usage, project, at_time, provider=call.provider
+            session,
+            effective_model,
+            raw_usage,
+            project,
+            at_time,
+            provider=call.provider,
         )
     except Exception:
         logger.debug("cost compute failed for call %s; skipping cost", call.id)
@@ -103,7 +116,7 @@ def apply_cost_to_call(
         # queryable — a run's silently-zeroed observations are now
         # ``WHERE cost_provenance = 'unpriced'`` — and warn once per model name
         # so a missing pricing entry gets noticed instead of hiding as a null.
-        model_name = (call.model or "").strip()
+        model_name = (effective_model or "").strip()
         if model_name:
             call.cost_provenance = "unpriced"
             if model_name not in _WARNED_UNPRICED_MODELS:

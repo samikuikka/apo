@@ -36,6 +36,7 @@ import { OutcomeSummary } from "@/components/run-outcome";
 import { formatTokenTotal, formatCostMicro } from "@/lib/format";
 import { getProject } from "@/lib/projects-api";
 import GenerationExecutionNotice from "@/components/generation-execution-notice";
+import { ModelDriftBanner } from "./model-drift-banner";
 import { RunJudgmentsSection } from "./run-judgments-section";
 
 export const dynamic = "force-dynamic";
@@ -446,6 +447,8 @@ export default async function TaskRunDetailPage({
         )}
 
         <GenerationExecutionNotice {...generationNoticeProps(taskRun)} />
+
+        {taskRun.model_drift && <ModelDriftBanner drift={taskRun.model_drift} />}
 
         {/* Error banner */}
         {showsErrorBanner(taskRun) && taskRun.error_message && (

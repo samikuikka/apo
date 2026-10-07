@@ -345,6 +345,7 @@ class TraceProjector:
                 model=normalized.model or "",
                 provider=normalized.provider,
                 route=normalized.route,
+                served_model=normalized.served_model,
                 observation_type=normalized.observation_type,
                 step_name=normalized.display_name,
                 parent_call_id=span.parent_span_id,
@@ -365,6 +366,7 @@ class TraceProjector:
             # a re-ingest of the source span.
             call.provider = normalized.provider or call.provider
             call.route = normalized.route or call.route
+            call.served_model = normalized.served_model or call.served_model
             call.observation_type = normalized.observation_type
             call.step_name = normalized.display_name
             call.parent_call_id = span.parent_span_id
@@ -723,16 +725,19 @@ def _primary_model_by_cost(calls: Sequence[LoggedCallDB]) -> str | None:
 
     The model under test (e.g. claude-opus-5) dominates cost, while judge
     calls are negligible. This naturally selects the agent's model rather
-    than whichever harness call arrived first.
-    Falls back to the first call with a model when no call has cost data.
+    than whichever harness call arrived first. Falls back to the first call
+    with a model when no call has cost data. Keys on the served model
+    (``gen_ai.response.model``) when reported — the observed identity, not
+    the requested alias.
     """
     if not calls:
         return None
     totals: dict[str, float] = {}
     for c in calls:
-        if c.model and c.cost is not None:
-            totals[c.model] = totals.get(c.model, 0.0) + c.cost
+        effective = (c.served_model or c.model) if c.model else None
+        if effective and c.cost is not None:
+            totals[effective] = totals.get(effective, 0.0) + c.cost
     if totals:
         return max(totals, key=lambda k: totals[k])  # type: ignore[return-value]
     first_model = next((c for c in calls if c.model), None)
-    return first_model.model if first_model else None
+    return (first_model.served_model or first_model.model) if first_model else None

@@ -30,6 +30,7 @@ from ..models import (
     GenerationExecutionSummary,
     GenerationUsageSummary,
     LoggedCallDB,
+    ModelDriftSummary,
     ModelProviderPair,
     ReportAgentTaskRunResultRequest,
     RunDB,
@@ -60,7 +61,7 @@ from ..services.agent_task_projection import (
     to_batch_run_detail,
     to_task_run_summary,
 )
-from ..services.trace_backend import parse_model_providers
+from ..services.trace_backend import model_drift_summary, parse_model_providers
 from ..services.view_runs import since_cutoff
 from ..services.demo_workspace import require_project_not_demo
 from ..services.agent_task_runner import finalize_external_task_run
@@ -191,6 +192,32 @@ def _task_run_provider_pairs(
         ModelProviderPair.model_validate(pair)
         for pair in parse_model_providers(task_run.model_providers_json)
     ]
+
+def _task_run_model_drift(
+    session: Session,
+    task_run: AgentTaskRunDB,
+) -> ModelDriftSummary | None:
+    """Served models that diverged from the run's configured model.
+
+    Computed at read time from the trace's logged calls — judge generations
+    excluded — so late-arriving spans are always reflected and no stored
+    summary can go stale (the same reason the projector recomputes rollups
+    on every span). None when the adapter reported no configuration, the
+    trace is not linked, or the run never drifted.
+    """
+    if not task_run.configured_model or not task_run.trace_run_id:
+        return None
+    batch = session.get(AgentTaskBatchRunDB, task_run.batch_run_id)
+    if batch is None:
+        return None
+    calls = session.exec(
+        select(LoggedCallDB).where(
+            col(LoggedCallDB.run_id) == task_run.trace_run_id,
+            col(LoggedCallDB.project) == batch.project,
+        )
+    ).all()
+    return model_drift_summary(calls, task_run.configured_model)
+
 def _build_task_run_detail(
     session: Session,
     task_run: AgentTaskRunDB,
@@ -232,6 +259,7 @@ def _build_task_run_detail(
             else None
         ),
         model_providers=_task_run_provider_pairs(task_run),
+        model_drift=_task_run_model_drift(session, task_run),
         total_tokens=task_run.total_tokens,
         total_reasoning_tokens=task_run.total_reasoning_tokens,
         max_call_reasoning_tokens=task_run.max_call_reasoning_tokens,

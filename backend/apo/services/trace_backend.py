@@ -23,6 +23,7 @@ from typing import Protocol, cast
 from sqlmodel import Session, select
 
 from ..models.db import AgentTaskRunDB, LoggedCallDB, OtlpSpanDB, RunDB
+from ..models.schemas import ModelDriftPair, ModelDriftSummary
 from .trace_ownership import mark_failed, mark_persisted
 
 
@@ -56,16 +57,23 @@ def model_providers_summary(calls: Sequence[LoggedCallDB]) -> dict[str, object] 
     than by run-to-run noise, so the pair — not the bare model id — is the
     identity host comparisons need. Only GENERATION observations with a model
     count; tool/structural rows carry no serving identity.
+
+    The pair's model is the one that *served* the call
+    (``served_model`` / ``gen_ai.response.model``) when the provider
+    reported it: a gateway fallback that swapped the model mid-run then
+    shows up as its own pair at its own price, instead of hiding under the
+    requested alias.
     """
     entries: dict[tuple[str, str | None, str | None], _PairTotals] = {}
     for call in calls:
         if call.observation_type != "GENERATION" or not call.model:
             continue
-        key = (call.model, call.provider, call.route)
+        effective_model = call.served_model or call.model
+        key = (effective_model, call.provider, call.route)
         entry = entries.get(key)
         if entry is None:
             entry = _PairTotals(
-                model=call.model, provider=call.provider, route=call.route
+                model=effective_model, provider=call.provider, route=call.route
             )
             entries[key] = entry
         entry.calls += 1
@@ -145,6 +153,72 @@ def provider_labels(pairs: list[dict[str, object]]) -> list[str]:
         if isinstance(label, str) and label and label not in labels:
             labels.append(label)
     return labels
+
+
+def model_drift_summary(
+    calls: Sequence[LoggedCallDB], configured_model: str | None
+) -> ModelDriftSummary | None:
+    """Evidence that the run was not served by its configured model.
+
+    A gateway fallback (LiteLLM router, OpenRouter provider/model fallback)
+    swaps the serving model mid-run; a pass earned on the fallback is only
+    partly evidence about the configured model, so the divergence is
+    surfaced explicitly. Compares each *agent* generation's served model
+    (``served_model`` / ``gen_ai.response.model``, falling back to the
+    requested model when the provider reported none) against the
+    configured model. Judge generations are excluded — the judge is
+    expected to run on its own model.
+
+    Returns None when there is no configuration or no divergence; the
+    absence of drift is not a fact worth storing.
+    """
+    if not configured_model:
+        return None
+    entries: dict[tuple[str, str | None, str | None], _PairTotals] = {}
+    total = 0
+    for call in calls:
+        if call.observation_type != "GENERATION" or not call.model:
+            continue
+        if (call.step_name or "").startswith("judge:"):
+            continue
+        total += 1
+        effective = call.served_model or call.model
+        if effective == configured_model:
+            continue
+        key = (effective, call.provider, call.route)
+        entry = entries.get(key)
+        if entry is None:
+            entry = _PairTotals(
+                model=effective, provider=call.provider, route=call.route
+            )
+            entries[key] = entry
+        entry.calls += 1
+        if call.total_tokens is not None:
+            entry.total_tokens = (entry.total_tokens or 0) + call.total_tokens
+        cost = call.cost if call.cost is not None else call.provided_cost
+        if cost is not None:
+            entry.cost_micro = (entry.cost_micro or 0) + cost
+    if not entries:
+        return None
+    ordered = sorted(
+        entries.values(),
+        key=lambda e: (-e.calls, e.model, e.provider or "", e.route or ""),
+    )
+    return ModelDriftSummary(
+        configured_model=configured_model,
+        pairs=[
+            ModelDriftPair(
+                model=e.model,
+                provider=e.provider,
+                route=e.route,
+                calls=e.calls,
+                total_tokens=e.total_tokens,
+                cost_micro=e.cost_micro,
+            )
+            for e in ordered
+        ],
+        total_agent_generations=total,
+    )
 
 
 def output_tok_per_s(call: LoggedCallDB) -> float | None:

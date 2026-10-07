@@ -258,6 +258,13 @@ export function createOtelAgentTaskTraceClient(
         params.reasoning_tokens,
       );
     }
+    if (params.served_model) {
+      // The GenAI semconv pair: request.model is what the caller asked the
+      // gateway for, response.model is what actually served the call. When a
+      // router falls back mid-run the two diverge — pricing and drift
+      // detection key on this attribute.
+      active.span.setAttribute("gen_ai.response.model", params.served_model);
+    }
     if (params.status_message) {
       active.span.setAttribute("apo.status_message", params.status_message);
     }

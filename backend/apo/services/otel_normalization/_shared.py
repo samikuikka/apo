@@ -26,7 +26,12 @@ VALID_OBSERVATION_TYPES = frozenset({
 # cache_read_tokens / cache_creation_tokens) translated onto the canonical
 # gen_ai.usage.* keys in usage normalization — claude_code.llm_request spans
 # previously projected with no tokens and no cost despite carrying usage.
-NORMALIZER_VERSION = 9
+# v10: served model (gen_ai.response.model / ai.response.model /
+# llm.response.model_name) extracted as a first-class field. A gateway
+# fallback (LiteLLM router, OpenRouter provider fallback) serves a different
+# model than requested; without the field the swap is invisible to pricing
+# and drift detection.
+NORMALIZER_VERSION = 10
 
 
 @final
@@ -43,6 +48,7 @@ class NormalizedSpan:
         model: str | None = None,
         provider: str | None = None,
         route: str | None = None,
+        served_model: str | None = None,
         input: dict[str, Any] | None = None,
         output: dict[str, Any] | None = None,
         tool_name: str | None = None,
@@ -62,6 +68,7 @@ class NormalizedSpan:
         self.model = model
         self.provider = provider
         self.route = route
+        self.served_model = served_model
         self.input = input
         self.output = output
         self.tool_name = tool_name
@@ -303,6 +310,28 @@ def extract_model(attrs: dict[str, Any]) -> str | None:
         "gen_ai.request.model",
         "ai.model.id",
         "llm.model_name",
+    ):
+        value = get_str(attrs, key)
+        if value:
+            return value
+    return None
+
+
+def extract_served_model(attrs: dict[str, Any]) -> str | None:
+    """The model the provider reports as having served the call.
+
+    The GenAI semconv pair: ``gen_ai.request.model`` is what the caller sent
+    (often a gateway alias), ``gen_ai.response.model`` is the exact model that
+    generated the response. A router fallback — LiteLLM fallbacks to another
+    model group, OpenRouter provider/model fallback, an Auto Router pick —
+    diverges here, and this attribute is the only signal it leaves. Stored
+    verbatim even when it equals the requested model: it is the provider's
+    report, not an inference.
+    """
+    for key in (
+        "gen_ai.response.model",
+        "ai.response.model",
+        "llm.response.model_name",
     ):
         value = get_str(attrs, key)
         if value:

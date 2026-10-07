@@ -44,6 +44,35 @@ class ModelProviderPair(SQLModel):
     total_tokens: int | None = None
     cost_micro: int | None = None
 
+
+class ModelDriftPair(SQLModel):
+    """One served model that diverged from the run's configured model."""
+
+    model: str
+    provider: str | None = None
+    route: str | None = None
+    calls: int
+    total_tokens: int | None = None
+    cost_micro: int | None = None
+
+
+class ModelDriftSummary(SQLModel):
+    """Model-integrity evidence for one task run: did the run actually run
+    on the model its configuration claims?
+
+    A gateway fallback (LiteLLM router, OpenRouter provider/model fallback)
+    can serve part of a run with a different model than requested. The
+    verdict is then only partly evidence about the configured model, so the
+    drift is surfaced explicitly rather than left for a reader to notice in
+    the host pairs. ``pairs`` lists only the divergent served models,
+    aggregated over the run's agent generations (judge calls excluded).
+    """
+
+    configured_model: str
+    pairs: list[ModelDriftPair] = Field(default_factory=list)
+    total_agent_generations: int
+
+
 # Why an ``error`` run has no verdict (issue #323); None when it has one.
 NoVerdictReason = Literal["judge", "generations", "executor"]
 class Run(SQLModel):
@@ -228,6 +257,11 @@ class LoggedCallBase(SQLModel):
     # "fireworks", "openrouter:nitro-><host>". Null = not reported.
     provider: str | None = Field(default=None)
     route: str | None = Field(default=None)
+    # The model the provider reports as having served the call
+    # (gen_ai.response.model) — the pairmate of ``model``
+    # (gen_ai.request.model). Diverges when a gateway fallback served a
+    # different model than the one requested. Null = provider reported none.
+    served_model: str | None = Field(default=None)
     latency_ms: float | None = Field(default=None, index=True)
     cost: int | None = Field(default=None, index=True)  # micro-USD int
 
@@ -723,7 +757,7 @@ TRACE_PERSISTENCE_STATUSES: frozenset[str] = frozenset(
 def as_no_verdict_reason(reason: str | None) -> NoVerdictReason | None:
     """Narrow a persisted ``no_verdict_reason``; unknown values read as None."""
     if reason in ("judge", "generations", "executor"):
-        return cast("NoVerdictReason", reason)
+        return reason
     return None
 
 
@@ -824,6 +858,10 @@ class AgentTaskRunDetail(SQLModel):
     # The (model, provider/route) pairs the run's trace served through
     # (issue #307). Same shape as AgentTaskRunSummary.
     model_providers: list[ModelProviderPair] = Field(default_factory=list)
+    # Served models that diverged from the configured model (gateway
+    # fallback evidence). None when the run never drifted or reported no
+    # configuration.
+    model_drift: ModelDriftSummary | None = None
     task_source_commit_sha: str | None = None
     error_message: str | None = None
     trace_persistence_status: TracePersistenceStatus = "pending"

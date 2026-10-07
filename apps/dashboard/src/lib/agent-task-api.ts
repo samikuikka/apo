@@ -132,6 +132,26 @@ export function providerLabels(pairs: ModelProviderPair[] | undefined): string[]
   return labels;
 }
 
+/** One served model that diverged from the run's configured model. Same
+ * shape as ModelProviderPair. */
+export interface ModelDriftPair {
+  model: string;
+  provider: string | null;
+  route: string | null;
+  calls: number;
+  total_tokens: number | null;
+  cost_micro: number | null;
+}
+
+/** Model-integrity evidence: the run's agent generations were partly served
+ * by models other than the configured one (gateway fallback). Null when the
+ * run never drifted. */
+export interface ModelDriftSummary {
+  configured_model: string;
+  pairs: ModelDriftPair[];
+  total_agent_generations: number;
+}
+
 export interface AgentTaskBatchRunConfigurationSummary {
   state: BatchRunConfigurationState;
   configurations: AgentTaskRunConfigurationCount[];
@@ -410,6 +430,9 @@ export interface AgentTaskRunDetail extends AgentTaskRunSummary {
   deliverables_json: Record<string, unknown> | null;
   deliverables?: DeliverableSummary[];
   error_category: string | null;
+  /** Served models that diverged from run_configuration.model (gateway
+   * fallback evidence). Null/absent when the run never drifted. */
+  model_drift?: ModelDriftSummary | null;
   /** Pinned Task Definition for CodeMirror source display. */
   task_definition?: TaskDefinitionRevisionSummary | null;
   /** Issue #159: recorded rejudge judgments. The verdict above stays canonical. */

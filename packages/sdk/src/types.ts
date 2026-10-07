@@ -54,6 +54,11 @@ export interface EndSpanParams {
   /** Reasoning/thinking tokens, when the provider reports them as a distinct
    * dimension. Omit when unreported — unknown must stay unknown, not zero. */
   reasoning_tokens?: number;
+  /** The model the provider reports as having served the call (the response's
+   * `model` field), emitted as `gen_ai.response.model`. A gateway fallback
+   * (LiteLLM router, OpenRouter provider fallback) can serve a different
+   * model than requested — this is the only field that tells them apart. */
+  served_model?: string;
   status_message?: string;
   level?: "DEBUG" | "DEFAULT" | "WARNING" | "ERROR";
   metadata?: Record<string, unknown>;
