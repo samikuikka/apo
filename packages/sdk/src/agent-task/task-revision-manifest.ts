@@ -3,8 +3,8 @@
  *
  * Pure, dependency-free canonicalizer. Both this module and its Python twin
  * (`backend/apo/execution/task_revision_manifest.py`) MUST produce
- * byte-identical canonical JSON and digests for every fixture under
- * `specs/contracts/task-revision/v1/cases/`.
+ * byte-identical canonical JSON and digests for any given file tree — the
+ * task-revision identity is content-addressed on both sides of the wire.
  *
  * Canonicalization rules:
  *   - `/` path separators (caller `\` normalized to `/`);

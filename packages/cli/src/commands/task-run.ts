@@ -27,7 +27,7 @@ import {
   type ResultBodySize,
 } from "../lib/result-submission.ts";
 import { externalizeResultEvidence, ResultEvidenceTooLargeError } from "../lib/result-evidence.ts";
-import { maybeStartCollector } from "../lib/collector.ts";
+import { maybeStartCollector, type MaybeCollector } from "../lib/collector.ts";
 
 export type LocalRunSummary = {
   taskId: string;
@@ -321,8 +321,7 @@ async function runCallerRecorded(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(red(`Error: failed to load task SDK: ${message}`));
-    delete process.env.APO_AUTH_TOKEN;
-    if (injectedApiKey) delete process.env.APO_API_KEY;
+    await releasePreRunState(collector, injectedApiKey);
     return 2;
   }
 
@@ -332,6 +331,7 @@ async function runCallerRecorded(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(red(`Error: /start failed: ${message}`));
+    await releasePreRunState(collector, injectedApiKey);
     return 2;
   }
 
@@ -603,15 +603,37 @@ async function runCallerRecorded(
     if (injectedApiKey) delete process.env.APO_API_KEY;
     process.removeListener("SIGINT", onRunSigint);
     process.removeListener("SIGTERM", onRunSigterm);
-    if ((await collector.stop()) === "left-running") {
-      console.log(dim(
-        "Local collector left running — it is still delivering queued traces, " +
-        "or another apo command may be using it; the next command that spawns it " +
-        "stops it once drained.",
-      ));
-    }
+    await releaseCollector(collector);
   }
   return exitCode;
+}
+
+/**
+ * The pre-run failure paths (SDK import, /start) own the same run-scoped
+ * state the run's finally releases — executor env vars and the collector
+ * handle. Nothing else exists yet: no heartbeat, no signal handlers. Without
+ * this, a failed /start leaves this command registered as a live collector
+ * user (pruned only by a later command) and the collector it spawned
+ * unattended until the next apo command stops it.
+ */
+async function releasePreRunState(
+  collector: MaybeCollector,
+  injectedApiKey?: string,
+): Promise<void> {
+  delete process.env.APO_AUTH_TOKEN;
+  if (injectedApiKey) delete process.env.APO_API_KEY;
+  await releaseCollector(collector);
+}
+
+/** Release the collector handle, saying so when it must keep running. */
+async function releaseCollector(collector: MaybeCollector): Promise<void> {
+  if ((await collector.stop()) === "left-running") {
+    console.log(dim(
+      "Local collector left running — it is still delivering queued traces, " +
+      "or another apo command may be using it; the next command that spawns it " +
+      "stops it once drained.",
+    ));
+  }
 }
 
 function printLocalRunSummary(summary: LocalRunSummary, taskRunId: string | null): void {

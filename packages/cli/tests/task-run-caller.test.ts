@@ -105,6 +105,44 @@ describe("task run caller-execution dispatch", () => {
     expect(code).toBe(0);
   });
 
+  // Regression: this path returned without releasing the run-scoped executor
+  // env — APO_AUTH_TOKEN lingered, and the injected APO_API_KEY was cleaned on
+  // the SDK-load path but not this one.
+  it("a failed /start cleans up the executor env it threaded", async () => {
+    const savedKey = process.env.APO_API_KEY;
+    const savedToken = process.env.APO_AUTH_TOKEN;
+    delete process.env.APO_API_KEY;
+    delete process.env.APO_AUTH_TOKEN;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/health")) return new Response("ok", { status: 200 });
+      if (url.includes("/agent-task-batch-runs/caller")) {
+        return mockResp({
+          batch_run_id: "b1", task_run_id: "r1", attempt_id: "a1", lease_generation: 1,
+          lease_expires_at: "2026-01-01T00:00:00Z", attempt_jwt: "jwt-1",
+          trace_endpoint: "http://backend.test", trace_project: "proj-test",
+        }, 201);
+      }
+      if (url.includes("/attempts/a1/start")) return mockResp({ error: "boom" }, 500);
+      return mockResp({}, 404);
+    });
+    try {
+      const code = await run([
+        taskId, "--dir", testDir, "--backend", "http://backend.test",
+        "--project", "proj-test", "--api-key", "sk-apo-test",
+      ]);
+      expect(code).toBe(2);
+      expect(_captured.env).toBeUndefined(); // the run never started
+      expect(process.env.APO_AUTH_TOKEN).toBeUndefined();
+      expect(process.env.APO_API_KEY).toBeUndefined();
+    } finally {
+      if (savedKey === undefined) delete process.env.APO_API_KEY;
+      else process.env.APO_API_KEY = savedKey;
+      if (savedToken === undefined) delete process.env.APO_AUTH_TOKEN;
+      else process.env.APO_AUTH_TOKEN = savedToken;
+    }
+  });
+
   // Regression: this path set AGENT_TASK_TRACE_PROJECT, which nothing reads. The
   // SDK gates tracing on AGENT_TASK_PROJECT, so caller runs silently fell back to
   // noop tracing — no trace recorded, and a runtime that nests under a propagated

@@ -150,6 +150,30 @@ describe("apo init", () => {
     }
   });
 
+  it("defaults to skill-only when no agent is detected (headless)", async () => {
+    const caseHome = freshHome();
+    rmSync(FAKE_ARGS_FILE, { force: true });
+    const { logs, restore } = captureLog();
+    const realPath = process.env.PATH;
+    process.env.PATH = "/nonexistent"; // nothing on PATH; fresh home/root have no config dirs
+    try {
+      const code = await run([], { home: caseHome, projectRoot });
+      expect(code).toBe(0);
+      expect(existsSync(join(caseHome, ".agents", "skills", "apo", "SKILL.md"))).toBe(true);
+      expect(existsSync(FAKE_ARGS_FILE)).toBe(false);
+      // No agent was detected, so none may be presented as chosen or
+      // recommended — that would tell the user to install an agent they
+      // never had.
+      const out = logs.join("\n");
+      expect(out).not.toContain("is not on PATH");
+      expect(out).not.toContain("--agent");
+    } finally {
+      process.env.PATH = realPath;
+      restore();
+      rmSync(caseHome, { recursive: true, force: true });
+    }
+  });
+
   it("notes the missing login instead of blocking", async () => {
     const caseHome = freshHome();
     const { logs, restore } = captureLog();

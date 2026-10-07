@@ -110,8 +110,12 @@ export async function run(argv: string[], deps: InitDeps = {}): Promise<number> 
       ];
       // Headless runs land on the single detected agent when there is one —
       // but they never spawn it (see the launch gate below); only an explicit
-      // --agent confirms a spawn without a terminal.
-      const picked = await pickOption("Open which coding agent?", options, 0);
+      // --agent confirms a spawn without a terminal. With nothing detected
+      // the default is "None": "Claude Code (default)" on an agent-less
+      // machine would be a recommendation to install an agent, not a
+      // detection.
+      const defaultIndex = detectedTools.length > 0 ? 0 : options.length - 1;
+      const picked = await pickOption("Open which coding agent?", options, defaultIndex);
       selected = picked === "none" ? null : picked;
     }
   }

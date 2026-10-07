@@ -223,10 +223,11 @@ export {
 } from "./integrations/run-context.ts";
 
 // ── Task Revision manifest ────────────────────────────────────
-// Pure canonicalizer shared with the Python twin. The CLI filesystem walker
+// Pure canonicalizer shared with the Python twin
+// (backend/apo/execution/task_revision_manifest.py). The CLI filesystem walker
 // consumes this to produce a content-addressed identity for a caller's
-// workspace; both runtimes must agree byte-for-byte on the canonical JSON and
-// digest over the shared corpus at specs/contracts/task-revision/v1/cases/.
+// workspace; the two runtimes must agree byte-for-byte on the canonical JSON
+// and digest for any given file tree.
 export {
   buildManifest,
   canonicalManifestJson,
