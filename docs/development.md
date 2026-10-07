@@ -175,9 +175,13 @@ apps/example-service/e2e/agent-task-demo/tasks/
   reasoning-demo/              # raw-fetch adapter recording its own spans
   issue-302-probe/
   judge-flip-probe/
+  judge-quality/               # dogfood battery — apo's own judge under test
   judge-trace-probe/
+  pi-agent/                    # third-party harness (pi) steering adapter
+    steering-correction/
   t-agent-demo/
   t-agent-mcp/
+  t-jev-cascade/               # task-level cascade judge demo
   t-jev-split/
 ```
 
