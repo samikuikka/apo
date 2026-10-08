@@ -14,13 +14,19 @@
  * accumulated history is needed.
  *
  * "Last such generation" is load-bearing: the chronologically last generation in
- * a trace is not necessarily a chat completion. A task harness traces its own
- * scaffolding into the same trace — a simulated-user turn, a
- * conversation-finished check, an LLM judge — and those spans carry
- * `{systemPrompt, userPrompt}` / `{response}` payloads instead of a `messages`
- * array. Reading only the final generation would find no messages there and
- * fall through to the raw-call fallback below, discarding a complete
- * conversation that a preceding generation holds in full.
+ * a trace is not necessarily the agent's. A task harness traces its own
+ * scaffolding into the same trace — an LLM judge, a simulated-user turn, a
+ * conversation-finished check — and those spans run AFTER the agent's last
+ * turn. The OTel client wraps their non-chat payloads into messages arrays too
+ * (a judge's `{model, instruction}` input becomes a fake system message, its
+ * verdict a fake assistant message), so "newest generation with messages"
+ * selects the judge call and the transcript renders a 2-message exchange
+ * instead of the agent's conversation (issue #412). Selection is therefore
+ * allowlist-first: generations the SDK names as the agent's own
+ * (`agent.generate`, `ai.generateText`, `ai.streamText`) are preferred over
+ * everything else, and only traces with no such generation (imports, foreign
+ * emitters) fall back to the newest-with-messages rule with harness-owned
+ * names (`judge:*`, `t.agent:*`) excluded.
  *
  * Messages are already normalized to OpenAI shape by the backend
  * (`normalize_genai_message` in `otel_normalization/_shared.py`).
@@ -68,6 +74,68 @@ export function orderedGenerations(trace: TraceDetail): LoggedCall[] {
 }
 
 /**
+ * Span names that mark a generation as the agent's own chat completion.
+ *
+ * `agent.generate` is what the SDK's tracing paths name agent generations
+ * (the OpenAI/Anthropic wrappers, the AI-SDK tracer, the OTel translators);
+ * `ai.generateText` / `ai.streamText` are the raw Vercel AI SDK telemetry
+ * names that reach the backend untranslated when a task ships them over
+ * OTLP directly. Anything else claiming GENERATION is either harness
+ * scaffolding (judges, simulated users — see {@link HARNESS_SPAN_PREFIXES})
+ * or a foreign emitter, and must not win selection over a real agent turn.
+ */
+const AGENT_GENERATION_NAMES = new Set([
+  "agent.generate",
+  "ai.generateText",
+  "ai.streamText",
+]);
+
+/**
+ * Span-name prefixes that mark a generation as harness-owned. `judge:` spans
+ * are `t.judge` calls (SDK-named); `t.agent:` spans wrap whole agent-session
+ * checks. Their wrapped payloads form messages arrays but are not
+ * conversation turns. Task-code harness spans (simulated-user turns,
+ * finished-checks) have no SDK-given name — the allowlist above, not this
+ * denylist, is what keeps them out of selection.
+ */
+const HARNESS_SPAN_PREFIXES = ["judge:", "t.agent:"];
+
+function isAgentNamedGeneration(call: LoggedCall): boolean {
+  return AGENT_GENERATION_NAMES.has(call.step_name ?? "");
+}
+
+function isHarnessOwnedGeneration(call: LoggedCall): boolean {
+  const name = call.step_name ?? "";
+  return HARNESS_SPAN_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
+
+/** How many trailing generations to probe for a messages array before
+ * falling back to the full-trace derivation. */
+const MAX_GENERATION_PROBES = 6;
+
+/**
+ * Which generation calls to fetch full payloads for, in probe order, when
+ * hunting the conversation on a slim trace — newest first, since the last
+ * chat generation saw the whole accumulated conversation.
+ *
+ * Agent-named generations are probed exclusively when present, so any number
+ * of trailing harness generations (judges, sim-users) cannot capture the
+ * selection. Traces without an SDK-named agent generation (imports, foreign
+ * emitters) fall back to a trailing window with harness-owned names skipped —
+ * the same layering as {@link deriveConversationFromTrace}'s primary path.
+ */
+export function conversationProbeOrder(generations: LoggedCall[]): LoggedCall[] {
+  const agentGenerations = generations.filter(isAgentNamedGeneration);
+  if (agentGenerations.length > 0) {
+    return agentGenerations.slice(-MAX_GENERATION_PROBES).reverse();
+  }
+  return generations
+    .filter((call) => !isHarnessOwnedGeneration(call))
+    .slice(-MAX_GENERATION_PROBES)
+    .reverse();
+}
+
+/**
  * The conversation carried by ONE generation call (its accumulated input
  * messages plus its own output reply), or `[]` when the call recorded no
  * messages array. Feeding this the last chat generation reproduces the
@@ -95,15 +163,35 @@ export function deriveConversationFromTrace(
     .sort(compareCallOrder);
   if (generations.length === 0) return EMPTY;
 
-  // Primary path: the last chat generation's accumulated messages array
+  // Primary path: the last AGENT generation's accumulated messages array
   // (SDK-native traces where the backend normalizes gen_ai.*.messages to
-  // OpenAI shape). Generations that carry no messages array are skipped rather
-  // than ending the search — see the module comment.
-  const chat = generations.filter(
-    (call) =>
-      readMessages(call.input).length > 0 || readMessages(call.output).length > 0,
-  );
-  const last = chat[chat.length - 1];
+  // OpenAI shape). Agent-named generations are preferred over everything
+  // else because harness scaffolding traces in as GENERATION spans that run
+  // after the agent's last turn and carry wrapped messages arrays of their
+  // own (issue #412). Generations that carry no messages array are skipped
+  // rather than ending the search — see the module comment.
+  const lastWithMessages = (candidates: LoggedCall[]): LoggedCall | undefined => {
+    for (let i = candidates.length - 1; i >= 0; i--) {
+      const call = candidates[i];
+      if (
+        readMessages(call.input).length > 0 ||
+        readMessages(call.output).length > 0
+      ) {
+        return call;
+      }
+    }
+    return undefined;
+  };
+
+  let last = lastWithMessages(generations.filter(isAgentNamedGeneration));
+  if (!last) {
+    // Foreign emitters name their generations something else; the newest
+    // generation carrying messages still wins there, minus harness-owned
+    // spans (a judge call would otherwise shadow the conversation).
+    last = lastWithMessages(
+      generations.filter((call) => !isHarnessOwnedGeneration(call)),
+    );
+  }
   if (last) {
     const combined = [...readMessages(last.input), ...readMessages(last.output)];
     if (combined.length > 0) {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   conversationFromGeneration,
+  conversationProbeOrder,
   deriveConversationFromTrace,
   orderedGenerations,
   type ChatMessage,
@@ -12,12 +13,6 @@ export type ConversationState =
   | { status: "ready"; messages: ChatMessage[] }
   | { status: "error"; message: string };
 
-/** How many trailing generations to probe for a messages array before
- * falling back to the full-trace derivation. The chronologically last
- * generation is not always a chat completion (simulated-user turns and
- * LLM judges trace into the same trace), so one probe is not enough. */
-const MAX_GENERATION_PROBES = 6;
-
 /**
  * Fetch the linked trace only while the transcript tab is open. Successful
  * results are cached per project+trace, while interrupted or failed requests
@@ -27,10 +22,11 @@ const MAX_GENERATION_PROBES = 6;
  *
  * The trace is fetched slim (call metadata only) — agentic traces repeat the
  * accumulated conversation in every generation's input, so the full payload
- * grows quadratically with length. The conversation lives in the last chat
- * generation's messages, fetched per call; traces where no generation
- * carries messages (imports with provider-native payloads) fall back to one
- * full-trace fetch.
+ * grows quadratically with length. The conversation lives in the last agent
+ * generation's messages, fetched per call (see `conversationProbeOrder` for
+ * how agent generations are picked over harness ones); traces where no
+ * generation carries messages (imports with provider-native payloads) fall
+ * back to one full-trace fetch.
  */
 export function useLazyConversation(
   traceRunId: string | null,
@@ -79,10 +75,13 @@ async function loadConversation(
 ): Promise<ChatMessage[]> {
   const slim = await getTraceDetail(traceRunId, projectId, signal, { slim: true });
 
-  // Probe trailing generations for a messages array, newest first — the
-  // newest chat generation saw the whole accumulated conversation.
+  // Probe generations for a messages array, newest first — the newest chat
+  // generation saw the whole accumulated conversation. The probe order is
+  // agent-first, so trailing harness generations (judges, sim-users — whose
+  // wrapped payloads also form messages arrays, issue #412) cannot capture
+  // the selection.
   const generations = orderedGenerations(slim);
-  const probes = generations.slice(-MAX_GENERATION_PROBES).reverse();
+  const probes = conversationProbeOrder(generations);
   for (const generation of probes) {
     if (signal.aborted) return [];
     const full = await getCallDetail(traceRunId, generation.id, projectId, signal);

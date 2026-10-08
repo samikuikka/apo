@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 
-import { deriveConversationFromTrace } from "../conversation-from-trace";
+import {
+  conversationProbeOrder,
+  deriveConversationFromTrace,
+} from "../conversation-from-trace";
 import type { LoggedCall, TraceDetail } from "@/components/trace-detail/contexts";
 
 function makeCall(overrides: Partial<LoggedCall> = {}): LoggedCall {
@@ -32,6 +35,37 @@ function makeTrace(calls: LoggedCall[]): TraceDetail {
     calls,
   };
 }
+
+describe("conversationProbeOrder", () => {
+  it("probes agent-named generations only, newest first, ignoring trailing judges (issue #412)", () => {
+    const order = conversationProbeOrder([
+      makeCall({ id: "gen-1", step_name: "agent.generate", step_index: 0 }),
+      makeCall({ id: "gen-judge-a", step_name: "judge:first", step_index: 1 }),
+      makeCall({ id: "gen-2", step_name: "ai.generateText", step_index: 2 }),
+      makeCall({ id: "gen-judge-b", step_name: "judge:second", step_index: 3 }),
+    ]);
+    expect(order.map((c) => c.id)).toEqual(["gen-2", "gen-1"]);
+  });
+
+  it("reaches an agent generation however many judged checks trail it", () => {
+    const calls = [
+      makeCall({ id: "gen-agent", step_name: "agent.generate", step_index: 0 }),
+      ...Array.from({ length: 10 }, (_, i) =>
+        makeCall({ id: `judge-${i}`, step_name: `judge:criterion-${i}`, step_index: i + 1 }),
+      ),
+    ];
+    expect(conversationProbeOrder(calls).map((c) => c.id)).toEqual(["gen-agent"]);
+  });
+
+  it("falls back to the trailing window with harness names skipped for foreign traces", () => {
+    const order = conversationProbeOrder([
+      makeCall({ id: "gen-1", step_name: "gen_ai.chat", step_index: 0 }),
+      makeCall({ id: "gen-2", step_name: "chatCompletion", step_index: 1 }),
+      makeCall({ id: "judge-1", step_name: "judge:quality", step_index: 2 }),
+    ]);
+    expect(order.map((c) => c.id)).toEqual(["gen-2", "gen-1"]);
+  });
+});
 
 describe("deriveConversationFromTrace", () => {
   describe("native SDK traces (messages arrays)", () => {
