@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import type { CheckResult, TaskFileContentResponse } from "@/lib/agent-task-api";
+import { usePersistentStringSet } from "@/hooks/use-persistent-string-set";
+import { useUrlParam } from "@/hooks/use-url-state";
+import { parseCheckIdFromAssertionParam } from "@/lib/assertion-select";
 import { CheckGroupHeader } from "./check-group-header";
 import { ExpandableCheckItem } from "./expandable-check-item";
 import { groupChecksByDescribe, groupVerdict, groupCost } from "./group-by-describe";
@@ -17,6 +19,7 @@ export function ChecksList({
   checksSource,
   correctable = false,
   taskRunId,
+  taskId,
   projectId,
   traceRunId,
 }: {
@@ -25,33 +28,47 @@ export function ChecksList({
   /** Whether test-result corrections are allowed on this run. */
   correctable?: boolean;
   taskRunId?: string;
-  /** For the judge-span deep link (issue #288): the run's project and trace. */
+  /** Groups are remembered per task (not per run): group ids are stable across runs of the same task. */
+  taskId?: string | null;
+  /** For the judge-span deep link (issue #288) and the storage-key namespace. */
   projectId?: string | null;
   traceRunId?: string | null;
 }) {
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    () => new Set(),
-  );
-  // Groups start expanded (option b from the design discussion); the set
-  // tracks which the user has collapsed.
-  const toggleGroup = (groupId: string) =>
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
-      return next;
-    });
+  // Which describe() groups are open is durable view state, stored as an
+  // OPEN set keyed by task: group ids come from the task's checks file, so
+  // the choices carry to the next run of the same task, and anything the
+  // user never opens — including newly added tests — arrives collapsed.
+  // The roll-up headers keep a fully collapsed panel scannable.
+  const storageKey = taskId
+    ? `apo:open-check-groups:${projectId ?? "no-project"}:${taskId}`
+    : null;
+  const { values: openGroups, toggle: toggleGroup } =
+    usePersistentStringSet(storageKey);
 
   const segments = groupChecksByDescribe(checks);
   // Assign each check a global display index (the "Check N" fallback label).
   const indexByGroupId = new Map<string, number>();
+  // Which group (if any) contains each check id — used to resolve a
+  // deep-linked assertion to its group.
+  const groupByCheckId = new Map<string, string>();
   let counter = 0;
   for (const segment of segments) {
     const items = segment.kind === "check" ? [segment.check] : segment.checks;
     for (const item of items) {
       indexByGroupId.set(item.id, counter++);
+      if (segment.kind === "group" && item.id != null) {
+        groupByCheckId.set(String(item.id), segment.groupId);
+      }
     }
   }
+
+  // A shared ?assertion= link targets one check. If it sits inside a group,
+  // that group opens for this view even when it isn't in the stored set —
+  // the URL is the ephemeral bit, so a deep link never writes to storage.
+  const [assertionParam] = useUrlParam("assertion");
+  const forcedOpenGroupId =
+    groupByCheckId.get(parseCheckIdFromAssertionParam(assertionParam) ?? "") ??
+    null;
 
   return (
     <>
@@ -76,7 +93,8 @@ export function ChecksList({
         const splitCount = segment.checks.filter(
           (c) => secondJudgeFacts(c).kind === "split",
         ).length;
-        const isOpen = !collapsedGroups.has(segment.groupId);
+        const isOpen =
+          openGroups.has(segment.groupId) || segment.groupId === forcedOpenGroupId;
         return (
           <div
             key={`grp-${segment.groupId}`}

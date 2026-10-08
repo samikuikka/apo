@@ -27,6 +27,21 @@ export function buildAssertionParam(
 }
 
 /**
+ * Extract the check-id half of the URL param value (whatever comes before
+ * `::`). Unlike `parseOwnAssertionId`, this answers "which check is being
+ * targeted?" for a component that doesn't know the check list — e.g. the
+ * checks list opening the group that contains a deep-linked assertion.
+ */
+export function parseCheckIdFromAssertionParam(
+  paramValue: string | null,
+): string | null {
+  if (!paramValue) return null;
+  const sep = paramValue.indexOf(SEPARATOR);
+  if (sep <= 0) return null;
+  return paramValue.slice(0, sep);
+}
+
+/**
  * Parse the URL param value and return the assertion id only if it belongs to
  * the given `checkId`. Returns `null` for any other check (or a malformed
  * value), so a check never reacts to another check's assertion selection.

@@ -10,8 +10,9 @@ import { formatCostMicro } from "@/lib/format";
  * member checks. Mirrors the compare view's FlowSection header: chevron +
  * name + passed/total tally + pass bar + aggregate cost + verdict dot.
  *
- * Per the design discussion: starts expanded, click-to-toggle, no auto-collapse
- * logic. A group is green when every member passes, red otherwise.
+ * Groups default to collapsed (the parent persists which ones the user has
+ * opened); click-to-toggle. A group is green when every member passes, red
+ * otherwise.
  */
 export function CheckGroupHeader({
   groupName,
