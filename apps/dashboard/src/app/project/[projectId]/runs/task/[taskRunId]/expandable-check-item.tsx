@@ -250,26 +250,20 @@ export function ExpandableCheckItem({
               );
             })()}
             {corrected && item.correction && item.recorded_pass !== undefined && (
-              <div className="border border-warning/30 bg-warning/5 px-3 py-2 text-[12px] leading-relaxed">
-                <span className="text-warning">Corrected</span> — recorded{" "}
-                <span className={item.recorded_pass ? "text-success" : "text-destructive"}>
-                  {item.recorded_pass ? "PASS" : "FAIL"}
-                </span>
-                , effective{" "}
-                <span className={passed ? "text-success" : "text-destructive"}>
-                  {passed ? "PASS" : "FAIL"}
-                </span>
-                {" "}· by{" "}
-                {item.correction.corrected_by_label ??
-                  item.correction.corrected_by_user_id ??
-                  "unknown"}
-                {" "}via {item.correction.corrected_via.replace("_", " ")} ·{" "}
-                {new Date(item.correction.created_at).toLocaleString()}
-                <div className="mt-1 text-foreground/80">{item.correction.reason}</div>
-                <div className="mt-1 text-muted-foreground">
-                  Recorded evidence below is unchanged.
-                </div>
-              </div>
+              // Amendment pointer (issue #410): reason, actor, and timestamps
+              // live in the run notices strip; the full reason rides along as
+              // the tooltip so the check still explains itself on hover.
+              <p
+                className="text-[12px] text-muted-foreground"
+                title={item.correction.reason || undefined}
+              >
+                Amended{" "}
+                <span className="font-mono">
+                  {item.recorded_pass ? "PASS" : "FAIL"} → {passed ? "PASS" : "FAIL"}
+                </span>{" "}
+                · {new Date(item.correction.created_at).toLocaleDateString()} — reason in
+                run notices (strip above)
+              </p>
             )}
             {correctable && taskRunId && (
               <div className="flex items-center gap-2">

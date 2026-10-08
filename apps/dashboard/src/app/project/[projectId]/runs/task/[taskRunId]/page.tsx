@@ -14,7 +14,6 @@ import {
   Gauge,
   Layers3,
   ListChecks,
-  PenLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { taskDetailHref } from "@/lib/task-routes";
@@ -36,8 +35,9 @@ import { OutcomeSummary } from "@/components/run-outcome";
 import { formatTokenTotal, formatCostMicro } from "@/lib/format";
 import { getProject } from "@/lib/projects-api";
 import GenerationExecutionNotice from "@/components/generation-execution-notice";
-import { ModelDriftBanner } from "./model-drift-banner";
 import { RunJudgmentsSection } from "./run-judgments-section";
+import { RunNotices } from "./run-notices";
+import { toCorrectedCheckNotices } from "./run-notices-model";
 
 export const dynamic = "force-dynamic";
 
@@ -246,6 +246,11 @@ export default async function TaskRunDetailPage({
     checks.length > 0 &&
     project?.permissions?.can_edit_scores === true;
 
+  // Run-level notices (issue #410): the strip below the outcome summary owns
+  // the corrections rollup — check-level detail lives there, not in the
+  // outcome summary's metadata.
+  const correctedNotices = toCorrectedCheckNotices(checks);
+
   return (
     <div className="mx-auto max-w-6xl">
       {isRunning && (
@@ -435,20 +440,19 @@ export default async function TaskRunDetailPage({
                     label: "decode",
                   }]
                 : []),
-              ...((taskRun.corrected_tests ?? 0) > 0
-                ? [{ icon: PenLine, value: `${taskRun.corrected_tests} corrected`, label: "tests" }]
-                : []),
             ]}
           />
         </div>
+
+        {/* Run-level notices (issue #410): corrections + model drift share
+            one strip under the outcome summary. */}
+        <RunNotices correctedChecks={correctedNotices} drift={taskRun.model_drift} />
 
         {judgments && judgments.judgments.length > 0 && (
           <RunJudgmentsSection taskRunId={taskRun.id} judgments={judgments.judgments} />
         )}
 
         <GenerationExecutionNotice {...generationNoticeProps(taskRun)} />
-
-        {taskRun.model_drift && <ModelDriftBanner drift={taskRun.model_drift} />}
 
         {/* Error banner */}
         {showsErrorBanner(taskRun) && taskRun.error_message && (
