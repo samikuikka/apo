@@ -83,6 +83,23 @@ interface TrackedSpan {
 }
 
 /**
+ * The model that served a call, as reported by the provider
+ * (`ai.response.model` / `gen_ai.response.model`). The Vercel AI SDK sets it
+ * only on per-step children (ai.generateText.doGenerate) while the parent is
+ * the span apo translates — so children's reports are remembered by parent
+ * span id and stamped onto the parent when it ends.
+ */
+function servedModelFrom(
+  attributes: Record<string, unknown>,
+): string | undefined {
+  for (const key of ["ai.response.model", "gen_ai.response.model"]) {
+    const value = attributes[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return undefined;
+}
+
+/**
  * A SpanProcessor that translates GenAI OTel spans into apo observations.
  *
  * Spans are created at `onStart` (eager) and completed at `onEnd`
@@ -94,6 +111,8 @@ interface TrackedSpan {
  */
 export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
   private spanMap = new Map<string, TrackedSpan>();
+  /** Served-model reports keyed by the PARENT otel span id (see servedModelFrom). */
+  private servedModelByParent = new Map<string, string>();
 
   onStart(span: OTelSpan, _parentContext: OTelContext): void {
     const run = getActiveApoRun();
@@ -138,6 +157,15 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
 
   onEnd(span: OTelReadableSpan): void {
     const otelId = span.spanContext().spanId;
+
+    // A per-step child reporting its serving model is the parent
+    // generation's served model — remember it for the parent's end.
+    const parentOtelId = span.parentSpanContext?.spanId;
+    const served = servedModelFrom(span.attributes ?? {});
+    if (parentOtelId && served) {
+      this.servedModelByParent.set(parentOtelId, served);
+    }
+
     const tracked = this.spanMap.get(otelId);
     if (!tracked) return; // wasn't tracked (not load-bearing or outside run)
     this.spanMap.delete(otelId);
@@ -153,10 +181,14 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
 
     const latency = round3(monotonicNowMs() - tracked.startedAt);
 
-    // End the apo span with the final data
+    // End the apo span with the final data. The served model prefers this
+    // span's own report, falling back to what a child reported for it.
+    const servedForThis = served ?? this.servedModelByParent.get(otelId);
+    this.servedModelByParent.delete(otelId);
     run.trace.endSpan(tracked.apoSpanId, {
       latency_ms: latency,
       ...buildEndParams(translated),
+      ...(servedForThis ? { served_model: servedForThis } : {}),
     });
   }
 
@@ -172,6 +204,7 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
   /** Clear all state — for testing. */
   reset(): void {
     this.spanMap.clear();
+    this.servedModelByParent.clear();
   }
 }
 

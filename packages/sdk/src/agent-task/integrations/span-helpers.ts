@@ -53,6 +53,10 @@ export function emitGenerationAndTools(
     reasoningTokens?: number;
     /** The model that actually served the call (response `model` field). */
     servedModel?: string;
+    /** Serving host learned from the response (gateway metadata/headers);
+     * overrides the start-time baseURL guess when present. */
+    servedProvider?: string;
+    servedRoute?: string;
     toolCalls?: Array<{ name: string; input?: unknown }>;
     taskId?: string;
     turnNumber?: number;
@@ -69,6 +73,8 @@ export function emitGenerationAndTools(
     completion_tokens: opts.completionTokens,
     reasoning_tokens: opts.reasoningTokens,
     served_model: opts.servedModel,
+    ...(opts.servedProvider ? { provider: opts.servedProvider } : {}),
+    ...(opts.servedRoute ? { route: opts.servedRoute } : {}),
     output: {
       ...(opts.text !== undefined ? { text: opts.text } : {}),
       ...(opts.error ? { error: opts.error.message } : {}),
@@ -127,9 +133,13 @@ export function servingHostFromBaseURL(
   }
   if (
     host === "localhost" ||
-    /^(127\.|0\.0\.0\.0|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)
+    /^(127\.|0\.0.0\.0|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)
   ) {
-    return {};
+    // A private host is a gateway in front of an unknown backend. An
+    // operator can name it once via APO_SERVING_GATEWAY (e.g. "litellm")
+    // instead of every run reporting "unknown".
+    const named = process.env.APO_SERVING_GATEWAY?.trim();
+    return named ? { provider: named } : {};
   }
   const known: Record<string, string> = {
     "api.openai.com": "openai",
@@ -149,6 +159,63 @@ export function servingHostFromBaseURL(
   const labels = host.split(".");
   if (labels.length < 2) return {};
   return { provider: labels.slice(-2).join("."), route: host };
+}
+
+/**
+ * Derive the serving host a gateway reports about itself, from the response.
+ *
+ * Gateways in front of many backends know exactly which one served a call;
+ * the baseURL only ever names the gateway. Priority:
+ *   1. OpenRouter's opt-in `openrouter_metadata.endpoints.available[selected]`
+ *      (send `X-OpenRouter-Metadata: enabled` to receive it).
+ *   2. LiteLLM's response headers: `x-litellm-model-id` (the deployment)
+ *      and `x-litellm-model-api-base` (the upstream actually called).
+ * Returns {} when the gateway reports nothing — unknown stays unknown.
+ */
+export function servingFromResponse(
+  response: {
+    openrouter_metadata?: {
+      endpoints?: {
+        available?: Array<{ provider?: unknown; selected?: unknown }>;
+      };
+    };
+  },
+  headers?: { get(name: string): string | null } | null,
+): { provider?: string; route?: string } {
+  const endpoints = response?.openrouter_metadata?.endpoints?.available;
+  if (Array.isArray(endpoints)) {
+    const selected = endpoints.find(
+      (e) => e && typeof e === "object" && e.selected === true,
+    );
+    const provider =
+      selected && typeof (selected as { provider?: unknown }).provider === "string"
+        ? (selected as { provider: string }).provider
+        : undefined;
+    if (provider) {
+      return { provider: "openrouter", route: `openrouter:${provider}` };
+    }
+  }
+  const litellmId = headers?.get?.("x-litellm-model-id");
+  if (typeof litellmId === "string" && litellmId) {
+    const upstream = headers?.get?.("x-litellm-model-api-base");
+    const host =
+      typeof upstream === "string" && upstream
+        ? safeUrlHost(upstream)
+        : undefined;
+    return {
+      provider: "litellm",
+      route: host ? `litellm:${litellmId}@${host}` : `litellm:${litellmId}`,
+    };
+  }
+  return {};
+}
+
+function safeUrlHost(url: string): string | undefined {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

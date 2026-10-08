@@ -40,3 +40,9 @@ minimumReleaseAgeExclude:
 overrides:
   '@apo-ai/cli': link:packages/cli
   '@apo-ai/sdk': link:packages/sdk
+  # One @opentelemetry/api instance across the tree. pnpm otherwise resolved
+  # ai@6's peer to 1.9.0 while the SDK uses 1.9.1 — two separate OTel globals,
+  # so spans the Vercel AI SDK emitted on one global never reached the
+  # processor/provider registered on the other: local trace evidence (the
+  # projection tee trajectory checks read) came out empty.
+  '@opentelemetry/api': 1.9.1

@@ -263,6 +263,14 @@ export function createOtelAgentTaskTraceClient(
       // gateway alias the router silently swapped away from.
       active.span.setAttribute("gen_ai.response.model", params.served_model);
     }
+    if (params.provider) {
+      // Serving host learned from the response (gateway metadata/headers)
+      // — wins over any start-time baseURL guess.
+      active.span.setAttribute("gen_ai.provider.name", params.provider);
+    }
+    if (params.route) {
+      active.span.setAttribute("apo.llm.route", params.route);
+    }
     if (params.status_message) {
       active.span.setAttribute("apo.status_message", params.status_message);
     }

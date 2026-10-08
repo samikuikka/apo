@@ -59,6 +59,13 @@ export interface EndSpanParams {
    * (LiteLLM router, OpenRouter provider fallback) can serve a different
    * model than requested — this is the only field that tells them apart. */
   served_model?: string;
+  /** Serving host learned from the response itself (gateway metadata or
+   * response headers), emitted as `gen_ai.provider.name`. Set at end time
+   * when the gateway reports it — more truthful than any baseURL guess. */
+  provider?: string;
+  /** Finer-grained serving route learned from the response (e.g. a LiteLLM
+   * deployment id), emitted as `apo.llm.route`. */
+  route?: string;
   status_message?: string;
   level?: "DEBUG" | "DEFAULT" | "WARNING" | "ERROR";
   metadata?: Record<string, unknown>;
@@ -81,10 +88,18 @@ export interface TraceStepOptions
    * spans whose token counts are only known after the work (e.g. judge
    * spans, whose usage rides the judged result). Applied when the span ends;
    * the extracted counts become `gen_ai.usage.*` span attributes.
+   * `served_model` (the model the provider reports as having served the
+   * call) becomes `gen_ai.response.model` — a gateway fallback diverges
+   * from the requested model, and this is the only field that tells them
+   * apart.
    */
   usage?: (
     result: unknown,
-  ) => { prompt_tokens?: number; completion_tokens?: number } | undefined;
+  ) => {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    served_model?: string;
+  } | undefined;
 }
 
 export interface TraceEventOptions
