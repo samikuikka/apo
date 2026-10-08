@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { afterAll, beforeAll, describe, it, expect, vi, afterEach } from "vitest";
 import { defineCheck, resetFlowChecks, runTraceChecks } from "../src/agent-task/checks/flow-runner.ts";
 import type { TraceProjectionSnapshot } from "../src/agent-task/trace-projection/types.ts";
 
@@ -548,7 +548,7 @@ describe("t.agent — module isolation and entry surface", () => {
       `import { registerHooks } from "node:module";
        registerHooks({
          resolve(specifier, context, nextResolve) {
-           if (specifier === "ai" || specifier === "@ai-sdk/openai-compatible") {
+           if (specifier === "ai" || specifier === "@ai-sdk/openai-compatible" || specifier === "@ai-sdk/anthropic") {
              throw new Error(\`forbidden engine import: \${specifier}\`);
            }
            return nextResolve(specifier, context);
@@ -613,5 +613,116 @@ describe("t.agent — un-awaited calls still count", () => {
 
     expect(result.pass).toBe(false);
     expect(result.reasoning).toContain("not grounded");
+  });
+});
+
+// ── Anthropic-direct wire ──────────────────────────────────────────────────
+
+/** A non-streaming Anthropic Messages response. */
+function anthropicTurn(content: unknown[], stop_reason = "tool_use", usage = { input_tokens: 12, output_tokens: 6 }) {
+  return {
+    id: `msg_${Math.random().toString(36).slice(2, 8)}`,
+    type: "message",
+    role: "assistant",
+    model: "claude-test-1",
+    content,
+    stop_reason,
+    stop_sequence: null,
+    usage,
+  };
+}
+
+/** One tool_use block — Anthropic's shape for a tool call. */
+function toolUse(id: string, name: string, input: unknown) {
+  return { type: "tool_use", id: `toolu_${id}`, name, input };
+}
+
+describe("t.agent — anthropic wire", () => {
+  const ANTHROPIC_JUDGE = { model: "claude-test-1", apiKey: "test-key" };
+
+  // The dev environment loads a real .env into the vitest process; these
+  // tests assert auth resolution, so they run against scrubbed Anthropic vars.
+  const scrubbed: Array<[string, string | undefined]> = [];
+  beforeAll(() => {
+    for (const name of ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"]) {
+      scrubbed.push([name, process.env[name]]);
+      delete process.env[name];
+    }
+  });
+  afterAll(() => {
+    for (const [name, value] of scrubbed) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  });
+
+  async function runAnthropicCheck(fn: Parameters<typeof defineCheck>[1]) {
+    resetFlowChecks();
+    defineCheck("agent-under-test", fn);
+    const results = await runTraceChecks({
+      snapshot,
+      deliverables: { answer: "42" },
+      judgeConfig: ANTHROPIC_JUDGE,
+    });
+    return results[0]!;
+  }
+
+  it("runs the tool loop on /v1/messages and records the verdict", async () => {
+    scriptFetch([
+      anthropicTurn([toolUse("1", "read_deliverable", { name: "answer" })]),
+      anthropicTurn([toolUse("2", "finish_verdict", { reasoning: "grounded in the deliverable", pass: true })]),
+    ]);
+
+    const result = await runAnthropicCheck((t) => t.agent("PASS if the answer is 42."));
+
+    expect(result.pass).toBe(true);
+    expect(result.reasoning).toContain("grounded");
+    // The session transcript records the investigation for the audit view.
+    const session = (result as unknown as { judge?: { session?: { steps?: unknown[] } } }).judge?.session;
+    expect(Array.isArray(session?.steps)).toBe(true);
+  });
+
+  it("authenticates with x-api-key and sends max_tokens + a cached system block", async () => {
+    const fetchMock = scriptFetch([
+      anthropicTurn([toolUse("1", "finish_verdict", { reasoning: "ok", pass: true })]),
+    ]);
+
+    await runAnthropicCheck((t) => t.agent("PASS always."));
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.anthropic.com/v1/messages");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["x-api-key"]).toBe("test-key");
+    expect(headers["anthropic-version"]).toBe("2023-06-01");
+    const body = JSON.parse(init.body as string) as Record<string, any>;
+    expect(body.model).toBe("claude-test-1");
+    expect(typeof body.max_tokens).toBe("number");
+    // The briefing's cache breakpoint is Anthropic-native on the system blocks.
+    expect(Array.isArray(body.system)).toBe(true);
+    const lastBlock = (body.system as Array<Record<string, any>>).slice(-1)[0];
+    expect(lastBlock.cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("ANTHROPIC_AUTH_TOKEN authenticates as a bearer", async () => {
+    vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "plan-credit-token");
+    const fetchMock = scriptFetch([
+      anthropicTurn([toolUse("1", "finish_verdict", { reasoning: "ok", pass: true })]),
+    ]);
+
+    try {
+      await runTraceChecks({
+        snapshot,
+        deliverables: { answer: "42" },
+        judgeConfig: { model: "claude-test-1" }, // no apiKey: env resolves the token
+      }).then((results) => expect(results[0]?.pass).toBe(true));
+
+      const headers = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>;
+      // The engine's header record is lowercase-keyed (HTTP headers are
+      // case-insensitive); read it the same way.
+      expect(headers.authorization).toBe("Bearer plan-credit-token");
+      expect(headers["x-api-key"]).toBeUndefined();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

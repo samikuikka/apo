@@ -28,10 +28,6 @@ async function main(): Promise<void> {
   const runMetadata = process.env.AGENT_TASK_RUN_METADATA
     ? JSON.parse(process.env.AGENT_TASK_RUN_METADATA)
     : undefined;
-  const judgeModel =
-    process.env.AGENT_TASK_JUDGE_MODEL
-    ?? process.env.AGENT_TASK_OPENROUTER_MODEL
-    ?? "deepseek/deepseek-v4.1-flash";
 
   if (!taskDir) {
     throw new Error("AGENT_TASK_DIR is required");
@@ -41,6 +37,13 @@ async function main(): Promise<void> {
     loadTask(taskDir),
     loadTaskRuntime(taskDir),
   ]);
+
+  const judgeModel =
+    process.env.AGENT_TASK_JUDGE_MODEL
+    ?? process.env.AGENT_TASK_OPENROUTER_MODEL
+    ?? process.env.AGENT_TASK_ANTHROPIC_MODEL
+    ?? runtime.judge?.model
+    ?? "deepseek/deepseek-v4.1-flash";
 
   const tracing = {
     client: createOtelAgentTaskTraceClient({
@@ -84,7 +87,17 @@ async function main(): Promise<void> {
   const result = await runTask(taskDir, {
     ...runtime,
     tracing,
-    judge: { model: judgeModel },
+    // With no AGENT_TASK_* model override, the env-resolved runtime judge
+    // passes through wholesale — replacing it with `{ model }` alone would
+    // strand an OPENAI_MODEL or ANTHROPIC_MODEL setup on the OpenRouter
+    // default endpoint (baseURL + apiKey + provider all live on the runtime
+    // object, not on the fallback model id).
+    judge:
+      process.env.AGENT_TASK_JUDGE_MODEL
+      || process.env.AGENT_TASK_OPENROUTER_MODEL
+      || process.env.AGENT_TASK_ANTHROPIC_MODEL
+      ? { ...runtime.judge, model: judgeModel }
+      : (runtime.judge ?? { model: judgeModel }),
     loaded,
   });
 

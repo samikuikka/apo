@@ -205,7 +205,7 @@ test("answer-quality", async (t, { deliverables }) => {
 });
 ```
 
-Absent fields inherit from the run's judge config (`runTask({ judge })`, or a task-level `judge` layer), whose env defaults depend on the runner: `OPENROUTER_MODEL` / `OPENAI_MODEL` for local runs (`apo task run`, `apo connect`), `AGENT_TASK_JUDGE_MODEL` for backend-spawned runs. So `{ model }` alone is usually enough, `baseURL` and `apiKey` flow through unchanged. The overridden model is stamped on the assertion metadata and shown in the dashboard breakdown.
+Absent fields inherit from the run's judge config (`runTask({ judge })`, or a task-level `judge` layer), whose env defaults depend on the runner: `OPENROUTER_MODEL` / `OPENAI_MODEL` / `ANTHROPIC_MODEL` for local runs (`apo task run`, `apo connect`), `AGENT_TASK_JUDGE_MODEL` for backend-spawned runs. So `{ model }` alone is usually enough, `baseURL` and `apiKey` flow through unchanged. A bare `claude-*` model id (or an Anthropic base URL) switches the call to the Anthropic Messages wire, authenticated with `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`. The overridden model is stamped on the assertion metadata and shown in the dashboard breakdown.
 
 #### Ground-truth polarity: `{ expect }`
 

@@ -2,6 +2,8 @@
  * LLM-as-judge call. Used by `t.judge(values, instruction)` to evaluate
  * deliverables against a natural-language rubric. Calls an OpenAI-compatible
  * endpoint (OpenRouter, OpenAI, etc.) via fetch and parses the verdict.
+ * Anthropic-direct (`api.anthropic.com` Messages API) speaks its own wire —
+ * see {@link resolveJudgeWire}.
  */
 
 import { createHash } from "node:crypto";
@@ -305,6 +307,14 @@ function judgeVerdict(raw: string): { pass: boolean; reasoning: string } | undef
  */
 const JUDGE_IDLE_TIMEOUT_MS = 90_000;
 
+/**
+ * Anthropic requires `max_tokens` on every Messages call. A judge verdict is
+ * one short JSON object; the reasoning can run long on a degenerate
+ * deliverable, and a truncated reply records a judge error rather than a
+ * wrong verdict, so the bound is generous rather than tight.
+ */
+const ANTHROPIC_JUDGE_MAX_TOKENS = 8192;
+
 function envMs(name: string, fallback: number): number {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
@@ -477,6 +487,56 @@ async function readCompletion(
 }
 
 /**
+ * Read a non-streaming Anthropic Messages response into the shared completion
+ * shape. Judge verdicts are one short JSON object, so the streaming dance the
+ * OpenAI wire needs (SSE keepalives carrying a reasoning model's long silence
+ * past idle proxies) buys nothing here — the shared first-data and runaway
+ * bounds still protect the call. Usage and `stop_reason` are normalized into
+ * the OpenAI field names `parseJudgeUsage` and the truncation check already
+ * read, so cache accounting and truncation detection need no branch.
+ */
+async function readAnthropicCompletion(response: Response): Promise<JudgeCompletion> {
+  const data = (await response.json()) as {
+    content?: Array<{ type?: string; text?: string }>;
+    stop_reason?: string;
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
+  };
+  const text = (data.content ?? [])
+    .filter((block) => block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text)
+    .join("");
+  // Map onto the finish reasons the truncation check knows: a `max_tokens`
+  // cut is a length-truncated reply, a `refusal` is a filter stop.
+  const finishReason =
+    data.stop_reason === "max_tokens"
+      ? "length"
+      : data.stop_reason === "refusal"
+        ? "content_filter"
+        : data.stop_reason;
+  return {
+    text,
+    finishReason,
+    usage: data.usage
+      ? {
+          prompt_tokens: data.usage.input_tokens,
+          completion_tokens: data.usage.output_tokens,
+          ...(data.usage.cache_creation_input_tokens !== undefined
+            ? { cache_creation_input_tokens: data.usage.cache_creation_input_tokens }
+            : {}),
+          ...(data.usage.cache_read_input_tokens !== undefined
+            ? { cache_read_input_tokens: data.usage.cache_read_input_tokens }
+            : {}),
+        }
+      : undefined,
+  };
+}
+
+/**
  * Per-prefix warm gate. Checks run concurrently (flow-runner uses
  * Promise.all), so without coordination N criteria judging the same
  * deliverable would all dispatch against a cold cache and mostly miss: a
@@ -613,16 +673,72 @@ export function judgeTemperature(configured?: number): number {
 }
 
 /**
+ * Which wire protocol a judge call speaks. `openai-compatible` (the
+ * chat-completions shape OpenRouter and OpenAI direct serve) is the default
+ * that shipped first; `anthropic` is the Messages API (`/v1/messages`) direct
+ * against `api.anthropic.com` or a gateway speaking its protocol.
+ */
+export type JudgeWire = "openai-compatible" | "anthropic";
+
+function isAnthropicHost(baseURL: string): boolean {
+  try {
+    return /(^|\.)api\.anthropic\.com$/.test(new URL(baseURL).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pick the wire a judge call speaks. An explicit `provider: "anthropic"` wins
+ * (the escape hatch for an Anthropic-protocol gateway behind a non-Anthropic
+ * hostname), then the endpoint host, then a bare `claude-*` model id — which
+ * covers an explicit model override (`AGENT_TASK_JUDGE_MODEL=claude-…`) with
+ * no endpoint configured. OpenRouter-qualified ids (`anthropic/claude-…`)
+ * never match: those ride the OpenAI-compatible wire through OpenRouter.
+ */
+export function resolveJudgeWire(opts: {
+  baseURL?: string;
+  model: string;
+  provider?: "anthropic";
+}): JudgeWire {
+  if (opts.provider === "anthropic") return "anthropic";
+  if (opts.baseURL !== undefined && isAnthropicHost(opts.baseURL)) return "anthropic";
+  if (/^claude-[a-z0-9]/.test(opts.model)) return "anthropic";
+  return "openai-compatible";
+}
+
+/**
+ * The Anthropic credential pair. An explicit config key or `ANTHROPIC_API_KEY`
+ * is an API key (`x-api-key` header); `ANTHROPIC_AUTH_TOKEN` is the OAuth-style
+ * bearer credential — sent as `Authorization: Bearer`, mirroring how the
+ * Claude Agent SDK adapter authenticates, so subscription/plan-credit tokens
+ * work for the judge too.
+ */
+export function anthropicAuth(apiKey?: string): { apiKey: string | undefined; asBearer: boolean } {
+  if (apiKey) return { apiKey, asBearer: false };
+  if (process.env.ANTHROPIC_API_KEY) return { apiKey: process.env.ANTHROPIC_API_KEY, asBearer: false };
+  if (process.env.ANTHROPIC_AUTH_TOKEN) return { apiKey: process.env.ANTHROPIC_AUTH_TOKEN, asBearer: true };
+  return { apiKey: undefined, asBearer: false };
+}
+
+/**
  * Default judge endpoint resolution, shared by the primary judge call and
  * cascade preflight so both can never disagree: explicit config, then env,
- * then OpenRouter. Extracted because a duplicated default chain drifts — the
- * cascade gate must judge through the same endpoint as the primary it gates.
+ * then OpenRouter. Extracted because a duplicated default chain drifts —
+ * the cascade gate must judge through the same endpoint as the primary it gates.
+ * Wire-aware: the Anthropic wire defaults to its own host and env.
  */
-export function defaultJudgeBaseURL(baseURL?: string): string {
+export function defaultJudgeBaseURL(baseURL?: string, wire: JudgeWire = "openai-compatible"): string {
+  if (wire === "anthropic") {
+    return baseURL ?? process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com";
+  }
   return baseURL ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
 }
 
-export function defaultJudgeAPIKey(apiKey?: string): string | undefined {
+export function defaultJudgeAPIKey(apiKey?: string, wire: JudgeWire = "openai-compatible"): string | undefined {
+  if (wire === "anthropic") {
+    return anthropicAuth(apiKey).apiKey;
+  }
   return apiKey ?? process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY;
 }
 
@@ -632,6 +748,8 @@ export async function callJudge(args: {
   model: string;
   baseURL?: string;
   apiKey?: string;
+  /** Force the Anthropic Messages wire (see {@link resolveJudgeWire}). */
+  provider?: "anthropic";
   /** Custom briefing builder; the response contract stays SDK-owned. */
   prompt?: JudgePromptBuilder;
   /** Sampling temperature; see {@link judgeTemperature} for the fallbacks. */
@@ -652,8 +770,17 @@ export async function callJudge(args: {
    */
   prefetchedSecondJudge?: SecondJudgeEvidence;
 }): Promise<JudgeCallResult> {
-  const baseURL = defaultJudgeBaseURL(args.baseURL);
-  const apiKey = defaultJudgeAPIKey(args.apiKey);
+  const wire = resolveJudgeWire({
+    baseURL: args.baseURL,
+    model: args.model,
+    provider: args.provider,
+  });
+  const baseURL = defaultJudgeBaseURL(args.baseURL, wire);
+  // Total shape: the openai-compatible arm never reads it, but its presence
+  // keeps the header construction below free of a wire/auth correlation
+  // TypeScript cannot prove.
+  const auth = wire === "anthropic" ? anthropicAuth(args.apiKey) : { apiKey: undefined, asBearer: false };
+  const apiKey = wire === "anthropic" ? auth.apiKey : defaultJudgeAPIKey(args.apiKey);
   // Before the second judge is dispatched: a bad value must cost no request.
   const temperature = judgeTemperature(args.temperature);
 
@@ -691,6 +818,33 @@ export async function callJudge(args: {
   // The briefing must be part of the key: once prompts vary per task, two
   // different briefings grading one deliverable would otherwise collide (#161).
   const cacheKey = `${args.model}\u0000${briefingText}\u0000${deliverableText}`;
+  // Anthropic Messages API: the system prompt is a top-level param (content
+  // blocks with cache_control — native prompt caching, not the OpenRouter
+  // passthrough the OpenAI-shaped body relies on), `max_tokens` is required,
+  // and there is no `response_format` — the tolerant parser reads the JSON
+  // verdict out of the text blocks. Non-streaming: the verdict is one short
+  // JSON object, so the SSE keepalive dance buys nothing (see
+  // readAnthropicCompletion).
+  const anthropicRequestBody = (): string =>
+    JSON.stringify({
+      model: args.model,
+      max_tokens: ANTHROPIC_JUDGE_MAX_TOKENS,
+      temperature,
+      system: [
+        { type: "text", text: briefingText },
+        { type: "text", text: deliverableText, cache_control: { type: "ephemeral" } },
+      ],
+      messages: [{ role: "user", content: instructionText }],
+    });
+  const anthropicHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    "anthropic-version": "2023-06-01",
+    ...(apiKey !== undefined
+      ? auth.asBearer
+        ? { Authorization: `Bearer ${apiKey}` }
+        : { "x-api-key": apiKey }
+      : {}),
+  };
   const requestBody = (stream: boolean, schema: boolean): string =>
     JSON.stringify({
       model: args.model,
@@ -767,15 +921,25 @@ export async function callJudge(args: {
     try {
       let response: Response;
       try {
-        response = await fetchWithPromptCacheKey(`${baseURL}/chat/completions`, {
-          method: "POST",
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/json",
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-          },
-          body: requestBody(stream, schema),
-        });
+        response =
+          wire === "anthropic"
+            ? // Plain fetch: the Anthropic body never carries prompt_cache_key,
+              // so the resend wrapper would be a pass-through.
+              await fetch(`${baseURL}/v1/messages`, {
+                method: "POST",
+                signal: controller.signal,
+                headers: anthropicHeaders,
+                body: anthropicRequestBody(),
+              })
+            : await fetchWithPromptCacheKey(`${baseURL}/chat/completions`, {
+                method: "POST",
+                signal: controller.signal,
+                headers: {
+                  "Content-Type": "application/json",
+                  ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+                },
+                body: requestBody(stream, schema),
+              });
       } catch (error) {
         return transportFailure("Judge request failed", controller.signal.reason ?? error);
       }
@@ -809,7 +973,13 @@ export async function callJudge(args: {
           }
         : undefined;
       try {
-        return { kind: "completion", completion: await readCompletion(response, onData, guards) };
+        return {
+          kind: "completion",
+          completion:
+            wire === "anthropic"
+              ? await readAnthropicCompletion(response)
+              : await readCompletion(response, onData, guards),
+        };
       } catch (error) {
         if (error instanceof JudgeReasoningLoopError) {
           return { kind: "unavailable", error, retryable: true, loop: true };

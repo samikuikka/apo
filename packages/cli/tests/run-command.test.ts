@@ -137,4 +137,29 @@ describe("env-view", () => {
 
     rmSync(testDir, { recursive: true, force: true });
   });
+
+  it("ANTHROPIC_MODEL is the lowest-precedence model source", () => {
+    testDir = join(tmpdir(), `apo-envview-anthropic-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+
+    const anthropicOnly = resolveEnvView(testDir, {
+      ANTHROPIC_MODEL: "claude-sonnet-4-5",
+    } as Record<string, string>);
+    expect(effectiveModelSource(anthropicOnly, undefined)).toEqual({
+      from: "env",
+      varName: "ANTHROPIC_MODEL",
+    });
+
+    // OPENAI (and OPENROUTER) still outrank it.
+    const withOpenAI = resolveEnvView(testDir, {
+      ANTHROPIC_MODEL: "claude-sonnet-4-5",
+      OPENAI_MODEL: "gpt-5-nano",
+    } as Record<string, string>);
+    expect(effectiveModelSource(withOpenAI, undefined)).toEqual({
+      from: "env",
+      varName: "OPENAI_MODEL",
+    });
+
+    rmSync(testDir, { recursive: true, force: true });
+  });
 });

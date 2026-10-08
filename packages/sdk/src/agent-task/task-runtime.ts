@@ -44,17 +44,28 @@ export async function loadTaskRuntime(
 
 function resolveJudgeFromEnv(): JudgeConfig | undefined {
   const openRouterModel = process.env.OPENROUTER_MODEL;
-  const model = openRouterModel ?? process.env.OPENAI_MODEL;
+  const openAIModel = process.env.OPENAI_MODEL;
+  const anthropicModel = process.env.ANTHROPIC_MODEL;
+  const model = openRouterModel ?? openAIModel ?? anthropicModel;
   if (!model) return undefined;
 
   return {
     model,
     baseURL: openRouterModel
       ? process.env.OPENROUTER_BASE_URL
-      : process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+      : openAIModel
+        ? process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1"
+        : process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com",
     apiKey: openRouterModel
       ? process.env.OPENROUTER_API_KEY
-      : process.env.OPENAI_API_KEY,
+      : openAIModel
+        ? process.env.OPENAI_API_KEY
+        : process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN,
+    // Anthropic is last in the precedence chain (OPENROUTER > OPENAI >
+    // ANTHROPIC): a workspace that already configures one of the others
+    // keeps its behavior, so the arm can be reached only deliberately.
+    // Reaching this return with neither set means ANTHROPIC_MODEL won.
+    ...(openRouterModel || openAIModel ? {} : { provider: "anthropic" as const }),
     // "cascade" turns on second-judge-first judging (a confident decision
     // model verdict stands without calling the primary judge); any other
     // value is ignored so a typo degrades to the default dual mode, never

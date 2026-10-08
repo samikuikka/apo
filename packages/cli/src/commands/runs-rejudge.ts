@@ -59,11 +59,15 @@ export async function run(argv: string[]): Promise<number> {
     getFlagValue(flags, "judge-model") ??
     process.env.AGENT_TASK_JUDGE_MODEL ??
     process.env.OPENROUTER_MODEL ??
-    process.env.OPENAI_MODEL;
+    process.env.OPENAI_MODEL ??
+    process.env.ANTHROPIC_MODEL;
   const judgeBaseUrl =
     getFlagValue(flags, "judge-base-url") ??
     process.env.OPENROUTER_BASE_URL ??
     process.env.OPENAI_BASE_URL;
+  // Deliberately no ANTHROPIC_BASE_URL here: the SDK resolves it per-wire
+  // when the judge model is Anthropic-direct, so a gateway configured for
+  // the agent plane can never capture an OpenRouter-wired judge.
   const definitionRevision = getFlagValue(flags, "definition-revision");
 
   let runId: string;

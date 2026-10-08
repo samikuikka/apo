@@ -239,10 +239,55 @@ describe("runs rejudge command", () => {
     );
     const { errors, restore } = capture();
 
+    console.log("PROBE OR:", JSON.stringify(process.env.OPENROUTER_MODEL), "AN:", JSON.stringify(process.env.ANTHROPIC_MODEL));
     const code = await run([FULL_ID, "--backend", "http://backend.test"]);
     restore();
 
     expect(code).toBe(2);
     expect(stripAnsi(errors.join("\n"))).toContain("not ready");
+  });
+});
+
+describe("runs rejudge — anthropic model env fallback", () => {
+  it("resolves ANTHROPIC_MODEL when no higher-precedence model is set", async () => {
+    vi.stubEnv("ANTHROPIC_MODEL", "claude-sonnet-4-5");
+    // A developer shell (or loaded .env) may export the higher-precedence
+    // model vars; the fallback order is only observable with them gone.
+    // Deleted rather than stubbed: the chain reads them with ??, and an
+    // empty string is not nullish.
+    // Sibling describe: the outer beforeEach(mockReset) does not reach here,
+    // and earlier tests' recorded calls would shadow this one's.
+    mockedRejudge.mockClear();
+    const outranking = [
+      "AGENT_TASK_JUDGE_MODEL",
+      "OPENROUTER_MODEL",
+      "OPENAI_MODEL",
+      "OPENROUTER_BASE_URL",
+      "OPENAI_BASE_URL",
+    ];
+    const saved = outranking.map((name) => [name, process.env[name]] as const);
+    for (const [name] of saved) delete process.env[name];
+    // Fresh Response per call — a single mocked Response's body can only be
+    // read once, and the flow fetches the run detail and then POSTs.
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => jsonResponse(runDetail()));
+    mockedRejudge.mockResolvedValue(outcome() as never);
+    const { restore } = capture();
+    const code = await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    expect(code).toBe(0);
+    const options = mockedRejudge.mock.calls[0]![2]!;
+    expect(options).toMatchObject({ judge: { model: "claude-sonnet-4-5" } });
+    // No base URL was guessed: the SDK resolves the Anthropic endpoint per-wire.
+    expect(options.judge?.baseURL).toBeUndefined();
+
+    fetchMock.mockRestore();
+    vi.unstubAllEnvs();
+    for (const [name, value] of saved) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
   });
 });

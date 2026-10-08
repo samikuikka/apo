@@ -713,13 +713,17 @@ _TASK_ENV_PROVIDER_VARS = (
     "OPENAI_BASE_URL",
     "OPENAI_MODEL",
     # Claude Agent SDK subprocess auth (ANTHROPIC_API_KEY for real Anthropic,
-    # ANTHROPIC_AUTH_TOKEN for ZAI-compatible endpoints, CLAUDE_MODEL override).
+    # ANTHROPIC_AUTH_TOKEN for ZAI-compatible endpoints, CLAUDE_MODEL override)
+    # — ANTHROPIC_MODEL additionally selects the judge provider when neither
+    # OPENROUTER_MODEL nor OPENAI_MODEL is set.
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_MODEL",
     "CLAUDE_MODEL",
     "AGENT_TASK_JUDGE_MODEL",
     "AGENT_TASK_OPENROUTER_MODEL",
+    "AGENT_TASK_ANTHROPIC_MODEL",
     # Second-grader decision model (Jev via OpenRouter /alpha/decisions).
     # Opt-in evidence-only — see checks/second-judge.ts in the SDK.
     "APO_JUDGE_MODE",

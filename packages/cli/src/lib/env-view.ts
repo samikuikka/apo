@@ -29,10 +29,14 @@ export type EnvView = {
 export const KNOWN_VARS: { name: string; meaning: string }[] = [
   { name: "OPENROUTER_MODEL", meaning: "model id via OpenRouter (takes precedence)" },
   { name: "OPENAI_MODEL", meaning: "model id via OpenAI-compatible API" },
+  { name: "ANTHROPIC_MODEL", meaning: "model id via Anthropic direct (lowest precedence)" },
   { name: "OPENROUTER_API_KEY", meaning: "OpenRouter auth" },
   { name: "OPENAI_API_KEY", meaning: "OpenAI(-compatible) auth" },
+  { name: "ANTHROPIC_API_KEY", meaning: "Anthropic auth (x-api-key)" },
+  { name: "ANTHROPIC_AUTH_TOKEN", meaning: "Anthropic bearer auth (plan credits)" },
   { name: "OPENROUTER_BASE_URL", meaning: "OpenRouter base URL override" },
   { name: "OPENAI_BASE_URL", meaning: "OpenAI-compatible base URL override" },
+  { name: "ANTHROPIC_BASE_URL", meaning: "Anthropic base URL override" },
   { name: "AGENT_TASK_JUDGE_MODEL", meaning: "default judge model for `runs rejudge`" },
   { name: "AGENT_TASK_ENVIRONMENT", meaning: "environment label recorded on runs" },
   { name: "APO_TASK_ROOT", meaning: "CLI: where tasks live" },
@@ -106,7 +110,9 @@ export function effectiveModelSource(
   if (chosenModel) return { from: "chosen", model: chosenModel };
   const or = view.known.find((v) => v.name === "OPENROUTER_MODEL");
   const oa = view.known.find((v) => v.name === "OPENAI_MODEL");
+  const an = view.known.find((v) => v.name === "ANTHROPIC_MODEL");
   if (or?.set) return { from: "env", varName: "OPENROUTER_MODEL" };
   if (oa?.set) return { from: "env", varName: "OPENAI_MODEL" };
+  if (an?.set) return { from: "env", varName: "ANTHROPIC_MODEL" };
   return null;
 }

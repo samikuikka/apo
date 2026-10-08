@@ -267,8 +267,8 @@ const commands: Record<string, CommandEntry> = {
       ["<run-id>", "Run ID, unique prefix, or 'last'"],
     ],
     options: [
-      ["--judge-model <m>", "Judge model for t.judge checks (default: AGENT_TASK_JUDGE_MODEL / OPENROUTER_MODEL / OPENAI_MODEL env)"],
-      ["--judge-base-url <url>", "OpenAI-compatible base URL for the judge (default: OPENROUTER_BASE_URL / OPENAI_BASE_URL env)"],
+      ["--judge-model <m>", "Judge model for t.judge checks (default: AGENT_TASK_JUDGE_MODEL / OPENROUTER_MODEL / OPENAI_MODEL / ANTHROPIC_MODEL env)"],
+      ["--judge-base-url <url>", "Judge base URL (default: OPENROUTER_BASE_URL / OPENAI_BASE_URL env; a bare claude-* model or an Anthropic host switches to the Anthropic Messages wire, which reads ANTHROPIC_BASE_URL itself)"],
       ["--samples <n>", "Judge the same deliverables n times (1-50) for a per-test stability measure"],
       ["--dry-run", "Run the replay but do not record a judgment (LLM judge calls still cost money)"],
       ["--label <text>", "Operator label recorded on the judgment, e.g. 'sonnet-4.5 calibration'"],
@@ -284,7 +284,7 @@ const commands: Record<string, CommandEntry> = {
       "apo runs rejudge de89cab --samples 5 --label 'judge variance'",
       "apo runs rejudge de89cab --dry-run",
     ],
-    note: "Replays the run's FULL check set against its stored deliverables and records a new judgment — the original verdict is never overwritten. Judge API key comes from OPENROUTER_API_KEY / OPENAI_API_KEY env. Requires the run's deliverables to be complete. Trajectory assertions need the run's trace projection; without it they are recorded as unsupported.",
+    note: "Replays the run's FULL check set against its stored deliverables and records a new judgment — the original verdict is never overwritten. Judge API key comes from OPENROUTER_API_KEY / OPENAI_API_KEY env (Anthropic direct: ANTHROPIC_API_KEY, or ANTHROPIC_AUTH_TOKEN for plan credits). Requires the run's deliverables to be complete. Trajectory assertions need the run's trace projection; without it they are recorded as unsupported.",
   },
   "runs correct": {
     handler: loadCommand("runs-correct"),

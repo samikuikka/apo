@@ -250,8 +250,11 @@ For apo tasks the flow is built automatically from the run's trace
 projection — no extra wiring.
 
 **`t.judge(value, instruction)` — LLM-backed assertions.** Configure the judge
-with `runTask(dir, { judge: { model, apiKey?, baseURL? } })`, or set
-`OPENROUTER_MODEL`/`OPENAI_MODEL` for the CLI runtime. Judge verdicts use the
+with `runTask(dir, { judge: { model, apiKey?, baseURL?, provider? } })`, or set
+`OPENROUTER_MODEL`/`OPENAI_MODEL`/`ANTHROPIC_MODEL` for the CLI runtime. A bare
+`claude-*` model id (or an Anthropic base URL) switches the call to the
+Anthropic Messages wire, authenticated with `ANTHROPIC_API_KEY` or
+`ANTHROPIC_AUTH_TOKEN`. Judge verdicts use the
 same recorder and result format as code assertions, including model, prompt,
 response, token usage, and latency metadata.
 
