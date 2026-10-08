@@ -108,6 +108,91 @@ describe("deriveConversationFromTrace", () => {
       ).toBe(false);
     });
 
+    it("prefers the agent's generation over trailing judges that carry messages (issue #412)", () => {
+      // Judges run after the agent's last turn and are traced as GENERATION
+      // spans; the OTel client wraps their {model, instruction} input into a
+      // fake system message and their verdict into a fake assistant message.
+      // A judge call therefore carries a 2-message "conversation", and the
+      // newest-generation-wins rule showed it instead of the agent's real one.
+      const agentConversation = [
+        { role: "system", content: "You are a project kickoff agent." },
+        { role: "user", content: "Create the shared progress tracker." },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { type: "function", function: { name: "createDoc", arguments: "{}" } },
+          ],
+        },
+        { role: "tool", content: '{"id":"doc-1"}', name: "createDoc" },
+        { role: "assistant", content: "Tracker created." },
+      ];
+      const trace = makeTrace([
+        makeCall({
+          id: "gen-agent",
+          step_name: "agent.generate",
+          created_at: "2026-07-27T10:00:00Z",
+          input: { messages: agentConversation },
+          output: { messages: [{ role: "assistant", content: "All set." }] },
+        }),
+        makeCall({
+          id: "gen-judge-1",
+          step_name: "judge:tracker-created",
+          model: "deepseek/deepseek-v4.1-flash",
+          created_at: "2026-07-27T10:00:30Z",
+          input: {
+            messages: [
+              {
+                role: "system",
+                content:
+                  '{"model":"deepseek/deepseek-v4.1-flash","instruction":"The tracker exists and lists the kickoff decisions."}',
+              },
+            ],
+          },
+          output: {
+            messages: [
+              { role: "assistant", content: '{"reasoning":"It does.","pass":true}' },
+            ],
+          },
+        }),
+        makeCall({
+          id: "gen-judge-2",
+          step_name: "judge:tracker-shared",
+          model: "deepseek/deepseek-v4.1-flash",
+          created_at: "2026-07-27T10:00:45Z",
+          input: {
+            messages: [
+              {
+                role: "system",
+                content:
+                  '{"model":"deepseek/deepseek-v4.1-flash","instruction":"The tracker is shared with the team."}',
+              },
+            ],
+          },
+          output: {
+            messages: [
+              { role: "assistant", content: '{"reasoning":"Shared.","pass":true}' },
+            ],
+          },
+        }),
+      ]);
+
+      const result = deriveConversationFromTrace(trace);
+      expect(result.messages.map((m) => m.role)).toEqual([
+        "system",
+        "user",
+        "assistant",
+        "tool",
+        "assistant",
+        "assistant",
+      ]);
+      // The agent's conversation is what shows; the judges' prompts and
+      // verdicts are not conversation turns.
+      expect(result.messages.some((m) => m.content.includes("progress tracker"))).toBe(true);
+      expect(result.messages.some((m) => m.content.includes('"instruction"'))).toBe(false);
+      expect(result.messages.some((m) => m.content.includes('"pass"'))).toBe(false);
+    });
+
     it("keeps adjacent tool results with different call identities", () => {
       const trace = makeTrace([
         makeCall({

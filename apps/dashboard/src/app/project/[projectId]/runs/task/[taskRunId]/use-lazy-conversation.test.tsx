@@ -97,6 +97,44 @@ describe("useLazyConversation", () => {
     expect(getTraceDetailMock).toHaveBeenCalledOnce();
   });
 
+  it("probes the agent's generation, not a trailing judge's (issue #412)", async () => {
+    // Judge spans are GENERATION calls whose wrapped {model, instruction}
+    // input and verdict output form a fake 2-message conversation. The probe
+    // order must reach the agent's generation without being captured by the
+    // judge — and must not waste a call-detail fetch on it.
+    const agentMessages = [
+      { role: "user", content: "Create the shared progress tracker." },
+      { role: "assistant", content: "Tracker created." },
+    ];
+    const judgeMessages = [
+      { role: "system", content: '{"model":"m","instruction":"The tracker exists."}' },
+      { role: "assistant", content: '{"reasoning":"It does.","pass":true}' },
+    ];
+    getTraceDetailMock.mockResolvedValueOnce({ calls: [] }); // slim fetch
+    orderedGenerationsMock.mockReturnValue([
+      { id: "gen-agent", step_name: "agent.generate" },
+      { id: "gen-judge", step_name: "judge:tracker-created" },
+    ]);
+    getCallDetailMock.mockResolvedValue({ id: "gen-agent" });
+    conversationFromGenerationMock.mockImplementation(
+      (call: { id: string }) => (call.id === "gen-agent" ? agentMessages : judgeMessages),
+    );
+
+    const { result } = renderHook(() =>
+      useLazyConversation("trace-1", "project-1", true),
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current).toEqual({ status: "ready", messages: agentMessages });
+    expect(getCallDetailMock).toHaveBeenCalledTimes(1);
+    expect(getCallDetailMock).toHaveBeenCalledWith(
+      "trace-1",
+      "gen-agent",
+      "project-1",
+      expect.any(AbortSignal),
+    );
+  });
+
   it("falls back to one full-trace fetch when no generation carries messages", async () => {
     orderedGenerationsMock.mockReturnValue([{ id: "gen-1" }]);
     getCallDetailMock.mockResolvedValue({ id: "gen-1" });
