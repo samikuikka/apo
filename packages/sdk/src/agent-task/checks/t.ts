@@ -15,7 +15,7 @@ import type { AssertionOutcome, SecondJudgeEvidence } from "../run/types.ts";
 import type { Recorder } from "./recorder.ts";
 import type { Matcher, ValueMatcher } from "./matchers.ts";
 import { describeValue, matchValue } from "./matchers.ts";
-import { callJudge, type JudgeCallContext, type JudgePromptBuilder } from "./judge.ts";
+import { callJudge, judgeTemperature, type JudgeCallContext, type JudgePromptBuilder } from "./judge.ts";
 import {
   cascadeDecides,
   cascadePreflight,
@@ -81,6 +81,13 @@ export type JudgeConfig = {
    * dual behavior (second judge as parallel, evidence-only shadow).
    */
   mode?: "cascade";
+  /**
+   * Sampling temperature for `t.judge` requests (not `t.agent`, whose session
+   * stays at 0). Unset falls back to `APO_JUDGE_TEMPERATURE`, then `0`. Some
+   * reasoning models recommend a non-zero value (DeepSeek: 0.6) to avoid
+   * repetition at greedy decoding. Recorded on the check's judge metadata.
+   */
+  temperature?: number;
 };
 
 /**
@@ -118,6 +125,7 @@ export function resolveJudgeConfig(
     apiKey: override?.apiKey ?? judgeConfig?.apiKey,
     prompt: override?.prompt ?? judgeConfig?.prompt,
     mode: override?.mode ?? judgeConfig?.mode,
+    temperature: override?.temperature ?? judgeConfig?.temperature,
   };
 }
 
@@ -610,6 +618,20 @@ function createJudgeMethod(
       );
       return;
     }
+    // Before cascade preflight, which can decide a check from the second judge
+    // alone: a bad temperature is an error on every check, never a hidden one.
+    try {
+      judgeTemperature(effective.temperature);
+    } catch (error) {
+      rec.record(label, false, `judge failed: ${error instanceof Error ? error.message : String(error)}`, {
+        evaluator_type: "llm",
+        expected: instruction,
+        received: valueArray.length === 1 ? valueArray[0] : valueArray,
+        location,
+        outcome: "error",
+      });
+      return;
+    }
     const context = judgeScopeToContext(judgeScope);
     // The judge call's serving host, from the endpoint it actually fetches
     // (issue #307) — OpenRouter and friends are a different host from the
@@ -693,6 +715,7 @@ function createJudgeMethod(
         baseURL: effective.baseURL,
         apiKey: effective.apiKey,
         prompt: effective.prompt,
+        ...(effective.temperature !== undefined ? { temperature: effective.temperature } : {}),
         ...(context ? { context } : {}),
         ...(prefetchedSecondJudge ? { prefetchedSecondJudge } : {}),
         ...(secondJudgeValue !== undefined

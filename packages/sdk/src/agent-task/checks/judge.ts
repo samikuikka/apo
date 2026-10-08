@@ -594,6 +594,25 @@ function runWithSharedPrefix<T>(key: string, task: () => Promise<T>): Promise<T>
 }
 
 /**
+ * The `t.judge` sampling temperature: the call's own (`JudgeConfig.temperature`,
+ * task- or call-level), else `APO_JUDGE_TEMPERATURE`, else 0. A value that is
+ * not a number in [0, 2] is a configuration error, so it throws rather than
+ * being sent and rejected by the provider on every check. `t.judge` validates
+ * before any request (second judge and cascade included) and records the
+ * error on the check.
+ */
+export function judgeTemperature(configured?: number): number {
+  const raw = process.env.APO_JUDGE_TEMPERATURE?.trim();
+  const fromEnv = raw ? Number(raw) : undefined;
+  const value = configured ?? fromEnv ?? 0;
+  if (!Number.isFinite(value) || value < 0 || value > 2) {
+    const source = configured !== undefined ? "judge.temperature" : "APO_JUDGE_TEMPERATURE";
+    throw new Error(`${source} must be a number between 0 and 2, got ${configured ?? raw}`);
+  }
+  return value;
+}
+
+/**
  * Default judge endpoint resolution, shared by the primary judge call and
  * cascade preflight so both can never disagree: explicit config, then env,
  * then OpenRouter. Extracted because a duplicated default chain drifts — the
@@ -615,6 +634,8 @@ export async function callJudge(args: {
   apiKey?: string;
   /** Custom briefing builder; the response contract stays SDK-owned. */
   prompt?: JudgePromptBuilder;
+  /** Sampling temperature; see {@link judgeTemperature} for the fallbacks. */
+  temperature?: number;
   /** What is being graded — threaded to the builder. */
   context?: JudgeCallContext;
   /**
@@ -633,6 +654,8 @@ export async function callJudge(args: {
 }): Promise<JudgeCallResult> {
   const baseURL = defaultJudgeBaseURL(args.baseURL);
   const apiKey = defaultJudgeAPIKey(args.apiKey);
+  // Before the second judge is dispatched: a bad value must cost no request.
+  const temperature = judgeTemperature(args.temperature);
 
   const { briefingText, instructionText, systemPromptText, deliverableText, secondJudgeState, secondJudgeProjected } =
     buildJudgePromptParts({
@@ -686,7 +709,7 @@ export async function callJudge(args: {
         },
         { role: "user", content: instructionText },
       ],
-      temperature: 0,
+      temperature,
       response_format: schema ? judgeResponseFormat() : JSON_OBJECT_FORMAT,
       ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
     });
@@ -871,6 +894,7 @@ export async function callJudge(args: {
     }
     const judgeMetadata = async (completion?: JudgeCompletion): Promise<JudgeMetadata> => ({
       model: args.model,
+      temperature,
       contract: judgeContractInUse(),
       prompt: { system: systemPromptText, user: instructionText },
       ...(completion

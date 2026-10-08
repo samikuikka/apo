@@ -245,6 +245,20 @@ A judge that keeps streaming its reasoning is never cut by the first-data bound,
 
 The loop bound exists because a reasoning model that cannot decide sometimes argues back and forth and then repeats one word until its output cap — still streaming, so no time bound notices before the runaway bound, and every judge call queued behind it waits. The loop is a random draw, so the cut attempt is retried once with the same prompt; a retry that loops too records a judge error whose reason starts with `Judge reasoning loop`, which `apo runs rejudge` can redo. Judge metadata counts the cut attempts (`reasoning_loops`), including on a call whose retry gave a verdict. The thresholds are deliberately loose: healthy reasoning that says "Hmm" a few dozen times in a row, tables and quoted JSON are not cut. `APO_JUDGE_LOOP_GUARD=0` turns the bound off.
 
+#### Temperature
+
+A `t.judge` request is sent at temperature 0 unless something sets it, most specific first:
+
+| Where | Example |
+|---|---|
+| Per call | `t.judge(value, instruction, { judge: { temperature: 0.6 } })` |
+| Task or run judge config | `task("review", { judge: { temperature: 0.6 }, … })` |
+| Environment | `APO_JUDGE_TEMPERATURE=0.6` |
+
+A value that is not a number from 0 to 2 records a judge error on the check, before any request is made (the second judge and cascade mode included). The temperature used is recorded on each check's judge metadata. It applies to `t.judge` only; `t.agent` sessions stay at 0.
+
+Some reasoning models recommend against greedy decoding: DeepSeek's guidance for its reasoning models is 0.5–0.7 (0.6) to avoid endless repetition. That only takes effect through endpoints that pass `temperature` on to the model (OpenRouter and Fireworks do; DeepSeek's own API ignores it for its reasoner). Verdicts at a non-zero temperature vary more between draws, so compare runs judged at the same setting.
+
 #### Concurrency and the prompt cache
 
 Every `t.judge` call on the same deliverable shares a long prefix (briefing + deliverable), and a provider can serve that prefix from its cache only after one request has written it. So the first call for a prefix runs alone; once it settles, the rest dispatch up to `APO_JUDGE_CONCURRENCY` at a time. Calls on different deliverables never wait on each other.

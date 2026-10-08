@@ -5,6 +5,7 @@ import {
   runTraceChecks,
 } from "../src/agent-task/checks/flow-runner.ts";
 import { callJudge } from "../src/agent-task/checks/judge.ts";
+import type { JudgeConfig } from "../src/agent-task/checks/t.ts";
 import { equals } from "../src/agent-task/checks/matchers.ts";
 import type { TraceProjectionSnapshot } from "../src/agent-task/trace-projection/types.ts";
 
@@ -428,6 +429,108 @@ describe("t.judge", () => {
     });
     const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
     expect(body.model).toBe("only/override");
+  });
+});
+
+describe("t.judge temperature", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const sentTemperature = async (
+    config: JudgeConfig,
+    perCall?: { temperature?: number },
+  ): Promise<unknown> => {
+    const fetchMock = stubCapturingJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "ok" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("answer", "PASS when correct", perCall ? { judge: perCall } : undefined);
+    });
+    await runTraceChecks({ snapshot: emptySnapshot, deliverables: {}, judgeConfig: config });
+    return JSON.parse(fetchMock.mock.calls[0]![1]!.body as string).temperature;
+  };
+
+  it("sends 0 when nothing sets it", async () => {
+    expect(await sentTemperature(judgeConfig)).toBe(0);
+  });
+
+  it("sends the configured judge.temperature", async () => {
+    expect(await sentTemperature({ ...judgeConfig, temperature: 0.6 })).toBe(0.6);
+  });
+
+  it("lets a per-call judge.temperature win over the configured one", async () => {
+    expect(await sentTemperature({ ...judgeConfig, temperature: 0.6 }, { temperature: 0.2 })).toBe(0.2);
+  });
+
+  it("falls back to APO_JUDGE_TEMPERATURE when no config sets it", async () => {
+    vi.stubEnv("APO_JUDGE_TEMPERATURE", "0.6");
+    expect(await sentTemperature(judgeConfig)).toBe(0.6);
+  });
+
+  it("keeps a configured temperature over APO_JUDGE_TEMPERATURE, 0 included", async () => {
+    vi.stubEnv("APO_JUDGE_TEMPERATURE", "0.6");
+    expect(await sentTemperature({ ...judgeConfig, temperature: 0 })).toBe(0);
+  });
+
+  const judgeErrorFor = async (
+    config: JudgeConfig,
+  ): Promise<{ result: Awaited<ReturnType<typeof runTraceChecks>>[number] | undefined; fetchMock: ReturnType<typeof stubCapturingJudgeResponse> }> => {
+    const fetchMock = stubCapturingJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "ok" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("answer", "PASS when correct");
+    });
+    const [result] = await runTraceChecks({ snapshot: emptySnapshot, deliverables: {}, judgeConfig: config });
+    return { result, fetchMock };
+  };
+
+  it.each(["abc", "2.0001", "-0.5", "Infinity"])(
+    "records a judge error, without calling the provider, for APO_JUDGE_TEMPERATURE=%s",
+    async (raw) => {
+      vi.stubEnv("APO_JUDGE_TEMPERATURE", raw);
+      const { result, fetchMock } = await judgeErrorFor(judgeConfig);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result?.pass).toBe(false);
+      expect(result?.assertions?.[0]?.outcome).toBe("error");
+      expect(result?.reasoning).toMatch(/APO_JUDGE_TEMPERATURE must be a number between 0 and 2/);
+    },
+  );
+
+  it("names judge.temperature when the configured value is out of range", async () => {
+    const { result, fetchMock } = await judgeErrorFor({ ...judgeConfig, temperature: 3 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result?.assertions?.[0]?.outcome).toBe("error");
+    expect(result?.reasoning).toMatch(/judge\.temperature must be a number between 0 and 2, got 3/);
+  });
+
+  it("makes no request at all for a bad value when a second judge is configured", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-test");
+    vi.stubEnv("APO_JUDGE_TEMPERATURE", "5");
+    const { result, fetchMock } = await judgeErrorFor(judgeConfig);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result?.assertions?.[0]?.outcome).toBe("error");
+  });
+
+  it("makes no request at all for a bad value in cascade mode", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-test");
+    const { result, fetchMock } = await judgeErrorFor({ ...judgeConfig, mode: "cascade", temperature: 9 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result?.assertions?.[0]?.outcome).toBe("error");
+  });
+
+  it("records the temperature used on the judge metadata", async () => {
+    stubCapturingJudgeResponse({ content: JSON.stringify({ pass: true, reasoning: "ok" }) });
+    defineCheck("quality", async (t) => {
+      await t.judge("answer", "PASS when correct");
+    });
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig: { ...judgeConfig, temperature: 0.6 },
+    });
+    expect(result).toMatchObject({ judge: { temperature: 0.6 } });
   });
 });
 
