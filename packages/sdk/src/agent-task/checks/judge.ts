@@ -363,6 +363,13 @@ type JudgeCompletion = {
   text: string;
   usage: JudgeUsage | undefined;
   finishReason: string | undefined;
+  /**
+   * The model the provider reports as having served the call (the response's
+   * `model` field). Diverges from the requested model when the judge's
+   * gateway fell back — recorded so judge spend is attributed to the model
+   * that actually judged.
+   */
+  servedModel: string | undefined;
 };
 
 type StreamChunk = {
@@ -376,6 +383,7 @@ type StreamChunk = {
     finish_reason?: string | null;
   }>;
   usage?: JudgeUsage | null;
+  model?: string | null;
   error?: { message?: string } | string;
 };
 
@@ -400,17 +408,20 @@ async function readCompletion(
     const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: string }; finish_reason?: string | null }>;
       usage?: JudgeUsage;
+      model?: string;
     };
     return {
       text: data.choices?.[0]?.message?.content ?? "",
       usage: data.usage,
       finishReason: data.choices?.[0]?.finish_reason ?? undefined,
+      servedModel: typeof data.model === "string" && data.model ? data.model : undefined,
     };
   }
 
   let text = "";
   let usage: JudgeUsage | undefined;
   let finishReason: string | undefined;
+  let servedModel: string | undefined;
 
   // SSE event assembly: `data:` lines accumulate until a blank line
   // dispatches the event; comment lines (": ping", ": OPENROUTER
@@ -452,6 +463,8 @@ async function readCompletion(
     }
     if (choice?.finish_reason) finishReason = choice.finish_reason;
     if (chunk.usage) usage = chunk.usage;
+    // Streamed chunks each repeat the serving model; keep the last one seen.
+    if (typeof chunk.model === "string" && chunk.model) servedModel = chunk.model;
   };
   const handleLine = (line: string): void => {
     if (line === "") return dispatch();
@@ -465,7 +478,7 @@ async function readCompletion(
   };
 
   const reader = response.body?.getReader();
-  if (!reader) return { text, usage, finishReason };
+  if (!reader) return { text, usage, finishReason, servedModel };
   const decoder = new TextDecoder();
   let buffer = "";
   for (;;) {
@@ -477,13 +490,13 @@ async function readCompletion(
     buffer = lines.pop() ?? "";
     for (const line of lines) {
       handleLine(line);
-      if (finished) return { text, usage, finishReason };
+      if (finished) return { text, usage, finishReason, servedModel };
     }
   }
   buffer += decoder.decode();
   for (const line of buffer.split(/\r\n|\r|\n/)) if (line) handleLine(line);
   dispatch();
-  return { text, usage, finishReason };
+  return { text, usage, finishReason, servedModel };
 }
 
 /**
@@ -499,6 +512,7 @@ async function readAnthropicCompletion(response: Response): Promise<JudgeComplet
   const data = (await response.json()) as {
     content?: Array<{ type?: string; text?: string }>;
     stop_reason?: string;
+    model?: string;
     usage?: {
       input_tokens?: number;
       output_tokens?: number;
@@ -521,6 +535,7 @@ async function readAnthropicCompletion(response: Response): Promise<JudgeComplet
   return {
     text,
     finishReason,
+    servedModel: typeof data.model === "string" && data.model ? data.model : undefined,
     usage: data.usage
       ? {
           prompt_tokens: data.usage.input_tokens,
@@ -1064,6 +1079,11 @@ export async function callJudge(args: {
     }
     const judgeMetadata = async (completion?: JudgeCompletion): Promise<JudgeMetadata> => ({
       model: args.model,
+      // The model that actually judged, when the gateway fell back to a
+      // different one than requested.
+      ...(completion?.servedModel && completion.servedModel !== args.model
+        ? { served_model: completion.servedModel }
+        : {}),
       temperature,
       contract: judgeContractInUse(),
       prompt: { system: systemPromptText, user: instructionText },

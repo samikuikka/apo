@@ -29,6 +29,12 @@ export type JudgeMetadata = {
   /** Model identifier, e.g. ``"deepseek/deepseek-v4.1-flash"``. */
   model?: string;
   /**
+   * The model the provider reports as having served the judge call (the
+   * response's `model` field). Diverges from `model` when the judge's
+   * gateway fell back — judge spend and attribution key on this.
+   */
+  served_model?: string;
+  /**
    * Which response contract elicited this judgment (#163): reasoning-first
    * (the default) or the legacy verdict-first (``pass`` before
    * ``reasoning``, via ``APO_JUDGE_VERDICT_FIRST``). Group comparisons

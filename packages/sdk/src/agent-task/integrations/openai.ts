@@ -36,6 +36,7 @@ import {
   startGeneration,
   emitGenerationAndTools,
   safeParse,
+  servingFromResponse,
   servingHostFromBaseURL,
 } from "./span-helpers.ts";
 
@@ -64,6 +65,12 @@ interface OpenAIClientLike {
     completions: {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       create: (...args: any[]) => Promise<any>;
+      // openai SDK ≥4 exposes the raw-response variant; optional so custom
+      // clients without it still work.
+      withRawResponse?: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        create: (...args: any[]) => Promise<any>;
+      };
     };
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,6 +82,12 @@ interface OpenAIClientLike {
  */
 interface OpenAIResponseLike {
   model?: string;
+  /** OpenRouter's routing report, opt-in via X-OpenRouter-Metadata. */
+  openrouter_metadata?: {
+    endpoints?: {
+      available?: Array<{ provider?: string; selected?: boolean }>;
+    };
+  };
   choices?: Array<{
     message?: {
       content?: string | null;
@@ -110,6 +123,17 @@ export function createApoOpenAI<T extends OpenAIClientLike>(
 ): T {
   const { trace, parentSpanId, taskId, turnNumber } = options;
   const realCreate = client.chat.completions.create.bind(client.chat.completions);
+  // The raw-response variant (openai SDK ≥4) is how response headers reach
+  // us — LiteLLM reports the serving deployment there. Optional: custom
+  // clients without it fall back to the plain call.
+  const rawCreate:
+    | ((...args: unknown[]) => Promise<{
+        headers: { get(name: string): string | null };
+        parse(): Promise<unknown>;
+      }>)
+    | undefined = client.chat.completions.withRawResponse?.create?.bind(
+      client.chat.completions.withRawResponse,
+    );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tracedCreate = async (...args: any[]): Promise<any> => {
@@ -120,6 +144,15 @@ export function createApoOpenAI<T extends OpenAIClientLike>(
     if (params.stream === true) {
       return realCreate(params);
     }
+
+    // OpenRouter's routing metadata is opt-in per request; asking for it on
+    // every openrouter call costs nothing and yields the selected provider
+    // (plus the fallback audit trail OpenRouter then includes).
+    const baseURL = (client as { baseURL?: unknown }).baseURL;
+    const requestParams =
+      typeof baseURL === "string" && baseURL.includes("openrouter.ai")
+        ? { ...params, headers: { ...(params.headers as object | undefined), "X-OpenRouter-Metadata": "enabled" } }
+        : params;
 
     // The OpenAI SDK is often pointed at a gateway via baseURL — the host
     // it actually calls is the run's serving host (issue #307).
@@ -138,17 +171,30 @@ export function createApoOpenAI<T extends OpenAIClientLike>(
     });
 
     try {
-      const response = (await realCreate(params)) as OpenAIResponseLike;
+      let response: OpenAIResponseLike;
+      let headers: { get(name: string): string | null } | null = null;
+      if (rawCreate) {
+        const raw = await rawCreate(requestParams);
+        headers = raw.headers;
+        response = (await raw.parse()) as OpenAIResponseLike;
+      } else {
+        response = (await realCreate(requestParams)) as OpenAIResponseLike;
+      }
       const message = response.choices?.[0]?.message;
       const text = message?.content ?? undefined;
       const toolCalls = (message?.tool_calls ?? []).map((tc) => ({
         name: tc.function?.name ?? "unknown",
         input: tc.function?.arguments ? safeParse(tc.function.arguments) : undefined,
       }));
+      // The gateway's own report of who served the call beats the baseURL
+      // guess: OpenRouter metadata / LiteLLM response headers.
+      const reported = servingFromResponse(response, headers);
 
       emitGenerationAndTools(trace, spanId, startedAt, {
         text,
         servedModel: response.model,
+        servedProvider: reported.provider,
+        servedRoute: reported.route,
         promptTokens: response.usage?.prompt_tokens,
         completionTokens: response.usage?.completion_tokens,
         // OpenAI-compatible providers report thinking tokens here (o-series,

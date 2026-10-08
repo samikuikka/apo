@@ -94,7 +94,14 @@ export interface TraceProjectionObservation {
   errorMessage?: string;
   input?: unknown;
   output?: unknown;
+  /** The model the caller requested (often a gateway alias). */
   model?: string;
+  /**
+   * The model the provider reports as having served the call
+   * (`gen_ai.response.model`). Diverges from `model` when a gateway
+   * fallback swapped the serving model. Absent when unreported.
+   */
+  servedModel?: string;
   toolName?: string;
   toolParameters?: unknown;
   toolResult?: unknown;

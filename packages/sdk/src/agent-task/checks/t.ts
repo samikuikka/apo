@@ -151,6 +151,17 @@ export interface TestContext {
   maxToolCalls(n: number): void;
   /** Asserts no tool/subagent call reported an error — anti-flail. */
   noFailedActions(): void;
+  /**
+   * Asserts every agent generation was served by the model it requested —
+   * strict serving integrity. A gateway fallback (LiteLLM router,
+   * OpenRouter provider/model fallback) swaps the serving model mid-run;
+   * this fails the run instead of letting the verdict claim the requested
+   * model's capability. Judge generations are excluded (the judge is
+   * expected to run on its own model). Fails closed when no generation
+   * reported the model that served it — an unverifiable claim is not a
+   * pass.
+   */
+  noModelDrift(): void;
   /** Asserts a skill was loaded. */
   loadedSkill(skill: string): void;
   /** Asserts a subagent delegation happened. */
@@ -276,6 +287,7 @@ export const TEST_METHOD_NAMES = [
   "usedNoTools",
   "maxToolCalls",
   "noFailedActions",
+  "noModelDrift",
   "loadedSkill",
   "calledSubagent",
   "messageIncludes",
@@ -307,6 +319,51 @@ function describeName(m: NameMatcher): string {
   if (typeof m === "string") return `"${m}"`;
   if (m instanceof RegExp) return m.source;
   return "<predicate>";
+}
+
+/**
+ * The `noModelDrift` body, shared by both test-context factories. Strict
+ * serving integrity: every agent generation must have been served by the
+ * model it requested. Fails closed when no generation reported the model
+ * that served it — an unverifiable claim is not a pass.
+ */
+function noModelDriftAssertion(view: TraceView, rec: Recorder): void {
+  const drift = view.modelDrift;
+  if (view.servedModelGenerations.length === 0) {
+    rec.record(
+      "noModelDrift",
+      false,
+      "no generation reported the model that served it — serving integrity is unverifiable",
+      { expected: "every generation served by its requested model", received: "unknown" },
+    );
+    return;
+  }
+  if (drift.length === 0) {
+    rec.record("noModelDrift", true, "", {
+      expected: "every generation served by its requested model",
+      received: `${view.servedModelGenerations.length} generation(s), no drift`,
+    });
+    return;
+  }
+  // Aggregate per served model: "openai/gpt-4o-mini ×3 (requested deepseek/…)"
+  const byServed = new Map<string, { count: number; requested: string }>();
+  for (const d of drift) {
+    const entry = byServed.get(d.servedModel);
+    if (entry) entry.count += 1;
+    else byServed.set(d.servedModel, { count: 1, requested: d.requestedModel });
+  }
+  const summary = [...byServed.entries()]
+    .map(([served, e]) => `${served} ×${e.count} (requested ${e.requested})`)
+    .join("; ");
+  rec.record(
+    "noModelDrift",
+    false,
+    `${drift.length} generation(s) served by a different model than requested: ${summary}`,
+    {
+      expected: "every generation served by its requested model",
+      received: summary,
+    },
+  );
 }
 
 function matchName(name: string, m: NameMatcher): boolean {
@@ -409,6 +466,8 @@ export function createTestContext(
         received: `${failed}`,
       });
     },
+
+    noModelDrift: () => noModelDriftAssertion(view, rec),
 
     loadedSkill(skill) {
       const ok = view.skillLoads.some((s) => s.skill === skill);
@@ -763,12 +822,25 @@ function createJudgeMethod(
               };
             },
             usage: (r: unknown) => {
-              const tokens = (
-                r as { judge?: { tokens?: { input?: number; output?: number } } }
-              )?.judge?.tokens;
-              return tokens
-                ? { prompt_tokens: tokens.input, completion_tokens: tokens.output }
-                : undefined;
+              const judgeMeta = (
+                r as {
+                  judge?: {
+                    tokens?: { input?: number; output?: number };
+                    served_model?: string;
+                  };
+                }
+              )?.judge;
+              const tokens = judgeMeta?.tokens;
+              return {
+                ...(tokens
+                  ? { prompt_tokens: tokens.input, completion_tokens: tokens.output }
+                  : {}),
+                // The model that actually judged — a gateway fallback
+                // diverges from the requested judge model.
+                ...(judgeMeta?.served_model
+                  ? { served_model: judgeMeta.served_model }
+                  : {}),
+              };
             },
           },
           async (spanId: string) => {
@@ -998,6 +1070,8 @@ export function createTraceTestContext(
         received: `${failed}`,
       });
     },
+
+    noModelDrift: () => noModelDriftAssertion(view, rec),
 
     loadedSkill(skill) {
       if (!isAvailable("skills")) {

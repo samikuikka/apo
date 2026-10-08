@@ -1,0 +1,43 @@
+═══════════════════════════════════════════════
+                    INVOICE
+═══════════════════════════════════════════════
+
+Invoice Number: INV-2024-00847
+Date: 2024-01-15
+Due Date: 2024-02-15
+
+FROM:
+  Acme Cloud Solutions Inc.
+  1234 Innovation Drive, Suite 500
+  San Francisco, CA 94105
+  billing@acmecloud.io
+
+TO:
+  TechStart Labs
+  789 Startup Boulevard
+  Austin, TX 78701
+  accounts@techstartlabs.com
+
+═══════════════════════════════════════════════
+ITEMS
+═══════════════════════════════════════════════
+
+1. Cloud Hosting (Enterprise Plan)     x12 mo    $299.00/mo    $3,588.00
+2. API Gateway (Pro Tier)              x12 mo    $149.00/mo    $1,788.00
+3. Managed Database (PostgreSQL)       x1         $89.00/mo    $1,068.00
+4. SSL Certificate                     x1                       $129.99
+5. Priority Support Add-on             x12 mo     $49.00/mo      $588.00
+6. Data Migration Service              x1                      $1,500.00
+
+                                     Subtotal:   $8,661.99
+                                     Tax (8.25%):  $714.61
+                                     ─────────────────────────
+                                     TOTAL:      $9,376.60
+
+═══════════════════════════════════════════════
+PAYMENT TERMS: Net 30
+Late fee: 1.5% per month on overdue balance
+Discount: 2% if paid within 10 days ($7,188.87)
+
+Contact: Sarah Mitchell, sarah.mitchell@acmecloud.io
+Account Manager: James Rodriguez

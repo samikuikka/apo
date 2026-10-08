@@ -69,6 +69,32 @@ describe("t.judge", () => {
     });
   });
 
+  it("records the model that actually served the judge call when a gateway fell back", async () => {
+    // The requested judge model is "test/judge"; the gateway's response
+    // reports a different serving model. The metadata must carry the served
+    // model so judge spend and attribution key on the truth.
+    stubJudgeResponse({
+      content: JSON.stringify({ pass: true, reasoning: "meets the rubric" }),
+      usage: { prompt_tokens: 12, completion_tokens: 4 },
+      model: "openai/gpt-4o-mini",
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("complete answer", "PASS when complete");
+    });
+
+    const [result] = await runTraceChecks({
+      snapshot: emptySnapshot,
+      deliverables: {},
+      judgeConfig,
+    });
+
+    expect(result?.judge).toMatchObject({
+      model: "test/judge",
+      served_model: "openai/gpt-4o-mini",
+      tokens: { input: 12, output: 4 },
+    });
+  });
+
   it("records the judge's failed verdict", async () => {
     stubJudgeResponse({
       content: JSON.stringify({ pass: false, reasoning: "missing evidence" }),
@@ -1431,11 +1457,14 @@ function sseResponse(chunks: string[]): Response {
 function stubJudgeResponse(args: {
   content: string;
   usage?: { prompt_tokens: number; completion_tokens: number };
+  /** The model the provider reports as having served the call. */
+  model?: string;
 }): void {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () =>
       Response.json({
+        ...(args.model !== undefined ? { model: args.model } : {}),
         choices: [{ message: { content: args.content } }],
         usage: args.usage,
       }),
