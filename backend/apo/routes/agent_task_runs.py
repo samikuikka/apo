@@ -180,6 +180,7 @@ def _checks_with_judge_span_links(
         annotate_judge_span_ids(session, [task_run], {task_run.id: checks})
     return checks
 
+
 def _task_run_provider_pairs(
     task_run: AgentTaskRunDB,
 ) -> list[ModelProviderPair]:
@@ -192,6 +193,7 @@ def _task_run_provider_pairs(
         ModelProviderPair.model_validate(pair)
         for pair in parse_model_providers(task_run.model_providers_json)
     ]
+
 
 def _task_run_model_drift(
     session: Session,
@@ -210,13 +212,22 @@ def _task_run_model_drift(
     batch = session.get(AgentTaskBatchRunDB, task_run.batch_run_id)
     if batch is None:
         return None
+    # The summary reads nine scalars per call; every JSON payload stays
+    # deferred so a long trace's bodies never load on this read path.
     calls = session.exec(
-        select(LoggedCallDB).where(
+        select(LoggedCallDB)
+        .options(
+            *CALL_LIGHT,
+            defer(LoggedCallDB.input),
+            defer(LoggedCallDB.output),
+        )
+        .where(
             col(LoggedCallDB.run_id) == task_run.trace_run_id,
             col(LoggedCallDB.project) == batch.project,
         )
     ).all()
     return model_drift_summary(calls, task_run.configured_model)
+
 
 def _build_task_run_detail(
     session: Session,

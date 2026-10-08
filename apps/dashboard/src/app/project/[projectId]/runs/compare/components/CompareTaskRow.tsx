@@ -17,7 +17,7 @@ import {
 import { loadCheckSource, type DefinitionRef } from "@/lib/load-check-source";
 import type { TaskComparisonEvidenceLoader } from "@/lib/agent-task-view-api";
 import { cn } from "@/lib/utils";
-import { formatDuration, formatInterval, runDurationMs, formatCostMicro, formatTokenTotal, tokenFormat } from "@/lib/format";
+import { formatDuration, runDurationMs, formatCostMicro, formatTokenTotal, tokenFormat } from "@/lib/format";
 import { extractJudgeReasoning } from "@/lib/judge-reasoning";
 import { resolveCheckBlock } from "@/lib/extract-check-block";
 import { locateAssertionsInBlock } from "@/lib/locate-assertion";

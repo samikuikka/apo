@@ -182,7 +182,7 @@ export async function externalizeResultEvidence(
 ): Promise<ExternalizeResult> {
   const { ctx, support, limitBytes, fetchImpl } = opts;
   const body = { ...opts.body };
-  const deliverables = { ...(body.deliverables as Record<string, unknown> | null ?? {}) };
+  const deliverables = { ...(body.deliverables as Record<string, unknown> | null) };
   const refs: string[] = [];
   let externalizedBytes = 0;
 

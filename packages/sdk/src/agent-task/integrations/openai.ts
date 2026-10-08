@@ -148,8 +148,6 @@ export function createApoOpenAI<T extends OpenAIClientLike>(
 
       emitGenerationAndTools(trace, spanId, startedAt, {
         text,
-        // OpenAI-compatible gateways (LiteLLM, OpenRouter) report the model
-        // that actually served here — the only signal a fallback gives.
         servedModel: response.model,
         promptTokens: response.usage?.prompt_tokens,
         completionTokens: response.usage?.completion_tokens,

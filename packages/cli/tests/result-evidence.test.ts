@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ResultEvidenceTooLargeError,
   externalizeResultEvidence,
@@ -97,7 +97,7 @@ describe("uploadResultEvidencePart", () => {
   it("is retry-safe after a dropped PUT: same metadata returns the same id", async () => {
     let putAttempts = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation(
-      async (input: URL | Request | string, init?: RequestInit) => {
+      async (input: URL | Request | string, _init?: RequestInit) => {
         const url = typeof input === "string" ? input : input.toString();
         if (url.endsWith("/result-evidence")) {
           // Server-side idempotency: identical metadata returns the same row.

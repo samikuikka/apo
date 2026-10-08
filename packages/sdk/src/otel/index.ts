@@ -187,9 +187,9 @@ export function createApoSpanProcessor(
     return new SimpleSpanProcessor(exporter);
   }
   return new BatchSpanProcessor(exporter, {
-    ...(options.scheduledDelayMillis !== undefined
-      ? { scheduledDelayMillis: options.scheduledDelayMillis }
-      : {}),
+    ...(options.scheduledDelayMillis !== undefined && {
+      scheduledDelayMillis: options.scheduledDelayMillis,
+    }),
   });
 }
 

@@ -63,10 +63,9 @@ def apply_cost_to_call(
     """
     from ..usage_normalization import normalize_usage  # local import; avoid cycle
 
-    # Price what served the call. When a gateway fell back, the requested
-    # name is an alias and the served model (gen_ai.response.model) is the
-    # billable identity — for usage normalization too, since the usage
-    # attributes on the span come from the provider that actually served.
+    # Price what served the call, not the alias the caller sent — and
+    # normalize usage under it too, since the usage attributes come from
+    # the provider that actually served.
     effective_model = call.served_model or call.model
 
     try:

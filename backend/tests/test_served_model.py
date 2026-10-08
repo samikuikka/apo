@@ -1,4 +1,4 @@
-# pyright: reportAny=false, reportUnusedImport=false, reportUnusedCallResult=false, reportPrivateUsage=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportInvalidTypeForm=false
+# pyright: reportAny=false, reportDeprecated=false, reportExplicitAny=false, reportUnusedImport=false, reportUnusedCallResult=false, reportPrivateUsage=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportInvalidTypeForm=false
 
 """Served-model tracking: requested vs the model that actually served.
 
@@ -12,12 +12,17 @@ drift summary the run detail surfaces (judge calls excluded).
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from typing import Any
 
 import pytest
-from sqlmodel import Session, SQLModel, create_engine, select, text
+from _pytest.monkeypatch import MonkeyPatch
+from sqlalchemy.engine import Engine
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, col, create_engine, select, text
 
+import apo.db as apo_db
 from apo.db import engine, init_db
 from apo.models.db import LoggedCallDB, OtlpSpanDB, RunDB
 from apo.services.otel_normalization import normalize_span
@@ -34,11 +39,11 @@ NOW = datetime(2026, 10, 1, tzinfo=timezone.utc)
 def _span(
     *,
     span_id: str = "span-1",
-    parent_span_id: str | None = "root",
+    project_id: str = "test-project",
     attributes: dict[str, object] | None = None,
 ) -> OtlpSpanDB:
     return OtlpSpanDB(
-        project_id="test-project",
+        project_id=project_id,
         trace_id="trace-1",
         span_id=span_id,
         span_name="chat",
@@ -172,7 +177,7 @@ class TestProjection:
 
 class TestPricing:
     @pytest.fixture
-    def session(self) -> Session:
+    def session(self) -> Iterator[Session]:
         eng = create_engine("sqlite://")
         SQLModel.metadata.create_all(eng)
         sess = Session(eng)
@@ -254,6 +259,24 @@ class TestDriftSummary:
         )
         assert summary is None
 
+    def test_agentic_judge_sessions_excluded(self) -> None:
+        # Agentic judges run as t.agent:<check> sessions (JUDGE_STEP_PREFIXES
+        # carries both shapes) — a cascade judge on its own model is not the
+        # agent under test drifting.
+        summary = model_drift_summary(
+            [
+                _call(id="agent", step_name="agent.generate", served_model="my-alias"),
+                _call(
+                    id="agentic-judge",
+                    step_name="t.agent:cascade-verdict",
+                    model="judge-model",
+                    served_model="judge-model",
+                ),
+            ],
+            "my-alias",
+        )
+        assert summary is None
+
     def test_drift_pairs_aggregate_and_count(self) -> None:
         summary = model_drift_summary(
             [
@@ -294,3 +317,85 @@ class TestDriftSummary:
         assert qualified is not None
         assert qualified.calls == 1
         assert qualified.cost_micro == 25
+
+
+class TestV57Backfill:
+    def _pre_v57_engine(self) -> Engine:
+        test_engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        SQLModel.metadata.create_all(test_engine)
+        return test_engine
+
+    @staticmethod
+    def _drop_served_model(test_engine: Engine) -> None:
+        # Recreate a pre-v57 logged_calls: the migration must re-add the
+        # column itself, not rely on create_all having shipped it.
+        with test_engine.begin() as conn:
+            conn.execute(text("ALTER TABLE logged_calls DROP COLUMN served_model"))
+
+    def test_backfills_from_span_attributes(self, monkeypatch: MonkeyPatch) -> None:
+        test_engine = self._pre_v57_engine()
+        with Session(test_engine) as session:
+            session.add(_call(id="span-1", project="p1"))
+            session.add(_call(id="span-2", project="p1"))
+            session.add(_call(id="elsewhere", project="p2"))
+            session.add(
+                _span(
+                    span_id="span-1",
+                    project_id="p1",
+                    attributes={
+                        "gen_ai.request.model": "alias",
+                        "gen_ai.response.model": "openai/gpt-4o-mini",
+                    },
+                )
+            )
+            # No response model on the span: the call keeps NULL ("provider
+            # did not report"), never a guess.
+            session.add(
+                _span(
+                    span_id="span-2",
+                    project_id="p1",
+                    attributes={"gen_ai.request.model": "alias"},
+                )
+            )
+            session.commit()
+        self._drop_served_model(test_engine)
+
+        monkeypatch.setattr(apo_db, "engine", test_engine)
+        apo_db._migrate_to_v57()
+        apo_db._migrate_to_v57()  # idempotent
+
+        with Session(test_engine) as session:
+            by_id = {call.id: call for call in session.exec(select(LoggedCallDB)).all()}
+            assert by_id["span-1"].served_model == "openai/gpt-4o-mini"
+            assert by_id["span-2"].served_model is None
+            assert by_id["elsewhere"].served_model is None
+
+    def test_backfill_pages_past_the_batch_limit(self, monkeypatch: MonkeyPatch) -> None:
+        test_engine = self._pre_v57_engine()
+        with Session(test_engine) as session:
+            for i in range(600):
+                session.add(_call(id=f"s{i}", project="p1"))
+                session.add(
+                    _span(
+                        span_id=f"s{i}",
+                        project_id="p1",
+                        attributes={"gen_ai.response.model": "m"},
+                    )
+                )
+            session.commit()
+        self._drop_served_model(test_engine)
+
+        monkeypatch.setattr(apo_db, "engine", test_engine)
+        apo_db._migrate_to_v57()
+
+        with Session(test_engine) as session:
+            filled = session.exec(
+                select(LoggedCallDB).where(
+                    col(LoggedCallDB.served_model) == "m"
+                )
+            ).all()
+            assert len(filled) == 600

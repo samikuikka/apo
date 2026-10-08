@@ -51,9 +51,7 @@ export function emitGenerationAndTools(
     completionTokens?: number;
     /** Reasoning tokens, when the provider reports the dimension. */
     reasoningTokens?: number;
-    /** The model the provider reports as having served the call (the
-     * response's `model` field). Diverges from the requested model when a
-     * gateway fell back — emitted as `gen_ai.response.model`. */
+    /** The model that actually served the call (response `model` field). */
     servedModel?: string;
     toolCalls?: Array<{ name: string; input?: unknown }>;
     taskId?: string;

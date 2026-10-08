@@ -3932,42 +3932,50 @@ def _migrate_to_v57() -> None:
     ``otlp_spans``. Spans without a response model skip the write — their
     calls keep NULL, which reads as "provider did not report".
     """
-    with engine.begin() as conn:
-        _add_column_if_missing(conn, "logged_calls", "served_model", "VARCHAR")
-
     import logging
 
+    from sqlalchemy import select as sa_select
     from sqlmodel import Session as SQLModelSession
     from sqlmodel import col
-    from sqlmodel import select as sqlmodel_select
     from sqlmodel import update as sqlmodel_update
 
+    from .db_helpers import as_column
     from .models.db import LoggedCallDB, OtlpSpanDB
     from .services.otel_normalization import extract_served_model
 
     logger = logging.getLogger(__name__)
+
+    with engine.begin() as conn:
+        _add_column_if_missing(conn, "logged_calls", "served_model", "VARCHAR")
+
     updated = 0
     with SQLModelSession(engine) as session:
         last_id = 0
         while True:
-            spans = session.exec(
-                sqlmodel_select(OtlpSpanDB)
-                .where(col(OtlpSpanDB.id) > last_id)
-                .order_by(col(OtlpSpanDB.id))
-                .limit(500)
-            ).all()
-            if not spans:
+            # Column-limited reads, never full ORM rows: the model class
+            # knows columns from later migrations that this point in the
+            # ladder hasn't added yet, and a full-row SELECT would crash on
+            # the missing column.
+            span_stmt = sa_select(
+                as_column(cast(object, OtlpSpanDB.id)),
+                as_column(cast(object, OtlpSpanDB.span_id)),
+                as_column(cast(object, OtlpSpanDB.project_id)),
+                as_column(cast(object, OtlpSpanDB.attributes)),
+            ).where(col(OtlpSpanDB.id) > last_id).order_by(col(OtlpSpanDB.id)).limit(500)
+            # sqlalchemy Select, past sqlmodel exec()'s declared statement type.
+            span_rows = session.exec(span_stmt).all()
+            if not span_rows:
                 break
-            last_id = spans[-1].id or 0
-            for span in spans:
-                served = extract_served_model(span.attributes or {})
+            last_id = span_rows[-1][0] or 0
+            for _row_id, span_id, project_id, attributes in span_rows:
+                served = extract_served_model(attributes or {})
                 if served is None:
                     continue
                 session.exec(
                     sqlmodel_update(LoggedCallDB)
                     .where(
-                        col(LoggedCallDB.id) == span.span_id,
-                        col(LoggedCallDB.project) == span.project_id,
+                        col(LoggedCallDB.id) == span_id,
+                        col(LoggedCallDB.project) == project_id,
                     )
                     .values(served_model=served)
                 )
