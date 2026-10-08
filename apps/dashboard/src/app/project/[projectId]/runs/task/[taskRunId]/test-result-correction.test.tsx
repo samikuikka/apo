@@ -1,8 +1,10 @@
 /**
  * Scene tests: test-result correction UI.
  *
- * 1. A corrected check renders the Corrected badge, recorded/effective
- *    explanation, actor/reason/time, with original evidence intact.
+ * 1. A corrected check renders the Corrected badge and the amendment
+ *    pointer (full reason on hover); original evidence stays intact. The
+ *    actor/reason/time detail lives in the run notices strip (see
+ *    run-notices.test.tsx).
  * 2. The dialog sends the exact request, toasts, closes, refreshes.
  * 3. Restore sends clear.
  * 4. Invalid reason disables Save; request failure preserves input + toasts.
@@ -85,14 +87,12 @@ describe("ExpandableCheckItem corrections", () => {
     return check;
   }
 
-  it("renders the Corrected badge and recorded/effective provenance", () => {
+  it("renders the Corrected badge and the amendment pointer with the reason on hover", () => {
     expand();
-    // badge + provenance header both carry the word
     expect(screen.getAllByText("Corrected").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/recorded/i).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/Retention is present in the KPI table/)).toBeInTheDocument();
-    expect(screen.getByText(/u1@test.com/)).toBeInTheDocument();
-    expect(screen.getByText(/Recorded evidence below is unchanged/i)).toBeInTheDocument();
+    // the full reason rides along as the pointer's tooltip
+    const pointer = screen.getByTitle(/Retention is present in the KPI table/);
+    expect(pointer.textContent).toMatch(/Amended\s+FAIL → PASS/);
     // original evidence still rendered
     expect(screen.getByText("judge missed the table")).toBeInTheDocument();
   });
