@@ -69,6 +69,13 @@ export type JudgeConfig = {
   /** Override the API key (defaults to env). */
   apiKey?: string;
   /**
+   * Force the Anthropic Messages wire (`api.anthropic.com/v1/messages`) for a
+   * base URL whose hostname does not identify it — an Anthropic-protocol
+   * gateway. Unset = auto-detection (Anthropic host, or a bare `claude-*`
+   * model id); see `resolveJudgeWire` in judge.ts.
+   */
+  provider?: "anthropic";
+  /**
    * Build a custom judge briefing from the threaded context (#161). The SDK
    * keeps ownership of the JSON response contract — see
    * {@link JudgePromptBuilder}.
@@ -123,6 +130,7 @@ export function resolveJudgeConfig(
     model,
     baseURL: override?.baseURL ?? judgeConfig?.baseURL,
     apiKey: override?.apiKey ?? judgeConfig?.apiKey,
+    provider: override?.provider ?? judgeConfig?.provider,
     prompt: override?.prompt ?? judgeConfig?.prompt,
     mode: override?.mode ?? judgeConfig?.mode,
     temperature: override?.temperature ?? judgeConfig?.temperature,
@@ -612,6 +620,7 @@ function createJudgeMethod(
         "No judge model configured. Set one of:\n" +
         "• OPENROUTER_MODEL + OPENROUTER_API_KEY (OpenRouter — works with 200+ models, one account)\n" +
         "• OPENAI_MODEL + OPENAI_API_KEY (OpenAI direct)\n" +
+        "• ANTHROPIC_MODEL + ANTHROPIC_API_KEY (Anthropic direct — or ANTHROPIC_AUTH_TOKEN for plan credits)\n" +
         "Or pass { judge } to runTask() programmatically.",
         // No judge means no verdict — the same bucket as an unreachable judge.
         { evaluator_type: "llm", location, outcome: "error" },
@@ -714,6 +723,7 @@ function createJudgeMethod(
         model: effective.model,
         baseURL: effective.baseURL,
         apiKey: effective.apiKey,
+        provider: effective.provider,
         prompt: effective.prompt,
         ...(effective.temperature !== undefined ? { temperature: effective.temperature } : {}),
         ...(context ? { context } : {}),

@@ -33,8 +33,8 @@ The whole test set replays every time. There is deliberately no way to re-judge 
 
 | Option | Default | Purpose |
 |---|---|---|
-| `--judge-model <m>` | from env | Judge model for `t.judge` tests (`AGENT_TASK_JUDGE_MODEL`, `OPENROUTER_MODEL`, or `OPENAI_MODEL`). |
-| `--judge-base-url <url>` | from env | OpenAI-compatible base URL for the judge (`OPENROUTER_BASE_URL` or `OPENAI_BASE_URL`). |
+| `--judge-model <m>` | from env | Judge model for `t.judge` tests (`AGENT_TASK_JUDGE_MODEL`, `OPENROUTER_MODEL`, `OPENAI_MODEL`, or `ANTHROPIC_MODEL`). A bare `claude-*` id switches to the Anthropic Messages wire. |
+| `--judge-base-url <url>` | from env | Judge base URL (`OPENROUTER_BASE_URL` or `OPENAI_BASE_URL`). An Anthropic host switches to the Anthropic Messages wire, which resolves `ANTHROPIC_BASE_URL` itself. |
 | `--samples <n>` | `1` | Judge the same deliverables n times (1–50) for a per-test stability measure. |
 | `--label <text>` | - | Operator label recorded on the judgment, e.g. `sonnet-4.5 calibration`. |
 | `--definition-revision <id>` | run's pinned | Score against a different revision. The judgment is stamped with it, it can never be misread as "the same eval, better judge". |
@@ -44,7 +44,7 @@ The whole test set replays every time. There is deliberately no way to re-judge 
 | `--exit-status` | - | Exit `1` if the re-judged verdict fails, `2` if it is NO VERDICT (for CI). |
 | `--task <id>` | - | When using `last`, scope to the latest run of this task. |
 
-The judge API key comes from `OPENROUTER_API_KEY` or `OPENAI_API_KEY`, it is used locally and never recorded on the judgment (only the model and base URL are).
+The judge API key comes from `OPENROUTER_API_KEY` or `OPENAI_API_KEY` (Anthropic-direct: `ANTHROPIC_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` for plan credits), it is used locally and never recorded on the judgment (only the model and base URL are).
 
 ## Example
 

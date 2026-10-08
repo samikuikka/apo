@@ -27,7 +27,7 @@ import { isTraceableSpanId } from "../tracing.ts";
 import { resolveJudgeConfig } from "./t.ts";
 import type { AgentHistoryPlane } from "./agent-history.ts";
 import { createMcpToolset, type McpServerConfig } from "./mcp-tools.ts";
-import { fetchWithPromptCacheKey, promptCacheKey } from "./judge.ts";
+import { anthropicAuth, fetchWithPromptCacheKey, promptCacheKey, resolveJudgeWire } from "./judge.ts";
 
 // ── Public types ───────────────────────────────────────────────────────────
 
@@ -122,6 +122,13 @@ const DEFAULT_BUDGET = {
   timeoutMs: 300_000,
   maxReadBytes: 2 * 1024 * 1024,
 } as const;
+
+/**
+ * Anthropic requires `max_tokens` per request. Each model call in the tool
+ * loop is one request: tool-call turns are small, and a verdict turn that
+ * overruns this is cut and recorded budget-exhausted, not silently kept.
+ */
+const ANTHROPIC_AGENT_MAX_TOKENS = 8192;
 
 const MAX_READ_WINDOW = 12_000;
 const SEARCH_HITS = 8;
@@ -651,6 +658,8 @@ export async function runAgentSession(spec: {
   model: string;
   baseURL?: string;
   apiKey?: string;
+  /** Force the Anthropic Messages wire (see `resolveJudgeWire` in judge.ts). */
+  provider?: "anthropic";
   evidence: AgentEvidence;
   scope?: JudgeScope;
   exhibits?: unknown[];
@@ -666,32 +675,63 @@ export async function runAgentSession(spec: {
   // Lazy engine load: `t.judge`'s dependency-free path must never pull the
   // AI SDK into memory (spec: lazy-import isolation).
   const ai = await import("ai");
-  const { createOpenAICompatible } = await import("@ai-sdk/openai-compatible");
   const { z } = await import("zod");
   const { generateText } = ai as unknown as AiEngine;
   const stepCountIs = (n: number): unknown => ai.stepCountIs(n);
   const tool = (def: ToolDefinition): unknown => ai.tool(def as never);
 
-  const provider = createOpenAICompatible({
-    name: "openrouter",
-    baseURL: spec.baseURL ?? "https://openrouter.ai/api/v1",
-    fetch: fetchWithPromptCacheKey,
-    apiKey: spec.apiKey ?? process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY,
-    // Mark the briefing prefix cacheable — repeated samples (rejudge) re-bill
-    // nothing for the shared turn-0 context — and keep every step of one
-    // session on the replica holding its growing prefix. The key is per
-    // session (briefing + criterion): sessions run concurrently, unlike
-    // t.judge calls, and one key per task would pile them onto one replica.
-    transformRequestBody: (body: Record<string, unknown>) => ({
-      ...body,
-      prompt_cache_key: promptCacheKey(sessionPrefix(body)),
-      messages: (body.messages as Array<Record<string, unknown>>)?.map((m) =>
-        m.role === "system" && typeof m.content === "string"
-          ? { ...m, content: [{ type: "text", text: m.content, cache_control: { type: "ephemeral" } }] }
-          : m,
-      ),
-    }),
+  // Which wire the engine speaks. The Anthropic Messages API is not
+  // OpenAI-compatible: its engine brings its own auth headers (API key or
+  // bearer token — the same resolution `callJudge` uses), requires
+  // `max_tokens`, and caches the system prompt via per-part providerOptions
+  // instead of the request-body rewrite below. URL conventions differ too:
+  // the judge's Anthropic base has no `/v1` suffix, the engine's wants it.
+  const wire = resolveJudgeWire({
+    baseURL: spec.baseURL,
+    model: spec.model,
+    provider: spec.provider,
   });
+
+  // The model instance + the generateText options that differ per wire.
+  // Everything else (tools, budget guard, transcript recording) is engine-
+  // agnostic core AI SDK.
+  let model: unknown;
+  let wireOptions: Record<string, unknown>;
+  if (wire === "anthropic") {
+    const { createAnthropic } = await import("@ai-sdk/anthropic");
+    const auth = anthropicAuth(spec.apiKey);
+    const base = (spec.baseURL ?? process.env.ANTHROPIC_BASE_URL)?.replace(/\/+$/, "");
+    const anthropicEngine = createAnthropic({
+      ...(base ? { baseURL: /\/v\d+$/.test(base) ? base : `${base}/v1` } : {}),
+      ...(auth.apiKey ? (auth.asBearer ? { authToken: auth.apiKey } : { apiKey: auth.apiKey }) : {}),
+    });
+    model = anthropicEngine(spec.model);
+    wireOptions = { maxOutputTokens: ANTHROPIC_AGENT_MAX_TOKENS };
+  } else {
+    const { createOpenAICompatible } = await import("@ai-sdk/openai-compatible");
+    const provider = createOpenAICompatible({
+      name: "openrouter",
+      baseURL: spec.baseURL ?? "https://openrouter.ai/api/v1",
+      fetch: fetchWithPromptCacheKey,
+      apiKey: spec.apiKey ?? process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY,
+      // Mark the briefing prefix cacheable — repeated samples (rejudge) re-bill
+      // nothing for the shared turn-0 context — and keep every step of one
+      // session on the replica holding its growing prefix. The key is per
+      // session (briefing + criterion): sessions run concurrently, unlike
+      // t.judge calls, and one key per task would pile them onto one replica.
+      transformRequestBody: (body: Record<string, unknown>) => ({
+        ...body,
+        prompt_cache_key: promptCacheKey(sessionPrefix(body)),
+        messages: (body.messages as Array<Record<string, unknown>>)?.map((m) =>
+          m.role === "system" && typeof m.content === "string"
+            ? { ...m, content: [{ type: "text", text: m.content, cache_control: { type: "ephemeral" } }] }
+            : m,
+        ),
+      }),
+    });
+    model = provider(spec.model);
+    wireOptions = {};
+  }
 
   const ledger: Ledger = { toolCallsUsed: 0, readBytesUsed: 0, manifest: [] };
 
@@ -772,8 +812,20 @@ export async function runAgentSession(spec: {
   try {
     try {
       const result = await generateText({
-        model: provider(spec.model),
-        system,
+        model,
+        // On the Anthropic wire the briefing's cache breakpoint is a per-part
+        // provider option on the system message (the request-body rewrite the
+        // OpenAI-compatible path uses has no equivalent there).
+        system:
+          wire === "anthropic"
+            ? [{
+                role: "system" as const,
+                content: system,
+                // Message-level providerOptions: the Anthropic engine reads
+                // the cache breakpoint from here, not from content parts.
+                providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+              }]
+            : system,
         prompt: spec.instruction + exhibitsBlock,
         temperature: 0,
         toolChoice: "required",
@@ -782,6 +834,7 @@ export async function runAgentSession(spec: {
         abortSignal: AbortSignal.timeout(budget.timeoutMs),
         maxRetries: 2,
         onStepFinish: onStep,
+        ...wireOptions,
       });
       engineUsage = result.usage;
     } catch (error) {
@@ -859,6 +912,7 @@ export function createAgentMethod(
         "No judge model configured for t.agent. Set one of:\n" +
         "• OPENROUTER_MODEL + OPENROUTER_API_KEY (OpenRouter — needs a tool-calling-capable model)\n" +
         "• OPENAI_MODEL + OPENAI_API_KEY (OpenAI direct)\n" +
+        "• ANTHROPIC_MODEL + ANTHROPIC_API_KEY (Anthropic direct — needs a tool-calling-capable model; or ANTHROPIC_AUTH_TOKEN for plan credits)\n" +
         "Or pass { judge } to runTask() programmatically.",
         { evaluator_type: "agent", location, outcome: "error" },
       );
@@ -871,6 +925,7 @@ export function createAgentMethod(
         model: effective.model,
         baseURL: effective.baseURL,
         apiKey: effective.apiKey,
+        provider: effective.provider,
         evidence: evidence ?? { deliverables: {} },
         scope: judgeScope,
         exhibits,

@@ -230,3 +230,48 @@ describe("decisionsEndpoint URL derivation", () => {
     expect(decisionsEndpoint(base)).toBe(expected);
   });
 });
+
+describe("second judge — anthropic-direct primary", () => {
+  /** Route fetch by URL: the Messages endpoint gets a verdict, decisions gets nothing. */
+  function stubAnthropicPrimary(): { calls: vi.Mock } {
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      if (String(url).endsWith("/v1/messages")) {
+        return Response.json({
+          id: "msg_test",
+          type: "message",
+          role: "assistant",
+          model: "claude-test-1",
+          content: [{ type: "text", text: '{"reasoning":"ok","pass":true}' }],
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          usage: { input_tokens: 10, output_tokens: 4 },
+        });
+      }
+      return Response.json({});
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    return { calls: fetchMock as unknown as vi.Mock };
+  }
+
+  it("an Anthropic primary auto-selects the reserved dialect: clear error, no decisions request", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    const { calls } = stubAnthropicPrimary();
+    const result = await callJudge({ ...judgeArgs, model: "claude-test-1", baseURL: undefined });
+
+    // The primary verdict stands; the second judge's absence is error evidence.
+    expect(result.pass).toBe(true);
+    expect(result.judge.secondJudge?.error).toContain("no decisions API");
+    expect(result.judge.secondJudge?.choice).toBeUndefined();
+    expect(calls.mock.calls.filter((c) => String(c[0]).includes("decisions"))).toHaveLength(0);
+  });
+
+  it("explicit APO_SECOND_JUDGE_PROVIDER=anthropic is reserved even on an OpenRouter base", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    vi.stubEnv("APO_SECOND_JUDGE_PROVIDER", "anthropic");
+    const { calls } = stubBoth(async () => jevResponse());
+    const result = await callJudge(judgeArgs);
+
+    expect(result.judge.secondJudge?.error).toContain("no decisions API");
+    expect(calls.mock.calls.filter((c) => String(c[0]).includes("decisions"))).toHaveLength(0);
+  });
+});

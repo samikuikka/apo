@@ -32,6 +32,10 @@ credentials are read from the local environment:
 | `OPENAI_API_KEY` | - | OpenAI API key. Alternative to OpenRouter for local/dev judge calls. |
 | `OPENAI_BASE_URL` | - | OpenAI-compatible base URL. |
 | `OPENAI_MODEL` | - | OpenAI model for local/dev judge calls. Read when `OPENROUTER_MODEL` is unset. |
+| `ANTHROPIC_MODEL` | - | Anthropic model for judge calls, direct against `api.anthropic.com` (Messages API). Read only when neither `OPENROUTER_MODEL` nor `OPENAI_MODEL` is set — lowest precedence, so adding it never changes an existing setup. |
+| `ANTHROPIC_API_KEY` | - | Anthropic API key (`x-api-key` auth). For the judge, read only on the Anthropic wire. |
+| `ANTHROPIC_AUTH_TOKEN` | - | Anthropic bearer token (OAuth/plan-credit style, sent as `Authorization: Bearer`). Alternative to `ANTHROPIC_API_KEY`. |
+| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Anthropic base URL override (an Anthropic-protocol gateway). Read only on the Anthropic wire. |
 
 ### Scheduler
 
@@ -144,6 +148,7 @@ source OAuth token, or ArtifactStore credentials.
 | `AGENT_TASK_ENVIRONMENT` | The run environment label. |
 | `APO_AUTH_TOKEN` | Auth token for the subprocess. |
 | `AGENT_TASK_JUDGE_MODEL` | Override the judge model for this run. |
+| `AGENT_TASK_ANTHROPIC_MODEL` | Anthropic judge model override, consulted after `AGENT_TASK_OPENROUTER_MODEL` when the judge runs on the Anthropic wire. |
 | `OPENROUTER_MODEL` | Passed through to the subprocess for LLM calls. |
 | `OPENROUTER_BASE_URL` | Passed through to the subprocess. |
 

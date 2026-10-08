@@ -209,9 +209,31 @@ const openAIProvider: SecondJudgeProvider = {
     ".",
 };
 
+/**
+ * Anthropic serves no decisions API at all — the Messages endpoint is the
+ * whole product — so this seat is reserved permanently rather than pending a
+ * schema. A primary judge routed to Anthropic-direct reaches this dialect
+ * through the base-URL fallback; the evidence tells the operator where to
+ * point the second opinion instead.
+ */
+const anthropicProvider: SecondJudgeProvider = {
+  decisionsURL: (chatBaseURL: string) =>
+    `${chatBaseURL.replace(/\/v1\/?$/, "")}/decisions`,
+  requestBody: () => {
+    throw new Error("unreachable — reserved guard returns before the call");
+  },
+  parseResponse: () => ({ error: "unreachable — reserved guard returns before the call" }),
+  apiRootExample: "https://api.anthropic.com",
+  reserved:
+    "Anthropic-direct serves no decisions API — the second judge cannot run there. " +
+    OPENROUTER_RESERVED_HINT +
+    ".",
+};
+
 const PROVIDERS: Record<string, SecondJudgeProvider> = {
   openrouter: openRouterProvider,
   openai: openAIProvider,
+  anthropic: anthropicProvider,
 };
 
 /**
@@ -244,10 +266,11 @@ export function resolveSecondJudgeAPIKey(primaryAPIKey?: string): string | undef
 
 /**
  * Pick the provider dialect: `APO_SECOND_JUDGE_PROVIDER` wins when set;
- * otherwise an OpenAI host selects the (reserved) OpenAI dialect and every
- * other base keeps the OpenRouter dialect that shipped first. Throws only
- * inside callSecondJudge's try, so an unknown value becomes `error`
- * evidence, never a failed check.
+ * otherwise an OpenAI host selects the (reserved) OpenAI dialect, an
+ * Anthropic host the (reserved) Anthropic dialect, and every other base
+ * keeps the OpenRouter dialect that shipped first. Throws only inside
+ * callSecondJudge's try, so an unknown value becomes `error` evidence,
+ * never a failed check.
  */
 export function resolveSecondJudgeProvider(baseURL: string): SecondJudgeProvider {
   const explicit = process.env.APO_SECOND_JUDGE_PROVIDER?.trim().toLowerCase();
@@ -260,9 +283,10 @@ export function resolveSecondJudgeProvider(baseURL: string): SecondJudgeProvider
     }
     return provider;
   }
-  return /(^|\.)api\.openai\.com$/.test(new URL(baseURL).hostname)
-    ? openAIProvider
-    : openRouterProvider;
+  const hostname = new URL(baseURL).hostname;
+  if (/(^|\.)api\.openai\.com$/.test(hostname)) return openAIProvider;
+  if (/(^|\.)api\.anthropic\.com$/.test(hostname)) return anthropicProvider;
+  return openRouterProvider;
 }
 
 /** OpenRouter URL derivation, exported for tests and diagnostics. */

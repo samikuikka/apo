@@ -692,7 +692,7 @@ function noVerdictHint(summary: LocalRunSummary, taskRunId: string | null): stri
   );
   if (unconfigured) {
     const configure =
-      "No verdict: no judge model is configured — set OPENROUTER_MODEL (or OPENAI_MODEL) and its API key, then re-run";
+      "No verdict: no judge model is configured — set OPENROUTER_MODEL (or OPENAI_MODEL, or ANTHROPIC_MODEL) and its API key, then re-run";
     // Re-judging a no-verdict run needs an SDK that knows the rule (0.8+);
     // an older one refuses it, so don't offer what would fail.
     if (taskRunId && summary.sdkReportsNoVerdict) {
