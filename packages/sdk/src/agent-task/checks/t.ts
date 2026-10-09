@@ -15,7 +15,13 @@ import type { AssertionOutcome, SecondJudgeEvidence } from "../run/types.ts";
 import type { Recorder } from "./recorder.ts";
 import type { Matcher, ValueMatcher } from "./matchers.ts";
 import { describeValue, matchValue } from "./matchers.ts";
-import { callJudge, judgeTemperature, type JudgeCallContext, type JudgePromptBuilder } from "./judge.ts";
+import {
+  callJudge,
+  judgeTemperature,
+  resolveJudgeWire,
+  type JudgeCallContext,
+  type JudgePromptBuilder,
+} from "./judge.ts";
 import {
   cascadeDecides,
   cascadePreflight,
@@ -630,8 +636,16 @@ function createJudgeMethod(
     }
     // Before cascade preflight, which can decide a check from the second judge
     // alone: a bad temperature is an error on every check, never a hidden one.
+    // The wire sets the accepted range (Anthropic's Messages API caps at 1).
     try {
-      judgeTemperature(effective.temperature);
+      judgeTemperature(
+        effective.temperature,
+        resolveJudgeWire({
+          baseURL: effective.baseURL,
+          model: effective.model,
+          provider: effective.provider,
+        }),
+      );
     } catch (error) {
       rec.record(label, false, `judge failed: ${error instanceof Error ? error.message : String(error)}`, {
         evaluator_type: "llm",

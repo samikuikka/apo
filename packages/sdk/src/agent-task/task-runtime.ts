@@ -56,11 +56,15 @@ function resolveJudgeFromEnv(): JudgeConfig | undefined {
       : openAIModel
         ? process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1"
         : process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com",
+    // ANTHROPIC_AUTH_TOKEN deliberately stays out of apiKey: an explicit
+    // config key is always sent as x-api-key, which 401s for the OAuth-style
+    // token. Leaving apiKey unset lets anthropicAuth pick the token up from
+    // the env and send it as Authorization: Bearer.
     apiKey: openRouterModel
       ? process.env.OPENROUTER_API_KEY
       : openAIModel
         ? process.env.OPENAI_API_KEY
-        : process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN,
+        : process.env.ANTHROPIC_API_KEY,
     // Anthropic is last in the precedence chain (OPENROUTER > OPENAI >
     // ANTHROPIC): a workspace that already configures one of the others
     // keeps its behavior, so the arm can be reached only deliberately.

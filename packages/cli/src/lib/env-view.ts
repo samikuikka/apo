@@ -95,7 +95,11 @@ export function resolveEnvView(
 
 /** A provider key is present somewhere the runtime would find it. */
 export function hasProviderKey(view: EnvView): boolean {
-  return view.known.some((v) => v.name.endsWith("_API_KEY") && v.set);
+  // ANTHROPIC_AUTH_TOKEN does not end in _API_KEY but authenticates the
+  // Anthropic-direct judge path all the same (plan-credit bearer token).
+  return view.known.some(
+    (v) => (v.name === "ANTHROPIC_AUTH_TOKEN" || v.name.endsWith("_API_KEY")) && v.set,
+  );
 }
 
 /**

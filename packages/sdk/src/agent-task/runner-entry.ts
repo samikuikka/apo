@@ -38,11 +38,17 @@ async function main(): Promise<void> {
     loadTaskRuntime(taskDir),
   ]);
 
+  // The env-resolved runtime judge (from the workspace's own
+  // OPENROUTER_MODEL/OPENAI_MODEL/ANTHROPIC_MODEL) outranks the backend's
+  // AGENT_TASK_ANTHROPIC_MODEL override: "adding ANTHROPIC never changes an
+  // existing setup" is the documented precedence, and letting the override
+  // win would flip an OpenRouter-configured workspace onto the Anthropic
+  // wire while still carrying the OpenRouter credentials.
   const judgeModel =
     process.env.AGENT_TASK_JUDGE_MODEL
     ?? process.env.AGENT_TASK_OPENROUTER_MODEL
-    ?? process.env.AGENT_TASK_ANTHROPIC_MODEL
     ?? runtime.judge?.model
+    ?? process.env.AGENT_TASK_ANTHROPIC_MODEL
     ?? "deepseek/deepseek-v4.1-flash";
 
   const tracing = {

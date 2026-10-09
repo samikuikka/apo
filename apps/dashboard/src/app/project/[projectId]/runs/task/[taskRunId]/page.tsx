@@ -90,9 +90,6 @@ function formatDuration(start: string | null, end: string | null) {
   return `${mins}m ${secs}s`;
 }
 
-/** Chip value that deep-links into the trace observation behind a max
- * metric (issue #309) — "slowest call" / "max reasoning" jump straight to
- * the winning span. Plain text when the run has no trace to link into. */
 /** Distinct serving-host labels (route wins over provider) for the run
  * header (issue #307). Empty when nothing reported a host. */
 function hostLabels(pairs: ModelProviderPair[] | undefined): string[] {
@@ -444,8 +441,6 @@ export default async function TaskRunDetailPage({
           />
         </div>
 
-        {/* Run-level notices (issue #410): corrections + model drift share
-            one strip under the outcome summary. */}
         <RunNotices correctedChecks={correctedNotices} drift={taskRun.model_drift} />
 
         {judgments && judgments.judgments.length > 0 && (

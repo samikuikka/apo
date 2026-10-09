@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+from apo.services.otel_normalization._shared import extract_input, extract_output
+
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "otel"
 
 # ── fixture discovery ────────────────────────────────────────────────────
@@ -194,7 +196,7 @@ def _otlp_value(container: dict[str, object]) -> object:
     assert isinstance(value, dict)
     for key, v in value.items():
         if key == "intValue":
-            return int(v)  # pyright: ignore[reportArgumentType]
+            return int(v)
         return v
     return None
 
@@ -213,17 +215,18 @@ def _fixture_span_pairs() -> list[tuple[str, dict[str, object], dict[str, object
     return pairs
 
 
+_fixture_pairs = _fixture_span_pairs()
+
+
 class TestFixtureContent:
     """The normalizer's input/output match each fixture's expected projection."""
 
     @pytest.mark.parametrize(  # pyright: ignore[reportCallIssue]
         "attrs,expected",
-        [(p[1], p[2]) for p in _fixture_span_pairs()],
-        ids=[p[0] for p in _fixture_span_pairs()],
+        [(p[1], p[2]) for p in _fixture_pairs],
+        ids=[p[0] for p in _fixture_pairs],
     )
     def test_input_and_output_match(self, attrs, expected):
-        from apo.services.otel_normalization._shared import extract_input, extract_output
-
         if "input" in expected:
             assert extract_input(attrs) == expected["input"]
         if "output" in expected:

@@ -113,6 +113,26 @@ describe("RunNotices", () => {
     expect(driftSeverity(pricier)).toBe("loud");
   });
 
+  it("flags a suffixed variant model as loud — only known host suffixes are quiet", () => {
+    // -lite is a materially weaker model, not the configured model on
+    // another host; a prefix match would quietly excuse it.
+    const lite: ModelDriftSummary = {
+      configured_model: "deepseek/deepseek-v4.1-flash",
+      total_agent_generations: 42,
+      pairs: [
+        {
+          model: "deepseek/deepseek-v4.1-flash-lite",
+          provider: null,
+          route: null,
+          calls: 1,
+          total_tokens: null,
+          cost_micro: null,
+        },
+      ],
+    };
+    expect(driftSeverity(lite)).toBe("loud");
+  });
+
   it("renders nothing when the run has no notices", () => {
     const { container } = render(<RunNotices correctedChecks={[]} drift={null} />);
     expect(container).toBeEmptyDOMElement();

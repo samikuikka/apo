@@ -23,19 +23,23 @@ export function usePersistentStringSet(
 ): UsePersistentStringSetResult {
   // `hydrated` gates the save effect so the empty pre-hydration set can
   // never clobber the stored value (both effects run on the same mount
-  // pass; only the hydration one sets state).
+  // pass; only the hydration one sets state). `loadedKey` extends that
+  // gate to key changes: when storageKey changes on a live component, the
+  // save effect would otherwise run once with the previous task's values
+  // under the new key, before the hydration state lands.
   const [state, setState] = useState<{
     hydrated: boolean;
+    loadedKey: string | null;
     values: Set<string>;
-  }>(() => ({ hydrated: false, values: new Set<string>() }));
+  }>(() => ({ hydrated: false, loadedKey: null, values: new Set<string>() }));
 
   useEffect(() => {
     if (!storageKey) return;
-    setState({ hydrated: true, values: loadSet(storageKey) });
+    setState({ hydrated: true, loadedKey: storageKey, values: loadSet(storageKey) });
   }, [storageKey]);
 
   useEffect(() => {
-    if (!storageKey || !state.hydrated) return;
+    if (!storageKey || !state.hydrated || state.loadedKey !== storageKey) return;
     if (state.values.size === 0) {
       // Nothing to remember — drop the key rather than storing an empty
       // array, so merely visiting a page never leaves an orphan behind.

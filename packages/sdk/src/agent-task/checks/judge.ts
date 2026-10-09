@@ -670,19 +670,21 @@ function runWithSharedPrefix<T>(key: string, task: () => Promise<T>): Promise<T>
 
 /**
  * The `t.judge` sampling temperature: the call's own (`JudgeConfig.temperature`,
- * task- or call-level), else `APO_JUDGE_TEMPERATURE`, else 0. A value that is
- * not a number in [0, 2] is a configuration error, so it throws rather than
- * being sent and rejected by the provider on every check. `t.judge` validates
- * before any request (second judge and cascade included) and records the
- * error on the check.
+ * task- or call-level), else `APO_JUDGE_TEMPERATURE`, else 0. A value outside
+ * the wire's accepted range is a configuration error, so it throws rather than
+ * being sent and rejected by the provider on every check — [0, 2] on the
+ * OpenAI-compatible wire, [0, 1] on the Anthropic Messages wire, whose API
+ * rejects anything above 1. `t.judge` validates before any request (second
+ * judge and cascade included) and records the error on the check.
  */
-export function judgeTemperature(configured?: number): number {
+export function judgeTemperature(configured?: number, wire: JudgeWire = "openai-compatible"): number {
+  const max = wire === "anthropic" ? 1 : 2;
   const raw = process.env.APO_JUDGE_TEMPERATURE?.trim();
   const fromEnv = raw ? Number(raw) : undefined;
   const value = configured ?? fromEnv ?? 0;
-  if (!Number.isFinite(value) || value < 0 || value > 2) {
+  if (!Number.isFinite(value) || value < 0 || value > max) {
     const source = configured !== undefined ? "judge.temperature" : "APO_JUDGE_TEMPERATURE";
-    throw new Error(`${source} must be a number between 0 and 2, got ${configured ?? raw}`);
+    throw new Error(`${source} must be a number between 0 and ${max}, got ${configured ?? raw}`);
   }
   return value;
 }
@@ -718,7 +720,10 @@ export function resolveJudgeWire(opts: {
 }): JudgeWire {
   if (opts.provider === "anthropic") return "anthropic";
   if (opts.baseURL !== undefined && isAnthropicHost(opts.baseURL)) return "anthropic";
-  if (/^claude-[a-z0-9]/.test(opts.model)) return "anthropic";
+  // Only with no endpoint configured: an explicit baseURL wins, so a bare
+  // claude-* override on an OpenAI-compatible gateway keeps that gateway's
+  // wire instead of sending /v1/messages to a host that does not serve it.
+  if (opts.baseURL === undefined && /^claude-[a-z0-9]/.test(opts.model)) return "anthropic";
   return "openai-compatible";
 }
 
@@ -791,13 +796,12 @@ export async function callJudge(args: {
     provider: args.provider,
   });
   const baseURL = defaultJudgeBaseURL(args.baseURL, wire);
-  // Total shape: the openai-compatible arm never reads it, but its presence
-  // keeps the header construction below free of a wire/auth correlation
-  // TypeScript cannot prove.
+  // Computed for both wires so the header construction below can read
+  // auth.asBearer without a wire/auth correlation TypeScript cannot prove.
   const auth = wire === "anthropic" ? anthropicAuth(args.apiKey) : { apiKey: undefined, asBearer: false };
   const apiKey = wire === "anthropic" ? auth.apiKey : defaultJudgeAPIKey(args.apiKey);
   // Before the second judge is dispatched: a bad value must cost no request.
-  const temperature = judgeTemperature(args.temperature);
+  const temperature = judgeTemperature(args.temperature, wire);
 
   const { briefingText, instructionText, systemPromptText, deliverableText, secondJudgeState, secondJudgeProjected } =
     buildJudgePromptParts({

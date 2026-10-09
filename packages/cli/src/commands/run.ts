@@ -261,7 +261,9 @@ function readinessLine(view: EnvView, model: string | undefined): string {
   const keyOk = hasProviderKey(view);
   if (modelOk && keyOk) return green("✓ ready to run — model and API key found");
   if (!modelOk) return red("✗ no model selected — press [b] and pick one");
-  return red("✗ no API key found — add OPENROUTER_API_KEY or OPENAI_API_KEY to a .env file, then come back");
+  return red(
+    "✗ no API key found — add OPENROUTER_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN to a .env file, then come back",
+  );
 }
 
 /** The diagnose-on-demand audit behind [d]. */

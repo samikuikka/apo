@@ -19,7 +19,7 @@
 
 import type { JudgeConfig } from "./t.ts";
 import type { JudgeCallContext, JudgePromptParts } from "./judge.ts";
-import { buildJudgePromptParts, defaultJudgeAPIKey, defaultJudgeBaseURL } from "./judge.ts";
+import { buildJudgePromptParts, defaultJudgeAPIKey, defaultJudgeBaseURL, resolveJudgeWire } from "./judge.ts";
 import type { JudgeMetadata, SecondJudgeEvidence } from "../run/types.ts";
 import { callSecondJudge, resolveSecondJudgeAPIKey, resolveSecondJudgeBaseURL, resolveSecondJudgeModel } from "./second-judge.ts";
 
@@ -71,11 +71,19 @@ export async function cascadePreflight(args: {
     ...(args.secondJudgeValue !== undefined ? { secondJudgeValue: args.secondJudgeValue } : {}),
   });
 
+  // Resolve the wire exactly as callJudge does for the primary, so the
+  // preflight's endpoint defaults can never diverge from the primary's.
+  const wire = resolveJudgeWire({
+    baseURL: args.effective.baseURL,
+    model: args.effective.model,
+    provider: args.effective.provider,
+  });
+
   const evidence = await callSecondJudge({
     state: parts.secondJudgeState,
     model,
-    baseURL: resolveSecondJudgeBaseURL(defaultJudgeBaseURL(args.effective.baseURL)),
-    apiKey: resolveSecondJudgeAPIKey(defaultJudgeAPIKey(args.effective.apiKey)),
+    baseURL: resolveSecondJudgeBaseURL(defaultJudgeBaseURL(args.effective.baseURL, wire)),
+    apiKey: resolveSecondJudgeAPIKey(defaultJudgeAPIKey(args.effective.apiKey, wire)),
     ...(parts.secondJudgeProjected ? { projected: true } : {}),
   });
   return { kind: "ran", evidence, parts };

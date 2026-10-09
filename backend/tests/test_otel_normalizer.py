@@ -15,6 +15,7 @@ from apo.services.otel_normalization import (
     NormalizedSpan,
     normalize_span,
 )
+from apo.services.otel_normalization._shared import normalize_genai_message
 from apo.models.db import OtlpSpanDB
 
 
@@ -242,8 +243,8 @@ class TestInputOutputContent:
 
     def test_semconv_tool_call_round_keeps_its_calls_as_output(self):
         """A semconv output message of reasoning plus tool calls (no text)
-        keeps its calls and its reasoning, the same as the AI SDK round
-        below. It used to be stripped as "tool-only", leaving ``messages: []``.
+        keeps its calls and its reasoning. It used to be stripped as
+        "tool-only", leaving ``messages: []``.
         """
         span = _make_span(
             attributes={
@@ -299,9 +300,42 @@ class TestInputOutputContent:
         result = normalize_span(span)
         assert result.output == {"messages": []}
 
-    def test_empty_reasoning_content_falls_back_to_text(self):
-        from apo.services.otel_normalization._shared import normalize_genai_message
+    def test_anthropic_tool_use_parts_kept_as_tool_calls(self):
+        """Anthropic's native {type:"tool_use"} blocks are tool calls, not
+        unknown parts — dropping them emptied exactly the tool-call rounds
+        the retention work targets."""
+        msg = normalize_genai_message({
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "toolu_1", "name": "get_weather",
+                 "input": {"city": "Oslo"}},
+            ],
+        })
+        assert msg["tool_calls"] == [
+            {"id": "toolu_1", "type": "function",
+             "function": {"name": "get_weather", "arguments": '{"city": "Oslo"}'}},
+        ]
 
+    def test_non_json_string_output_is_text(self):
+        span = _make_span(
+            attributes={
+                # Not JSON: iterating it as messages dropped the text and
+                # skipped the string-fallback attributes.
+                "gen_ai.output.messages": "plain text, no json",
+            }
+        )
+        result = normalize_span(span)
+        assert result.output == {"text": "plain text, no json"}
+
+    def test_string_content_survives_an_empty_parts_list(self):
+        msg = normalize_genai_message({
+            "role": "assistant",
+            "content": "real text",
+            "parts": [],
+        })
+        assert msg["content"] == "real text"
+
+    def test_empty_reasoning_content_falls_back_to_text(self):
         msg = normalize_genai_message({
             "role": "assistant",
             "parts": [{"type": "reasoning", "content": "", "text": "fallback"}],
@@ -311,7 +345,6 @@ class TestInputOutputContent:
     def test_normalize_reasoning_part_shapes(self):
         """Semconv, AI SDK and Anthropic reasoning parts all land on
         ``thinking``, kept out of ``content``."""
-        from apo.services.otel_normalization._shared import normalize_genai_message
 
         msg = normalize_genai_message({
             "role": "assistant",
@@ -445,7 +478,6 @@ class TestInputOutputContent:
         """Direct normalization of an AI SDK v6 tool-call part resolves the
         hyphen type and v6 field names (toolCallId/toolName/input).
         """
-        from apo.services.otel_normalization._shared import normalize_genai_message
 
         msg = normalize_genai_message({
             "role": "assistant",
@@ -461,7 +493,6 @@ class TestInputOutputContent:
     def test_normalize_ai_sdk_v6_tool_result_unwraps_output(self):
         """Direct normalization unwraps AI SDK v6 tool-result output, whether
         the value is text- or json-typed."""
-        from apo.services.otel_normalization._shared import normalize_genai_message
 
         text_msg = normalize_genai_message({
             "role": "tool",
@@ -479,7 +510,6 @@ class TestInputOutputContent:
 
     def test_normalize_legacy_underscore_tool_part(self):
         """The underscore form (older SDK / normalized shape) still resolves."""
-        from apo.services.otel_normalization._shared import normalize_genai_message
 
         msg = normalize_genai_message({
             "role": "assistant",
@@ -494,7 +524,6 @@ class TestInputOutputContent:
         array keeps them. OpenAI-compatible payloads put them there rather than
         as content parts, and dropping them left the dashboard's conversation
         view with anonymous, argument-less tool rows."""
-        from apo.services.otel_normalization._shared import normalize_genai_message
 
         msg = normalize_genai_message({
             "role": "assistant",
@@ -515,7 +544,6 @@ class TestInputOutputContent:
     def test_normalize_openai_tool_calls_alongside_string_content(self):
         """Prose plus tool calls: the string-content shortcut still carries the
         calls, and dict arguments are serialized."""
-        from apo.services.otel_normalization._shared import normalize_genai_message
 
         msg = normalize_genai_message({
             "role": "assistant",
@@ -531,7 +559,6 @@ class TestInputOutputContent:
 
     def test_normalize_tool_message_keeps_call_identity(self):
         """A tool result keeps the ids that tie it back to its call."""
-        from apo.services.otel_normalization._shared import normalize_genai_message
 
         msg = normalize_genai_message({
             "role": "tool",
