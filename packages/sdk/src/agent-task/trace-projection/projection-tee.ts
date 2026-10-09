@@ -193,9 +193,6 @@ export function createProjectionTee(
     };
     if (p.parentSpanId) obs.parentSpanId = p.parentSpanId;
     if (p.model) obs.model = p.model;
-    // The model that served the call is end-time information (the response
-    // carries it) — the pairmate of `model` for drift assertions.
-    if (params?.served_model) obs.servedModel = params.served_model;
     const usage = usageFrom(params);
     if (usage) obs.usage = usage;
     if (isError && params?.status_message) obs.errorMessage = params.status_message;
