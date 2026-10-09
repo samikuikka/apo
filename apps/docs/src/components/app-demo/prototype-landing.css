@@ -1,0 +1,1246 @@
+/*
+ * prototype-landing.css — LANDING chrome only (hero, tour tabs, the app
+ * window frame, footer) plus the demo-specific panel skins the ported
+ * components don't cover (trace rows, loop panel). Everything product-
+ * shaped lives in native.css under .pl-native.
+ *
+ * PROTOTYPE — throwaway. Class prefix .pl-.
+ */
+
+.pl-page {
+	font-family: var(--sl-font);
+	color: var(--sl-color-gray-2);
+}
+
+/* ── Showcase: tour tabs + the app window ───────────────────────────── */
+
+.pl-showcase {
+	border-top: 1px solid var(--sl-color-gray-6);
+	padding-block: clamp(2rem, 5vw, 3.25rem) clamp(3rem, 7vw, 4.5rem);
+}
+
+.pl-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1px;
+	background: var(--sl-color-gray-5);
+	border: 1px solid var(--sl-color-gray-5);
+}
+
+.pl-tab {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.6rem;
+	flex: 1 1 0;
+	min-width: 8rem;
+	padding: 0.8rem 1rem;
+	background: var(--sl-color-black);
+	border: none;
+	font-family: var(--sl-font);
+	cursor: pointer;
+	text-align: left;
+	transition: background-color 0.15s ease;
+}
+
+.pl-tab:hover {
+	background: var(--sl-color-gray-6);
+}
+
+.pl-tab--active {
+	background: var(--sl-color-gray-6);
+	box-shadow: inset 0 -2px 0 var(--sl-color-accent-high);
+}
+
+.pl-tab__num {
+	font-family: var(--sl-font-mono);
+	font-size: 0.625rem;
+	font-weight: 500;
+	color: var(--sl-color-gray-4);
+}
+
+.pl-tab--active .pl-tab__num {
+	color: var(--sl-color-accent);
+}
+
+.pl-tab__label {
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: var(--sl-color-gray-3);
+}
+
+.pl-tab--active .pl-tab__label {
+	color: var(--sl-color-white);
+}
+
+/* The framed application window. */
+.pl-appwin {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--sl-color-gray-5);
+	background: var(--sl-color-black);
+	overflow: hidden;
+}
+
+/* ── Panel frame (trace + loop panels, the non-ported surfaces) ─────── */
+
+.pl-panel {
+	border: 1px solid var(--border);
+	background: var(--background);
+}
+
+.pl-panel__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	flex-wrap: wrap;
+	padding: 0.6rem 0.9rem;
+	border-bottom: 1px solid var(--border);
+	background: var(--background);
+}
+
+.pl-panel__headtitle {
+	display: flex;
+	align-items: baseline;
+	gap: 0.75rem;
+	min-width: 0;
+}
+
+.pl-panel__h3 {
+	margin: 0;
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: var(--foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.pl-panel__sub {
+	font-family: var(--sl-font-mono);
+	font-size: 0.65rem;
+	color: var(--muted-foreground);
+	white-space: nowrap;
+}
+
+.pl-panel__headmeta {
+	display: flex;
+	align-items: center;
+	gap: 0.9rem;
+	flex-wrap: wrap;
+}
+
+.pl-panel__body {
+	padding: 0.9rem;
+}
+
+.pl-metric {
+	font-family: var(--sl-font-mono);
+	font-size: 12px;
+	color: color-mix(in oklab, var(--foreground) 80%, transparent);
+	white-space: nowrap;
+}
+
+/* Segmented mini-toggle (Tree/Timeline, 1×/2×). */
+.pl-speed {
+	display: inline-flex;
+	border: 1px solid var(--border);
+}
+
+.pl-speed__btn {
+	padding: 0.15rem 0.5rem;
+	background: var(--background);
+	border: none;
+	font-family: var(--sl-font-mono);
+	font-size: 0.65rem;
+	color: var(--muted-foreground);
+	cursor: pointer;
+}
+
+.pl-speed__btn--on {
+	background: var(--card);
+	color: var(--foreground);
+}
+
+.pl-runbtn {
+	padding: 0.35rem 0.85rem;
+	background: var(--primary);
+	color: var(--primary-foreground);
+	border: none;
+	font-size: 0.75rem;
+	font-weight: 600;
+	font-family: var(--sl-font);
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+.pl-runbtn:hover {
+	background: color-mix(in oklab, var(--foreground) 90%, transparent);
+}
+
+/* ── Trace panel (Run) ──────────────────────────────────────────────── */
+
+.pl-run {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.9fr);
+	gap: 0.9rem;
+	align-items: stretch;
+}
+
+.pl-run__stream {
+	border: 1px solid var(--border);
+	background: var(--background);
+	min-height: 18rem;
+	display: flex;
+	flex-direction: column;
+	overflow-y: auto;
+	max-height: 40rem;
+}
+
+.pl-run__streamhead {
+	display: flex;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.4rem 0.7rem;
+	border-bottom: 1px solid var(--border);
+	font-family: var(--sl-font-mono);
+	font-size: 0.62rem;
+	color: var(--muted-foreground);
+}
+
+.pl-tick {
+	color: var(--muted-foreground);
+}
+
+.pl-run__empty {
+	padding: 1.25rem 0.9rem;
+	font-size: 0.8rem;
+}
+
+.pl-run__empty p {
+	margin: 0 0 0.5rem;
+	color: var(--foreground);
+}
+
+.pl-run__emptydim {
+	color: var(--muted-foreground);
+	font-size: 0.72rem;
+	line-height: 1.55;
+}
+
+/* ── Call detail (right pane) ───────────────────────────────────────── */
+
+.pl-run__detail {
+	border: 1px solid var(--border);
+	background: var(--background);
+	min-height: 18rem;
+	overflow-y: auto;
+	max-height: 40rem;
+}
+
+.pl-run__inputhead,
+.pl-spandetail__head {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 0.8rem;
+	border-bottom: 1px solid var(--border);
+	font-family: var(--sl-font-mono);
+	font-size: 0.65rem;
+	color: var(--muted-foreground);
+}
+
+.pl-run__inputtext {
+	margin: 0;
+	padding: 0.7rem 0.8rem;
+	font-family: var(--sl-font-mono);
+	font-size: 0.72rem;
+	line-height: 1.6;
+	color: var(--muted-foreground);
+	white-space: pre-wrap;
+}
+
+.pl-run__inputnote {
+	margin: 0;
+	padding: 0.6rem 0.8rem 0.8rem;
+	font-size: 0.72rem;
+	line-height: 1.55;
+	color: var(--muted-foreground);
+	border-top: 1px dashed var(--border);
+}
+
+.pl-run__inputnote code {
+	font-family: var(--sl-font-mono);
+	color: var(--foreground);
+}
+
+.pl-spandetail {
+	display: flex;
+	flex-direction: column;
+}
+
+.pl-spandetail__name {
+	margin: 0;
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: var(--foreground);
+	font-family: var(--sl-font-mono);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pl-spandetail__meta {
+	display: flex;
+	gap: 0.9rem;
+	flex-wrap: wrap;
+	padding: 0.5rem 0.8rem;
+	border-bottom: 1px solid var(--border);
+}
+
+.pl-spandetail__section {
+	padding: 0.6rem 0.8rem;
+}
+
+.pl-spandetail__section + .pl-spandetail__section {
+	border-top: 1px dashed var(--border);
+}
+
+.pl-spandetail__label {
+	margin: 0 0 0.4rem;
+	font-family: var(--sl-font-mono);
+	font-size: 0.6rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--muted-foreground);
+}
+
+.pl-code {
+	margin: 0;
+	background: var(--background);
+	border: 1px solid var(--border);
+	overflow-x: auto;
+}
+
+.pl-code-line {
+	display: flex;
+	gap: 0.9rem;
+	padding: 0.05rem 0.6rem;
+	font-family: var(--sl-font-mono);
+	font-size: 0.72rem;
+	line-height: 1.55;
+	white-space: pre;
+}
+
+.pl-code-line--fail {
+	background: color-mix(in oklab, var(--destructive) 12%, transparent);
+	box-shadow: inset 2px 0 0 var(--destructive);
+}
+
+.pl-code-ln {
+	flex-shrink: 0;
+	width: 2rem;
+	text-align: right;
+	color: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
+	user-select: none;
+}
+
+.pl-code-text {
+	color: var(--foreground);
+}
+
+/* GitHub-dark tokens, same palette as the real CodeViewer. */
+.pl-tok-kw { color: #f97583; }
+.pl-tok-str { color: #9ecbff; }
+.pl-tok-cmt { color: #6a737d; font-style: italic; }
+.pl-tok-api { color: #ffa657; font-weight: 600; }
+.pl-tok-num { color: #79b8ff; }
+.pl-tok-fn { color: #b392f0; }
+
+.pl-trace__evidencenote {
+	margin: 0;
+	padding: 0.6rem 0.8rem 0.8rem;
+	font-size: 0.72rem;
+	line-height: 1.55;
+	color: var(--muted-foreground);
+	border-top: 1px dashed var(--border);
+}
+
+.pl-trace__evidencenote code {
+	font-family: var(--sl-font-mono);
+	color: var(--foreground);
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+
+@media (max-width: 56rem) {
+	.pl-run {
+		grid-template-columns: 1fr;
+	}
+
+	.pl-run__detail {
+		min-height: 0;
+	}
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+	.pl-treerow,
+	.pl-wfrow,
+	.pl-live__dot,
+	.pl-wfrow__bar--live {
+		animation: none;
+	}
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────── */
+
+.pl-foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	flex-wrap: wrap;
+	border-top: 1px solid var(--sl-color-gray-6);
+	padding-block: 2rem;
+	font-size: 0.8125rem;
+	color: var(--sl-color-gray-4);
+}
+
+.pl-foot__links {
+	display: flex;
+	gap: 1.25rem;
+}
+
+.pl-foot__links a {
+	color: var(--sl-color-gray-3);
+	text-decoration: none;
+}
+
+.pl-foot__links a:hover {
+	color: var(--sl-color-white);
+}
+
+/* ── Panel frame (trace + loop panels, the non-ported surfaces) ─────── */
+
+.pl-panel {
+	border: 1px solid var(--border);
+	background: var(--background);
+}
+
+.pl-panel__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	flex-wrap: wrap;
+	padding: 0.6rem 0.9rem;
+	border-bottom: 1px solid var(--border);
+	background: var(--background);
+}
+
+.pl-panel__headtitle {
+	display: flex;
+	align-items: baseline;
+	gap: 0.75rem;
+	min-width: 0;
+}
+
+.pl-panel__h3 {
+	margin: 0;
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: var(--foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.pl-panel__sub {
+	font-family: var(--sl-font-mono);
+	font-size: 0.65rem;
+	color: var(--muted-foreground);
+	white-space: nowrap;
+}
+
+.pl-panel__headmeta {
+	display: flex;
+	align-items: center;
+	gap: 0.9rem;
+	flex-wrap: wrap;
+}
+
+.pl-panel__body {
+	padding: 0.9rem;
+}
+
+.pl-metric {
+	font-family: var(--sl-font-mono);
+	font-size: 12px;
+	color: color-mix(in oklab, var(--foreground) 80%, transparent);
+	white-space: nowrap;
+}
+
+/* Segmented mini-toggle (Tree/Timeline, 1×/2×). */
+.pl-speed {
+	display: inline-flex;
+	border: 1px solid var(--border);
+}
+
+.pl-speed__btn {
+	padding: 0.15rem 0.5rem;
+	background: var(--background);
+	border: none;
+	font-family: var(--sl-font-mono);
+	font-size: 0.65rem;
+	color: var(--muted-foreground);
+	cursor: pointer;
+}
+
+.pl-speed__btn--on {
+	background: var(--card);
+	color: var(--foreground);
+}
+
+.pl-runbtn {
+	padding: 0.35rem 0.85rem;
+	background: var(--primary);
+	color: var(--primary-foreground);
+	border: none;
+	font-size: 0.75rem;
+	font-weight: 600;
+	font-family: var(--sl-font);
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+.pl-runbtn:hover {
+	background: color-mix(in oklab, var(--foreground) 90%, transparent);
+}
+
+/* ── Trace panel (Run) ──────────────────────────────────────────────── */
+
+.pl-run {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.9fr);
+	gap: 0.9rem;
+	align-items: stretch;
+}
+
+.pl-run__stream {
+	border: 1px solid var(--border);
+	background: var(--background);
+	min-height: 18rem;
+	display: flex;
+	flex-direction: column;
+	overflow-y: auto;
+	max-height: 40rem;
+}
+
+.pl-run__streamhead {
+	display: flex;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.4rem 0.7rem;
+	border-bottom: 1px solid var(--border);
+	font-family: var(--sl-font-mono);
+	font-size: 0.62rem;
+	color: var(--muted-foreground);
+}
+
+.pl-tick {
+	color: var(--muted-foreground);
+}
+
+.pl-run__empty {
+	padding: 1.25rem 0.9rem;
+	font-size: 0.8rem;
+}
+
+.pl-run__empty p {
+	margin: 0 0 0.5rem;
+	color: var(--foreground);
+}
+
+.pl-run__emptydim {
+	color: var(--muted-foreground);
+	font-size: 0.72rem;
+	line-height: 1.55;
+}
+
+/* ── Call detail (right pane) ───────────────────────────────────────── */
+
+.pl-run__detail {
+	border: 1px solid var(--border);
+	background: var(--background);
+	min-height: 18rem;
+	overflow-y: auto;
+	max-height: 40rem;
+}
+
+.pl-run__inputhead,
+.pl-spandetail__head {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 0.8rem;
+	border-bottom: 1px solid var(--border);
+	font-family: var(--sl-font-mono);
+	font-size: 0.65rem;
+	color: var(--muted-foreground);
+}
+
+.pl-run__inputtext {
+	margin: 0;
+	padding: 0.7rem 0.8rem;
+	font-family: var(--sl-font-mono);
+	font-size: 0.72rem;
+	line-height: 1.6;
+	color: var(--muted-foreground);
+	white-space: pre-wrap;
+}
+
+.pl-run__inputnote {
+	margin: 0;
+	padding: 0.6rem 0.8rem 0.8rem;
+	font-size: 0.72rem;
+	line-height: 1.55;
+	color: var(--muted-foreground);
+	border-top: 1px dashed var(--border);
+}
+
+.pl-run__inputnote code {
+	font-family: var(--sl-font-mono);
+	color: var(--foreground);
+}
+
+.pl-spandetail {
+	display: flex;
+	flex-direction: column;
+}
+
+.pl-spandetail__name {
+	margin: 0;
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: var(--foreground);
+	font-family: var(--sl-font-mono);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pl-spandetail__meta {
+	display: flex;
+	gap: 0.9rem;
+	flex-wrap: wrap;
+	padding: 0.5rem 0.8rem;
+	border-bottom: 1px solid var(--border);
+}
+
+.pl-spandetail__section {
+	padding: 0.6rem 0.8rem;
+}
+
+.pl-spandetail__section + .pl-spandetail__section {
+	border-top: 1px dashed var(--border);
+}
+
+.pl-spandetail__label {
+	margin: 0 0 0.4rem;
+	font-family: var(--sl-font-mono);
+	font-size: 0.6rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--muted-foreground);
+}
+
+.pl-code {
+	margin: 0;
+	background: var(--background);
+	border: 1px solid var(--border);
+	overflow-x: auto;
+}
+
+.pl-code-line {
+	display: flex;
+	gap: 0.9rem;
+	padding: 0.05rem 0.6rem;
+	font-family: var(--sl-font-mono);
+	font-size: 0.72rem;
+	line-height: 1.55;
+	white-space: pre;
+}
+
+.pl-code-line--fail {
+	background: color-mix(in oklab, var(--destructive) 12%, transparent);
+	box-shadow: inset 2px 0 0 var(--destructive);
+}
+
+.pl-code-ln {
+	flex-shrink: 0;
+	width: 2rem;
+	text-align: right;
+	color: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
+	user-select: none;
+}
+
+.pl-code-text {
+	color: var(--foreground);
+}
+
+/* GitHub-dark tokens, same palette as the real CodeViewer. */
+.pl-tok-kw { color: #f97583; }
+.pl-tok-str { color: #9ecbff; }
+.pl-tok-cmt { color: #6a737d; font-style: italic; }
+.pl-tok-api { color: #ffa657; font-weight: 600; }
+.pl-tok-num { color: #79b8ff; }
+.pl-tok-fn { color: #b392f0; }
+
+.pl-trace__evidencenote {
+	margin: 0;
+	padding: 0.6rem 0.8rem 0.8rem;
+	font-size: 0.72rem;
+	line-height: 1.55;
+	color: var(--muted-foreground);
+	border-top: 1px dashed var(--border);
+}
+
+.pl-trace__evidencenote code {
+	font-family: var(--sl-font-mono);
+	color: var(--foreground);
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+
+@media (max-width: 56rem) {
+	.pl-run {
+		grid-template-columns: 1fr;
+	}
+
+	.pl-run__detail {
+		min-height: 0;
+	}
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+	.pl-treerow,
+	.pl-wfrow,
+	.pl-live__dot,
+	.pl-wfrow__bar--live {
+		animation: none;
+	}
+}
+
+/* ── Real-browser frame: fixed design size, zoomed to the column ────── */
+
+.pl-appwin-frame {
+	width: 100%;
+	overflow: hidden;
+}
+
+.pl-browser-chrome {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	height: 2.75rem;
+	flex-shrink: 0;
+	padding-inline: 1rem;
+	border-bottom: 1px solid var(--border);
+	background: var(--card);
+}
+
+.pl-browser-chrome__dots {
+	display: inline-flex;
+	gap: 0.5rem;
+	flex-shrink: 0;
+}
+
+.pl-browser-chrome__dot {
+	width: 0.75rem;
+	height: 0.75rem;
+	border-radius: 9999px !important;
+}
+
+/* macOS traffic lights, muted enough to sit in the monochrome frame. */
+.pl-browser-chrome__dot--close { background: #ff5f57; }
+.pl-browser-chrome__dot--min { background: #febc2e; }
+.pl-browser-chrome__dot--full { background: #28c840; }
+
+.pl-browser-chrome__field {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+	align-items: center;
+	gap: 0.5rem;
+	height: 1.75rem;
+	margin-inline: 1rem;
+	padding-inline: 0.875rem;
+	background: var(--background);
+	border: 1px solid var(--border);
+	border-radius: 9999px !important;
+}
+
+.pl-browser-chrome__url {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 13px;
+	color: var(--muted-foreground);
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────── */
+
+.pl-foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	flex-wrap: wrap;
+	border-top: 1px solid var(--sl-color-gray-6);
+	padding-block: 2rem;
+	font-size: 0.8125rem;
+	color: var(--sl-color-gray-4);
+}
+
+.pl-foot__links {
+	display: flex;
+	gap: 1.25rem;
+}
+
+.pl-foot__links a {
+	color: var(--sl-color-gray-3);
+	text-decoration: none;
+}
+
+.pl-foot__links a:hover {
+	color: var(--sl-color-white);
+}
+
+/* ── Panel frame (trace + loop panels, the non-ported surfaces) ─────── */
+
+.pl-panel {
+	border: 1px solid var(--border);
+	background: var(--background);
+}
+
+.pl-panel__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	flex-wrap: wrap;
+	padding: 0.6rem 0.9rem;
+	border-bottom: 1px solid var(--border);
+	background: var(--background);
+}
+
+.pl-panel__headtitle {
+	display: flex;
+	align-items: baseline;
+	gap: 0.75rem;
+	min-width: 0;
+}
+
+.pl-panel__h3 {
+	margin: 0;
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: var(--foreground);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.pl-panel__sub {
+	font-family: var(--sl-font-mono);
+	font-size: 0.65rem;
+	color: var(--muted-foreground);
+	white-space: nowrap;
+}
+
+.pl-panel__headmeta {
+	display: flex;
+	align-items: center;
+	gap: 0.9rem;
+	flex-wrap: wrap;
+}
+
+.pl-panel__body {
+	padding: 0.9rem;
+}
+
+.pl-metric {
+	font-family: var(--sl-font-mono);
+	font-size: 12px;
+	color: color-mix(in oklab, var(--foreground) 80%, transparent);
+	white-space: nowrap;
+}
+
+/* Segmented mini-toggle (Tree/Timeline, 1×/2×). */
+.pl-speed {
+	display: inline-flex;
+	border: 1px solid var(--border);
+}
+
+.pl-speed__btn {
+	padding: 0.15rem 0.5rem;
+	background: var(--background);
+	border: none;
+	font-family: var(--sl-font-mono);
+	font-size: 0.65rem;
+	color: var(--muted-foreground);
+	cursor: pointer;
+}
+
+.pl-speed__btn--on {
+	background: var(--card);
+	color: var(--foreground);
+}
+
+.pl-runbtn {
+	padding: 0.35rem 0.85rem;
+	background: var(--primary);
+	color: var(--primary-foreground);
+	border: none;
+	font-size: 0.75rem;
+	font-weight: 600;
+	font-family: var(--sl-font);
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+.pl-runbtn:hover {
+	background: color-mix(in oklab, var(--foreground) 90%, transparent);
+}
+
+/* ── Trace panel (Run) ──────────────────────────────────────────────── */
+
+.pl-run {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.9fr);
+	gap: 0.9rem;
+	align-items: stretch;
+}
+
+.pl-run__stream {
+	border: 1px solid var(--border);
+	background: var(--background);
+	min-height: 18rem;
+	display: flex;
+	flex-direction: column;
+	overflow-y: auto;
+	max-height: 40rem;
+}
+
+.pl-run__streamhead {
+	display: flex;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.4rem 0.7rem;
+	border-bottom: 1px solid var(--border);
+	font-family: var(--sl-font-mono);
+	font-size: 0.62rem;
+	color: var(--muted-foreground);
+}
+
+.pl-tick {
+	color: var(--muted-foreground);
+}
+
+.pl-run__empty {
+	padding: 1.25rem 0.9rem;
+	font-size: 0.8rem;
+}
+
+.pl-run__empty p {
+	margin: 0 0 0.5rem;
+	color: var(--foreground);
+}
+
+.pl-run__emptydim {
+	color: var(--muted-foreground);
+	font-size: 0.72rem;
+	line-height: 1.55;
+}
+
+/* ── Call detail (right pane) ───────────────────────────────────────── */
+
+.pl-run__detail {
+	border: 1px solid var(--border);
+	background: var(--background);
+	min-height: 18rem;
+	overflow-y: auto;
+	max-height: 40rem;
+}
+
+.pl-run__inputhead,
+.pl-spandetail__head {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.5rem 0.8rem;
+	border-bottom: 1px solid var(--border);
+	font-family: var(--sl-font-mono);
+	font-size: 0.65rem;
+	color: var(--muted-foreground);
+}
+
+.pl-run__inputtext {
+	margin: 0;
+	padding: 0.7rem 0.8rem;
+	font-family: var(--sl-font-mono);
+	font-size: 0.72rem;
+	line-height: 1.6;
+	color: var(--muted-foreground);
+	white-space: pre-wrap;
+}
+
+.pl-run__inputnote {
+	margin: 0;
+	padding: 0.6rem 0.8rem 0.8rem;
+	font-size: 0.72rem;
+	line-height: 1.55;
+	color: var(--muted-foreground);
+	border-top: 1px dashed var(--border);
+}
+
+.pl-run__inputnote code {
+	font-family: var(--sl-font-mono);
+	color: var(--foreground);
+}
+
+.pl-spandetail {
+	display: flex;
+	flex-direction: column;
+}
+
+.pl-spandetail__name {
+	margin: 0;
+	font-size: 0.8rem;
+	font-weight: 600;
+	color: var(--foreground);
+	font-family: var(--sl-font-mono);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pl-spandetail__meta {
+	display: flex;
+	gap: 0.9rem;
+	flex-wrap: wrap;
+	padding: 0.5rem 0.8rem;
+	border-bottom: 1px solid var(--border);
+}
+
+.pl-spandetail__section {
+	padding: 0.6rem 0.8rem;
+}
+
+.pl-spandetail__section + .pl-spandetail__section {
+	border-top: 1px dashed var(--border);
+}
+
+.pl-spandetail__label {
+	margin: 0 0 0.4rem;
+	font-family: var(--sl-font-mono);
+	font-size: 0.6rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--muted-foreground);
+}
+
+.pl-code {
+	margin: 0;
+	background: var(--background);
+	border: 1px solid var(--border);
+	overflow-x: auto;
+}
+
+.pl-code-line {
+	display: flex;
+	gap: 0.9rem;
+	padding: 0.05rem 0.6rem;
+	font-family: var(--sl-font-mono);
+	font-size: 0.72rem;
+	line-height: 1.55;
+	white-space: pre;
+}
+
+.pl-code-line--fail {
+	background: color-mix(in oklab, var(--destructive) 12%, transparent);
+	box-shadow: inset 2px 0 0 var(--destructive);
+}
+
+.pl-code-ln {
+	flex-shrink: 0;
+	width: 2rem;
+	text-align: right;
+	color: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
+	user-select: none;
+}
+
+.pl-code-text {
+	color: var(--foreground);
+}
+
+/* GitHub-dark tokens, same palette as the real CodeViewer. */
+.pl-tok-kw { color: #f97583; }
+.pl-tok-str { color: #9ecbff; }
+.pl-tok-cmt { color: #6a737d; font-style: italic; }
+.pl-tok-api { color: #ffa657; font-weight: 600; }
+.pl-tok-num { color: #79b8ff; }
+.pl-tok-fn { color: #b392f0; }
+
+.pl-trace__evidencenote {
+	margin: 0;
+	padding: 0.6rem 0.8rem 0.8rem;
+	font-size: 0.72rem;
+	line-height: 1.55;
+	color: var(--muted-foreground);
+	border-top: 1px dashed var(--border);
+}
+
+.pl-trace__evidencenote code {
+	font-family: var(--sl-font-mono);
+	color: var(--foreground);
+}
+
+/* ── Loop panel (Engineer) ──────────────────────────────────────────── */
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+
+@media (max-width: 56rem) {
+	.pl-run {
+		grid-template-columns: 1fr;
+	}
+
+	.pl-run__detail {
+		min-height: 0;
+	}
+}
+
+/* ── Reduced motion ─────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+	.pl-treerow,
+	.pl-wfrow,
+	.pl-live__dot,
+	.pl-wfrow__bar--live {
+		animation: none;
+	}
+}
+
+/* ── Real-browser frame: fixed design size, zoomed to the column ────── */
+
+.pl-appwin-frame {
+	width: 100%;
+	overflow: hidden;
+}
+
+
+/* Trace nav split (stacks under the native mobile/tablet breakpoint). */
+.pl-native .pl-tracenav {
+	width: 42%;
+}
+
+@media (max-width: 56.25rem) {
+	.pl-native .pl-tracenav {
+		width: 100%;
+		height: 45%;
+		border-right: none;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.pl-native .pl-tracenav,
+	.pl-native .flex.h-full.min-h-0.min-w-0.flex-col.border-r {
+		width: 100% !important;
+	}
+}
+
+/* Mobile density rules (moved from native.css — the island's CSS
+   bundler doesn't reliably HMR new rules; the page-level import does). */
+@media (max-width: 56.25rem) {
+	.pl-native .justify-between { justify-content: space-between; }
+	.pl-native .overflow-x-auto { overflow-x: auto; }
+	.pl-native .whitespace-pre-wrap { white-space: pre-wrap; }
+	.pl-native .mt-1\.5 { margin-top: 0.375rem; }
+	.pl-native .h-8 { height: 2rem; }
+	.pl-native .text-\[13px\] { font-size: 13px; }
+		.pl-native .lg\:justify-between { justify-content: space-between; }
+	.pl-native .max-h-80 { max-height: 20rem; }
+		.pl-appwin main .lg\\:justify-between {
+			justify-content: flex-start;
+		}
+		.pl-appwin main .overflow-x-auto {
+			-webkit-overflow-scrolling: touch;
+		}
+		.pl-appwin main .justify-between {
+			flex-wrap: wrap;
+			gap: 0.25rem;
+		}
+		.pl-appwin main h1 {
+			font-size: 16px !important;
+			white-space: nowrap !important;
+			overflow: hidden !important;
+			text-overflow: ellipsis !important;
+		}
+		.pl-appwin main .text-\[13px\].font-mono {
+			white-space: nowrap !important;
+			overflow: hidden !important;
+			text-overflow: ellipsis !important;
+		}
+		.pl-appwin main .mt-1\.5 > span {
+			white-space: nowrap !important;
+		}
+		.pl-appwin main .justify-between > div {
+			white-space: nowrap !important;
+		}
+		.pl-appwin main .mt-1\.5 {
+			overflow-x: auto !important;
+			flex-wrap: nowrap !important;
+			-webkit-overflow-scrolling: touch;
+		}
+		.pl-appwin main .whitespace-pre-wrap {
+			display: -webkit-box;
+			-webkit-line-clamp: 3;
+			-webkit-box-orient: vertical;
+			overflow: hidden;
+		}
+		.pl-appwin main .h-8 {
+			white-space: nowrap;
+		}
+}
+
+/* Touch scrolling: every horizontally-overflowing surface inside the app
+   gets momentum scrolling so it feels native on phones. The tab strips,
+   the meta line, the history table, and the code viewer already have
+   overflow-x: auto — this adds the iOS smoothness and prevents rubber-
+   banding from propagating to the page scroll. */
+@media (max-width: 56.25rem) {
+	.pl-appwin main [style*="overflow"],
+	.pl-appwin main .overflow-x-auto,
+	.pl-appwin main .pl-codeviewer,
+	.pl-appwin main .mt-1\.5,
+	.pl-appwin main table,
+	.pl-appwin main .pl-tracenav,
+	.pl-appwin main .pl-run__stream,
+	.pl-appwin main .pl-run__detail {
+		-webkit-overflow-scrolling: touch;
+		overscroll-behavior: contain;
+	}
+}
+
+/* The app window itself: on phones the page content scrolls inside the
+   window's main area (75vh). Make sure that inner scroll is smooth too. */
+@media (max-width: 56.25rem) {
+	.pl-appwin main {
+		-webkit-overflow-scrolling: touch;
+		overscroll-behavior: contain;
+	}
+}

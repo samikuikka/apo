@@ -1,0 +1,755 @@
+/*
+ * native.css — pixel-faithful port layer for the landing-page prototype.
+ *
+ * PROTOTYPE — throwaway. This replicates, under a .pl-native scope, the
+ * dashboard's exact design tokens (apps/dashboard globals.css) and the
+ * Tailwind utilities used by the real components the prototype ports
+ * (run-detail page, OutcomeSummary, ChecksList/ExpandableCheckItem,
+ * TaskRunTabStrip, task-detail head). Class names are Tailwind's so the
+ * ported JSX stays verbatim; here they are plain declarations with the
+ * same values. Alpha variants use color-mix over the token.
+ */
+
+.pl-native {
+	/* Dashboard tokens, verbatim (globals.css :root). */
+	--background: oklch(0 0 0);
+	--foreground: oklch(1 0 0);
+	--card: oklch(0.18 0 0);
+	--card-foreground: oklch(1 0 0);
+	--popover: oklch(0.18 0 0);
+	--primary: oklch(1 0 0);
+	--primary-foreground: oklch(0 0 0);
+	--secondary: oklch(0.2 0 0);
+	--secondary-foreground: oklch(1 0 0);
+	--muted: oklch(0.2 0 0);
+	--muted-foreground: oklch(0.6 0 0);
+	--accent: oklch(0.25 0 0);
+	--accent-foreground: oklch(1 0 0);
+	--destructive: oklch(0.5 0.22 25);
+	--destructive-foreground: oklch(1 0 0);
+	--success: oklch(0.65 0.15 155);
+	--warning: oklch(0.7 0.14 70);
+	--border: oklch(0.28 0 0);
+	--input: oklch(0.2 0 0);
+	--ring: oklch(0.4 0 0);
+	--radius: 0;
+
+	/* Sidebar tokens (globals.css :root, verbatim). */
+	--sidebar: oklch(0.08 0 0);
+	--sidebar-foreground: oklch(1 0 0);
+	--sidebar-primary: oklch(0.2 0 0);
+	--sidebar-primary-foreground: oklch(1 0 0);
+	--sidebar-accent: oklch(0.25 0 0);
+	--sidebar-accent-foreground: oklch(1 0 0);
+	--sidebar-border: oklch(0.3 0 0);
+	--sidebar-ring: oklch(0.4 0 0);
+	--status-bar-h: 1.75rem;
+
+	font-family: "Noto Sans", var(--sl-font);
+	line-height: 1.5;
+	color: var(--foreground);
+	background: var(--background);
+}
+
+/* The docs theme forces border-radius:0 !important on everything
+   (styles/custom.css); the dashboard's rounded-full pills/badges/bars
+   must win inside the native scope. */
+.pl-native .rounded-full {
+	border-radius: 9999px !important;
+}
+
+.pl-native *,
+.pl-native *::before,
+.pl-native *::after {
+	box-sizing: border-box;
+}
+
+.pl-native button {
+	font-family: inherit;
+}
+
+/* Preflight inside the scope: Starlight's global button/heading rules
+   (backgrounds, padding, line-heights) must not leak into ported
+   components; utilities below re-apply what the ports need. */
+.pl-native button {
+	background: transparent;
+	border: none;
+	padding: 0;
+	margin: 0;
+	line-height: 1.5;
+	color: inherit;
+	cursor: pointer;
+}
+
+.pl-native h1 {
+	margin: 0;
+	/* The dashboard's 20px headings resolve to a 1.111 line-height. */
+	line-height: 1.1111;
+}
+
+.pl-native p {
+	margin: 0;
+}
+
+/* ── display / flex ─────────────────────────────────────────────────── */
+
+.pl-native .flex { display: flex; }
+.pl-native .inline-flex { display: inline-flex; }
+.pl-native .hidden { display: none; }
+.pl-native .flex-col { flex-direction: column; }
+.pl-native .flex-1 { flex: 1 1 0%; }
+.pl-native .shrink-0 { flex-shrink: 0; }
+.pl-native .min-w-0 { min-width: 0; }
+.pl-native .items-center { align-items: center; }
+.pl-native .items-start { align-items: flex-start; }
+.pl-native .items-baseline { align-items: baseline; }
+.pl-native .flex-wrap { flex-wrap: wrap; }
+.pl-native .flex-nowrap { flex-wrap: nowrap; }
+.pl-native .overflow-hidden { overflow: hidden; }
+.pl-native .overflow-y-hidden { overflow-y: hidden; }
+.pl-native .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-native .whitespace-nowrap { white-space: nowrap; }
+.pl-native .text-left { text-align: left; }
+.pl-native .mx-auto { margin-inline: auto; }
+.pl-native .ml-auto { margin-left: auto; }
+
+/* ── spacing ────────────────────────────────────────────────────────── */
+
+.pl-native .p-4 { padding: 1rem; }
+.pl-native .px-1 { padding-inline: 0.25rem; }
+.pl-native .px-1\.5 { padding-inline: 0.375rem; }
+.pl-native .px-2 { padding-inline: 0.5rem; }
+.pl-native .px-2\.5 { padding-inline: 0.625rem; }
+.pl-native .px-3 { padding-inline: 0.75rem; }
+.pl-native .px-4 { padding-inline: 1rem; }
+.pl-native .px-6 { padding-inline: 1.5rem; }
+.pl-native .py-0\.5 { padding-block: 0.125rem; }
+.pl-native .py-px { padding-block: 1px; }
+.pl-native .py-3 { padding-block: 0.75rem; }
+.pl-native .py-4 { padding-block: 1rem; }
+.pl-native .py-5 { padding-block: 1.25rem; }
+.pl-native .pb-4 { padding-bottom: 1rem; }
+.pl-native .pt-3 { padding-top: 0.75rem; }
+.pl-native .pt-2\.5 { padding-top: 0.625rem; }
+.pl-native .mt-1 { margin-top: 0.25rem; }
+.pl-native .mt-2 { margin-top: 0.5rem; }
+.pl-native .mt-4 { margin-top: 1rem; }
+.pl-native .ml-0\.5 { margin-left: 0.125rem; }
+.pl-native .ml-4 { margin-left: 1rem; }
+.pl-native .gap-0\.5 { gap: 0.125rem; }
+.pl-native .gap-1 { gap: 0.25rem; }
+.pl-native .gap-1\.5 { gap: 0.375rem; }
+.pl-native .gap-2 { gap: 0.5rem; }
+.pl-native .gap-2\.5 { gap: 0.625rem; }
+.pl-native .gap-3 { gap: 0.75rem; }
+.pl-native .gap-5 { gap: 1.25rem; }
+.pl-native .gap-x-2 { column-gap: 0.5rem; }
+.pl-native .gap-x-3 { column-gap: 0.75rem; }
+.pl-native .gap-x-5 { column-gap: 1.25rem; }
+.pl-native .gap-y-1 { row-gap: 0.25rem; }
+.pl-native .space-y-1\.5 > * + * { margin-top: 0.375rem; }
+.pl-native .space-y-3 > * + * { margin-top: 0.75rem; }
+.pl-native .space-y-4 > * + * { margin-top: 1rem; }
+
+/* ── sizing ─────────────────────────────────────────────────────────── */
+
+.pl-native .h-1\.5 { height: 0.375rem; }
+.pl-native .w-1\.5 { width: 0.375rem; }
+.pl-native .h-2 { height: 0.5rem; }
+.pl-native .h-3 { height: 0.75rem; }
+.pl-native .w-3 { width: 0.75rem; }
+.pl-native .h-3\.5 { height: 0.875rem; }
+.pl-native .w-3\.5 { width: 0.875rem; }
+.pl-native .h-4 { height: 1rem; }
+.pl-native .w-4 { width: 1rem; }
+.pl-native .h-5 { height: 1.25rem; }
+.pl-native .w-5 { width: 1.25rem; }
+.pl-native .h-6 { height: 1.5rem; }
+.pl-native .w-6 { width: 1.5rem; }
+.pl-native .h-7 { height: 1.75rem; }
+.pl-native .h-9 { height: 2.25rem; }
+.pl-native .h-px { height: 1px; }
+.pl-native .h-full { height: 100%; }
+.pl-native .w-full { width: 100%; }
+.pl-native .max-w-md { max-width: 28rem; }
+.pl-native .max-w-6xl { max-width: 72rem; }
+.pl-native .max-w-\[860px\] { max-width: 860px; }
+
+/* ── borders / radius ───────────────────────────────────────────────── */
+
+.pl-native .border { border-width: 1px; border-style: solid; border-color: var(--border); }
+.pl-native .border-t { border-top-width: 1px; border-top-style: solid; border-top-color: var(--border); }
+.pl-native .border-b { border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: var(--border); }
+.pl-native .border-l { border-left-width: 1px; border-left-style: solid; border-left-color: var(--border); }
+.pl-native .rounded-full { border-radius: 9999px; }
+.pl-native .last\:border-b-0:last-child { border-bottom-width: 0; }
+
+/* ── colors ─────────────────────────────────────────────────────────── */
+
+.pl-native .bg-background { background-color: var(--background); }
+.pl-native .bg-card { background-color: var(--card); }
+.pl-native .bg-card\/60 { background-color: color-mix(in oklab, var(--card) 60%, transparent); }
+.pl-native .bg-card\/30 { background-color: color-mix(in oklab, var(--card) 30%, transparent); }
+.pl-native .bg-card\/20 { background-color: color-mix(in oklab, var(--card) 20%, transparent); }
+.pl-native .bg-muted\/40 { background-color: color-mix(in oklab, var(--muted) 40%, transparent); }
+.pl-native .bg-foreground\/10 { background-color: color-mix(in oklab, var(--foreground) 10%, transparent); }
+.pl-native .bg-foreground\/40 { background-color: color-mix(in oklab, var(--foreground) 40%, transparent); }
+.pl-native .bg-success { background-color: var(--success); }
+.pl-native .bg-destructive { background-color: var(--destructive); }
+.pl-native .bg-success\/15 { background-color: color-mix(in oklab, var(--success) 15%, transparent); }
+.pl-native .bg-destructive\/15 { background-color: color-mix(in oklab, var(--destructive) 15%, transparent); }
+.pl-native .bg-destructive\/10 { background-color: color-mix(in oklab, var(--destructive) 10%, transparent); }
+.pl-native .bg-warning\/15 { background-color: color-mix(in oklab, var(--warning) 15%, transparent); }
+.pl-native .bg-warning\/10 { background-color: color-mix(in oklab, var(--warning) 10%, transparent); }
+.pl-native .bg-warning\/5 { background-color: color-mix(in oklab, var(--warning) 5%, transparent); }
+.pl-native .border-warning\/30 { border-color: color-mix(in oklab, var(--warning) 30%, transparent); }
+.pl-native .border-warning\/40 { border-color: color-mix(in oklab, var(--warning) 40%, transparent); }
+.pl-native .border-border\/50 { border-color: color-mix(in oklab, var(--border) 50%, transparent); }
+.pl-native .bg-border { background-color: var(--border); }
+
+.pl-native .text-foreground { color: var(--foreground); }
+.pl-native .text-foreground\/80 { color: color-mix(in oklab, var(--foreground) 80%, transparent); }
+.pl-native .text-muted-foreground { color: var(--muted-foreground); }
+.pl-native .text-muted-foreground\/40 { color: color-mix(in oklab, var(--muted-foreground) 40%, transparent); }
+.pl-native .text-muted-foreground\/50 { color: color-mix(in oklab, var(--muted-foreground) 50%, transparent); }
+.pl-native .text-muted-foreground\/60 { color: color-mix(in oklab, var(--muted-foreground) 60%, transparent); }
+.pl-native .text-muted-foreground\/70 { color: color-mix(in oklab, var(--muted-foreground) 70%, transparent); }
+.pl-native .text-success { color: var(--success); }
+.pl-native .text-destructive { color: var(--destructive); }
+.pl-native .text-warning { color: var(--warning); }
+.pl-native .text-warning\/80 { color: color-mix(in oklab, var(--warning) 80%, transparent); }
+.pl-native .text-primary { color: var(--primary); }
+
+/* ── typography ─────────────────────────────────────────────────────── */
+
+.pl-native .font-mono { font-family: var(--sl-font-mono); }
+.pl-native .font-medium { font-weight: 500; }
+.pl-native .font-semibold { font-weight: 600; }
+.pl-native .font-normal { font-weight: 400; }
+.pl-native .text-\[10px\] { font-size: 10px; }
+.pl-native .text-\[11px\] { font-size: 11px; }
+.pl-native .text-\[12px\] { font-size: 12px; }
+.pl-native .text-\[20px\] { font-size: 20px; }
+.pl-native .text-\[32px\] { font-size: 32px; }
+.pl-native .text-sm { font-size: 14px; }
+.pl-native .text-xs { font-size: 12px; }
+.pl-native .uppercase { text-transform: uppercase; }
+.pl-native .tracking-wide { letter-spacing: 0.025em; }
+.pl-native .tracking-wider { letter-spacing: 0.05em; }
+.pl-native .tracking-tight { letter-spacing: -0.025em; }
+.pl-native .leading-none { line-height: 1; }
+.pl-native .leading-relaxed { line-height: 1.625; }
+.pl-native .tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* ── positioning / interaction ──────────────────────────────────────── */
+
+.pl-native .relative { position: relative; }
+.pl-native .absolute { position: absolute; }
+.pl-native .inset-x-2 { left: 0.5rem; right: 0.5rem; }
+.pl-native .bottom-0 { bottom: 0; }
+.pl-native .right-9 { right: 2.25rem; }
+.pl-native .top-1\/2 { top: 50%; }
+.pl-native .-translate-y-1\/2 { transform: translateY(-50%); }
+.pl-native .transition-colors { transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease; }
+.pl-native .transition-transform { transition: transform 150ms ease; }
+.pl-native .animate-pulse { animation: pl-native-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+@keyframes pl-native-pulse {
+	50% { opacity: 0.5; }
+}
+
+.pl-native .hover\:text-foreground:hover { color: var(--foreground); }
+.pl-native .hover\:bg-card\/80:hover { background-color: color-mix(in oklab, var(--card) 80%, transparent); }
+.pl-native .hover\:bg-muted\/40:hover { background-color: color-mix(in oklab, var(--muted) 40%, transparent); }
+.pl-native .group:hover .group-hover\:opacity-100 { opacity: 1; }
+
+.pl-native .size-1\.5 { width: 0.375rem; height: 0.375rem; }
+
+.pl-native .pr-4 { padding-right: 1rem; }
+
+/* Utilities referenced by ports but previously missing. */
+.pl-native .gap-4 { gap: 1rem; }
+.pl-native .mr-1 { margin-right: 0.25rem; }
+.pl-native .mx-1 { margin-inline: 0.25rem; }
+.pl-native .space-y-1 > * + * { margin-top: 0.25rem; }
+.pl-native .mb-1\.5 { margin-bottom: 0.375rem; }
+.pl-native .mb-2 { margin-bottom: 0.5rem; }
+.pl-native .z-10 { z-index: 10; }
+.pl-native .bg-foreground { background-color: var(--foreground); }
+.pl-native .rounded-lg { border-radius: 0.5rem !important; }
+.pl-native .hover\:bg-card\/20:hover { background-color: color-mix(in oklab, var(--card) 20%, transparent); }
+.pl-native .text-\[14px\] { font-size: 14px; }
+
+/* lg: breakpoint, as in the dashboard (64rem). */
+@media (min-width: 64rem) {
+	.pl-native .lg\:flex-row { flex-direction: row; }
+	.pl-native .lg\:items-start { align-items: flex-start; }
+	.pl-native .lg\:flex-col { flex-direction: column; }
+}
+
+@media (min-width: 48rem) {
+	.pl-native .md\:px-6 { padding-inline: 1.5rem; }
+}
+
+@media (min-width: 40rem) {
+	.pl-native .sm\:flex-row { flex-direction: row; }
+	.pl-native .sm\:items-center { align-items: center; }
+	.pl-native .sm\:gap-5 { gap: 1.25rem; }
+	.pl-native .sm\:flex-col { flex-direction: column; }
+	.pl-native .sm\:items-start { align-items: flex-start; }
+	.pl-native .sm\:gap-0 { gap: 0; }
+}
+
+/* ── Native code viewer — mirrors the real CodeViewer's CodeMirror theme
+   (githubDarkHighlight + cm-apo-t-api + gutters, verbatim colors) ──── */
+.pl-native .pl-codeviewer {
+	background: transparent;
+	overflow: auto;
+	max-height: 480px;
+}
+
+.pl-native .pl-cv-line {
+	display: flex;
+	font-family: var(--sl-font-mono);
+	font-size: 12px;
+	line-height: 1.6;
+	white-space: pre;
+	color: #e1e4e8;
+}
+
+.pl-native .pl-cv-gutter {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.25rem;
+	flex-shrink: 0;
+	min-width: 2.5em;
+	padding-right: 0.5rem;
+	border-right: 1px solid oklch(0.28 0 0);
+	color: oklch(0.45 0 0);
+	user-select: none;
+}
+
+.pl-native .pl-cv-ln {
+	text-align: right;
+}
+
+/* Lint-gutter dot: green, faded — a passing assertion is the baseline.
+   Failing assertions get the full-opacity red error marker. */
+.pl-native .pl-cv-dot {
+	width: 0.375rem;
+	height: 0.375rem;
+	border-radius: 9999px;
+	background: #34d399;
+	opacity: 0.4;
+}
+
+.pl-native .pl-cv-dot--error {
+	background: var(--destructive);
+	opacity: 1;
+}
+
+/* Failing assertion line: the red tint the real viewer shows. */
+.pl-native .pl-cv-line--error {
+	background: color-mix(in oklab, var(--destructive) 12%, transparent);
+	box-shadow: inset 2px 0 0 var(--destructive);
+}
+
+.pl-native .pl-cv-text {
+	padding-left: 0.75rem;
+	color: #e1e4e8;
+}
+
+/* GitHub-dark token colors, verbatim from CodeViewer.tsx. */
+.pl-native .pl-tok-kw { color: #f97583; }
+.pl-native .pl-tok-str { color: #9ecbff; }
+.pl-native .pl-tok-num { color: #79b8ff; }
+.pl-native .pl-tok-fn { color: #b392f0; }
+.pl-native .pl-tok-cmt { color: #6a737d; font-style: italic; }
+.pl-native .pl-tok-api { color: #ffa657 !important; font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+	.pl-native .animate-pulse,
+	.pl-native .transition-colors,
+	.pl-native .transition-transform {
+		animation: none;
+		transition: none;
+	}
+}
+
+/* ── App shell (dashboard-shell.tsx + ui/sidebar.tsx, inset variant) ── */
+
+/* Extra utilities used by the shell port. */
+.pl-native .h-12 { height: 3rem; }
+.pl-native .h-14 { height: 3.5rem; }
+.pl-native .size-3 { width: 0.75rem; height: 0.75rem; }
+.pl-native .size-4 { width: 1rem; height: 1rem; }
+.pl-native .size-4\.5 { width: 1.125rem; height: 1.125rem; }
+.pl-native .w-64 { width: 16rem; }
+.pl-native .overflow-y-auto { overflow-y: auto; }
+.pl-native .border-border\/60 { border-color: color-mix(in oklab, var(--border) 60%, transparent); }
+.pl-native .bg-background\/80 { background-color: color-mix(in oklab, var(--background) 80%, transparent); }
+.pl-native .backdrop-blur-md { backdrop-filter: blur(12px); }
+.pl-native .bg-sidebar { background-color: var(--sidebar); }
+.pl-native .bg-sidebar-accent { background-color: var(--sidebar-accent); }
+.pl-native .text-sidebar-foreground { color: var(--sidebar-foreground); }
+.pl-native .border-sidebar-border { border-color: var(--sidebar-border); }
+.pl-native .border-primary { border-color: var(--primary); }
+.pl-native .sticky { position: sticky; }
+.pl-native .top-0 { top: 0; }
+.pl-native .z-30 { z-index: 30; }
+.pl-native .z-50 { z-index: 50; }
+.pl-native .decoration-muted-foreground\/40 { text-decoration-color: color-mix(in oklab, var(--muted-foreground) 40%, transparent); }
+.pl-native .underline { text-decoration-line: underline; }
+.pl-native .underline-offset-2 { text-underline-offset: 2px; }
+
+/* The inset sidebar: gutter fill + floating panel with ring and shadow
+   (ui/sidebar.tsx sidebar-inner, inset variant). */
+.pl-native .pl-sidebar {
+	width: 16rem;
+	flex-shrink: 0;
+	padding: 0.5rem;
+	background: var(--sidebar);
+}
+
+.pl-native .pl-sidebar__inner {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+	border-right: 1px solid var(--sidebar-border);
+	box-shadow: 0 0 0 1px var(--sidebar-ring), 6px 0 16px -12px rgb(0 0 0 / 55%);
+	background: var(--sidebar);
+}
+
+/* Real SidebarGroup is p-2. */
+.pl-native .pl-sb-group {
+	padding: 0.5rem;
+}
+
+/* Group label (SidebarGroupLabel). */
+.pl-native .pl-sb-group-label {
+	display: flex;
+	height: 2rem;
+	flex-shrink: 0;
+	align-items: center;
+	padding-inline: 0.5rem;
+	font-size: 12px;
+	color: color-mix(in oklab, var(--sidebar-foreground) 70%, transparent);
+}
+
+/* Menu button (sidebarMenuButtonVariants, default size). */
+.pl-native .pl-sb-button {
+	display: flex;
+	width: 100%;
+	height: 2.75rem;
+	align-items: center;
+	gap: 0.75rem;
+	overflow: hidden;
+	padding: 0.75rem;
+	text-align: left;
+	font-size: 14px;
+	color: var(--sidebar-foreground);
+	transition: background-color 200ms ease, color 200ms ease;
+	cursor: pointer;
+	background: none;
+	border: none;
+	border-left: 2px solid transparent;
+}
+
+.pl-native .pl-sb-button:hover {
+	background: var(--sidebar-accent);
+}
+
+.pl-native .pl-sb-button--active {
+	background: var(--sidebar-accent);
+	border-left: 2px solid var(--primary);
+	font-weight: 500;
+}
+
+.pl-native .pl-sb-button--dead {
+	cursor: default;
+	color: color-mix(in oklab, var(--sidebar-foreground) 35%, transparent);
+}
+
+.pl-native .pl-sb-button--dead:hover {
+	background: none;
+}
+
+.pl-native .pl-sb-button span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Vertical separator (ui/separator). */
+.pl-native .pl-vsep {
+	align-self: stretch;
+	width: 1px;
+	background: var(--border);
+}
+
+/* Brand mark: the signal sphere SVG the app uses. */
+.pl-native .pl-brandmark {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	color: var(--foreground);
+	text-decoration: none;
+}
+
+.pl-native .pl-brandmark img {
+	width: 1.5rem;
+	height: 1.5rem;
+}
+
+/* ── Trace workspace utilities (TraceWorkspace/TraceTree ports) ──────── */
+
+.pl-native .px-2\.5 { padding-inline: 0.625rem; }
+.pl-native .py-2 { padding-block: 0.5rem; }
+.pl-native .pl-8 { padding-left: 2rem; }
+.pl-native .pr-3 { padding-right: 0.75rem; }
+.pl-native .pt-0\.5 { padding-top: 0.125rem; }
+.pl-native .pt-1 { padding-top: 0.25rem; }
+.pl-native .pb-2 { padding-bottom: 0.5rem; }
+.pl-native .gap-0\.5 { gap: 0.125rem; }
+.pl-native .gap-x-2 { column-gap: 0.5rem; }
+.pl-native .w-4 { width: 1rem; }
+.pl-native .w-1\.5 { width: 0.375rem; }
+.pl-native .w-px { width: 1px; }
+.pl-native .h-0\.5 { height: 0.125rem; }
+.pl-native .left-2\.5 { left: 0.625rem; }
+.pl-native .top-3\.5 { top: 0.875rem; }
+.pl-native .bottom-0 { bottom: 0; }
+.pl-native .top-0 { top: 0; }
+.pl-native .z-10 { z-index: 10; }
+.pl-native .border-border\/70 { border-color: color-mix(in oklab, var(--border) 70%, transparent); }
+.pl-native .border-border\/60 { border-color: color-mix(in oklab, var(--border) 60%, transparent); }
+.pl-native .bg-border\/40 { background-color: color-mix(in oklab, var(--border) 40%, transparent); }
+.pl-native .bg-muted\/30 { background-color: color-mix(in oklab, var(--muted) 30%, transparent); }
+.pl-native .bg-muted\/15 { background-color: color-mix(in oklab, var(--muted) 15%, transparent); }
+.pl-native .hover\:bg-muted\/15:hover { background-color: color-mix(in oklab, var(--muted) 15%, transparent); }
+.pl-native .border-l-foreground\/40 { border-left-color: color-mix(in oklab, var(--foreground) 40%, transparent); }
+.pl-native .text-blue-400 { color: #60a5fa; }
+.pl-native .bg-blue-400\/10 { background-color: rgb(96 165 250 / 10%); }
+.pl-native .bg-blue-400\/40 { background-color: rgb(96 165 250 / 40%); }
+.pl-native .text-amber-400 { color: #fbbf24; }
+.pl-native .bg-amber-400\/10 { background-color: rgb(251 191 36 / 10%); }
+.pl-native .bg-amber-400\/40 { background-color: rgb(251 191 36 / 40%); }
+.pl-native .duration-200 { transition-duration: 200ms; }
+.pl-native .max-w-\\[120px\\] { max-width: 120px; }
+.pl-native .space-y-2 > * + * { margin-top: 0.5rem; }
+.pl-native .items-start { align-items: flex-start; }
+.pl-native .w-40 { width: 10rem; }
+.pl-native .w-28 { width: 7rem; }
+.pl-native .gap-3 { gap: 0.75rem; }
+.pl-native .border-l { border-left-width: 1px; border-left-style: solid; border-left-color: var(--border); }
+.pl-native .border-l-transparent { border-left-color: transparent; }
+.pl-native .border-t { border-top-width: 1px; border-top-style: solid; border-top-color: var(--border); }
+.pl-native .w-2\.5 { width: 0.625rem; }
+.pl-native .h-2\.5 { height: 0.625rem; }
+.pl-native .p-3 { padding: 0.75rem; }
+.pl-native .p-6 { padding: 1.5rem; }
+
+/* Search input focus ring token. */
+.pl-native .focus\:border-ring:focus { border-color: var(--ring); }
+
+/* Line-variant tabs (ui/tabs TabsList variant="line"): transparent
+   triggers, active gets foreground text + a bottom underline. */
+.pl-native .pl-linetabs {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+	margin-bottom: -1px;
+}
+
+.pl-native .pl-linetab {
+	position: relative;
+	display: inline-flex;
+	height: 1.75rem;
+	align-items: center;
+	padding: 0 0.375rem;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--muted-foreground);
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: color 200ms ease;
+}
+
+.pl-native .pl-linetab:hover {
+	color: var(--foreground);
+}
+
+.pl-native .pl-linetab--active {
+	color: var(--foreground);
+}
+
+.pl-native .pl-linetab--active::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: -1px;
+	height: 2px;
+	background: var(--foreground);
+}
+
+/* Collapsed (icon-rail) sidebar — ui/sidebar collapsible="icon" shape. */
+.pl-native .pl-sidebar--collapsed {
+	/* Real icon mode: 4rem rail = 8px gutters + 48px panel; 36px buttons
+	   center with breathing room (ui/sidebar collapsible=icon). */
+	width: 4rem;
+}
+
+.pl-native .pl-sidebar--collapsed .pl-sb-group-label {
+	visibility: hidden;
+	height: 0.5rem;
+}
+
+.pl-native .pl-sidebar--collapsed .pl-sb-button {
+	justify-content: center;
+	gap: 0;
+	padding: 0;
+	height: 2.25rem;
+	width: 2.25rem;
+	align-self: center;
+	margin-inline: auto;
+}
+
+/* Groups keep their padding so the icons optically align with the open
+   sidebar's rows, minus the (hidden) label height. */
+.pl-native .pl-sidebar--collapsed .pl-sb-group {
+	padding: 0.5rem 0.25rem;
+}
+
+/* Icon mode hides the label span, exactly like ui/sidebar's
+   [&>span:last-child]:hidden under collapsible=icon. */
+.pl-native .pl-sidebar--collapsed .pl-sb-button span {
+	display: none;
+}
+
+.pl-native .opacity-0 { opacity: 0; }
+
+/* Conversation transcript port utilities. */
+.pl-native .rounded { border-radius: 0.25rem !important; }
+.pl-native .min-h-\\[52px\\] { min-height: 52px; }
+.pl-native .min-w-16 { min-width: 4rem; }
+.pl-native .max-h-\\[calc(100vh-400px\\)\\] { max-height: calc(100vh - 400px); }
+.pl-native .min-h-\\[200px\\] { min-height: 200px; }
+.pl-native .border-border\\/40 { border-color: color-mix(in oklab, var(--border) 40%, transparent); }
+.pl-native .bg-background\\/30 { background-color: color-mix(in oklab, var(--background) 30%, transparent); }
+.pl-native .bg-card\\/70 { background-color: color-mix(in oklab, var(--card) 70%, transparent); }
+.pl-native .ml-16 { margin-left: 4rem; }
+.pl-native .py-2\\.5 { padding-block: 0.625rem; }
+.pl-native .transition-none { transition: none; }
+
+/* ── Mobile shell (< 56.25rem): reflow, don't shrink ───────────────────
+   At native scale the desktop frame (fixed-height window, h-14 breadcrumb,
+   min-width run header) becomes a nested-scroll trap. On phones the app
+   fills the viewport height and each page scrolls inside it like the real
+   mobile web app would. */
+@media (max-width: 56.25rem) {
+	.pl-native .pl-appwin-frame {
+		height: auto;
+	}
+
+	.pl-native.pl-appwin {
+		height: 75vh !important;
+		min-height: 560px;
+	}
+
+	.pl-native.pl-appwin > nav {
+		padding-inline: 0.75rem;
+	}
+
+	.pl-native.pl-appwin > div {
+		flex-direction: column;
+	}
+
+	/* Phones don't need the app's own sidebar: the tour tabs above the
+	   window already carry navigation, and the icon strip reads as noise. */
+	.pl-native .pl-sidebar {
+		display: none;
+	}
+
+	.pl-appwin main header {
+		height: auto;
+		min-height: 2.5rem;
+		flex-wrap: wrap;
+		padding-inline: 0.75rem;
+	}
+
+	/* Run header: stack breadcrumb above title, meta wraps */
+	.pl-appwin main .lg\\:flex-row {
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.pl-appwin main .lg\\:items-start {
+		align-items: stretch;
+	}
+
+
+	/* Run header action buttons wrap below the meta */
+	.pl-appwin main .flex.flex-wrap.gap-2 {
+		flex-wrap: wrap;
+	}
+
+	/* OutcomeSummary: rate row above the bar on phones */
+	.pl-appwin main .sm\\:flex-row {
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.pl-appwin main .sm\\:items-center {
+		align-items: flex-start;
+	}
+
+	.pl-appwin main .sm\\:flex-col {
+		flex-direction: row;
+		align-items: baseline;
+		gap: 0.5rem;
+	}
+
+	/* Run-detail tab strip scrolls horizontally (it already has overflow-x) */
+
+	/* The trace workspace stacks: nav pane full-width, detail below */
+	.pl-native .pl-tracenav {
+		width: 100% !important;
+		height: 42%;
+		border-right: none;
+		border-bottom: 1px solid var(--border);
+	}
+
+	/* History table scrolls horizontally inside its panel */
+	.pl-appwin main table {
+		display: block;
+		overflow-x: auto;
+		white-space: nowrap;
+	}
+
+	/* Checks summary line wraps instead of squeezing */
+
+	/* Code scrolls horizontally inside its own box, like every mobile
+	   code viewer; no wrapping into multi-line strings. */
+	.pl-native .pl-codeviewer {
+		-webkit-overflow-scrolling: touch;
+	}
+
+	/* Verify page: long test ids, the meta line, and the summary chips
+	   truncate or nowrap instead of wrapping into noise lines. */
+
+
+
+
+	/* The meta line ("Model … Effort … batch …") scrolls horizontally as
+	   one strip instead of wrapping to four lines. */
+
+	/* Judge quotes read fine wrapped, but clamp to 3 lines on phones */
+
+	/* Run header action buttons stay one line */
+}

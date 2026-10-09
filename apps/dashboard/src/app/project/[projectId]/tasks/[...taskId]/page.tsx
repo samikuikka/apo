@@ -120,8 +120,11 @@ export default async function TaskDetailPage({
     // TASK_RUN_HISTORY_LIMIT rows. Facets feed the control menus and are
     // best-effort (a facets failure must not blank the run history). The
     // project read feeds the run-delete role gate (best-effort too).
+    // The task lookup is also best-effort: inventory is replaced on every
+    // source sync, so a renamed/moved/removed task must not hide the run
+    // evidence that still exists for it.
     const [resolved, scoped, facetResult, project] = await Promise.all([
-      getProjectAgentTask(projectId, taskId),
+      getProjectAgentTask(projectId, taskId).catch(() => null),
       listTaskRuns(taskId, projectId, cohort, TASK_RUN_HISTORY_LIMIT),
       fetchTaskViewConfigFacets(projectId).catch(() => []),
       getProject(projectId).catch(() => null),
@@ -154,9 +157,30 @@ export default async function TaskDetailPage({
     );
   }
 
-  if (!task) return null;
+  // Off-catalog task with no recorded runs — a genuine dead end.
+  if (!task && taskRuns.length === 0) {
+    return (
+      <div className="mx-auto w-full max-w-6xl flex flex-col">
+        <div className="border-b border-border px-6 py-5">
+          <Link
+            href={`/project/${projectId}/tasks`}
+            className="text-[12px] text-muted-foreground hover:text-foreground"
+          >
+            &larr; Tasks
+          </Link>
+        </div>
+        <div className="mx-6 mt-4 rounded-md border border-border bg-card px-4 py-3 text-[13px] text-muted-foreground">
+          Task not found in the project catalog, and no runs were recorded
+          for it. It may have been removed or renamed in the task source.
+        </div>
+      </div>
+    );
+  }
 
-  const fileCount = (task.has_checks ? 1 : 0) + 1;
+  // Off-catalog task that still has run history — show the evidence.
+  const inCatalog = task !== null;
+  const displayName = task ? task.display_name : taskId;
+  const fileCount = task ? (task.has_checks ? 1 : 0) + 1 : 0;
 
   return (
     <div className="mx-auto w-full max-w-6xl flex flex-col">
@@ -170,12 +194,20 @@ export default async function TaskDetailPage({
         </Link>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-3">
           <FolderOpen className="h-4 w-4 shrink-0 text-primary" />
-          <h1 className="min-w-0 truncate text-[20px] font-semibold tracking-tight">{task.display_name}</h1>
-          <Badge variant="outline" className="text-[10px]">{task.adapter_name}</Badge>
+          <h1 className="min-w-0 truncate text-[20px] font-semibold tracking-tight">{displayName}</h1>
+          {task ? (
+            <Badge variant="outline" className="text-[10px]">{task.adapter_name}</Badge>
+          ) : (
+            <Badge variant="outline" className="text-[10px]">removed from catalog</Badge>
+          )}
         </div>
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className="font-mono text-[10px]">{task.folder_path || "(root)"}</Badge>
-          <Badge variant="outline" className="text-[10px]">{fileCount} files</Badge>
+          {task ? (
+            <>
+              <Badge variant="outline" className="font-mono text-[10px]">{task.folder_path || "(root)"}</Badge>
+              <Badge variant="outline" className="text-[10px]">{fileCount} files</Badge>
+            </>
+          ) : null}
           <Badge variant="outline" className="text-[10px]">
             {scopeActive
               ? taskRuns.length === TASK_RUN_HISTORY_LIMIT
@@ -187,6 +219,14 @@ export default async function TaskDetailPage({
           </Badge>
         </div>
       </div>
+
+      {!inCatalog ? (
+        <div className="border-b border-warning/30 bg-warning/10 px-6 py-3 text-[13px] text-warning">
+          This task is no longer in the project catalog (removed or renamed in
+          the task source). Its recorded runs are shown below; task files are
+          unavailable.
+        </div>
+      ) : null}
 
       {/* Run-history scope: the shared filter bar in its own strip, hosted the
           same way the Tasks and Runs pages host it. The bar reads the search
@@ -206,12 +246,14 @@ export default async function TaskDetailPage({
         <div className="border-b border-border px-6">
           <TabsList className="h-10 bg-card">
             <TabsTrigger value="runs" className="px-4 text-[13px]">Task Run History</TabsTrigger>
-            <TabsTrigger value="files" className="px-4 text-[13px]">
-              Files
-              <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0">
-                {fileCount}
-              </Badge>
-            </TabsTrigger>
+            {inCatalog ? (
+              <TabsTrigger value="files" className="px-4 text-[13px]">
+                Files
+                <Badge variant="outline" className="ml-1.5 text-[10px] px-1.5 py-0">
+                  {fileCount}
+                </Badge>
+              </TabsTrigger>
+            ) : null}
           </TabsList>
         </div>
 
@@ -219,12 +261,14 @@ export default async function TaskDetailPage({
           <TaskRunHistory runs={taskRuns} canDelete={canDeleteRuns} />
         </TabsContent>
 
-        <TabsContent value="files" className="mt-0 p-6">
-          <TaskFileBrowser
-            taskId={taskId}
-            projectId={projectId}
-          />
-        </TabsContent>
+        {inCatalog ? (
+          <TabsContent value="files" className="mt-0 p-6">
+            <TaskFileBrowser
+              taskId={taskId}
+              projectId={projectId}
+            />
+          </TabsContent>
+        ) : null}
       </Tabs>
     </div>
   );

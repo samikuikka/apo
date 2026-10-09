@@ -82,11 +82,19 @@ export const syncProjectTaskSource = (
     method: "POST",
   });
 
-/** Bounded first-run signal: scalar progress counts + public origin. */
+/** Bounded first-run signal: scalar progress counts + public origin.
+ *  Optional fields are newer additions — older backends omit them and
+ *  callers must tolerate their absence (the onboarding timeline falls
+ *  back to its own probe when has_cli_key is missing). */
 export interface ProjectOnboardingStatus {
   published_task_count: number;
   recorded_run_count: number;
   public_url: string | null;
+  /** True when a scope="full" key exists — what `apo login` mints. */
+  has_cli_key?: boolean;
+  has_traces?: boolean;
+  trace_count?: number;
+  latest_trace_service?: string | null;
 }
 
 export const getProjectOnboardingStatus = (

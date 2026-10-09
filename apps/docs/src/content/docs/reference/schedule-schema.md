@@ -38,7 +38,7 @@ Schedules are created and updated via the backend API (`POST` / `PATCH` `/v1/age
 
 `PATCH /v1/agent-task-schedules/{schedule_id}`
 
-Same fields as create, except `project` and `selection_type` are not accepted. Every field is optional, only the fields you send are updated.
+Same fields as create, except `project`, `selection_type`, and `selection` are not accepted. The typed `selection` is set once at create time and cannot be re-pointed over PATCH — to change what a source-owned schedule selects, delete it and create a new one. Every field is optional, only the fields you send are updated.
 
 ## Response: `AgentTaskScheduleSummary`
 
@@ -91,6 +91,14 @@ retarget existing schedules. An offline Pool is valid: Runs queue until the
 schedule's TTL. An archived Pool pauses the schedule with
 `disabled_reason: "executor_pool_archived"`; choose another Pool explicitly,
 then resume the schedule.
+
+A schedule whose selection no longer matches any task in the catalog (its
+task was removed or renamed in the task source) pauses itself at trigger
+time with `disabled_reason: "selection_empty"` instead of failing every
+night. Re-point the selection at a task that exists, then resume the
+schedule. Removing a task from the catalog also prunes any adaptive (SM-2)
+state it had, so it cannot keep a schedule firing or stall it from the
+grave.
 
 ## Adaptive cadence
 

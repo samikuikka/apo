@@ -14,8 +14,9 @@
 import "../styles/custom.css";
 import { SignalSphereIsland } from "../components/brand/SignalSphereIsland.tsx";
 import CopyPromptButton from "../components/CopyPromptButton.astro";
-import RunDetailMock from "../components/RunDetailMock.astro";
-import LandingFeatures from "../components/LandingFeatures.astro";
+import { CapabilityShowcase } from "../components/app-demo/CapabilityShowcase.tsx";
+import "../components/app-demo/prototype-landing.css";
+import "../components/app-demo/native.css";
 import { docsSections, docsHref } from "../lib/docs-navigation";
 
 const GITHUB_URL = "https://github.com/samikuikka/apo";
@@ -25,9 +26,9 @@ const COPY_PROMPT_TEXT =
 // Open Graph / Twitter card metadata. The preview image is generated at build
 // time by src/pages/og-landing.png.ts, see that file for the design. Keep these
 // in sync with the <title>/<meta description> below (single source via consts).
-const PAGE_TITLE = "apo, Executable specifications for harness engineering";
+const PAGE_TITLE = "apo — testing for AI agents";
 const PAGE_DESCRIPTION =
-	"Turn expert knowledge into executable capability specifications. Run the real harness, return pass or fail with evidence, and give coding agents the feedback to improve it.";
+	"apo is a testing framework for AI agents. Define what your agent must be able to do, run it, and get pass or fail with evidence.";
 const OG_IMAGE = new URL("/og-landing.png", Astro.site).href;
 const CANONICAL = new URL("/", Astro.site).href;
 ---
@@ -44,7 +45,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
-			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans:wght@400;500;600;700&display=swap"
 			rel="stylesheet"
 		/>
 		{/* Open Graph, what Facebook, LinkedIn, Slack, etc. render. */}
@@ -143,7 +144,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 							Define done. Engineer until it holds.
 						</h1>
 						<p class="landing-hero__sub">
-							Turn expert knowledge into executable specifications. Apo runs the real harness and gives coding agents the verdict and evidence to improve it.
+							apo is a testing framework for AI agents. Define what your agent must be able to do, run it, and get pass or fail with evidence.
 						</p>
 						<div class="landing-cta">
 							<CopyPromptButton text={COPY_PROMPT_TEXT} />
@@ -159,7 +160,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 										d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.7.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"
 									/>
 								</svg>
-								<span>Star on GitHub</span>
+								<span>GitHub</span>
 							</a>
 						</div>
 					</div>
@@ -169,24 +170,10 @@ const CANONICAL = new URL("/", Astro.site).href;
 				</div>
 			</section>
 
-			<!-- The operating model comes before the category map: first make the
-			     specification-and-loop relationship concrete, then explain where apo fits. -->
+		<!-- The product, live: the real interface on a scripted fixture. -->
 			<section class="landing-section landing-section--bordered">
-				<div class="landing-container">
-					<h2 class="landing-section__heading">Expert judgment becomes the feedback loop.</h2>
-					<p class="landing-section__sub">
-						Your experts define what done means. Apo runs and judges the real harness. Coding agents use the evidence to improve it.
-					</p>
-					<video
-						class="landing-video"
-						src="/video/the-loop.mp4"
-						poster="/video/the-loop-poster.png"
-						muted
-						loop
-						playsinline
-						preload="none"
-						data-landing-video
-					></video>
+				<div class="landing-container landing-container--wide">
+					<CapabilityShowcase client:load />
 				</div>
 			</section>
 
@@ -246,24 +233,6 @@ const CANONICAL = new URL("/", Astro.site).href;
 				</div>
 			</section>
 
-			<!-- The product -->
-			<section class="landing-section landing-section--bordered">
-				<div class="landing-container">
-					<h2 class="landing-section__heading">Pass or fail, with evidence.</h2>
-					<p class="landing-section__sub">
-						Open a test to see what apo checked.
-					</p>
-					<RunDetailMock />
-				</div>
-			</section>
-
-			<!-- Features -->
-			<section class="landing-section landing-section--bordered">
-				<div class="landing-container">
-					<LandingFeatures />
-				</div>
-			</section>
-
 		</main>
 
 		<footer class="landing-footer">
@@ -289,25 +258,6 @@ const CANONICAL = new URL("/", Astro.site).href;
 				});
 			}
 
-			// The loop video: muted ambient playback while on screen, still and
-			// controllable under reduced motion.
-			const video = document.querySelector<HTMLVideoElement>("[data-landing-video]");
-			if (video) {
-				if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-					video.controls = true;
-				} else {
-					onVisible(video, (state) => {
-						if (state === "visible") {
-							void video.play().catch(() => {
-								// Autoplay was refused; fall back to manual controls.
-								video.controls = true;
-							});
-						} else {
-							video.pause();
-						}
-					});
-				}
-			}
 		</script>
 	</body>
 </html>
@@ -540,14 +490,6 @@ const CANONICAL = new URL("/", Astro.site).href;
 		color: var(--sl-color-accent-high, #4ade80);
 	}
 
-	.landing-video {
-		display: block;
-		width: 100%;
-		max-width: 960px;
-		margin: 0 auto;
-		background: var(--sl-color-black);
-		border: 1px solid var(--sl-color-gray-5);
-	}
 
 	/* Staggered reveal, same idiom as the features bento. */
 	.cat {

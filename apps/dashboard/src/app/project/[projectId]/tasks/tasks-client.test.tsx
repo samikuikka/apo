@@ -352,3 +352,4 @@ describe("AgentTasksClient — active view tab in the URL", () => {
     expect(screen.queryByText("scoped to this view")).not.toBeInTheDocument();
   });
 });
+

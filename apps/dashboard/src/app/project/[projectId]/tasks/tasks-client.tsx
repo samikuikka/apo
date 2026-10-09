@@ -12,11 +12,13 @@ import type { ProjectTaskSource } from "@/lib/projects-api";
 import type { ProjectFirstRunSetup } from "@/lib/first-run";
 
 import { EvidenceViewsBar } from "./components/EvidenceViewsBar";
+import { EmptyStatePrototype } from "./components/empty-state-prototype/empty-prototype";
 import { FolderList } from "./components/FolderList";
 import { ProjectFirstRun } from "./components/ProjectFirstRun";
 import { SelectionActionBar } from "./components/SelectionActionBar";
 import { TasksToolbar } from "./components/TasksToolbar";
 import { useEvidenceViews } from "./components/use-evidence-views";
+import { ViewsPrototype } from "./components/views-prototype/views-prototype";
 import { fetchTaskHostFacets } from "@/lib/agent-task-view-api";
 import { useTaskSelection } from "./components/use-task-selection";
 import { useTaskRunActions } from "./components/use-task-run-actions";
@@ -229,9 +231,34 @@ export function AgentTasksClient({
     !showFirstRun &&
     (taskSource === null || sourceNeedsAttention);
 
+  // PROTOTYPE (throwaway): ?empty= replaces the page-level empty states
+  // with the empty-state prototype variants — never a real task list, never
+  // an error state. Once tasks exist the same component mounts as a banner
+  // ABOVE the real list (density="banner") so the journey stays visible
+  // without masking anything. Goes away with components/empty-state-prototype/.
+  const emptyProtoParam = searchParams.get("empty");
+  const sceneParam = searchParams.get("scene");
+  const protoAllowed = emptyProtoParam !== null && !error && !isDemoProject;
+  const showEmptyPrototype = protoAllowed && tasks.length === 0;
+  const showEmptyBanner = protoAllowed && tasks.length > 0;
+
+  // PROTOTYPE (throwaway): ?vproto= swaps the views chrome (evidence-views
+  // tabs + filter row) and the task list for the views-prototype variants.
+  // Real data in, read-only out — variants manage view state locally and
+  // never write a saved view. Goes away with components/views-prototype/.
+  const viewsProtoParam = searchParams.get("vproto");
+  const showViewsProto =
+    viewsProtoParam !== null && !error && !isDemoProject && tasks.length > 0;
+
   return (
     <div className="flex flex-col">
-      {editingSource && taskSource && !isDemoProject ? (
+      {showEmptyPrototype ? (
+        <EmptyStatePrototype
+          variantKey={emptyProtoParam}
+          sceneKey={sceneParam}
+          projectId={projectId}
+        />
+      ) : editingSource && taskSource && !isDemoProject ? (
         <div className="border-b border-border px-6 py-10">
           <div className="mx-auto max-w-2xl">
             <Button
@@ -256,6 +283,14 @@ export function AgentTasksClient({
         </div>
       ) : (
         <>
+          {showEmptyBanner && (
+            <EmptyStatePrototype
+              variantKey={emptyProtoParam}
+              sceneKey={sceneParam}
+              projectId={projectId}
+              density="banner"
+            />
+          )}
           <TasksToolbar
             taskSource={taskSource}
             isDemoProject={isDemoProject}
@@ -268,6 +303,27 @@ export function AgentTasksClient({
             onSync={handleSync}
             onRun={handleRun}
           />
+          {showViewsProto ? (
+            <ViewsPrototype
+              variantKey={viewsProtoParam ?? "cur"}
+              projectId={projectId}
+              tasks={tasks}
+              facets={facets}
+              seedViews={views
+                .filter((v) => v.id !== MAIN_VIEW_ID)
+                .map((v) => ({
+                  id: v.id,
+                  label: v.label,
+                  cohort: {
+                    model: v.model,
+                    effort: v.effort,
+                    since: v.since,
+                    provider: v.provider,
+                  },
+                }))}
+            />
+          ) : (
+            <>
           {tasks.length > 0 && (
             <EvidenceViewsBar
               hostFacets={hostFacets}
@@ -350,6 +406,8 @@ export function AgentTasksClient({
           onCompare={handleCompare}
         />
       )}
+            </>
+          )}
         </>
       )}
     </div>
