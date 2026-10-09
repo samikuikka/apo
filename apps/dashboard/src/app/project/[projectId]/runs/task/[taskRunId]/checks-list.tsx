@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { CheckResult, TaskFileContentResponse } from "@/lib/agent-task-api";
 import { usePersistentStringSet } from "@/hooks/use-persistent-string-set";
 import { useUrlParam } from "@/hooks/use-url-state";
@@ -56,8 +57,8 @@ export function ChecksList({
     const items = segment.kind === "check" ? [segment.check] : segment.checks;
     for (const item of items) {
       indexByGroupId.set(item.id, counter++);
-      if (segment.kind === "group" && item.id != null) {
-        groupByCheckId.set(String(item.id), segment.groupId);
+      if (segment.kind === "group") {
+        groupByCheckId.set(item.id, segment.groupId);
       }
     }
   }
@@ -70,6 +71,56 @@ export function ChecksList({
     groupByCheckId.get(parseCheckIdFromAssertionParam(assertionParam) ?? "") ??
     null;
 
+  // A link-opened group stays open for the rest of the visit — closing the
+  // assertion drawer must not yank shut what the reader was reading — until
+  // the user collapses it; a dismissal beats the link that opened. Reset
+  // when the task changes: group ids from another task's checks file mean
+  // nothing here.
+  const [linkOpened, setLinkOpened] = useState<Set<string>>(() => new Set());
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    setLinkOpened(new Set());
+    setDismissed(new Set());
+  }, [taskId]);
+  useEffect(() => {
+    if (!forcedOpenGroupId) return;
+    // A fresh link into a dismissed group re-opens it: the reader asked for
+    // content inside it.
+    setLinkOpened((prev) => new Set(prev).add(forcedOpenGroupId));
+    setDismissed((prev) => {
+      if (!prev.has(forcedOpenGroupId)) return prev;
+      const next = new Set(prev);
+      next.delete(forcedOpenGroupId);
+      return next;
+    });
+  }, [forcedOpenGroupId]);
+
+  const isLinkOpen = (groupId: string) =>
+    (groupId === forcedOpenGroupId || linkOpened.has(groupId)) && !dismissed.has(groupId);
+
+  const handleToggleGroup = (groupId: string) => {
+    const openViaLink = isLinkOpen(groupId);
+    if (openViaLink && !openGroups.has(groupId)) {
+      // Collapsing a group the link opened is a view action for this visit
+      // only: the link wrote nothing to storage on the way in, so it must
+      // not delete anything on the way out.
+      setDismissed((prev) => new Set(prev).add(groupId));
+      return;
+    }
+    if (openViaLink) {
+      // Stored-open AND link-open: the collapse must beat the link too.
+      setDismissed((prev) => new Set(prev).add(groupId));
+    } else {
+      setDismissed((prev) => {
+        if (!prev.has(groupId)) return prev;
+        const next = new Set(prev);
+        next.delete(groupId);
+        return next;
+      });
+    }
+    toggleGroup(groupId);
+  };
+
   return (
     <>
       {segments.map((segment) => {
@@ -77,7 +128,7 @@ export function ChecksList({
           const idx = indexByGroupId.get(segment.check.id) ?? 0;
           return (
             <ExpandableCheckItem
-              key={`ch-${String(segment.check.id ?? idx)}`}
+              key={`ch-${segment.check.id}`}
               item={segment.check}
               index={idx}
               checksSource={checksSource}
@@ -93,8 +144,7 @@ export function ChecksList({
         const splitCount = segment.checks.filter(
           (c) => secondJudgeFacts(c).kind === "split",
         ).length;
-        const isOpen =
-          openGroups.has(segment.groupId) || segment.groupId === forcedOpenGroupId;
+        const isOpen = openGroups.has(segment.groupId) || isLinkOpen(segment.groupId);
         return (
           <div
             key={`grp-${segment.groupId}`}
@@ -106,14 +156,14 @@ export function ChecksList({
               total={total}
               cost={cost}
               open={isOpen}
-              onToggle={() => toggleGroup(segment.groupId)}
+              onToggle={() => handleToggleGroup(segment.groupId)}
               splitCount={splitCount}
             />
             {isOpen && (
               <div className="ml-4 border-l border-border/50">
                 {segment.checks.map((item) => (
                   <ExpandableCheckItem
-                    key={`ch-${String(item.id ?? indexByGroupId.get(item.id))}`}
+                    key={`ch-${item.id}`}
                     item={item}
                     index={indexByGroupId.get(item.id) ?? 0}
                     checksSource={checksSource}

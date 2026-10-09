@@ -90,6 +90,14 @@ describe("resolveJudgeWire", () => {
     expect(resolveJudgeWire({ model: "claude-sonnet-4-5" })).toBe("anthropic");
   });
 
+  it("an explicit non-Anthropic endpoint keeps the OpenAI-compatible wire for a bare claude-* model", () => {
+    // Otherwise a claude-* override on an OpenRouter-configured workspace
+    // would POST /v1/messages to openrouter.ai with the OpenRouter key.
+    expect(
+      resolveJudgeWire({ baseURL: "https://openrouter.ai/api/v1", model: "claude-sonnet-4-5" }),
+    ).toBe("openai-compatible");
+  });
+
   it("an OpenRouter-qualified anthropic id stays on the OpenAI-compatible wire", () => {
     expect(resolveJudgeWire({ model: "anthropic/claude-sonnet-4.5" })).toBe("openai-compatible");
   });
@@ -152,11 +160,15 @@ describe("resolveJudgeFromEnv precedence (loadTaskRuntime)", () => {
     });
   });
 
-  it("ANTHROPIC_AUTH_TOKEN serves as the anthropic key fallback", async () => {
+  it("ANTHROPIC_AUTH_TOKEN stays env-only so it authenticates as a bearer", async () => {
     vi.stubEnv("ANTHROPIC_MODEL", "claude-sonnet-4-5");
     vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "tok");
     const runtime = await loadTaskRuntime("/tmp");
-    expect(runtime.judge).toMatchObject({ apiKey: "tok", provider: "anthropic" });
+    // The token must not land in apiKey: an explicit config key is sent as
+    // x-api-key, which 401s for the OAuth-style token. Left unset, the env
+    // fallback in anthropicAuth sends it as Authorization: Bearer.
+    expect(runtime.judge).toMatchObject({ apiKey: undefined, provider: "anthropic" });
+    expect(anthropicAuth(runtime.judge?.apiKey)).toEqual({ apiKey: "tok", asBearer: true });
   });
 
   it("OPENROUTER_MODEL still wins when both are set", async () => {

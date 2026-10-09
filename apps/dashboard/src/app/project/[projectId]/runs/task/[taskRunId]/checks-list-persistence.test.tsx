@@ -12,6 +12,9 @@
  *    bit).
  * 5. Without a task id there is nothing durable to key on — toggling stays
  *    in-memory and no key is written.
+ * 6. A link-opened group can be collapsed for this visit (still no storage
+ *    write), survives closing the assertion drawer, and an explicit
+ *    re-expand persists like any user open.
  */
 
 import { describe, expect, it, vi, beforeAll, afterAll, beforeEach } from "vitest";
@@ -135,6 +138,40 @@ describe("ChecksList group persistence", () => {
     // group-beta was never stored, yet the deep link reveals its member.
     expect(screen.getByText("beta-1")).toBeInTheDocument();
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("collapses a link-opened group for this visit without touching storage", () => {
+    urlState.params = new URLSearchParams("assertion=beta-1::judge");
+    renderList();
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Beta suite" }));
+    expect(screen.queryByText("beta-1")).not.toBeInTheDocument();
+    // The link wrote nothing on the way in, so collapsing it must not
+    // delete anything either — storage stays untouched either way.
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("keeps a link-opened group open after the assertion drawer closes", () => {
+    urlState.params = new URLSearchParams("assertion=beta-1::judge");
+    const { rerender } = renderList();
+    expect(screen.getByText("beta-1")).toBeInTheDocument();
+
+    // Drawer close clears the param; the group the reader was reading
+    // stays open for the rest of the visit.
+    urlState.params = new URLSearchParams();
+    rerender(<ChecksList checks={checks} taskId="task-1" projectId="proj-1" />);
+    expect(screen.getByText("beta-1")).toBeInTheDocument();
+  });
+
+  it("persists a link-opened group only when the user re-expands it explicitly", () => {
+    urlState.params = new URLSearchParams("assertion=beta-1::judge");
+    renderList();
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Beta suite" }));
+    fireEvent.click(screen.getByRole("button", { name: "Expand Beta suite" }));
+    expect(screen.getByText("beta-1")).toBeInTheDocument();
+    // The explicit re-open is a user action and persists like any other.
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual(["group-beta"]);
   });
 
   it("stays in-memory when no task id is available (no key written)", () => {

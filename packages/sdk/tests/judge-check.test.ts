@@ -531,6 +531,20 @@ describe("t.judge temperature", () => {
     expect(result?.reasoning).toMatch(/judge\.temperature must be a number between 0 and 2, got 3/);
   });
 
+  it("caps the Anthropic Messages wire at 1 — its API rejects more", async () => {
+    // 1.5 is legal for chat-completions but a guaranteed 400 on /v1/messages,
+    // so it must be rejected before any request.
+    const { result, fetchMock } = await judgeErrorFor({
+      ...judgeConfig,
+      baseURL: "https://api.anthropic.com",
+      model: "claude-sonnet-4-5",
+      temperature: 1.5,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result?.assertions?.[0]?.outcome).toBe("error");
+    expect(result?.reasoning).toMatch(/judge\.temperature must be a number between 0 and 1, got 1\.5/);
+  });
+
   it("makes no request at all for a bad value when a second judge is configured", async () => {
     vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-test");
     vi.stubEnv("APO_JUDGE_TEMPERATURE", "5");

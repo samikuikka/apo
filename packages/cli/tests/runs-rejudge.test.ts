@@ -239,7 +239,6 @@ describe("runs rejudge command", () => {
     );
     const { errors, restore } = capture();
 
-    console.log("PROBE OR:", JSON.stringify(process.env.OPENROUTER_MODEL), "AN:", JSON.stringify(process.env.ANTHROPIC_MODEL));
     const code = await run([FULL_ID, "--backend", "http://backend.test"]);
     restore();
 

@@ -90,10 +90,8 @@ describe("ExpandableCheckItem corrections", () => {
   it("renders the Corrected badge and the amendment pointer with the reason on hover", () => {
     expand();
     expect(screen.getAllByText("Corrected").length).toBeGreaterThanOrEqual(1);
-    // the full reason rides along as the pointer's tooltip
     const pointer = screen.getByTitle(/Retention is present in the KPI table/);
     expect(pointer.textContent).toMatch(/Amended\s+FAIL → PASS/);
-    // original evidence still rendered
     expect(screen.getByText("judge missed the table")).toBeInTheDocument();
   });
 

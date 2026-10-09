@@ -113,7 +113,7 @@ export class RepetitionGuard {
   private tail = "";
   private lastChar = "";
   private charRun = 0;
-  private readonly periodRuns = new Array<number>(MAX_UNIT_CHARS + 1).fill(0);
+  private readonly periodRuns = Array.from({ length: MAX_UNIT_CHARS + 1 }, () => 0);
 
   // Low-diversity state: the current raw line, and the folded window built
   // from finished lines that are not tables.

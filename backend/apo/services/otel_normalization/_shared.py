@@ -31,7 +31,10 @@ VALID_OBSERVATION_TYPES = frozenset({
 # fallback (LiteLLM router, OpenRouter provider fallback) serves a different
 # model than requested; without the field the swap is invisible to pricing
 # and drift detection.
-NORMALIZER_VERSION = 10
+# v11: a generation's output keeps its tool calls and reasoning — messages
+# are dropped only when nothing renderable remains (previously rounds that
+# were "only" tool calls or thinking projected to an empty output).
+NORMALIZER_VERSION = 11
 
 
 @final
@@ -122,6 +125,15 @@ def get_json(attrs: dict[str, Any], key: str) -> Any:
 # ── message normalization ─────────────────────────────────────────────────
 
 
+def _stringify_args(raw_args: Any) -> str:
+    """Tool-call arguments as the string OpenAI-shape tool_calls carry."""
+    if isinstance(raw_args, str):
+        return raw_args
+    if isinstance(raw_args, (dict, list)):
+        return json.dumps(raw_args)
+    return "" if raw_args is None else str(raw_args)
+
+
 def _carry_openai_tool_fields(message: dict[str, Any], result: dict[str, Any]) -> None:
     """Copy OpenAI-shape tool fields that aren't expressed as content parts.
 
@@ -143,13 +155,7 @@ def _carry_openai_tool_fields(message: dict[str, Any], result: dict[str, Any]) -
             name = fn.get("name") or call.get("name")
             if not isinstance(name, str) or not name:
                 continue
-            raw_args = fn.get("arguments", call.get("arguments", ""))
-            if isinstance(raw_args, str):
-                args_str = raw_args
-            elif isinstance(raw_args, (dict, list)):
-                args_str = json.dumps(raw_args)
-            else:
-                args_str = "" if raw_args is None else str(raw_args)
+            args_str = _stringify_args(fn.get("arguments", call.get("arguments", "")))
             carried.append({
                 "id": call.get("id", ""),
                 "type": "function",
@@ -180,8 +186,9 @@ def normalize_genai_message(message: dict[str, Any]) -> dict[str, Any]:
     if isinstance(raw_content, list) and not isinstance(parts, list):
         parts = raw_content
 
-    # Simple string content — no parts to parse.
-    if isinstance(raw_content, str) and not isinstance(parts, list):
+    # Simple string content — only a non-empty parts list carries richer
+    # structure; an empty one must not swallow the string.
+    if isinstance(raw_content, str) and not (isinstance(parts, list) and parts):
         result["content"] = raw_content
         _carry_openai_tool_fields(message, result)
         return result
@@ -208,19 +215,14 @@ def normalize_genai_message(message: dict[str, Any]) -> dict[str, Any]:
                 )
                 if reasoning:
                     reasoning_parts.append(reasoning)
-            # Tool call. Two shapes:
+            # Tool call. Three shapes:
             #   - AI SDK v4+ / OpenAI: {type:"tool-call", toolCallId, toolName, input}
             #   - older / normalized:  {type:"tool_call", id, name, arguments}
-            elif part_type in ("tool_call", "tool-call"):
+            #   - Anthropic native:    {type:"tool_use", id, name, input}
+            elif part_type in ("tool_call", "tool-call", "tool_use"):
                 name = part.get("toolName") or part.get("name") or ""
                 if isinstance(name, str) and name:
-                    raw_args = part.get("input", part.get("arguments", ""))
-                    if isinstance(raw_args, str):
-                        args_str = raw_args
-                    elif isinstance(raw_args, (dict, list)):
-                        args_str = json.dumps(raw_args)
-                    else:
-                        args_str = str(raw_args)
+                    args_str = _stringify_args(part.get("input", part.get("arguments", "")))
                     tool_calls.append({
                         "id": part.get("toolCallId", part.get("id", "")),
                         "type": "function",
@@ -390,6 +392,12 @@ def extract_input(attrs: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _has_payload(message: dict[str, Any]) -> bool:
+    """Whether a normalized message still shows anything on the dashboard.
+
+    The keys must stay in lockstep with normalize_genai_message's output: a
+    new payload key (another rendered block) joins this tuple, or messages
+    carrying it start being dropped as if empty.
+    """
     return any(message.get(key) for key in ("content", "thinking", "tool_calls", "content_parts"))
 
 
@@ -416,6 +424,10 @@ def extract_output(attrs: dict[str, Any]) -> dict[str, Any] | None:
             finish = get_str(attrs, "ai.response.finishReason") or "tool-calls"
             return {"finishReason": finish, "toolCalls": tool_calls}
         return None
+    # A non-JSON (or bare JSON string) value under the messages attribute is
+    # still the generation's text; iterating it as messages would drop it.
+    if isinstance(messages_raw, str):
+        return {"text": messages_raw} if messages_raw else None
     # A generation's tool calls are its output: the TOOL observations hold the
     # execution, not the model's decision to call. Dropping them left every
     # tool-call round with an empty output. A message with nothing left to show
@@ -424,8 +436,7 @@ def extract_output(attrs: dict[str, Any]) -> dict[str, Any] | None:
         normalized
         for m in messages_raw
         if isinstance(m, dict) and m.get("role") != "tool"
-        for normalized in [normalize_genai_message(m)]
-        if _has_payload(normalized)
+        if _has_payload(normalized := normalize_genai_message(m))
     ]
     result: dict[str, Any] = {"messages": messages}
     text = extract_assistant_text(messages)
