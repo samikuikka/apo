@@ -197,6 +197,11 @@ def publish_catalog(
             ProjectTaskInventoryDB.task_source_id == existing.id
         )
     ).all()
+    removed = {
+        row.task_id: row.task_path or ""
+        for row in old_rows
+        if row.task_id not in {task["task_id"] for task in normalized_tasks}
+    }
     for row in old_rows:
         session.delete(row)
 
@@ -225,7 +230,16 @@ def publish_catalog(
     session.commit()
     session.refresh(existing)
 
-    return {
+    affected_schedules: list[dict[str, Any]] = []
+    if removed:
+        from apo.services.adaptive_scheduler import handle_tasks_removed_from_catalog
+
+        affected_schedules = handle_tasks_removed_from_catalog(
+            session, project_id=project_id, removed=removed
+        )
+        session.commit()
+
+    result: dict[str, Any] = {
         "project": project_id,
         "schema_version": 2,
         "task_count": len(normalized_tasks),
@@ -233,6 +247,13 @@ def publish_catalog(
         "published_at": now.isoformat(),
         "execution_mode": "caller",
     }
+    if removed:
+        # Publish-time warning (tasks with schedules/history left the
+        # catalog) so callers can surface it instead of discovering it as a
+        # trigger-time failure later.
+        result["removed_tasks"] = sorted(removed)
+        result["affected_schedules"] = affected_schedules
+    return result
 
 
 def compute_catalog_digest_v2(digest_tasks: list[dict[str, Any]]) -> str:

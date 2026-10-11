@@ -92,6 +92,14 @@ schedule's TTL. An archived Pool pauses the schedule with
 `disabled_reason: "executor_pool_archived"`; choose another Pool explicitly,
 then resume the schedule.
 
+A schedule whose selection no longer matches any task in the catalog (its
+task was removed or renamed in the task source) pauses itself at trigger
+time with `disabled_reason: "selection_empty"` instead of failing every
+night. Re-point the selection at a task that exists, then resume the
+schedule. Removing a task from the catalog also prunes any adaptive (SM-2)
+state it had, so it cannot keep a schedule firing or stall it from the
+grave.
+
 ## Adaptive cadence
 
 The `min_interval_days` / `max_interval_days` window is the adaptive cadence, the schedule's actual next-run time slides between these bounds based on the run history. A schedule that keeps passing drifts toward `max_interval_days`; one that starts failing tightens toward `min_interval_days`. See [Schedules: adaptive cadence](/concepts/schedules/).

@@ -6,6 +6,13 @@ independently. Passing tests back off exponentially (1d -> 2.5d -> 6.25d);
 failing tests reset to the minimum interval. The schedule's next_run_at
 is the earliest next-run across all its task states.
 
+Invariant: a state exists only for tasks in the schedule's current
+selection. States for tasks that left the catalog (or the selection) are
+pruned — ``next_run_at`` is a min over states, so one orphaned state can
+keep a schedule permanently "due" or stall it past its real tasks. Pruning
+happens lazily in ``select_due_task_ids`` /
+``recompute_schedule_next_run`` and at the catalog replacement
+chokepoints via ``handle_tasks_removed_from_catalog``.
 """
 
 # pyright: reportUnknownVariableType=false
@@ -94,7 +101,9 @@ def select_due_task_ids(
     """Return task_ids in the schedule's selection that are due to run.
 
     A task is due when it has no adaptive state yet (first run) or its
-    state's ``next_run_at`` is at or before ``now``.
+    state's ``next_run_at`` is at or before ``now``. States for tasks that
+    left the selection (catalog removal or a selection edit) are pruned as
+    a side effect — see :func:`_delete_states_not_in`.
     """
     if task_source is None:
         # Expected state (e.g. demo schedules, or a project that hasn't
@@ -113,6 +122,11 @@ def select_due_task_ids(
         selection_type=schedule.selection_type,
         task_paths=_selection_task_paths(schedule.selection_query),
         grep=schedule.grep,
+    )
+    _delete_states_not_in(
+        session,
+        schedule_id=schedule.id,
+        live_task_ids={row.task_id for row in inventory_rows},
     )
     if not inventory_rows:
         return []
@@ -262,8 +276,11 @@ def recompute_schedule_next_run(
     """Return the earliest next-run across all task states.
 
     Falls back to ``min_interval_days`` from ``fallback_from_time`` when no
-    states exist (e.g. empty selection or pre-first-run).
+    states exist (e.g. empty selection or pre-first-run). States for tasks
+    that left the selection are pruned first so their ``next_run_at`` can
+    never pin the schedule to a time the removed task cannot fulfill.
     """
+    _prune_states_for_schedule(session, schedule)
     states = session.exec(
         select(AdaptiveTaskStateDB).where(
             AdaptiveTaskStateDB.schedule_id == schedule.id
@@ -284,6 +301,177 @@ def recompute_schedule_next_run(
         base_timezone=schedule.timezone,
         from_time=fallback_from_time,
     )
+
+
+def handle_tasks_removed_from_catalog(
+    session: Session,
+    *,
+    project_id: str,
+    removed: dict[str, str],
+) -> list[dict[str, object]]:
+    """React to tasks leaving the project's catalog.
+
+    Called from the inventory replacement chokepoints (task-source sync and
+    catalog publication). Deletes adaptive state for the removed tasks and
+    recomputes affected schedules' ``next_run_at`` so an orphaned state can
+    never keep a schedule permanently due or stall it past its real tasks.
+    Logs a warning naming the schedules affected by the removal — the sync
+    surface has no user-facing response, so the log is the operator warning.
+
+    Pauses nothing: a schedule legitimately shrinks when one of several
+    selected tasks disappears. The scheduler pauses a schedule only when its
+    selection resolves to nothing at trigger time (``selection_empty``).
+    Does not commit — the caller owns the transaction.
+
+    ``removed`` maps ``task_id -> task_path`` so both the task-id-keyed
+    adaptive states and the path-bearing legacy selection queries can be
+    matched. Returns one summary dict per affected schedule.
+    """
+    if not removed:
+        return []
+
+    affected: list[dict[str, object]] = []
+    schedules = session.exec(
+        select(AgentTaskScheduleDB).where(
+            AgentTaskScheduleDB.project == project_id
+        )
+    ).all()
+    for schedule in schedules:
+        pruned_states = _delete_states_for_tasks(
+            session, schedule_id=schedule.id, task_ids=set(removed)
+        )
+        referenced = _selection_references(schedule, removed)
+        if not pruned_states and not referenced:
+            continue
+        if pruned_states and schedule.cadence_type == "adaptive" and schedule.enabled:
+            schedule.next_run_at = recompute_schedule_next_run(
+                session, schedule, fallback_from_time=datetime.now(timezone.utc)
+            )
+            session.add(schedule)
+        affected.append(
+            {
+                "id": schedule.id,
+                "name": schedule.name,
+                "pruned_states": pruned_states,
+                "selection_references": sorted(referenced),
+            }
+        )
+
+    if affected:
+        logger.warning(
+            "Tasks removed from project %s catalog: %s — affected schedules: %s",
+            project_id,
+            sorted(removed),
+            [entry["name"] for entry in affected],
+        )
+    return affected
+
+
+def _prune_states_for_schedule(
+    session: Session, schedule: AgentTaskScheduleDB
+) -> None:
+    """Drop states for tasks no longer in the schedule's live selection.
+
+    Best-effort mirror of the prune in :func:`select_due_task_ids` for the
+    recompute-only call paths (post-batch update, source-owned cadence
+    advance). Skips projects without a task source — there is no inventory
+    to resolve against. The source row is selected inline (mirroring
+    ``project_task_sources.get_task_source_db``) because importing that
+    module here would close an import cycle through
+    ``project_task_inventory``.
+    """
+    task_source = session.exec(
+        select(ProjectTaskSourceDB).where(
+            ProjectTaskSourceDB.project == schedule.project
+        )
+    ).first()
+    if task_source is None:
+        return
+    inventory_rows = _resolve_inventory(
+        session,
+        project=schedule.project,
+        task_source=task_source,
+        selection_type=schedule.selection_type,
+        task_paths=_selection_task_paths(schedule.selection_query),
+        grep=schedule.grep,
+    )
+    _delete_states_not_in(
+        session,
+        schedule_id=schedule.id,
+        live_task_ids={row.task_id for row in inventory_rows},
+    )
+
+
+def _delete_states_not_in(
+    session: Session,
+    *,
+    schedule_id: str,
+    live_task_ids: set[str],
+) -> None:
+    """Delete the schedule's states whose task_id is not in ``live_task_ids``."""
+    states = session.exec(
+        select(AdaptiveTaskStateDB).where(
+            AdaptiveTaskStateDB.schedule_id == schedule_id
+        )
+    ).all()
+    orphans = [state for state in states if state.task_id not in live_task_ids]
+    if not orphans:
+        return
+    for state in orphans:
+        session.delete(state)
+    session.flush()
+    logger.info(
+        "Pruned %d orphaned adaptive state(s) from schedule %s",
+        len(orphans),
+        schedule_id,
+    )
+
+
+def _delete_states_for_tasks(
+    session: Session,
+    *,
+    schedule_id: str,
+    task_ids: set[str],
+) -> int:
+    """Delete the schedule's states for the given tasks. Returns the count."""
+    states = session.exec(
+        select(AdaptiveTaskStateDB).where(
+            AdaptiveTaskStateDB.schedule_id == schedule_id
+        )
+    ).all()
+    doomed = [state for state in states if state.task_id in task_ids]
+    for state in doomed:
+        session.delete(state)
+    if doomed:
+        session.flush()
+    return len(doomed)
+
+
+def _selection_references(
+    schedule: AgentTaskScheduleDB,
+    removed: dict[str, str],
+) -> set[str]:
+    """Return removed task_ids this schedule's selection names explicitly.
+
+    Covers both selection shapes: legacy pooled schedules store
+    ``task_paths`` (task ids or inventory paths), source-owned schedules
+    store ``task_ids``. Dynamic selections (folder/grep/all) return nothing
+    — they legitimately track whatever the catalog currently holds.
+    """
+    selection = schedule.selection_query or {}
+    candidates: set[str] = set()
+    for key in ("task_paths", "task_ids"):
+        raw = selection.get(key)
+        if isinstance(raw, list):
+            candidates.update(item for item in raw if isinstance(item, str))
+    if not candidates:
+        return set()
+
+    matched: set[str] = set()
+    for task_id, task_path in removed.items():
+        if task_id in candidates or (task_path and task_path in candidates):
+            matched.add(task_id)
+    return matched
 
 
 def _get_or_create_state(

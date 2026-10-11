@@ -86,7 +86,11 @@ def replace_inventory(
 
     Implements behaviour #5 ("sync is replace-in-place"): all existing
     rows for the project/source are deleted, then fresh rows are written
-    that carry the new provenance snapshot. Returns the new rows.
+    that carry the new provenance snapshot. Adaptive scheduling state for
+    tasks that left the snapshot is pruned (a schedule's ``next_run_at``
+    is the min over its states, so an orphaned state would keep the
+    schedule firing into empty selections or stall it). Returns the new
+    rows.
 
     Caller is responsible for committing any status transitions on the
     source row itself.
@@ -97,6 +101,9 @@ def replace_inventory(
             ProjectTaskInventoryDB.task_source_id == source.id,
         )
     ).all()
+    removed = {
+        row.task_id: row.task_path or "" for row in existing
+    }
     for row in existing:
         session.delete(row)
     session.flush()
@@ -114,7 +121,21 @@ def replace_inventory(
         session.add(row)
         new_rows.append(row)
 
+    surviving_ids = {row.task_id for row in new_rows}
+    removed = {
+        task_id: task_path
+        for task_id, task_path in removed.items()
+        if task_id not in surviving_ids
+    }
+
     session.commit()
+    if removed:
+        from .adaptive_scheduler import handle_tasks_removed_from_catalog
+
+        _ = handle_tasks_removed_from_catalog(
+            session, project_id=project_id, removed=removed
+        )
+        session.commit()
     for row in new_rows:
         session.refresh(row)
     return new_rows

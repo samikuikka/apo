@@ -140,110 +140,183 @@ def validate_schedule_fields(
 
 
 def run_due_schedules_once() -> int:
-    now = datetime.now(timezone.utc)
-    created_batch_ids: list[str] = []
+    """Dispatch every due schedule once. Returns created batch count.
 
+    Each schedule is dispatched in its own session so a failure on one
+    (bad selection, broken pool, unexpected error) can neither roll back
+    nor starve the others — previously an escaping exception skipped the
+    final commit and left every schedule in the pass undispatched, every
+    30 seconds, until the broken schedule was fixed by hand.
+    """
+    now = datetime.now(timezone.utc)
     with Session(engine) as session:
-        schedules = session.exec(
-            select(AgentTaskScheduleDB).where(
+        due_schedule_ids = session.exec(
+            select(AgentTaskScheduleDB.id).where(
                 AgentTaskScheduleDB.enabled == True,  # noqa: E712
                 as_column(cast(object, AgentTaskScheduleDB.next_run_at)).is_not(None),
                 as_column(cast(object, AgentTaskScheduleDB.next_run_at)) <= now,
             )
         ).all()
 
-        for schedule in schedules:
-            # source-owned schedules dispatch through the idempotent
-            # Occurrence delivery path; legacy bundled schedules keep the
-            # pooled path until the retirement spec handles them.
-            if schedule.execution_kind == "source_owned":
-                result = _dispatch_source_owned_schedule(
+    created_batches = 0
+    for schedule_id in due_schedule_ids:
+        with Session(engine) as session:
+            schedule = session.get(AgentTaskScheduleDB, schedule_id)
+            if schedule is None:
+                continue
+            try:
+                created_batches += _dispatch_one_schedule(
                     session, schedule=schedule, now=now
                 )
-                if result.created and result.batch_run_id:
-                    created_batch_ids.append(result.batch_run_id)
-                continue
-
-            try:
-                _ = resolve_execution_pool(
-                    session,
-                    project_id=schedule.project,
-                    explicit_pool_id=schedule.executor_pool_id,
+            except Exception:
+                logger.exception(
+                    "Schedule dispatch failed for %s; continuing with other schedules",
+                    schedule_id,
                 )
-            except PoolResolutionError as error:
-                schedule.enabled = False
-                schedule.disabled_reason = error.kind
-                schedule.next_run_at = None
+    return created_batches
+
+
+def _dispatch_one_schedule(
+    session: Session,
+    *,
+    schedule: AgentTaskScheduleDB,
+    now: datetime,
+) -> int:
+    """Dispatch one due schedule in the caller's session.
+
+    Commits before returning so the schedule's advancement (or pause) is
+    durable even when a later schedule fails. Returns 1 when a batch was
+    created, else 0.
+    """
+    # source-owned schedules dispatch through the idempotent
+    # Occurrence delivery path; legacy bundled schedules keep the
+    # pooled path until the retirement spec handles them.
+    if schedule.execution_kind == "source_owned":
+        result = _dispatch_source_owned_schedule(
+            session, schedule=schedule, now=now
+        )
+        session.commit()
+        return 1 if (result.created and result.batch_run_id) else 0
+
+    try:
+        pool = resolve_execution_pool(
+            session,
+            project_id=schedule.project,
+            explicit_pool_id=schedule.executor_pool_id,
+        )
+    except PoolResolutionError as error:
+        schedule.enabled = False
+        schedule.disabled_reason = error.kind
+        schedule.next_run_at = None
+        session.add(schedule)
+        session.commit()
+        return 0
+
+    task_source = get_task_source_db(session, schedule.project)
+    if task_source is not None:
+        if task_source.status != "ready":
+            logger.info(
+                "Skipping schedule %s because task source is %s",
+                schedule.id,
+                task_source.status,
+            )
+            return 0
+        if task_source_inventory_is_stale(session, task_source):
+            logger.info(
+                "Skipping schedule %s because task inventory is stale",
+                schedule.id,
+            )
+            return 0
+
+    try:
+        if schedule.cadence_type == "adaptive":
+            due_task_ids = select_due_task_ids(
+                session, schedule, task_source, now
+            )
+            if not due_task_ids:
+                schedule.next_run_at = recompute_schedule_next_run(
+                    session, schedule, fallback_from_time=now
+                )
                 session.add(schedule)
-                continue
-            task_source = get_task_source_db(session, schedule.project)
-            if task_source is not None:
-                if task_source.status != "ready":
-                    logger.info(
-                        "Skipping schedule %s because task source is %s",
-                        schedule.id,
-                        task_source.status,
-                    )
-                    continue
-                if task_source_inventory_is_stale(session, task_source):
-                    logger.info(
-                        "Skipping schedule %s because task inventory is stale",
-                        schedule.id,
-                    )
-                    continue
-
-            if schedule.cadence_type == "adaptive":
-                due_task_ids = select_due_task_ids(
-                    session, schedule, task_source, now
-                )
-                if not due_task_ids:
-                    schedule.next_run_at = recompute_schedule_next_run(
-                        session, schedule, fallback_from_time=now
-                    )
-                    session.add(schedule)
-                    continue
-
-                batch_id, _ = _create_scheduled_batch(
-                    session, schedule=schedule, task_source=task_source,
-                    selection_type="tasks", task_paths=due_task_ids,
-                )
-                created_batch_ids.append(batch_id)
-
-                schedule.last_triggered_at = now
-                schedule.last_batch_run_id = batch_id
-                # Temporary safety value: the post-batch adaptive update
-                # (see ``_update_adaptive_state_if_needed``) overwrites this
-                # with the earliest task-state next_run_at once the batch
-                # finishes. Without it the 30s poller would re-trigger.
-                schedule.next_run_at = now + timedelta(
-                    days=schedule.max_interval_days
-                )
-                session.add(schedule)
-                continue
+                session.commit()
+                return 0
 
             batch_id, _ = _create_scheduled_batch(
                 session, schedule=schedule, task_source=task_source,
-                selection_type=schedule.selection_type,
-                task_paths=_selection_task_paths(schedule.selection_query),
+                selection_type="tasks", task_paths=due_task_ids,
+                pool_id=schedule.executor_pool_id or pool.id,
             )
-            created_batch_ids.append(batch_id)
 
             schedule.last_triggered_at = now
             schedule.last_batch_run_id = batch_id
-            schedule.next_run_at = compute_next_run_at(
-                cadence_type=schedule.cadence_type,
-                timezone_name=schedule.timezone,
-                hour=schedule.hour,
-                minute=schedule.minute,
-                day_of_week=schedule.day_of_week,
-                day_of_month=schedule.day_of_month,
-                from_time=now + timedelta(minutes=1),
+            # Temporary safety value: the post-batch adaptive update
+            # (see ``_update_adaptive_state_if_needed``) overwrites this
+            # with the earliest task-state next_run_at once the batch
+            # finishes. Without it the 30s poller would re-trigger.
+            schedule.next_run_at = now + timedelta(
+                days=schedule.max_interval_days
             )
             session.add(schedule)
+            session.commit()
+            return 1
 
+        batch_id, _ = _create_scheduled_batch(
+            session, schedule=schedule, task_source=task_source,
+            selection_type=schedule.selection_type,
+            task_paths=_selection_task_paths(schedule.selection_query),
+            pool_id=schedule.executor_pool_id or pool.id,
+        )
+
+        schedule.last_triggered_at = now
+        schedule.last_batch_run_id = batch_id
+        schedule.next_run_at = compute_next_run_at(
+            cadence_type=schedule.cadence_type,
+            timezone_name=schedule.timezone,
+            hour=schedule.hour,
+            minute=schedule.minute,
+            day_of_week=schedule.day_of_week,
+            day_of_month=schedule.day_of_month,
+            from_time=now + timedelta(minutes=1),
+        )
+        session.add(schedule)
         session.commit()
+        return 1
+    except PoolResolutionError as error:
+        session.rollback()
+        _pause_schedule_with_reason(
+            session, schedule=schedule, reason=error.kind
+        )
+        return 0
+    except ValueError as error:
+        # The selection resolved to nothing at trigger time — typically its
+        # tasks left the catalog after the schedule was configured. Pause
+        # with a reason (mirroring the source-owned delivery path's
+        # ``selection_empty`` miss) instead of raising: an escaping error
+        # would abort the whole dispatch pass and starve every other due
+        # schedule.
+        session.rollback()
+        logger.warning(
+            "Pausing schedule %s (%s): %s",
+            schedule.id, schedule.name, error,
+        )
+        _pause_schedule_with_reason(
+            session, schedule=schedule, reason="selection_empty"
+        )
+        return 0
 
-    return len(created_batch_ids)
+
+def _pause_schedule_with_reason(
+    session: Session,
+    *,
+    schedule: AgentTaskScheduleDB,
+    reason: str,
+) -> None:
+    """Disable a schedule durably with an operator-readable reason."""
+    schedule.enabled = False
+    schedule.disabled_reason = reason
+    schedule.next_run_at = None
+    session.add(schedule)
+    session.commit()
 
 
 def start_schedule_dispatcher() -> None:
@@ -272,12 +345,20 @@ def _create_scheduled_batch(
     task_source: ProjectTaskSourceDB | None,
     selection_type: str,
     task_paths: list[str] | None,
+    pool_id: str | None = None,
 ) -> tuple[str, bool]:
     """Create a Batch for a due schedule.
 
+    ``pool_id`` should carry the pool resolved by the dispatcher (explicit
+    schedule pool or the project default) — reading ``schedule.executor_pool_id``
+    alone made schedules relying on the project default pool raise
+    ``executor_pool_required`` at trigger time even though the pool had just
+    been resolved successfully.
+
     Returns ``(batch_id, True)`` after durable pooled work is created.
     """
-    pool_id = schedule.executor_pool_id
+    if pool_id is None:
+        pool_id = schedule.executor_pool_id
     if pool_id is None:
         raise PoolResolutionError(
             "executor_pool_required",
