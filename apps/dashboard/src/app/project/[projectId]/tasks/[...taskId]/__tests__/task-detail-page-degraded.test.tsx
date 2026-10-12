@@ -4,11 +4,15 @@
  * Inventory is replaced in-place on every source sync, so a renamed,
  * moved, or removed task 404s the inventory lookup while its recorded
  * runs still exist. The page must show that run evidence with a warning
- * instead of discarding it behind the 404.
+ * instead of discarding it behind the 404 — and must not extend that
+ * courtesy to other failures: an unreachable backend is an error, not a
+ * "removed from catalog" claim.
  */
 
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { ApiError } from "@/lib/api-error";
 
 const mocks = vi.hoisted(() => ({
   getProjectAgentTask: vi.fn(),
@@ -17,8 +21,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/agent-task-api", () => ({
-  getProjectAgentTask: (...args: unknown[]) => mocks.getProjectAgentTask(...(args as [])),
-  listTaskRuns: (...args: unknown[]) => mocks.listTaskRuns(...(args as [])),
+  getProjectAgentTask: (...args: Parameters<typeof mocks.getProjectAgentTask>) =>
+    mocks.getProjectAgentTask(...args),
+  listTaskRuns: (...args: Parameters<typeof mocks.listTaskRuns>) =>
+    mocks.listTaskRuns(...args),
   providerLabels: () => [],
 }));
 
@@ -71,7 +77,7 @@ describe("TaskDetailPage off-catalog degradation", () => {
 
   it("shows historical runs with a warning when the task 404s", async () => {
     mocks.getProjectAgentTask.mockRejectedValue(
-      new Error("Task not found in inventory."),
+      new ApiError(404, "Task not found in inventory."),
     );
     const run = { id: "run-1", status: "passed" };
     mocks.listTaskRuns.mockResolvedValue([run]);
@@ -92,13 +98,30 @@ describe("TaskDetailPage off-catalog degradation", () => {
 
   it("renders the dead-end message when the task 404s with no runs", async () => {
     mocks.getProjectAgentTask.mockRejectedValue(
-      new Error("Task not found in inventory."),
+      new ApiError(404, "Task not found in inventory."),
     );
     mocks.listTaskRuns.mockResolvedValue([]);
 
     render(await TaskDetailPage({ ...PAGE_ARGS }));
 
     expect(screen.getByText(/no runs were recorded/i)).toBeInTheDocument();
+    expect(mocks.taskRunHistory).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the error banner when the task lookup fails with something other than not-found", async () => {
+    // A 500 or network failure must surface as an error, not render a
+    // false "removed from catalog" page.
+    mocks.getProjectAgentTask.mockRejectedValue(
+      new ApiError(500, "inventory backend exploded"),
+    );
+    mocks.listTaskRuns.mockResolvedValue([]);
+
+    render(await TaskDetailPage({ ...PAGE_ARGS }));
+
+    expect(screen.getByText("inventory backend exploded")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/no longer in the project catalog/i),
+    ).not.toBeInTheDocument();
     expect(mocks.taskRunHistory).not.toHaveBeenCalled();
   });
 

@@ -1,11 +1,14 @@
 """Consequences of a task leaving the project catalog.
 
-Three behaviours are pinned here:
+Four behaviours are pinned here:
 
 - A schedule whose selection resolves to nothing at trigger time (its task
   was removed from the catalog) must be paused with ``selection_empty``
   instead of raising — an escaping exception aborts the whole dispatch pass
-  and starves every other due schedule.
+  and starves every other due schedule. This holds for both cadence kinds
+  (fixed and adaptive) and ONLY for an emptied selection: any other
+  ValueError (e.g. an unknown timezone) is logged and retried, never
+  mislabeled as ``selection_empty``.
 - Adaptive (SM-2) state for removed tasks must be pruned when the catalog
   is replaced: ``next_run_at`` is the min over states, so one orphaned
   state keeps a schedule permanently "due" or stalls it past its real tasks.
@@ -14,6 +17,7 @@ Three behaviours are pinned here:
 """
 
 from collections.abc import Iterator
+from typing import cast
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from shutil import rmtree
@@ -127,6 +131,7 @@ def _make_daily_schedule(
     pool_id: str | None,
     selection_query: dict[str, object],
     now: datetime,
+    timezone_name: str = "UTC",
 ) -> AgentTaskScheduleDB:
     schedule = AgentTaskScheduleDB(
         id=schedule_id,
@@ -136,7 +141,7 @@ def _make_daily_schedule(
         selection_query=selection_query,
         environment="default",
         cadence_type="daily",
-        timezone="UTC",
+        timezone=timezone_name,
         hour=9,
         minute=0,
         enabled=True,
@@ -280,6 +285,108 @@ class TestBrokenScheduleDoesNotStarveOthers:
             assert schedule is not None
             assert schedule.last_batch_run_id is not None
 
+    def test_adaptive_schedule_with_emptied_selection_pauses(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch, schedule_engine: Engine
+    ) -> None:
+        """An emptied selection pauses an adaptive schedule too.
+
+        The fixed-cadence path pauses via the no-tasks error from batch
+        creation; without the empty check in ``select_due_task_ids`` the
+        adaptive path would instead re-arm at ``min_interval_days`` forever,
+        silently, contradicting the documented ``selection_empty`` pause.
+        """
+        now = datetime.now(timezone.utc)
+        beta_dir = _write_task(tmp_path, "flows", "beta")
+
+        monkeypatch.setattr(
+            "apo.services.agent_task_scheduler.engine", schedule_engine
+        )
+        monkeypatch.setenv("APO_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+
+        with Session(schedule_engine) as session:
+            project, pool_id, source = _bootstrap_project(
+                session, tmp_path=tmp_path, now=now
+            )
+            _ = sync_task_source(session, source)
+            session.add(
+                AgentTaskScheduleDB(
+                    id="sched-adaptive-empty",
+                    project=project,
+                    name="adaptive-empty",
+                    selection_type="tasks",
+                    selection_query={"task_paths": [str(beta_dir)]},
+                    environment="default",
+                    cadence_type="adaptive",
+                    timezone="UTC",
+                    hour=9,
+                    minute=0,
+                    min_interval_days=1.0,
+                    max_interval_days=30.0,
+                    enabled=True,
+                    executor_pool_id=pool_id,
+                    next_run_at=now - timedelta(minutes=5),
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.commit()
+
+            # beta leaves the catalog.
+            rmtree(beta_dir)
+            _ = sync_task_source(session, source)
+
+        assert run_due_schedules_once() == 0
+
+        with Session(schedule_engine) as session:
+            schedule = session.get(AgentTaskScheduleDB, "sched-adaptive-empty")
+            assert schedule is not None
+            assert schedule.enabled is False
+            assert schedule.disabled_reason == "selection_empty"
+            assert schedule.next_run_at is None
+            assert schedule.last_batch_run_id is None
+
+    def test_unknown_timezone_is_not_reported_as_selection_empty(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch, schedule_engine: Engine
+    ) -> None:
+        """A non-selection ValueError must not pause as ``selection_empty``.
+
+        Pausing on it would both mislabel the schedule (the operator
+        re-points a selection that is fine) and make transient errors
+        (stale-inventory race) permanent. The schedule stays due and the
+        error is logged for the next poll to retry.
+        """
+        now = datetime.now(timezone.utc)
+        _ = _write_task(tmp_path, "flows", "alpha")
+
+        monkeypatch.setattr(
+            "apo.services.agent_task_scheduler.engine", schedule_engine
+        )
+        monkeypatch.setenv("APO_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+
+        with Session(schedule_engine) as session:
+            project, pool_id, source = _bootstrap_project(
+                session, tmp_path=tmp_path, now=now
+            )
+            _ = sync_task_source(session, source)
+            _ = _make_daily_schedule(
+                session,
+                schedule_id="sched-bad-tz",
+                project=project,
+                pool_id=pool_id,
+                selection_query={"task_paths": [str(tmp_path / "flows" / "alpha")]},
+                now=now,
+                timezone_name="Not/AZone",
+            )
+
+        assert run_due_schedules_once() == 0
+
+        with Session(schedule_engine) as session:
+            schedule = session.get(AgentTaskScheduleDB, "sched-bad-tz")
+            assert schedule is not None
+            assert schedule.enabled is True
+            assert schedule.disabled_reason is None
+            assert schedule.last_batch_run_id is None
+
 
 class TestOrphanedAdaptiveState:
     def test_replace_inventory_prunes_states_for_removed_tasks(
@@ -396,8 +503,10 @@ class TestOrphanedAdaptiveState:
                 next_run_at=now - timedelta(days=1),
             )
 
-            # beta leaves the catalog WITHOUT a re-sync — the orphan state
-            # lingers until the next due poll prunes it lazily.
+            # beta leaves the catalog — the sync's chokepoint prune removes
+            # its state. Re-inject the stale state and re-pin the schedule
+            # "due", simulating a pre-fix database: the next due poll must
+            # prune the orphan lazily.
             rmtree(tmp_path / "flows" / "beta")
             _ = sync_task_source(session, source)
             # Re-add the stale state the sync's chokepoint prune just removed
@@ -572,10 +681,10 @@ class TestPublishCatalogRemovalWarnings:
             second = publish_catalog(session, project, v2)
 
             assert second["removed_tasks"] == ["task-b"]
-            affected: dict[str, dict[str, object]] = {
-                str(entry["id"]): entry
-                for entry in second["affected_schedules"]
-            }
+            raw_affected = cast(
+                list[dict[str, object]], second["affected_schedules"]
+            )
+            affected = {str(entry["id"]): entry for entry in raw_affected}
             assert affected["sched-pub-adaptive"]["pruned_states"] == 1
             assert affected["sched-pub-legacy"]["selection_references"] == [
                 "task-b"

@@ -5,6 +5,7 @@ import {
 } from "@/lib/agent-task-api";
 import { fetchTaskViewConfigFacets } from "@/lib/agent-task-view-api";
 import { getProject } from "@/lib/projects-api";
+import { isNotFoundStatus } from "@/lib/api-error";
 import { Suspense } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -120,11 +121,15 @@ export default async function TaskDetailPage({
     // TASK_RUN_HISTORY_LIMIT rows. Facets feed the control menus and are
     // best-effort (a facets failure must not blank the run history). The
     // project read feeds the run-delete role gate (best-effort too).
-    // The task lookup is also best-effort: inventory is replaced on every
-    // source sync, so a renamed/moved/removed task must not hide the run
-    // evidence that still exists for it.
+    // The task lookup degrades only on not-found: inventory is replaced on
+    // every source sync, so a renamed/moved/removed task must not hide the
+    // run evidence that still exists for it. Any other failure propagates —
+    // an unreachable backend must surface as an error, not as a false
+    // "removed from catalog".
     const [resolved, scoped, facetResult, project] = await Promise.all([
-      getProjectAgentTask(projectId, taskId).catch(() => null),
+      getProjectAgentTask(projectId, taskId).catch((error: unknown) =>
+        isNotFoundStatus(error) ? null : Promise.reject(error),
+      ),
       listTaskRuns(taskId, projectId, cohort, TASK_RUN_HISTORY_LIMIT),
       fetchTaskViewConfigFacets(projectId).catch(() => []),
       getProject(projectId).catch(() => null),

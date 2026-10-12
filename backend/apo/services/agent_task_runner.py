@@ -47,6 +47,7 @@ from .project_task_source_sync import (
     resolve_inventory_task_dir,
 )
 from .project_task_inventory import task_source_inventory_is_stale
+from .scheduling_errors import SelectionEmptyError
 from .run_events import emit_batch_run_event, emit_task_run_event
 
 logger = logging.getLogger(__name__)
@@ -125,11 +126,11 @@ def create_batch_run(
             grep=grep,
         )
         if not inventory_rows:
-            raise ValueError(_no_tasks_found_message(task_source))
+            raise SelectionEmptyError(_no_tasks_found_message(task_source))
     else:
         resolved = resolve_task_paths(resolved_task_root, selection_type, task_paths, grep)
         if not resolved:
-            raise ValueError("No tasks found for the given selection")
+            raise SelectionEmptyError("No tasks found for the given selection")
 
     batch_id = uuid.uuid4().hex[:16]
     now = datetime.now(timezone.utc)

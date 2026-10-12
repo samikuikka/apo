@@ -31,6 +31,7 @@ from ..models.db import (
     ProjectTaskInventoryDB,
     ProjectTaskSourceDB,
 )
+from .scheduling_errors import SelectionEmptyError
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,13 @@ def select_due_task_ids(
     state's ``next_run_at`` is at or before ``now``. States for tasks that
     left the selection (catalog removal or a selection edit) are pruned as
     a side effect — see :func:`_delete_states_not_in`.
+
+    Raises :class:`SelectionEmptyError` when a task source exists but the
+    selection resolves to no live tasks, so the dispatcher pauses the
+    schedule (``selection_empty``) instead of silently re-arming it every
+    ``min_interval_days`` forever. Source-less projects return ``[]``
+    unchanged — demo schedules and not-yet-configured projects are expected
+    to have nothing to resolve yet.
     """
     if task_source is None:
         # Expected state (e.g. demo schedules, or a project that hasn't
@@ -123,13 +131,15 @@ def select_due_task_ids(
         task_paths=_selection_task_paths(schedule.selection_query),
         grep=schedule.grep,
     )
+    if not inventory_rows:
+        raise SelectionEmptyError(
+            f"selection ({schedule.selection_type}) resolved to no catalog tasks"
+        )
     _delete_states_not_in(
         session,
         schedule_id=schedule.id,
         live_task_ids={row.task_id for row in inventory_rows},
     )
-    if not inventory_rows:
-        return []
 
     states = session.exec(
         select(AdaptiveTaskStateDB).where(

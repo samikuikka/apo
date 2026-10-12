@@ -29,6 +29,7 @@ from .execution_queue import (
 )
 from .project_task_inventory import task_source_inventory_is_stale
 from .project_task_sources import get_task_source_db
+from .scheduling_errors import SelectionEmptyError
 
 logger = logging.getLogger(__name__)
 
@@ -287,13 +288,15 @@ def _dispatch_one_schedule(
             session, schedule=schedule, reason=error.kind
         )
         return 0
-    except ValueError as error:
+    except SelectionEmptyError as error:
         # The selection resolved to nothing at trigger time — typically its
         # tasks left the catalog after the schedule was configured. Pause
-        # with a reason (mirroring the source-owned delivery path's
-        # ``selection_empty`` miss) instead of raising: an escaping error
-        # would abort the whole dispatch pass and starve every other due
-        # schedule.
+        # with a reason instead of raising: an escaping error would abort
+        # the whole dispatch pass and starve every other due schedule.
+        # Only this typed error pauses: a plain ValueError (unknown
+        # timezone, stale-inventory race) escapes to the per-schedule log
+        # and is retried next poll — pausing on it would both mislabel the
+        # schedule and make transient races permanent.
         session.rollback()
         logger.warning(
             "Pausing schedule %s (%s): %s",
