@@ -23,12 +23,16 @@ function secondJudgeMark(check: CheckResult): string {
   const sj = check.judge?.secondJudge;
   const facts = secondJudgeFacts(check);
   if (facts.kind === "split" || facts.kind === "unsure") {
-    const primary = check.pass ? green("✓") : red("✗");
-    const second = sj!.choice === "pass" ? green("✓") : red("✗");
+    // The dots show verdicts, not outcomes: under `expect` polarity the
+    // outcome is agreement with the author's ground truth, so the primary
+    // dot reads `verdict_pass` (what the judge concluded) and falls back to
+    // the outcome — identical whenever no `expect` was pinned.
+    const primary = check.judge?.verdict_pass ?? check.pass;
+    const second = sj!.choice === "pass";
     const num = facts.confidence.toFixed(2);
     return facts.kind === "split"
-      ? ` ${primary}${second} ${yellow(num)}`
-      : ` ${dim(`${check.pass ? "✓" : "✗"}${sj!.choice === "pass" ? "✓" : "✗"} ·${num}`)}`;
+      ? ` ${primary ? green("✓") : red("✗")}${second ? green("✓") : red("✗")} ${yellow(num)}`
+      : ` ${dim(`${primary ? "✓" : "✗"}${second ? "✓" : "✗"} ·${num}`)}`;
   }
   if (facts.kind === "error") return ` ${dim("2nd ✕")}`;
   if (facts.kind === "skipped") return ` ${dim("2nd ⊘")}`;

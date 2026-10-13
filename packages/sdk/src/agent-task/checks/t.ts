@@ -711,6 +711,11 @@ function createJudgeMethod(
           preflight.evidence,
           preflight.parts,
         );
+        // Raw verdict + ground-truth polarity, mirroring the dual path
+        // below: the recorded pass is agreement under `expect`, not what the
+        // deciding judge concluded.
+        judge.verdict_pass = pass;
+        if (opts?.expect) judge.expected_verdict = opts.expect;
         // Verdict polarity (`expect`) mirrors the primary path: a pinned
         // ground truth scores agreement, not the raw verdict.
         const agreed =

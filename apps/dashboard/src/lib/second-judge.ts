@@ -27,7 +27,13 @@ export function secondJudgeFacts(check: CheckResult): SecondJudgeFacts {
   if (sj.skipped) return { kind: "skipped" };
   if (sj.error || sj.choice == null) return { kind: "error" };
   const conf = sj.confidence ?? 0;
-  if ((sj.choice === "pass") !== (check.pass === true)) {
+  // Compare verdicts, not outcomes (mirrors the SDK): under `expect` polarity
+  // the outcome is deliberately opposite to the judge's verdict, so comparing
+  // the second judge to `pass` reads two judges that both FAILed a known-bad
+  // deliverable as a contradiction. Runs recorded before `verdict_pass` fall
+  // back to the outcome, identical whenever no `expect` was pinned.
+  const verdictPass = check.judge?.verdict_pass ?? check.pass;
+  if ((sj.choice === "pass") !== (verdictPass === true)) {
     return { kind: "split", confidence: conf };
   }
   if (conf < 0.6) return { kind: "unsure", confidence: conf };
