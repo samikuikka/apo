@@ -824,6 +824,10 @@ function createJudgeMethod(
     try {
       const { pass, reasoning, judge, unavailable } = await traced;
       if (isTraceableSpanId(judgeSpanId)) judge.span_id = judgeSpanId;
+      // Raw verdict + ground-truth polarity, mirroring t.agent: the recorded
+      // pass is agreement under `expect`, not what the judge concluded.
+      if (!unavailable) judge.verdict_pass = pass;
+      if (opts?.expect) judge.expected_verdict = opts.expect;
       // Verdict polarity (`expect`): only when the author pins a ground
       // truth does the recorded outcome become agreement — otherwise it is
       // the verdict itself. An unreachable judge (unavailable) fails

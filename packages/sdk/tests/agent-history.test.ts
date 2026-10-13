@@ -124,6 +124,32 @@ describe("freezeHistoryPlane — frozen snapshot + merged detail", () => {
     expect(plane.runs).toHaveLength(1);
   });
 
+  it("carries verdict_pass/expected_verdict from the first assertion's judge metadata", async () => {
+    const detail = {
+      status: "passed",
+      checks_json: JSON.stringify([
+        {
+          id: "figures-supported",
+          pass: true,
+          evaluator_type: "agent",
+          reasoning: "judge FAILed where ground truth is FAIL — judge reasoning: invented CSAT",
+          assertions: [
+            { pass: true, judge: { verdict_pass: false, expected_verdict: "fail" } },
+          ],
+        },
+      ]),
+    };
+    const { reader } = readerFor([SUMMARY("run_a")], detail);
+    const plane = await freezeHistoryPlane({ reader, taskId: "t1" });
+
+    const first = await plane.getRun("run_a");
+    const run = first as Exclude<typeof first, { error: string }>;
+    // The polarity pair survives: check passed, judge verdict FAIL, truth FAIL.
+    expect(run.checks[0]!.pass).toBe(true);
+    expect(run.checks[0]!.verdict_pass).toBe(false);
+    expect(run.checks[0]!.expected_verdict).toBe("fail");
+  });
+
   it("resolves the backend's folder-scoped task id when the bare id lists empty", async () => {
     const calls: string[] = [];
     const reader: BackendReader = {

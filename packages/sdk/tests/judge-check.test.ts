@@ -116,6 +116,20 @@ describe("t.judge", () => {
     });
   });
 
+  it("records the raw verdict and ground-truth polarity for the history plane", async () => {
+    stubJudgeResponse({
+      content: JSON.stringify({ pass: false, reasoning: "figure is fabricated" }),
+    });
+    defineCheck("quality", async (t) => {
+      await t.judge("fabricated report", "PASS when every figure is supported", { expect: "fail" });
+    });
+    const [result] = await runTraceChecks({ snapshot: emptySnapshot, deliverables: {}, judgeConfig });
+    const judge = result?.assertions?.[0]?.judge ?? {};
+    expect(result?.pass).toBe(true);
+    expect(judge.verdict_pass).toBe(false);
+    expect(judge.expected_verdict).toBe("fail");
+  });
+
   it("expect:'fail' inverts polarity — the check passes when the judge fails a known-bad value", async () => {
     stubJudgeResponse({
       content: JSON.stringify({ pass: false, reasoning: "the figure is fabricated" }),

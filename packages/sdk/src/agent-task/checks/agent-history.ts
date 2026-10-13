@@ -38,7 +38,16 @@ export type HistoryRunDetail = {
   status: string;
   checks: {
     id: string;
+    /** Check outcome — agreement with the author's ground truth. */
     pass: boolean;
+    /**
+     * What the judge itself concluded. Equal to `pass` without `expect`;
+     * deliberately opposite on a correctly-judged `expect: "fail"` check.
+     * Absent on pre-polarity recordings and non-judged (code) checks.
+     */
+    verdict_pass?: boolean;
+    /** The author's ground truth (`expect`), when one was pinned. */
+    expected_verdict?: "pass" | "fail";
     evaluator: string;
     reasoning?: string;
     assertions?: { pass: boolean; expected?: string; received?: string }[];
@@ -180,10 +189,19 @@ export function freezeHistoryPlane(args: {
       const detail: HistoryRunDetail = {
         id: runId,
         status: String(raw.status ?? known.status),
-        checks: (Array.isArray(checks) ? checks : []).map(
-          (c: Record<string, unknown>) => ({
+        checks: (Array.isArray(checks) ? checks : []).map((c: Record<string, unknown>) => {
+          const meta = (Array.isArray(c.assertions) ? c.assertions[0] : undefined) as
+            | { judge?: { verdict_pass?: unknown; expected_verdict?: unknown } }
+            | undefined;
+          return {
             id: String(c.id ?? "check"),
             pass: Boolean(c.pass),
+            ...(typeof meta?.judge?.verdict_pass === "boolean"
+              ? { verdict_pass: meta.judge.verdict_pass }
+              : {}),
+            ...(meta?.judge?.expected_verdict === "pass" || meta?.judge?.expected_verdict === "fail"
+              ? { expected_verdict: meta.judge.expected_verdict }
+              : {}),
             evaluator: String(c.evaluator_type ?? "code"),
             ...(typeof c.reasoning === "string" && c.reasoning.length > 0
               ? { reasoning: c.reasoning.slice(0, 500) }
@@ -197,8 +215,8 @@ export function freezeHistoryPlane(args: {
                   })),
                 }
               : {}),
-          }),
-        ),
+          };
+        }),
         human_corrections:
           Array.isArray(known.corrected_tests) && known.corrected_tests.length > 0
             ? known.corrected_tests

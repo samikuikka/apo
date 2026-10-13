@@ -442,6 +442,34 @@ describe("t.agent — budget accounting", () => {
     expect(reads[0]!.result).toBe(reads[1]!.result);
   });
 
+  it("records the raw verdict and ground-truth polarity alongside the agreement outcome", async () => {
+    // Correct FAIL on a known-bad deliverable: check passes (agreement),
+    // verdict_pass records that the judge FAILED the report.
+    scriptFetch([
+      toolCallTurn("1", "read_deliverable", { name: "answer", offset: 0, limit: 6000 }),
+      toolCallTurn("2", "finish_verdict", { reasoning: "Figure invented.", pass: false }),
+    ]);
+    let result = await runAgentCheck(async (t) => {
+      await t.agent("PASS only if supported.", { expect: "fail" });
+    });
+    let judge = result.assertions[0]!.judge!;
+    expect(result.assertions[0]!.pass).toBe(true);
+    expect(judge.verdict_pass).toBe(false);
+    expect(judge.expected_verdict).toBe("fail");
+
+    // No polarity pinned: verdict_pass mirrors the outcome.
+    scriptFetch([
+      toolCallTurn("1", "finish_verdict", { reasoning: "Supported.", pass: true }),
+    ]);
+    result = await runAgentCheck(async (t) => {
+      await t.agent("PASS if supported.");
+    });
+    judge = result.assertions[0]!.judge!;
+    expect(result.assertions[0]!.pass).toBe(true);
+    expect(judge.verdict_pass).toBe(true);
+    expect(judge.expected_verdict).toBeUndefined();
+  });
+
   it("accepts a self-corrected verdict: the first finish_verdict is malformed, the second is valid", async () => {
     scriptFetch([
       toolCallTurn("1", "read_deliverable", { name: "answer", offset: 0, limit: 6000 }),

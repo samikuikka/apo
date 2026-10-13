@@ -436,7 +436,8 @@ function buildEvidenceTools(args: {
           list_runs: tool({
             description:
               "List runs of this task — id, status, pass/fail, model, check counts. " +
-              "The run under judgment is flagged; use get_run for a prior run's full check report.",
+              "Caution: a run's pass/fail is the CHECK outcome (agreement with the task author's " +
+              "ground truth), not the judge's verdict — use get_run to see what the judge concluded.",
             inputSchema: z.object({}),
             execute: async () => {
               return span("list_runs", {}, async () => {
@@ -450,8 +451,12 @@ function buildEvidenceTools(args: {
           get_run: tool({
             description:
               "Full check report of a PRIOR run: every check with pass/fail, reasoning, " +
-              "expected/received, and any human corrections. Prior attempts show whether a " +
-              "failure mode recurs; human corrections are ground truth, not opinions.",
+              "expected/received, and any human corrections. Each judged check carries " +
+              "verdict_pass (what the judge concluded) and expected_verdict (the author's " +
+              "ground truth) — pass is agreement between them, so on an expect:'fail' check " +
+              "a PASSED check with verdict_pass:false means the judge correctly FAILED a " +
+              "known-bad deliverable. Prior attempts show whether a failure mode recurs; " +
+              "human corrections are ground truth, not opinions.",
             inputSchema: z.object({ run_id: z.string() }),
             execute: async (input: never) => {
               const { run_id } = input as { run_id: string };
@@ -999,6 +1004,11 @@ export function createAgentMethod(
         latency_ms: result.latency_ms,
         session: result.session,
         ...(isTraceableSpanId(sessionSpanId) ? { span_id: sessionSpanId } : {}),
+        // Raw verdict + ground-truth polarity: the check's pass is agreement
+        // under `expect`, and the history plane must be able to state what
+        // the judge actually concluded without parsing reasoning prose.
+        ...(result.verdict ? { verdict_pass: result.verdict.pass } : {}),
+        ...(opts?.expect ? { expected_verdict: opts.expect } : {}),
       };
 
       const detail =

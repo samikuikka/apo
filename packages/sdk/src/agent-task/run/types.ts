@@ -73,6 +73,22 @@ export type JudgeMetadata = {
    */
   span_id?: string;
   /**
+   * What the judge itself concluded about the deliverable — the raw verdict,
+   * distinct from the check's `pass` (which is agreement with the author's
+   * ground truth under `expect` polarity). Identical to the check outcome
+   * when no `expect` was set; deliberately opposite on a correctly-judged
+   * `expect: "fail"` check. Recorded so downstream consumers — the history
+   * plane above all — can state what prior judges verdicted without
+   * parsing reasoning prose.
+   */
+  verdict_pass?: boolean;
+  /**
+   * The author's ground-truth polarity for this check (`expect`), when one
+   * was pinned. Together with `verdict_pass` it makes the check outcome
+   * reconstructible: outcome = verdict_pass matches expected_verdict.
+   */
+  expected_verdict?: "pass" | "fail";
+  /**
    * Second-grader evidence: a typed-decision model (Jev via OpenRouter's
    * `/alpha/decisions`) graded the same deliverable + instruction alongside
    * the primary judge. Opt-in via `APO_SECOND_JUDGE_MODEL`. The primary
