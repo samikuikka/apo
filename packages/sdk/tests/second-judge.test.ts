@@ -13,7 +13,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { callJudge } from "../src/agent-task/checks/judge.ts";
-import { decisionsEndpoint } from "../src/agent-task/checks/second-judge.ts";
+import { decisionsEndpoint, secondJudgeFacts } from "../src/agent-task/checks/second-judge.ts";
 
 const judgeArgs = {
   values: ["the deliverable"],
@@ -273,5 +273,53 @@ describe("second judge — anthropic-direct primary", () => {
 
     expect(result.judge.secondJudge?.error).toContain("no decisions API");
     expect(calls.mock.calls.filter((c) => String(c[0]).includes("decisions"))).toHaveLength(0);
+  });
+});
+
+describe("second judge facts — verdict polarity under expect: 'fail'", () => {
+  // The check outcome is agreement with the author's ground truth, so an
+  // expect:"fail" check that PASSED means the judge FAILED the deliverable.
+  // The relation must compare the second judge to what the judge concluded
+  // (`judge.verdict_pass`), never to the polarity-inverted outcome.
+  it("both judges fail a known-bad deliverable → agree, not a split", () => {
+    const facts = secondJudgeFacts({
+      pass: true,
+      judge: {
+        verdict_pass: false,
+        secondJudge: { choice: "fail", confidence: 0.99 },
+      },
+    });
+    expect(facts).toEqual({ kind: "agree", confidence: 0.99 });
+  });
+
+  it("judge passed where the second judge failed → split despite the failing outcome", () => {
+    const facts = secondJudgeFacts({
+      pass: false,
+      judge: {
+        verdict_pass: true,
+        secondJudge: { choice: "fail", confidence: 0.93 },
+      },
+    });
+    expect(facts).toEqual({ kind: "split", confidence: 0.93 });
+  });
+
+  it("a cascade-decided check never contradicts itself", () => {
+    const facts = secondJudgeFacts({
+      pass: true,
+      judge: {
+        verdict_pass: false,
+        verdict_by: "second-judge",
+        secondJudge: { choice: "fail", confidence: 0.97 },
+      },
+    });
+    expect(facts).toEqual({ kind: "agree", confidence: 0.97 });
+  });
+
+  it("runs recorded before verdict_pass fall back to the outcome", () => {
+    const facts = secondJudgeFacts({
+      pass: true,
+      judge: { secondJudge: { choice: "fail", confidence: 0.99 } },
+    });
+    expect(facts).toEqual({ kind: "split", confidence: 0.99 });
   });
 });

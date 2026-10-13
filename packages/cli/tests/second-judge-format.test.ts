@@ -206,3 +206,38 @@ describe("secondJudgeSummary", () => {
     );
   });
 });
+
+describe("verdict polarity — expect:'fail' marks relate verdicts, not outcomes", () => {
+  // An expect:"fail" check that PASSED means the judge FAILED the deliverable
+  // (the outcome is agreement with the author's ground truth). The marks
+  // compare the second judge to `judge.verdict_pass` — what the judge
+  // concluded — never to the polarity-inverted outcome.
+  const knownBad = check({
+    pass: true,
+    judge: {
+      verdict_pass: false,
+      expected_verdict: "fail",
+      secondJudge: sj({ choice: "fail", confidence: 0.99 }),
+    },
+  });
+
+  it("both judges fail a known-bad deliverable → silent row, counted corroborated", () => {
+    expect(plain(formatChecks([knownBad]))).toBe(plain(formatChecks([check({ pass: true })])));
+    expect(secondJudgeSummary([knownBad])).toBe("Second judge: 1 corroborated");
+  });
+
+  it("judge passed where the second judge failed → split with verdict-ordered dots", () => {
+    const c = check({
+      pass: false,
+      judge: {
+        verdict_pass: true,
+        expected_verdict: "fail",
+        secondJudge: sj({ choice: "fail", confidence: 0.93 }),
+      },
+    });
+    const out = plain(formatChecks([c]));
+    expect(out).toContain("✓✗ 0.93");
+    expect(out).toContain("Verdicts differ — second judge contradicts at 0.93 confidence.");
+    expect(secondJudgeSummary([c])).toBe("Second judge: 0 corroborated · judges split on 1");
+  });
+});

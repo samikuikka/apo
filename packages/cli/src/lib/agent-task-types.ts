@@ -118,6 +118,15 @@ export type JudgeSegment = string | TruncatedSegment;
 
 export type CheckJudgeMetadata = {
   model?: string;
+  /**
+   * What the judge itself concluded — the raw verdict, distinct from the
+   * check's `pass` (which is agreement with the author's ground truth under
+   * `expect` polarity). Identical to the outcome when no `expect` was set;
+   * deliberately opposite on a correctly-judged `expect: "fail"` check.
+   */
+  verdict_pass?: boolean;
+  /** The author's ground-truth polarity (`expect`), when one was pinned. */
+  expected_verdict?: "pass" | "fail";
   prompt?: { system?: JudgeSegment; user?: JudgeSegment };
   response?: JudgeSegment;
   tokens?: { input: number; output: number };

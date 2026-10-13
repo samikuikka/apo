@@ -95,7 +95,7 @@ function jevResponse(choice = "pass", passProb = 0.99, confidence = 0.98) {
  * Run one t.judge check against the stubbed endpoints and return the
  * recorded check plus the fetch call log.
  */
-async function runOne(config: typeof cascadeConfig, jev: () => Promise<Response>, judgeOpts?: { secondJudgeValue?: unknown }) {
+async function runOne(config: typeof cascadeConfig, jev: () => Promise<Response>, judgeOpts?: { secondJudgeValue?: unknown; expect?: "pass" | "fail" }) {
   const { calls } = stubBoth(jev);
   defineCheck("criterion", async (t) => {
     await t.judge("the deliverable", "Is it good?", judgeOpts);
@@ -138,6 +138,24 @@ describe("cascade mode", () => {
 
     expect(result).toMatchObject({ pass: false, judge: { verdict_by: "second-judge" } });
     expect(chatCalls(calls)).toHaveLength(0);
+  });
+
+  it("expect:'fail' records the raw verdict — the outcome is agreement, not the verdict", async () => {
+    vi.stubEnv("APO_SECOND_JUDGE_MODEL", "typesafe/jev-1.13");
+    const { result } = await runOne(cascadeConfig, () => jevResponse("fail", 0.02, 0.97), {
+      expect: "fail",
+    });
+
+    // The second judge FAILed the deliverable and the author expected FAIL,
+    // so the check passes — but verdict_pass keeps what was concluded.
+    expect(result).toMatchObject({
+      pass: true,
+      judge: {
+        verdict_by: "second-judge",
+        verdict_pass: false,
+        expected_verdict: "fail",
+      },
+    });
   });
 
   it("confidence exactly 0.95 decides (boundary)", async () => {

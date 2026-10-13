@@ -52,6 +52,28 @@ const FACT_FIXTURES: Array<[string, CheckResult]> = [
     "missing confidence defaults to 0 → unsure",
     withSj({ choice: "fail" }),
   ],
+  [
+    "expect:fail, both judges fail → agree (outcome is polarity-inverted)",
+    check({
+      pass: true,
+      judge: {
+        model: "m",
+        verdict_pass: false,
+        secondJudge: { model: "x", choice: "fail", confidence: 0.99 },
+      } as CheckResult["judge"],
+    }),
+  ],
+  [
+    "expect:fail, judge passed where the second judge failed → split",
+    check({
+      pass: false,
+      judge: {
+        model: "m",
+        verdict_pass: true,
+        secondJudge: { model: "x", choice: "fail", confidence: 0.9 },
+      } as CheckResult["judge"],
+    }),
+  ],
 ];
 
 describe("second-judge derivations (drift guard)", () => {
