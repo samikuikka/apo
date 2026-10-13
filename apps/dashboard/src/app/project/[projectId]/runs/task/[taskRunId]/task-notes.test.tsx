@@ -2,15 +2,18 @@
  * Scene tests: Task Notes on the run page, read-only.
  *
  * 1. notesForRun splits Folder/Task Notes from Test Notes keyed by test id.
- * 2. The Notes panel shows Folder and Task Notes with scope label,
- *    attribution, the "Different task revision" marker, and plain-text bodies.
- * 3. A Test Note renders inside its check — passing checks too — and only
- *    there.
+ * 2. The notes rail: a one-line summary in the flow, a right-edge chip, and
+ *    a drawer grouping every Note (Folder / Task / per test) with scope
+ *    label, attribution, the "Different task revision" marker, and
+ *    plain-text bodies. Escape and the backdrop close it.
+ * 3. capTestNotes keeps the newest Note per Test inline; the rest surface as
+ *    an overflow count behind the "+N more" line, which opens the drawer.
  * 4. No Notes (absent or empty) → nothing renders.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { useState } from "react";
 
 vi.mock("next/dynamic", () => ({
   __esModule: true,
@@ -30,8 +33,8 @@ vi.mock("next/navigation", () => ({
 import type { CheckResult, TaskNote } from "@/lib/agent-task-api";
 import { ChecksList } from "./checks-list";
 import { ExpandableCheckItem } from "./expandable-check-item";
-import { TaskNotesPanel } from "./task-notes";
-import { noteAttribution, notesForRun } from "./task-notes-model";
+import { TaskNotesRail, TestNotes } from "./task-notes";
+import { capTestNotes, noteAttribution, notesForRun } from "./task-notes-model";
 
 function note(overrides: Partial<TaskNote> = {}): TaskNote {
   return {
@@ -104,15 +107,45 @@ describe("noteAttribution", () => {
   });
 });
 
-describe("TaskNotesPanel", () => {
-  it("renders Folder and Task Notes with attribution and the changed-since marker", () => {
-    render(<TaskNotesPanel notes={[folderNote, taskNote]} />);
-    const panel = screen.getByRole("region", { name: "Task notes" });
+/** Drives the rail's controlled open state the way the run page does. */
+function RailHarness({
+  notes,
+  checks,
+}: {
+  notes: TaskNote[];
+  checks: CheckResult[];
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <TaskNotesRail notes={notes} checks={checks} open={open} onOpenChange={setOpen} />
+  );
+}
 
-    expect(panel).toHaveTextContent("harvey-lab");
-    expect(panel).toHaveTextContent("ci-agent · 2026-10-01");
-    expect(panel).toHaveTextContent("Task");
-    expect(panel).toHaveTextContent("sami · 2026-10-12");
+describe("TaskNotesRail", () => {
+  it("summarizes in the flow and groups every Note in the drawer", () => {
+    render(
+      <RailHarness
+        notes={[folderNote, taskNote, testNote]}
+        checks={[check({ pass: false })]}
+      />,
+    );
+
+    // The flow keeps one line; the failing count points at the red checks.
+    expect(
+      screen.getByRole("button", { name: /3 notes on this task/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/1 on failing checks/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open task notes" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /3 notes on this task/ }));
+    const drawer = screen.getByRole("dialog");
+
+    expect(drawer).toHaveTextContent("harvey-lab");
+    expect(drawer).toHaveTextContent("ci-agent · 2026-10-01");
+    expect(drawer).toHaveTextContent("Task");
+    expect(drawer).toHaveTextContent("sami · 2026-10-12");
+    expect(drawer).toHaveTextContent("C-021");
     expect(screen.getAllByText("Different task revision")).toHaveLength(1);
 
     // Plain text with line breaks kept, not rendered markup.
@@ -121,17 +154,76 @@ describe("TaskNotesPanel", () => {
     expect(body.className).toContain("whitespace-pre-wrap");
   });
 
+  it("closes on Escape and via the close button", () => {
+    render(<RailHarness notes={[taskNote]} checks={[check()]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open task notes" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open task notes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("renders the body as text, never as HTML", () => {
     const { container } = render(
-      <TaskNotesPanel notes={[note({ body: "<b>bold</b> **md**" })]} />,
+      <TaskNotesRail
+        notes={[note({ body: "<b>bold</b> **md**" })]}
+        checks={[]}
+        open
+        onOpenChange={() => {}}
+      />,
     );
     expect(container.querySelector("b")).toBeNull();
     expect(screen.getByText("<b>bold</b> **md**")).toBeInTheDocument();
   });
 
   it("renders nothing without Notes", () => {
-    const { container } = render(<TaskNotesPanel notes={[]} />);
+    const { container } = render(
+      <TaskNotesRail notes={[]} checks={[check()]} open onOpenChange={() => {}} />,
+    );
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("capTestNotes", () => {
+  it("keeps the newest Note inline and counts the rest as overflow", () => {
+    const older = note({
+      id: "note_older",
+      scope: "test",
+      test_id: "C-021",
+      updated_at: "2026-10-01T00:00:00Z",
+    });
+    const byTest = notesForRun([testNote, older]).byTest;
+    const { capped, overflow } = capTestNotes(byTest);
+
+    expect(capped.get("C-021")?.map((n) => n.id)).toEqual(["note_test"]);
+    expect(overflow.get("C-021")).toBe(1);
+  });
+
+  it("reports no overflow under the limit", () => {
+    const { capped, overflow } = capTestNotes(notesForRun([testNote]).byTest);
+    expect(capped.get("C-021")).toHaveLength(1);
+    expect(overflow.size).toBe(0);
+  });
+});
+
+describe("Test Notes overflow line", () => {
+  it("links the remaining Notes to the drawer", () => {
+    const onOpenNotes = vi.fn();
+    render(
+      <TestNotes notes={[testNote]} moreCount={2} onOpenNotes={onOpenNotes} />,
+    );
+    const more = screen.getByRole("button", { name: /2 more notes/ });
+    fireEvent.click(more);
+    expect(onOpenNotes).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays quiet without overflow", () => {
+    render(<TestNotes notes={[testNote]} />);
+    expect(screen.queryByRole("button", { name: /more notes/ })).toBeNull();
   });
 });
 

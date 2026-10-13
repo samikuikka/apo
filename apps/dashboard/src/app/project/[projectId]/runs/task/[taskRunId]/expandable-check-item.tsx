@@ -27,6 +27,9 @@ const CodeViewer = dynamic(
   { ssr: false, loading: () => null },
 );
 
+/** Stable empty default — a fresh [] per render would break memoization. */
+const NO_NOTES: TaskNote[] = [];
+
 export function ExpandableCheckItem({
   item,
   index,
@@ -35,12 +38,18 @@ export function ExpandableCheckItem({
   taskRunId,
   projectId,
   traceRunId,
-  notes = [],
+  notes = NO_NOTES,
+  noteOverflow = 0,
+  onOpenNotes,
 }: {
   item: CheckResult;
   index: number;
-  /** This Test's Task Notes. */
+  /** This Test's Task Notes — already capped to the inline limit. */
   notes?: TaskNote[];
+  /** How many more Notes live behind the "+N more" line. */
+  noteOverflow?: number;
+  /** Opens the notes rail's drawer. */
+  onOpenNotes?: () => void;
   checksSource?: TaskFileContentResponse | null;
   /** Terminal + verdict-bearing + evidence present. */
   correctable?: boolean;
@@ -282,7 +291,7 @@ export function ExpandableCheckItem({
                 run notices (strip above)
               </p>
             )}
-            <TestNotes notes={notes} />
+            <TestNotes notes={notes} moreCount={noteOverflow} onOpenNotes={onOpenNotes} />
             {correctable && taskRunId && (
               <div className="flex items-center gap-2">
                 <button

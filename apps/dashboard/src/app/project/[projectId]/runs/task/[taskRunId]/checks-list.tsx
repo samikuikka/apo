@@ -24,10 +24,16 @@ export function ChecksList({
   projectId,
   traceRunId,
   testNotes,
+  testNoteOverflow,
+  onOpenNotes,
 }: {
   checks: CheckResult[];
-  /** Task Notes on single Tests, keyed by check id. */
+  /** Task Notes on single Tests, keyed by check id — already capped to the inline limit. */
   testNotes?: ReadonlyMap<string, TaskNote[]>;
+  /** How many Notes per check id sit behind the "+N more" line. */
+  testNoteOverflow?: ReadonlyMap<string, number>;
+  /** Opens the notes rail's drawer (the "+N more" line's target). */
+  onOpenNotes?: () => void;
   checksSource?: TaskFileContentResponse | null;
   /** Whether test-result corrections are allowed on this run. */
   correctable?: boolean;
@@ -140,6 +146,8 @@ export function ChecksList({
               projectId={projectId}
               traceRunId={traceRunId}
               notes={testNotes?.get(segment.check.id)}
+              noteOverflow={testNoteOverflow?.get(segment.check.id) ?? 0}
+              onOpenNotes={onOpenNotes}
             />
           );
         }
@@ -176,6 +184,8 @@ export function ChecksList({
                     projectId={projectId}
                     traceRunId={traceRunId}
                     notes={testNotes?.get(item.id)}
+                    noteOverflow={testNoteOverflow?.get(item.id) ?? 0}
+                    onOpenNotes={onOpenNotes}
                   />
                 ))}
               </div>

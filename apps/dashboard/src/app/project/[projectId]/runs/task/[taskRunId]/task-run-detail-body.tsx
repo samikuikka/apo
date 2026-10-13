@@ -1,14 +1,15 @@
 "use client";
 
 import { Code2, FileText, MessageSquare, ExternalLink } from "lucide-react";
+import { useState } from "react";
 import { useUrlParam } from "@/hooks/use-url-state";
 import { ConversationTranscript } from "@/components/agent-task-execution/conversation-transcript";
 import { DeliverablesPanel } from "@/components/agent-task-execution/deliverables-panel";
 import type { DeliverableSummary } from "@/lib/agent-task-deliverables-api";
 import type { CheckResult, TaskDefinitionRevisionSummary, TaskNote } from "@/lib/agent-task-api";
 import { ChecksList } from "./checks-list";
-import { TaskNotesPanel } from "./task-notes";
-import { notesForRun } from "./task-notes-model";
+import { TaskNotesRail } from "./task-notes";
+import { capTestNotes, notesForRun } from "./task-notes-model";
 import { secondJudgeSummary } from "@/lib/second-judge";
 import { DeliverablesView } from "./deliverables-view";
 import { useLazyConversation } from "./use-lazy-conversation";
@@ -70,6 +71,11 @@ export function TaskRunDetailBody({
   });
 
   const notes = notesForRun(taskNotes);
+  // A Test keeps its newest Note inline at the point of failure; the rest
+  // sit behind the "+N more" line and in the notes rail's drawer.
+  const { capped: cappedTestNotes, overflow: testNoteOverflow } = capTestNotes(notes.byTest);
+  const [notesRailOpen, setNotesRailOpen] = useState(false);
+  const openNotesRail = () => setNotesRailOpen(true);
   const checksPassed = checks.filter((check) => check.pass === true).length;
   const failedCount = checks.length - checksPassed;
 
@@ -127,7 +133,12 @@ export function TaskRunDetailBody({
               </div>
             )}
 
-            <TaskNotesPanel notes={notes.general} />
+            <TaskNotesRail
+              notes={taskNotes ?? []}
+              checks={checks}
+              open={notesRailOpen}
+              onOpenChange={setNotesRailOpen}
+            />
 
             {checksSource && (
               <p className="text-[11px] text-muted-foreground/70">
@@ -150,7 +161,9 @@ export function TaskRunDetailBody({
                   taskId={taskId}
                   projectId={projectId}
                   traceRunId={traceRunId}
-                  testNotes={notes.byTest}
+                  testNotes={cappedTestNotes}
+                  testNoteOverflow={testNoteOverflow}
+                  onOpenNotes={openNotesRail}
                 />
               </Panel>
             )}
