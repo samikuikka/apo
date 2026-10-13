@@ -68,11 +68,17 @@ Every `t.*` method works inside `t.afterSteer`'s window — `calledTool`, `toolO
 ```bash title="terminal"
 apo task run steering-correction
 
-→ steering-correction
-  ✓ correction-was-delivered
-  ✓ reacted-without-thrashing
-  ✓ report-incorporates-correction
-  ✓ correction-is-coherent
+Executor: caller (recorded in a1b2c3d4)
+Revision: clean worktree 9f2c7d81e4b9 from github.com/acme/agent
+
+PASS steering-correction
+  Checks:
+    PASS correction-was-delivered
+    PASS reacted-without-thrashing
+    PASS report-incorporates-correction
+
+Run:     run_3f8a1c2e4b5d6a7f8c9d0e1f2a3b4c5d
+Inspect: apo runs show run_3f8a1c2e4b5d6a7f8c9d0e1f2a3b4c5d
 ```
 
 The steer is a first-class event in the trace (`task.steer`), nested inside its turn, between the tool span that triggered it and the generation that consumed it:

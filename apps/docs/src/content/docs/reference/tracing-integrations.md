@@ -49,6 +49,10 @@ The `ai.generateText` and `ai.streamText` lifecycle wrappers are **transparent**
 
 For Anthropic, swap the provider: import `createAnthropic` from `@ai-sdk/anthropic` instead of `createOpenAI`, and everything else stays identical. For a complete adapter example, see [`ai-sdk-adapter.ts`](https://github.com/samikuikka/apo/blob/main/apps/example-service/e2e/agent-task-demo/ai-sdk-adapter.ts) in the example service, or [`real-agent-adapter.ts`](https://github.com/samikuikka/apo/blob/main/apps/example-service/e2e/agent-task-demo/real-agent-adapter.ts) for the full multi-turn pattern.
 
+:::note[Per-call alternative: `createApoTracer`]
+Prefer `registerApoTracing()` — one registration, zero per-call code. If you'd rather scope tracing to individual calls (no global registration), `createApoTracer` builds the same translation from the call's own trace context: pass `experimental_telemetry: createApoTracer({ trace, parentSpanId })` with the context `sendUserTurn` receives. Same observations, same assertions; the global path just wires it for you.
+:::
+
 :::note[How it works]
 `registerApoTracing()` creates apo's `ApoSpanProcessor` but does **not** attach it to a provider itself. The task runner's trace client picks the registered processor up when it builds the OTel provider (via `configureApoTelemetry`), which feeds GenAI spans to **both** the local projection (so your `t.*` assertions see them) **and** the OTLP exporter (so they reach the backend). When the Vercel AI SDK emits spans (`experimental_telemetry` enabled), the processor translates them into apo observations and routes them to the correct run via `AsyncLocalStorage`. The SDK owns the span lifecycle, apo just receives the data.
 :::

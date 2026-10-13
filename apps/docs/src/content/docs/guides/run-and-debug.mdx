@@ -91,8 +91,8 @@ Once you've found the cause, the fix depends on **who was wrong**: inspect the e
 
   ```bash
   # 1. Correct this run's recorded result (evidence stays untouched)
-  apo runs correct run_de89cab "report-is-complete" --pass \
-    --reason "Retention is present in the KPI table; judge missed it"
+  apo runs correct run_de89cab "parties-are-complete" --pass \
+    --reason "acme-corp is in the deliverable under its legal name; the matcher missed it"
 
   # 2. Repair the test itself so the NEXT run doesn't need the correction
   ```

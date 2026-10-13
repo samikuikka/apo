@@ -28,7 +28,7 @@ These read the run's trace, what the agent *did*. Fast, deterministic, free.
 | [`t.calledSubagent(agent)`](#tcalledsubagentagent) | A subagent delegation happened. |
 | [`t.messageIncludes(token)`](#tmessageincludestoken) | The agent's reply contains a substring or matches the RegExp. |
 | [`t.maxTurns(n)`](#tmaxturnsn) | The run took at most `n` turns, anti-flail. |
-| [`t.maxDurationMs(n)`](#tmaxdurationmsn) | The run took at most `n` milliseconds, anti-flail. |
+| [`t.maxDurationMs(n, opts?)`](#tmaxdurationmsn-opts) | The run took at most `n` milliseconds (`{ turn }` scopes one turn), anti-flail. |
 | [`t.maxTokens(n, opts?)`](#tmaxtokensn-opts) | At most `n` tokens of the given kind were spent. |
 | [`t.minTokens(n, opts?)`](#tmintokensn-opts) | At least `n` tokens were spent — the run did real work. |
 | [`t.steerDelivered(n)`](#tsteerdeliveredn) | Steer n was delivered and consumed by a later model call. |
@@ -87,10 +87,10 @@ Matches the name of a `SKILL` observation. Produce one by marking the span that 
 - **Signature:** `(n: number) → void`
 - **Asserts:** the run took at most `n` turns, anti-flail.
 
-### `t.maxDurationMs(n)`
+### `t.maxDurationMs(n, opts?)`
 
-- **Signature:** `(n: number) → void`
-- **Asserts:** the run took at most `n` milliseconds, anti-flail.
+- **Signature:** `(n: number, opts?: { turn?: number }) → void`
+- **Asserts:** the run took at most `n` milliseconds, anti-flail. `{ turn }` bounds that one scripted turn instead of the whole run, like `t.maxTokens`.
 
 ### `t.maxTokens(n, opts?)`
 
@@ -169,7 +169,7 @@ t.check(deliverables.answer, includes("acme-corp"), "answer names acme");
 
 ### `t.judge(value, instruction, opts?)`, async
 
-- **Signature:** `(value: unknown | unknown[], instruction: string, opts?: { label?: string; judge?: Partial<JudgeConfig>; expect?: "pass" | "fail" }) → Promise<void>`
+- **Signature:** `(value: unknown | unknown[], instruction: string, opts?: { label?: string; judge?: Partial<JudgeConfig>; secondJudgeValue?: unknown | unknown[]; expect?: "pass" | "fail" }) → Promise<void>`
 - **Asserts:** the configured judge model grades `value` against `instruction` (a natural-language rubric). **Must be awaited**: the check function must be `async`.
 
 ```typescript title="my-task.eval.ts"
@@ -181,7 +181,7 @@ test("answer-is-correct", async (t, { deliverables }) => {
 });
 ```
 
-Records a single assertion tagged `evaluator_type: "llm"` with the judge's model, prompt, response, tokens, and latency attached, inspectable in the breakdown, not an opaque score. `value` accepts a single value or an array (the judge sees all of it).
+Records a single assertion tagged `evaluator_type: "llm"` with the judge's model, prompt, response, tokens, and latency attached, inspectable in the breakdown, not an opaque score. `value` accepts a single value or an array (the judge sees all of it). `opts.secondJudgeValue` hands the [second judge](/concepts/tests/#the-second-judge) a smaller view when the full value exceeds its context — the primary judge still sees all of `value`, so other criteria that need the complete deliverable are unaffected.
 
 :::tip[Facts are `t.check`, taste is `t.judge`]
 A purely factual criterion ("every `Finland` was replaced by `Sweden`", "the JSON has these keys", "the answer contains `acme-corp`") is cheaper and more reliable as a code matcher (`t.check` with `includes` / `matches` / `equals`). Reserve `t.judge` for taste, scoping, and quality. And when you do judge, pass only what the criterion actually grades, handing the judge both before *and* after text invites before/after confusion.
@@ -228,7 +228,7 @@ apo task run jq-contradicted-figures
     PASS figures-supported
 ```
 
-The judge never sees the expectation — the instruction reaches the session unchanged and it investigates and verdicts independently. What changes is the recorded outcome: the check passes only when the verdict matches the ground truth, and a disagreement records a failure whose reasoning names both sides (`judge PASSed where ground truth is FAIL — judge reasoning: …`). This is how apo tests its own judge: the `judge-quality` battery in the example service is nine stub-agent cases with verdicts fixed by construction, and a passing run there means *judge agreed with ground truth*, never that the deliverable was good.
+The judge never sees the expectation — the instruction reaches the session unchanged and it investigates and verdicts independently. What changes is the recorded outcome: the check passes only when the verdict matches the ground truth, and a disagreement records a failure whose reasoning names both sides (`judge PASSed where ground truth is FAIL — judge reasoning: …`). This is how apo tests its own judge: the `judge-quality` battery in the example service runs stub-agent cases with verdicts fixed by construction, and a passing run there means *judge agreed with ground truth*, never that the deliverable was good.
 
 #### Timeouts
 
@@ -322,7 +322,7 @@ The session's tool surface:
 
 Options: `opts.budget` overrides each ceiling (defaults: 12 turns, 24 tool calls, 300 s wall clock, 2 MiB total read); `opts.tools: { trace: false }` drops `get_trace` (deliverables are always readable); `opts.judge` overrides the judge model for this call only, merging field-by-field like `t.judge`; `opts.label` names the assertion in the breakdown; `opts.expect` pins the ground-truth verdict — [ground-truth polarity](#ground-truth-polarity-expect) works identically here.
 
-The session is fail-closed: one that ends without a verdict records a **failure** with its explanation — `budget exhausted after N steps; last tool: …` — never a silent pass. Without a judge model configured, the check records a setup failure naming the env vars to set (`OPENROUTER_MODEL` + `OPENROUTER_API_KEY`, or `OPENAI_MODEL` + `OPENAI_API_KEY`); the model must be tool-calling capable.
+The session is fail-closed: one that ends without a verdict records a **failure** with its explanation — `budget exhausted after N steps; last tool: …` — never a silent pass. Without a judge model configured, the check records a setup failure naming the env vars to set (`OPENROUTER_MODEL` + `OPENROUTER_API_KEY`, `OPENAI_MODEL` + `OPENAI_API_KEY`, or `ANTHROPIC_MODEL` + `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`); the model must be tool-calling capable.
 
 #### MCP evidence tools
 

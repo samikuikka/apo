@@ -75,7 +75,7 @@ export const realAgentAdapter = defineAdapter({
 Three things to notice:
 
 - **`initialize` is the bridge to your file system.** Read task inputs into state once, here.
-- **`sendUserTurn` is the bridge to your agent.** Build your tools, call your LLM, the real thing, the same code path you ship. Threading the `trace` context is what lets tool-call assertions work. If you're using the Vercel AI SDK, pass [`createApoTracer`](/reference/tracing-integrations/) to `experimental_telemetry` and tracing is automatic, no manual span code.
+- **`sendUserTurn` is the bridge to your agent.** Build your tools, call your LLM, the real thing, the same code path you ship. Threading the `trace` context is what lets tool-call assertions work. If you're using the Vercel AI SDK, call [`registerApoTracing()`](/reference/tracing-integrations/) once and enable `experimental_telemetry`, and tracing is automatic, no manual span code.
 - **`collectDeliverables` is the bridge to your tests.** The agent's raw output is rarely the shape a test wants. You shape it here.
 
 That's the whole concept. An adapter is plain TypeScript, it can import your application code, your SDK client, your tool definitions, anything that runs in the task's Node process.

@@ -38,6 +38,14 @@ graph TD
 ### 4. Example Service (`/apps/example-service`)
 - **Responsibility**: A playground application used to test the SDK and demonstrate how to use the system in a real-world scenario.
 
+### 5. Example Service, Python mirror (`/apps/example-service-py`)
+- **Tech Stack**: FastAPI + uvicorn, OpenTelemetry auto-instrumentation
+- **Responsibility**: The same agentic chat endpoint as `example-service`, in Python — proves the OTLP integration story is real without Node. Runs alongside the other services in `pnpm dev`.
+
+### 6. Docs site (`/apps/docs`)
+- **Tech Stack**: Astro Starlight
+- **Responsibility**: The public documentation (including the generated `llms.txt` for agent readers).
+
 ### Comparison evidence reads
 
 A saved Task View comparison is an immutable snapshot of the exact resolved
@@ -445,26 +453,6 @@ This means the dashboard should optimize for:
 - operating scheduled validation
 
 It should **not** optimize its top-level information architecture around prompt-optimization workflows anymore.
-
-### Task Notes
-
-What a project learns while debugging a task (a criterion audited and found
-sound, a judge that misreads one kind of answer, a model's normal score range)
-is kept as **Task Notes**: short, dated, attributed text in
-`agent_task_notes`, attached to a folder (a task-id path prefix, matched on
-whole segments), a task, or one test of a task. Notes are Control Plane data,
-not task source: the `*.eval.ts` says what a test is, notes say what running it
-taught the project. They never change a verdict; corrections do that.
-
-Task and test notes record the task's Task Definition Revision when written
-(the catalog's pinned revision, else the latest run's). The run detail
-(`GET /v1/agent-task-runs/{id}`) embeds the notes that apply to the run's task
-as `task_notes`, each with `task_definition_revision_matches_run` computed
-against the run's pinned revision, so `apo runs show`, the dashboard run page
-and agents reading `--json` get them without another request. Writes go through
-`/v1/projects/{project}/task-notes` and `/v1/task-notes/{id}` and need a
-human-accountable credential (`services/human_actor.py`, shared with
-corrections).
 
 ### Execution Model
 

@@ -38,7 +38,7 @@ Schedules are created and updated via the backend API (`POST` / `PATCH` `/v1/age
 
 `PATCH /v1/agent-task-schedules/{schedule_id}`
 
-Same fields as create, except `project` and `selection_type` are not accepted. Every field is optional, only the fields you send are updated.
+Same fields as create, except `project`, `selection_type`, and `selection` are not accepted. The typed `selection` is set once at create time and cannot be re-pointed over PATCH — to change what a source-owned schedule selects, delete it and create a new one. Every field is optional, only the fields you send are updated.
 
 ## Response: `AgentTaskScheduleSummary`
 

@@ -4,10 +4,8 @@ import starlight from '@astrojs/starlight';
 import astroMermaid from 'astro-mermaid';
 import react from '@astrojs/react';
 
-// apo docs — Astro Starlight.
-// POC stage: docs-only, default Starlight look. Theming to the apo
-// dark/monochrome/sharp-cornered identity (design.md) is the next step.
-// https://starlight.astro.build/
+// apo docs — Astro Starlight, themed to the apo dark/monochrome identity
+// (see src/styles/custom.css and docs/design.md). https://starlight.astro.build/
 export default defineConfig({
 	site: 'https://docs.test-apo.online',
 	integrations: [
@@ -99,8 +97,9 @@ export default defineConfig({
 				label: 'CLI',
 				items: [
 					{ label: 'Overview', slug: 'cli' },
-					{ label: 'login / logout', slug: 'cli/auth' },
-					{ label: 'status', slug: 'cli/status' },
+						{ label: 'login / logout', slug: 'cli/auth' },
+						{ label: 'init', slug: 'cli/init' },
+						{ label: 'status', slug: 'cli/status' },
 					{ label: 'run', slug: 'cli/run' },
 					{ label: 'project', slug: 'cli/project' },
 					{

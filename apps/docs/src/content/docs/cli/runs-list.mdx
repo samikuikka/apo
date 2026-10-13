@@ -52,9 +52,7 @@ apo runs list [--task <id>] [--status <s>] [--model <m>] [--effort <e>] [--provi
   ]}
 />
 
-`Result` is `PASS` or `FAIL` when a verdict exists, `-` while the run is still going, and `-` for runs that errored or ended with **no verdict**. `Generations` appears as `17/22 error` when model generations ended in error (see [Verdict validity](/concepts/tests/#verdict-validity)); `Cost` is suffixed `partial` when errored generations or unpriced calls were excluded from the total. The `Execution` column shows the adapter-reported model and effort. The `Hosts` column shows the serving provider or route each run actually used (empty when the tracer did not report one). Pass `--json` for machine-readable output.
-
-`Result` is `PASS` or `FAIL` when a verdict exists, `NO VERDICT` when the judge gave no verdict for the only non-passing checks, and `-` while the run is still going or when it errored (an execution error, or most generations errored). `Generations` appears as `17/22 error` when model generations ended in error (see [Verdict validity](/concepts/tests/#verdict-validity)); `Cost` is suffixed `partial` when errored generations or unpriced calls were excluded from the total. The `Execution` column shows the adapter-reported model and effort. Pass `--json` for machine-readable output.
+`Result` is `PASS` or `FAIL` when a verdict exists, `NO VERDICT` when the judge gave no verdict for the only non-passing checks, and `-` while the run is still going or when it errored (an execution error, or most generations errored). `Generations` appears as `17/22 error` when model generations ended in error (see [Verdict validity](/concepts/tests/#verdict-validity)); `Cost` is suffixed `partial` when errored generations or unpriced calls were excluded from the total. The `Execution` column shows the adapter-reported model and effort. The `Hosts` column shows the serving provider or route each run actually used (empty when the tracer did not report one). Pass `--json` for machine-readable output.
 
 ## See also
 

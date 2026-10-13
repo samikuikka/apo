@@ -161,7 +161,7 @@ The graded signal is for *comparing* runs. It does not turn the result into a sc
 
 The breakdown tells you *what* failed: which test, what was expected, what came back. The trace tells you *why*: the full call tree, every tool invocation with its input and output, the token counts, and the actual messages exchanged between the agent and the model.
 
-apo treats the trace as a first-class surface, not an afterthought bolted onto an eval tool. Each run owns exactly one trace: never two competing ones, never a guessing game about which trace belongs to which run. A failure you can't debug is a failure you can't fix.
+apo treats the trace as a first-class surface, not an afterthought bolted onto an eval tool. Each run owns at most one trace: never two competing ones, never a guessing game about which trace belongs to which run. A failure you can't debug is a failure you can't fix.
 
 But the trace is evidence, not the workflow. It exists because a test failed, pytest can print an enormous stack trace, and nobody calls pytest a stack-trace analytics product. When a run passes, you may never open the trace at all.
 

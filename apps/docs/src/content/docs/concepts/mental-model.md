@@ -33,7 +33,7 @@ graph LR
   Adapter --> Agent
   Agent -->|deliverable + spans| Run
   Run --> Result
-  Run -->|owns exactly one| Trace
+  Run -->|owns at most one| Trace
 ```
 
 Three zones, left to right: triggers start things, apo holds the run and its results, your system is where the agent executes.
@@ -73,7 +73,7 @@ During a run:
 
 When the run finishes:
 
-- A **result**: pass, fail, or, when the execution itself didn't hold together (most model generations errored), an **error with no verdict**. If any test failed, the run failed. Alongside the verdict is a **breakdown** showing each test, what it expected, and what it got.
+- A **result**: pass, fail, or, when the run couldn't produce a trustworthy verdict (an execution error, most model generations errored, or the judge gave no verdict), an **error with no verdict**. If any test failed, the run failed. Alongside the verdict is a **breakdown** showing each test, what it expected, and what it got.
 - A **trace** is the full runtime record of that one run: the call tree, the messages, the token counts. One run owns at most one trace, never two competing ones.
 
 If it failed, the breakdown tells you *which test* broke, and the trace tells you *why*: what the agent did that didn't meet the standard. If it errored, the breakdown is still there as diagnostic evidence, see [Verdict validity](/concepts/tests/#verdict-validity).

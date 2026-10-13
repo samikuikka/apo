@@ -42,6 +42,7 @@ credentials are read from the local environment:
 | Variable | Default | Purpose |
 |---|---|---|
 | `SCHEDULER_ENABLED` | `true` | Set `false` to disable schedule dispatch. Schedules stay visible but don't fire. **Never run two backends with this `true` against the same database**: the scheduler is in-process and single-owner. |
+| `AGENT_TASK_MAX_CONCURRENT_BATCHES` | `1` | How many scheduled batches may be in flight at once. Clamped to 1–8; an invalid value falls back to the default rather than failing startup. Surfaced (read-only) in the runtime-config API. |
 
 ### Automations
 
@@ -202,6 +203,7 @@ means unlimited — an invalid value fails startup.
 | `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `10` | Max login attempts before lockout. |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `300` | Lockout window length. |
 | `AUTH_EMAIL_VERIFICATION_REQUIRED` | `false` | Require email verification before login. |
+| `APO_TRUSTED_PROXY_RANGES` | loopback + private (`127.0.0.0/8, ::1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, fc00::/7`) | Comma-separated CIDR ranges whose direct peers are trusted proxies. Client-IP resolution (login lockout, ingest rate limits) honors `x-forwarded-for` only when the connection's peer address falls inside these ranges — otherwise the peer address itself is used, so a spoofed header from an untrusted host changes nothing. When you front apo with your own nginx/Traefik (see [Publish on a Domain](/self-hosting/public-server/)), set this to the proxy's address or range; narrower is safer. |
 | `ADMIN_API_KEY` | - | Admin-level API key for privileged routes. |
 
 ## Bootstrap, retention, and maintenance

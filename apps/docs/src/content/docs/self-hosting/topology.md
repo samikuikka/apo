@@ -82,6 +82,10 @@ Use [Publish Apo on Your Domain](/self-hosting/public-server/) for the complete 
 
 This is the canonical alpha deploy path. It assumes Docker and Docker Compose on a single host.
 
+:::tip[Guided alternative]
+`scripts/self-host` automates these steps: `init --profile local` writes the env file with a generated `AUTH_SECRET`, `doctor` validates it, `up --build` starts the stack, and `rotate-auth-secret` rotates the secret and recreates the services. The [Quickstart](/quickstart/) uses it; the manual path is documented here because it is exactly what the helper does.
+:::
+
 1. **Create an env file** with strong secrets:
 
    ```bash
