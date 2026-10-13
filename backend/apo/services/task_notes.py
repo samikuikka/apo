@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Literal, cast
 
-from sqlmodel import Session, col, or_, select
+from sqlmodel import Session, col, func, or_, select
 
 from apo.models.db import AgentTaskBatchRunDB, AgentTaskNoteDB, AgentTaskRunDB
 from apo.models.schemas import TaskNote, TaskNoteScope
@@ -145,12 +145,17 @@ def list_notes(
         prefix = _normalize_folder(folder)
         if not prefix:
             raise TaskNoteError("invalid_folder", "folder must name at least one path segment")
-        under = f"{_escape_like(prefix)}/%"
+        # A prefix comparison, not LIKE: SQLite's LIKE is ASCII-case-
+        # insensitive, so a differently-cased folder would match the notes
+        # *under* it while the exact-match branch above misses — half a
+        # result set. substr equality is case-sensitive on every backend
+        # and needs no wildcard escaping.
+        under = f"{prefix}/"
         statement = statement.where(
             or_(
                 col(AgentTaskNoteDB.folder) == prefix,
-                col(AgentTaskNoteDB.folder).like(under, escape="\\"),
-                col(AgentTaskNoteDB.task_id).like(under, escape="\\"),
+                func.substr(col(AgentTaskNoteDB.folder), 1, len(under)) == under,
+                func.substr(col(AgentTaskNoteDB.task_id), 1, len(under)) == under,
             )
         )
     if not include_archived:
@@ -193,10 +198,6 @@ def _to_task_note(row: AgentTaskNoteDB, labels: dict[str, str]) -> TaskNote:
         updated_at=row.updated_at,
         archived_at=row.archived_at,
     )
-
-
-def _escape_like(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 _SCOPE_RANK: dict[str, int] = {"folder": 0, "task": 1, "test": 2}

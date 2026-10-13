@@ -189,6 +189,24 @@ class TestScopes:
 
         assert {n["body"] for n in _list(client, folder="a_b")} == {"underscore folder"}
 
+    def test_folder_match_is_case_sensitive_like_task_ids(
+        self, client: TestClient, session: Session
+    ) -> None:
+        """A Folder query matches the stored casing, on every backend.
+
+        SQLite's LIKE is ASCII-case-insensitive, so a differently-cased
+        folder query used to leak the notes *under* the folder (prefix
+        matches) while hiding the ones *on* it (exact matches) — half a
+        result set. Task ids are case-sensitive; folders inherit that.
+        """
+        _seed_project(session)
+        _add(client, "on the set", folder="Harvey-Lab")
+        _add(client, "nested set", folder="Harvey-Lab/contracts")
+        _add(client, "task under it", task_id="Harvey-Lab/x")
+
+        assert _list(client, folder="harvey-lab") == []
+        assert len(_list(client, folder="Harvey-Lab")) == 3
+
     def test_folder_is_normalized_on_write(self, client: TestClient, session: Session) -> None:
         _seed_project(session)
         resp = _add(client, folder="/harvey-lab/")
