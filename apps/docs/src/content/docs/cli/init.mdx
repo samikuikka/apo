@@ -56,6 +56,16 @@ A login remembers the task root it was created with. If your saved login points 
 - A skill directory the CLI installed carries a marker file; re-running `apo init` updates those in place.
 - A hand-installed apo skill (no marker) or a **symlink** is reported and **left untouched** — the CLI never deletes what it didn't write.
 
+## The skill without onboarding
+
+`apo init` is for first-time setup — it wants to detect agents, install the skill, and launch one to scaffold your first task. If the repository already has tasks and you only want your coding agent to know the loop, install the skill from the agent-skills registry instead:
+
+```bash
+npx skills add samikuikka/apo --skill apo
+```
+
+The registry serves the same content — [`skills/apo/SKILL.md`](https://github.com/samikuikka/apo/blob/main/skills/apo/SKILL.md) in the apo repository — and installs it for every agent that supports the skills standard. `apo init` remains the offline path and pins the skill to the CLI version you have installed.
+
 ## When to run it
 
 - **After `apo login`**, in the repository that holds the agent you want to test. Login isn't required to install the skill, but the launched agent needs it before it can publish or run tasks — init says so if it's missing.

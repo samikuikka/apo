@@ -2,6 +2,11 @@
 // and ~/.claude/skills/apo/. One source of truth for what the spawned agent
 // is told; the kickoff prompt in commands/init.ts points here.
 //
+// The same content is committed at skills/apo/SKILL.md in the repository so
+// `npx skills add samikuikka/apo --skill apo` can serve it; a drift test
+// (tests/skill-content-drift.test.ts) keeps the two byte-identical — edit
+// both or neither.
+//
 // Keep code samples compiling against @apo-ai/sdk's current API — the
 // canonical reference is apps/example-service/e2e/agent-task-demo/ in the
 // apo repository. Deep documentation lives at https://docs.test-apo.online;
