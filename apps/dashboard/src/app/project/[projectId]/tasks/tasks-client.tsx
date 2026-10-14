@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { type AgentTaskSummary } from "@/lib/agent-task-api";
-import { Button } from "@/components/ui/button";
 
 import { useProjectId, useIsDemo } from "@/lib/project-router";
 import { usePublishRunCohort } from "@/lib/run-cohort-context";
@@ -52,7 +51,6 @@ export function AgentTasksClient({
   const clientIsDemo = useIsDemo();
   const isDemoProject = isDemo || clientIsDemo;
   const searchParams = useSearchParams();
-  const [editingSource, setEditingSource] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     const folders = groupByFolder(tasks);
     return new Set(folders.map((f) => f.id));
@@ -231,20 +229,7 @@ export function AgentTasksClient({
 
   return (
     <div className="flex flex-col">
-      {editingSource && taskSource && !isDemoProject ? (
-        <div className="border-b border-border px-6 py-10">
-          <div className="mx-auto max-w-2xl">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setEditingSource(false)}
-            >
-              Done
-            </Button>
-          </div>
-        </div>
-      ) : showFirstRun ? (
+      {showFirstRun ? (
         <ProjectFirstRun setup={firstRunSetup} />
       ) : showSetupCard ? (
         <div className="px-6 py-10">
@@ -260,11 +245,9 @@ export function AgentTasksClient({
             taskSource={taskSource}
             isDemoProject={isDemoProject}
             canRunTasks={canRunTasks}
-            editingSource={editingSource}
             syncing={syncing}
             selectedCount={selected.size}
             runRunning={runState.running}
-            onEditSource={() => setEditingSource(true)}
             onSync={handleSync}
             onRun={handleRun}
           />

@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Play, RefreshCw } from "lucide-react";
+import { Play, RefreshCw } from "lucide-react";
 
 import { RefreshControls, useRouterRefresh } from "@/components/refresh-controls";
 import { Button } from "@/components/ui/button";
@@ -11,11 +11,9 @@ export function TasksToolbar({
   taskSource,
   isDemoProject,
   canRunTasks = true,
-  editingSource,
   syncing,
   selectedCount,
   runRunning,
-  onEditSource,
   onSync,
   onRun,
 }: {
@@ -23,11 +21,9 @@ export function TasksToolbar({
   isDemoProject: boolean;
   /** Hide (not disable) write affordances for read-only visitors. */
   canRunTasks?: boolean;
-  editingSource: boolean;
   syncing: boolean;
   selectedCount: number;
   runRunning: boolean;
-  onEditSource: () => void;
   onSync: () => void;
   onRun: () => void;
 }) {
@@ -45,30 +41,17 @@ export function TasksToolbar({
           onAutoRefreshChange={setAutoRefreshInterval}
         />
         {taskSource && !isDemoProject && canRunTasks && (
-          <>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={onEditSource}
-              disabled={editingSource}
-              className="h-8 gap-1.5 text-[13px] font-normal"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              Edit source
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={onSync}
-              disabled={syncing}
-              className="h-8 gap-1.5 text-[13px] font-normal"
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
-              {syncing ? "Syncing…" : "Resync"}
-            </Button>
-          </>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onSync}
+            disabled={syncing}
+            className="h-8 gap-1.5 text-[13px] font-normal"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
+            {syncing ? "Syncing…" : "Resync"}
+          </Button>
         )}
         {canRunTasks ? (
           <Button type="button"
