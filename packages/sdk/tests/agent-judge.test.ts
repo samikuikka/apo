@@ -754,3 +754,121 @@ describe("t.agent — anthropic wire", () => {
     }
   });
 });
+
+// ── Compute tool ───────────────────────────────────────────────────────────
+
+describe("t.agent — compute tool", () => {
+  const NEAR_MISS = "((1520-1470)/1470)*100";
+
+  it("ships in every session's toolset and the briefing points at it", async () => {
+    const fetchMock = scriptFetch([
+      toolCallTurn("1", "finish_verdict", { reasoning: "done", pass: true }),
+    ]);
+
+    await runAgentCheck(async (t) => {
+      await t.agent("PASS if the answer matches the log.");
+    });
+
+    const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string) as {
+      tools?: Array<{ function?: { name?: string } }>;
+      messages: Array<{ role: string; content: unknown }>;
+    };
+    const names = (body.tools ?? []).map((t) => t.function?.name);
+    expect(names).toContain("compute");
+    // The provider transform wraps the system string in cache-breakpoint
+    // content parts — flatten them before asserting on the briefing text.
+    const systemContent = body.messages.find((m) => m.role === "system")?.content;
+    const system = Array.isArray(systemContent)
+      ? systemContent.map((p) => (p as { text?: string }).text ?? "").join("")
+      : String(systemContent ?? "");
+    expect(system).toContain("compute tool");
+  });
+
+  it("serves an exact value mid-session and records the call in the transcript", async () => {
+    scriptFetch([
+      toolCallTurn("1", "compute", { expression: NEAR_MISS }),
+      toolCallTurn("2", "finish_verdict", {
+        reasoning: "The stated +3.5% disagrees with the computed +3.40%.",
+        pass: false,
+      }),
+    ]);
+
+    const result = await runAgentCheck(async (t) => {
+      await t.agent("PASS only if +3.5% growth is supported.", { expect: "fail" });
+    });
+
+    const assertion = result.assertions[0]!;
+    expect(assertion.pass).toBe(true); // judge caught the near-miss; ground truth agrees
+
+    const call = assertion.judge?.session?.steps?.[0]?.tool_calls?.[0];
+    expect(call?.name).toBe("compute");
+    expect(call?.input).toContain("1520");
+    // The recorded result carries both the raw double and the display form.
+    expect(call?.result).toContain("3.4013605442176873");
+    expect(call?.result).toContain("3.40136054422");
+
+    // Charged and fingerprinted like every other tool result served to the model.
+    const fingerprint = assertion.judge?.session?.evidence?.find((f) => f.tool === "compute");
+    expect(fingerprint?.result_sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(fingerprint?.result_bytes).toBeGreaterThan(0);
+  });
+
+  it("charges compute results against the read budget", async () => {
+    scriptFetch([
+      toolCallTurn("1", "compute", { expression: "1+1" }),
+      toolCallTurn("2", "finish_verdict", { reasoning: "done", pass: true }),
+    ]);
+
+    const result = await runAgentCheck(async (t) => {
+      await t.agent("PASS if the answer matches the log.", {
+        budget: { maxReadBytes: 1 }, // any served byte overflows
+      });
+    });
+
+    const call = result.assertions[0]?.judge?.session?.steps?.[0]?.tool_calls?.[0];
+    expect(call?.name).toBe("compute");
+    expect(call?.result).toContain("read budget exhausted");
+  });
+
+  it("draws from the shared tool-call budget", async () => {
+    const fetchMock = scriptFetch([
+      toolCallTurn("1", "compute", { expression: "1+1" }),
+      toolCallTurn("2", "compute", { expression: "2+2" }),
+      toolCallTurn("3", "finish_verdict", { reasoning: "done", pass: true }),
+    ]);
+
+    await runAgentCheck(async (t) => {
+      await t.agent("PASS if the answer matches the log.", {
+        budget: { maxToolCalls: 1 },
+      });
+    });
+
+    // The second compute call — over the ceiling — got the guard's error as
+    // its tool result, exactly like every other budgeted tool.
+    const third = JSON.parse((fetchMock.mock.calls[2]![1] as RequestInit).body as string) as {
+      messages: Array<{ content?: unknown }>;
+    };
+    const served = JSON.stringify(third.messages);
+    expect(served).toContain("tool-call budget exhausted");
+  });
+
+  it("executes identical intra-step compute calls once", async () => {
+    scriptFetch([
+      multiToolCallTurn("1", [["compute", { expression: NEAR_MISS }], ["compute", { expression: NEAR_MISS }]]),
+      toolCallTurn("2", "finish_verdict", { reasoning: "done", pass: true }),
+    ]);
+
+    const result = await runAgentCheck(async (t) => {
+      await t.agent("PASS only if +3.5% growth is supported.");
+    });
+
+    const fingerprints = result.assertions[0]?.judge?.session?.evidence?.filter((f) => f.tool === "compute");
+    expect(fingerprints).toHaveLength(1); // deduped: one execution, one charge
+  });
+
+  it("reaches the package entry alongside the session", async () => {
+    const pub = await import("../src/agent-task/public.ts");
+    expect(typeof pub.evaluateComputeExpression).toBe("function");
+    expect(pub.evaluateComputeExpression("0.1+0.2").text ?? "").toBe("0.3");
+  });
+});

@@ -170,7 +170,7 @@ t.check(deliverables.answer, includes("acme-corp"), "answer names acme");
 ### `t.judge(value, instruction, opts?)`, async
 
 - **Signature:** `(value: unknown | unknown[], instruction: string, opts?: { label?: string; judge?: Partial<JudgeConfig>; secondJudgeValue?: unknown | unknown[]; expect?: "pass" | "fail" }) → Promise<void>`
-- **Asserts:** the configured judge model grades `value` against `instruction` (a natural-language rubric). **Must be awaited**: the check function must be `async`.
+- **Asserts:** the configured judge model grades `value` against `instruction` (a natural-language rubric). **Must be awaited**: the check function must be `async`. A single completion with no tools — a rubric that hinges on arithmetic (recomputing percentages, deltas) belongs to [`t.agent`](#t-agentinstruction-opts-async), whose judge can call the `compute` tool for exact values.
 
 ```typescript title="my-task.eval.ts"
 test("answer-is-correct", async (t, { deliverables }) => {
@@ -315,6 +315,7 @@ The session's tool surface:
 |---|---|
 | `read_deliverable` | One deliverable by name, paginated (offset/limit, max 12,000 bytes per call) |
 | `search_deliverable` | Regex search over one deliverable — up to 8 matches with surrounding context, cheaper than reading end to end |
+| `compute` | Exact arithmetic: an expression in (`+ - * / % ^`, parens, `round`, `min`, `ln`, … — no code execution), a value out — for recomputing percentages and deltas so near-miss figures (`+3.5%` stated, `+3.40%` actual) can't slide by in-head math |
 | `get_trace` | The run's execution trace (tool calls, turns, final reply); answers `unsupported` honestly when trace evidence is missing |
 | `list_runs` / `get_run` | This task's prior runs and their full check reports, human corrections included — frozen once per evaluation; present when the run is recorded against a backend |
 | `get_task_definition` | The task's id, description, and deliverable names |
