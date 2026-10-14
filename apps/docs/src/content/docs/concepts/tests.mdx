@@ -122,6 +122,8 @@ The marks state **measurements, not diagnoses** — they never claim *why* the j
 | `2nd ✕` | The second opinion failed to arrive (transport error, not a verdict) |
 | `2nd ⊘` | No second opinion was possible: the value exceeded the second judge's context limit — not an outage |
 
+The marks always compare the judges' *verdicts*, never the check's outcome — under [`expect` polarity](/reference/assertions/#ground-truth-polarity-expect) a PASS outcome means the judge correctly FAILed a known-bad deliverable, and two judges that both did so corroborate silently. When dots do show, the first is the judge's verdict, which can be `✗` on a check whose outcome is PASS.
+
 In the CLI they sit at the end of the check line, with one sentence under contested checks, and one fact line after the checks:
 
 ```
