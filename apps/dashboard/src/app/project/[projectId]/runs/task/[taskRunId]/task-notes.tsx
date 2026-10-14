@@ -4,7 +4,7 @@ import { StickyNote } from "lucide-react";
 import type { CheckResult, TaskNote } from "@/lib/agent-task-api";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { noteAttribution, noteScopeLabel } from "./task-notes-model";
+import { noteAttribution, noteScopeLabel, notesForRun, byNewest } from "./task-notes-model";
 
 /**
  * Task Notes, read-only. A Note is knowledge, not a verdict, so it stays
@@ -12,12 +12,11 @@ import { noteAttribution, noteScopeLabel } from "./task-notes-model";
  * because it qualifies whether the Note still holds. Bodies are plain text
  * with line breaks preserved, never parsed as markup.
  *
- * Placement (validated against a four-variant prototype): the page flow
- * carries only a one-line summary; a slim rail on the right edge opens a
- * drawer with every Note that applies to the task, grouped Folder / Task /
- * per test; and a Test keeps its first Note inline at the point of failure,
- * the rest behind a "+N more" line that opens the drawer. The checks stay
- * scannable no matter how many Notes a task gathers.
+ * Placement: the page flow carries only a one-line summary; a slim rail on
+ * the right edge opens a drawer with every Note that applies to the task,
+ * grouped Folder / Task / per test; and a Test keeps its newest Note inline
+ * at the point of failure, the rest behind a "+N more" line that opens the
+ * drawer. The checks stay scannable no matter how many Notes a task gathers.
  */
 
 /** The in-flow summary line plus the right-edge rail that opens the drawer. */
@@ -96,15 +95,10 @@ export function TaskNotesRail({
 
 /** Grouped read of every Note that applies to the task. */
 function NotesSurface({ notes, checks }: { notes: TaskNote[]; checks: CheckResult[] }) {
-  const folders = notes.filter((n) => n.scope === "folder").sort(byNewest);
-  const tasks = notes.filter((n) => n.scope === "task").sort(byNewest);
+  const { general, byTest } = notesForRun(notes);
+  const folders = general.filter((n) => n.scope === "folder").toSorted(byNewest);
+  const tasks = general.filter((n) => n.scope === "task").toSorted(byNewest);
   const passById = new Map(checks.map((c) => [String(c.id ?? ""), c.pass === true]));
-
-  const byTest = new Map<string, TaskNote[]>();
-  for (const note of notes) {
-    if (note.scope !== "test" || !note.test_id) continue;
-    byTest.set(note.test_id, [...(byTest.get(note.test_id) ?? []), note]);
-  }
 
   return (
     <div className="space-y-4">
@@ -116,8 +110,8 @@ function NotesSurface({ notes, checks }: { notes: TaskNote[]; checks: CheckResul
         <NotesGroup title="Folder" notes={folders} labelFor={noteScopeLabel} />
       )}
       {tasks.length > 0 && <NotesGroup title="Task" notes={tasks} labelFor={() => "Task"} />}
-      {[...byTest.keys()].sort().map((testId) => {
-        const list = (byTest.get(testId) ?? []).sort(byNewest);
+      {Array.from(byTest.keys()).toSorted().map((testId) => {
+        const list = (byTest.get(testId) ?? []).toSorted(byNewest);
         const pass = passById.get(testId);
         return (
           <section key={testId} className="border border-border bg-card/60 px-4 py-3">
@@ -178,7 +172,7 @@ function NotesGroup({
   );
 }
 
-/** A Test's Notes inside its expanded check — the first inline, the rest behind "+N more". */
+/** A Test's Notes inside its expanded check — the newest inline, the rest behind "+N more". */
 export function TestNotes({
   notes,
   moreCount = 0,
@@ -231,8 +225,4 @@ function NoteEntry({ note, label }: { note: TaskNote; label: string }) {
       </p>
     </div>
   );
-}
-
-function byNewest(a: TaskNote, b: TaskNote): number {
-  return (b.updated_at ?? "").localeCompare(a.updated_at ?? "");
 }

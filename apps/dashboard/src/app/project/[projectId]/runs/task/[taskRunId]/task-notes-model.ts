@@ -40,13 +40,16 @@ export function capTestNotes(
   const capped = new Map<string, TaskNote[]>();
   const overflow = new Map<string, number>();
   for (const [testId, notes] of byTest) {
-    const sorted = [...notes].sort((a, b) =>
-      (b.updated_at ?? "").localeCompare(a.updated_at ?? ""),
-    );
+    const sorted = notes.toSorted(byNewest);
     capped.set(testId, sorted.slice(0, limit));
     if (sorted.length > limit) overflow.set(testId, sorted.length - limit);
   }
   return { capped, overflow };
+}
+
+/** Newest-first by last edit; Notes without a timestamp sort last. */
+export function byNewest(a: TaskNote, b: TaskNote): number {
+  return (b.updated_at ?? "").localeCompare(a.updated_at ?? "");
 }
 
 /** Where a general Note sits: the Folder path, or "Task". */

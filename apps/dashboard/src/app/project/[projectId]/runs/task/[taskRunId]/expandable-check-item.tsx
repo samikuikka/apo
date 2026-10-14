@@ -27,7 +27,8 @@ const CodeViewer = dynamic(
   { ssr: false, loading: () => null },
 );
 
-/** Stable empty default — a fresh [] per render would break memoization. */
+// Referentially stable empty default: a [] literal would be a fresh array
+// every render and defeat memoization of these per-check list items.
 const NO_NOTES: TaskNote[] = [];
 
 export function ExpandableCheckItem({
