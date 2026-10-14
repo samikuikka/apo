@@ -127,8 +127,12 @@ Read by the SDK's check engine during `apo task run` and `apo runs rejudge`:
 | `APO_SECOND_JUDGE_MODEL` | Set to anything non-empty to arm a second judge on judged checks (different model recommended). |
 | `APO_SECOND_JUDGE_BASE_URL` | OpenAI-compatible base URL for the second judge (defaults to the primary judge's base URL). |
 | `APO_SECOND_JUDGE_API_KEY` | API key for the second judge (defaults to the primary judge's key). |
+| `APO_SECOND_JUDGE_PROVIDER` | Forces the second judge's decisions-endpoint dialect: `openrouter`, `openai`, or `anthropic`. Unset, the base URL's host decides (`api.openai.com` → openai, `api.anthropic.com` → anthropic, any other host → openrouter). The `openai` and `anthropic` dialects are reserved — their decisions endpoints are not implemented yet — so a call that reaches one records `error` evidence on the check instead of sending a guessed request; an unknown value records `error` evidence too, never a failed check. |
 | `APO_JUDGE_VERDICT_FIRST` | `true` makes `t.judge` ask for the verdict before the commentary, so a mid-response failure still leaves a usable verdict. |
 | `APO_JUDGE_MODE` | `cascade` lets a confident second judge (native confidence ≥ 0.95) decide `t.judge` checks without calling the primary judge; any other value is ignored. |
+| `APO_JUDGE_TEMPERATURE` | Sampling temperature for `t.judge` calls (a call-level `judge.temperature` wins; default 0). The valid range depends on the wire: 0–1 on the Anthropic Messages wire, 0–2 on the OpenAI-compatible wire — an invalid value records a judge error on the check before any request. See [Temperature](/reference/assertions/#temperature). |
+| `APO_JUDGE_CONCURRENCY` | Same-prefix `t.judge` calls dispatch up to this many at a time once the first (cache-warming) call settles; default 1. Raising it trades prompt-cache hits for wall time. See [Concurrency and the prompt cache](/reference/assertions/#concurrency-and-the-prompt-cache). |
+| `APO_JUDGE_LOOP_GUARD` | `0` turns off the guard that cuts a `t.judge` call whose streamed reasoning degenerates into repetition. See [Timeouts](/reference/assertions/#timeouts). |
 
 ## Task runner
 

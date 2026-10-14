@@ -205,7 +205,7 @@ test("answer-quality", async (t, { deliverables }) => {
 });
 ```
 
-Absent fields inherit from the run's judge config (`runTask({ judge })`, or a task-level `judge` layer), whose env defaults depend on the runner: `OPENROUTER_MODEL` / `OPENAI_MODEL` / `ANTHROPIC_MODEL` for local runs (`apo task run`, `apo connect`), `AGENT_TASK_JUDGE_MODEL` for backend-spawned runs. So `{ model }` alone is usually enough, `baseURL` and `apiKey` flow through unchanged. A bare `claude-*` model id (or an Anthropic base URL) switches the call to the Anthropic Messages wire, authenticated with `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`. The overridden model is stamped on the assertion metadata and shown in the dashboard breakdown.
+Absent fields inherit from the run's judge config (`runTask({ judge })`, or a task-level `judge` layer), whose env defaults depend on the runner: `OPENROUTER_MODEL` / `OPENAI_MODEL` / `ANTHROPIC_MODEL` for local runs (`apo task run`, `apo connect`), `AGENT_TASK_JUDGE_MODEL` for backend-spawned runs. So `{ model }` alone is usually enough, `baseURL` and `apiKey` flow through unchanged. The call switches to the Anthropic Messages wire — authenticated with `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` — when the `baseURL` sits on `api.anthropic.com`, or when a bare `claude-*` model id is set with no `baseURL` at all: an explicit `baseURL` wins, so a `claude-*` override on an OpenAI-compatible gateway keeps that gateway's wire instead of sending `/v1/messages` to a host that does not serve it. OpenRouter-qualified ids (`anthropic/claude-…`, like the Sonnet escalation above) never switch — they ride the OpenAI-compatible wire through OpenRouter. `provider: "anthropic"` in the judge config forces the Anthropic wire regardless. The overridden model is stamped on the assertion metadata and shown in the dashboard breakdown.
 
 #### Ground-truth polarity: `{ expect }`
 
@@ -255,7 +255,7 @@ A `t.judge` request is sent at temperature 0 unless something sets it, most spec
 | Task or run judge config | `task("review", { judge: { temperature: 0.6 }, … })` |
 | Environment | `APO_JUDGE_TEMPERATURE=0.6` |
 
-A value that is not a number from 0 to 2 records a judge error on the check, before any request is made (the second judge and cascade mode included). The temperature used is recorded on each check's judge metadata. It applies to `t.judge` only; `t.agent` sessions stay at 0.
+A value outside the wire's accepted range records a judge error on the check, before any request is made (the second judge and cascade mode included): 0 to 2 on the OpenAI-compatible wire, 0 to 1 on the Anthropic Messages wire, whose API rejects anything above 1. The temperature used is recorded on each check's judge metadata. It applies to `t.judge` only; `t.agent` sessions stay at 0.
 
 Some reasoning models recommend against greedy decoding: DeepSeek's guidance for its reasoning models is 0.5–0.7 (0.6) to avoid endless repetition. That only takes effect through endpoints that pass `temperature` on to the model (OpenRouter and Fireworks do; DeepSeek's own API ignores it for its reasoner). Verdicts at a non-zero temperature vary more between draws, so compare runs judged at the same setting.
 
