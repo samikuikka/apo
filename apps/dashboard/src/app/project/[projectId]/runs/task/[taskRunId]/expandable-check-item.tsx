@@ -421,10 +421,9 @@ function SecondJudgeMark({ check }: { check: CheckResult }) {
     }
     return null;
   }
-  // The dots show verdicts, not outcomes: under `expect` polarity the outcome
-  // is agreement with the author's ground truth, so the primary dot reads
-  // `verdict_pass` (what the judge concluded) and falls back to the outcome —
-  // identical whenever no `expect` was pinned.
+  // The dots show what the judges concluded: under `expect` polarity the
+  // outcome can be the opposite of the verdict, so the primary dot reads
+  // `verdict_pass` and only pre-verdict runs fall back to the outcome.
   const primary = check.judge?.verdict_pass ?? check.pass === true;
   const secondPass = sj?.choice === "pass";
   const dot = (on: boolean) =>

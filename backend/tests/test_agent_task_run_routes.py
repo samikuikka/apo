@@ -394,13 +394,14 @@ def test_task_run_list_filters_since_window_over_started_at(
     assert {r["id"] for r in client.get(base, params={"project": "proj-since", "since": "nope"}).json()} == {"r-fresh", "r-stale"}
 
 
-def test_task_run_list_orders_unstarted_runs_first_and_windows_them(
+def test_task_run_list_orders_unstarted_runs_last_and_windows_them(
     client: TestClient,
     session: Session,
 ) -> None:
-    """Runs without a started_at (expired in the queue, or still queued) list
-    first on SQLite and Postgres alike, then started runs newest first. A since
-    window keeps a queued run and judges an expired one by when it ended."""
+    """Runs that never started list last — once expired rows pile up past a
+    drill-down's limit they must not bury the task's real history — while a
+    live queued run still leads (it is the latest). A since window keeps a
+    queued run and judges an expired one by when it ended."""
     now = datetime.now(timezone.utc)
     session.add_all([_batch("b", "proj-unstarted", now)])
     expired = _run("r-expired", "b", "task-1", now - timedelta(hours=2))
@@ -431,14 +432,73 @@ def test_task_run_list_orders_unstarted_runs_first_and_windows_them(
 
     base = "/v1/agent-task-runs"
     ids = [r["id"] for r in client.get(base, params={"project": "proj-unstarted", "since": "7d"}).json()]
-    assert set(ids[:2]) == {"r-queued", "r-expired"}
-    assert ids[2:] == ["r-newer", "r-older"]
+    assert ids[0] == "r-queued"
+    assert ids[1:3] == ["r-newer", "r-older"]
+    assert set(ids[3:]) == {"r-expired"}
     # The CLI's latest-run lookup leaves out runs that ended without starting,
     # so an expired run is not "the latest run"; a live queued one still is.
     lookup = {"project": "proj-unstarted", "exclude_not_started": "true"}
     ids = [r["id"] for r in client.get(base, params=lookup).json()]
     assert ids[0] == "r-queued"
     assert "r-expired" not in ids and "r-expired-old" not in ids
+
+
+def test_task_run_list_limit_keeps_started_runs_when_expired_pile_up(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """A task whose executor pool died accrues one expired run per fire; once
+    those outnumber the limit, the drill-down must still surface the task's
+    started runs instead of a wall of never-started rows."""
+    now = datetime.now(timezone.utc)
+    session.add_all([_batch("b", "proj-evict", now)])
+    rows: list[AgentTaskRunDB] = []
+    for i in range(3):
+        expired = _run(f"r-expired-{i}", "b", "task-1", now - timedelta(hours=i + 2))
+        expired.status = "error"
+        expired.pass_result = None
+        expired.started_at = None
+        rows.append(expired)
+    rows.append(_run("r-started", "b", "task-1", now - timedelta(days=9)))
+    session.add_all(rows)
+    session.commit()
+
+    ids = [
+        r["id"]
+        for r in client.get(
+            "/v1/agent-task-runs",
+            params={"project": "proj-evict", "task_id": "task-1", "limit": "3"},
+        ).json()
+    ]
+    assert ids[0] == "r-started"
+    assert all(i.startswith("r-expired") for i in ids[1:])
+
+
+def test_task_run_list_exclude_keeps_judge_no_verdict_run(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """exclude_not_started uses the stats cohort's classification: a
+    judge-no-verdict run without started_at ran its checks, so hiding it from
+    the lookup would disagree with the stats that count it as a real run."""
+    now = datetime.now(timezone.utc)
+    session.add_all([_batch("b", "proj-judge-nv", now)])
+    judge_nv = _run("r-judge-nv", "b", "task-1", now)
+    judge_nv.status = "error"
+    judge_nv.pass_result = None
+    judge_nv.no_verdict_reason = "judge"
+    judge_nv.started_at = None
+    session.add_all([judge_nv])
+    session.commit()
+
+    ids = [
+        r["id"]
+        for r in client.get(
+            "/v1/agent-task-runs",
+            params={"project": "proj-judge-nv", "exclude_not_started": "true"},
+        ).json()
+    ]
+    assert "r-judge-nv" in ids
 
 
 def test_batch_run_list_filter_matches_only_when_one_child_satisfies_all_dimensions(

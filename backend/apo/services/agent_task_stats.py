@@ -39,11 +39,11 @@ from ..models.schemas import (
     AgentTaskRunStats,
     RunConfigEffortFacet,
     RunConfigModelFacet,
+    RunHostFacet,
     TaskViewConfig,
     as_no_verdict_reason,
 )
 
-from ..models.schemas import AgentTaskRunStats, RunConfigEffortFacet, RunConfigModelFacet, TaskViewConfig, RunHostFacet
 from .archived_models import load_archived_models
 from .check_report_storage import is_judge_no_verdict_run
 from .lifecycle import is_never_started_run
@@ -161,9 +161,9 @@ def load_run_stat_fields(
     ``runs_in_view`` projects only scalar columns, never ``checks_json`` /
     ``transcript_json`` / ``deliverables_json``.
 
-    Runs are returned in descending ``started_at`` order (the cohort's
-    contract) so the first element of each task group is the most recent run,
-    which ``compute_run_stats`` treats as ``latest``.
+    Runs are returned latest-first per task (the cohort's contract): a live
+    queued or running run leads, else the most recently started, and
+    ``compute_run_stats`` treats that first element as ``latest``.
     """
     cohort = runs_in_view(
         session,

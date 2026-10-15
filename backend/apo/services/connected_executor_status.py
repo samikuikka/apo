@@ -19,6 +19,7 @@ from typing import cast
 from sqlmodel import Session, func, select
 
 from apo.db_helpers import as_column
+from apo.models.execution import SUPPORTED_EXECUTOR_PROTOCOL_VERSIONS
 from ..models.db import ExecutorDB, ProjectTaskSourceDB, TaskExecutionAttemptDB
 from ..models.execution import (
     ConnectedEnvironmentState,
@@ -28,8 +29,7 @@ from ..models.execution import (
 #: Mirror of the executor-management offline threshold.
 _EXECUTOR_OFFLINE_THRESHOLD_SECONDS = 60
 
-#: Source-owned protocol/driver requirements.
-_SOURCE_OWNED_PROTOCOL_VERSION = 2
+#: Source-owned driver requirement.
 _SOURCE_OWNED_DRIVER_KIND = "source-owned-ts"
 
 # Aggregate precedence rank (lower wins). ``not_connected`` is the fallback
@@ -172,7 +172,9 @@ def _is_offline(executor: ExecutorDB, *, now: datetime) -> bool:
 
 
 def _is_protocol_driver_compatible(executor: ExecutorDB) -> bool:
-    if executor.protocol_version != _SOURCE_OWNED_PROTOCOL_VERSION:
+    # The same set the claim path gates on, so "incompatible" never names an
+    # executor that would still claim attempts.
+    if executor.protocol_version not in SUPPORTED_EXECUTOR_PROTOCOL_VERSIONS:
         return False
     return _SOURCE_OWNED_DRIVER_KIND in (executor.driver_kinds_json or [])
 

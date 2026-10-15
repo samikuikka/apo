@@ -63,7 +63,9 @@ export function TriggerBadge({ trigger }: { trigger: AgentTaskRunTrigger | null 
           </span>
         )}
         {trigger.actor && (
-          <span className="shrink-0 text-[11px] text-muted-foreground">{trigger.actor}</span>
+          <span className="shrink-0 text-[11px] text-muted-foreground">
+            actor: {trigger.actor}
+          </span>
         )}
       </div>
     );
@@ -73,7 +75,9 @@ export function TriggerBadge({ trigger }: { trigger: AgentTaskRunTrigger | null 
     <div className="flex min-w-0 items-center gap-2">
       <SourceBadge source={trigger.source} />
       {trigger.actor && (
-        <span className="truncate text-[12px] text-muted-foreground">{trigger.actor}</span>
+        <span className="truncate text-[12px] text-muted-foreground">
+          actor: {trigger.actor}
+        </span>
       )}
     </div>
   );
@@ -98,7 +102,10 @@ export function TriggerInline({ trigger }: { trigger: AgentTaskRunTrigger | null
     return <span>{parts.join(" · ")}</span>;
   }
 
-  const parts = [trigger.source, trigger.actor].filter(
+  // The actor is free text the caller chose (the CLI's --actor); the
+  // `actor:` label keeps it from reading like the verified "Requested by"
+  // line that renders beside this one.
+  const parts = [trigger.source, trigger.actor ? `actor: ${trigger.actor}` : null].filter(
     (value): value is string => Boolean(value),
   );
   return <span>{parts.join(" · ")}</span>;

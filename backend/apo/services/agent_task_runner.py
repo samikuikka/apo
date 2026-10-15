@@ -330,14 +330,18 @@ def update_batch_run_status(session: Session, batch: AgentTaskBatchRunDB) -> Non
         # did not complete, and "error" fires batch_run.failed for whoever is
         # waiting on it. A user cancellation finished as asked, and a caller
         # batch (`apo task run`) abandoned before start has no one to tell.
+        # Cancelled runs end unstarted too, so "nothing ran" is only an
+        # expiry when more runs exist than were cancelled — a fully
+        # cancelled batch stays "completed" (finished as asked), a mixed
+        # cancel-plus-expiry one is an error (someone never claimed).
         target = batch.execution_target_json or {}
         none_started = (
-            batch.cancelled_tasks == 0
-            and target.get("kind") != "caller"
+            target.get("kind") != "caller"
             and all(
                 is_never_started_run(tr.status, tr.started_at, tr.no_verdict_reason)
                 for tr in task_runs
             )
+            and len(task_runs) > (batch.cancelled_tasks or 0)
         )
         batch.status = "error" if none_started else "completed"
         batch.completed_at = datetime.now(timezone.utc)

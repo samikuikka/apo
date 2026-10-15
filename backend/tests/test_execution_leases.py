@@ -540,6 +540,34 @@ def test_abandoned_caller_batch_stays_completed_when_it_expires(session: Session
     assert batch.status == "completed"
 
 
+def test_mixed_cancel_and_expire_batch_errors(session: Session) -> None:
+    """One run user-cancelled, the rest expiring unclaimed: the batch did not
+    finish as asked and nobody claimed the rest, so it is an error, not a
+    completed batch with errored tasks."""
+    atts = _seed(session, sequence_indices=[0, 1])
+    request_cancellation(session, attempt_id=atts[0].id)
+    atts[1].queue_expires_at = _now() - timedelta(seconds=1)
+    session.add(atts[1])
+    session.commit()
+    assert recover_expired_attempts(session, now=_now()).failed_unavailable == 1
+    batch = session.get(AgentTaskBatchRunDB, atts[0].batch_run_id)
+    assert batch is not None
+    assert batch.cancelled_tasks == 1
+    assert batch.status == "error"
+
+
+def test_fully_cancelled_batch_stays_completed(session: Session) -> None:
+    """A batch the user cancelled outright finished exactly as asked: the
+    unstarted runs are all cancellations, so it is not an error."""
+    atts = _seed(session, sequence_indices=[0, 1])
+    for att in atts:
+        request_cancellation(session, attempt_id=att.id)
+    batch = session.get(AgentTaskBatchRunDB, atts[0].batch_run_id)
+    assert batch is not None
+    assert batch.cancelled_tasks == 2
+    assert batch.status == "completed"
+
+
 def test_batch_with_a_started_run_still_completes_when_the_rest_expire(
     session: Session,
 ) -> None:

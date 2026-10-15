@@ -1190,7 +1190,8 @@ function CheckSourceWithResults({
     | { status: "error"; message: string }
     | { status: "ready"; code: string; language: string }
   >(() => {
-    // A check opened again renders its source on the first frame.
+    // Seed from the peek cache so reopening a check doesn't flash a loading
+    // state over source that is already in hand.
     const cached = peekResolvedCheckSource(sourceKey);
     return cached ? viewOf(cached.source) : { status: "loading" };
   });

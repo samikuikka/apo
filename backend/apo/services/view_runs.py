@@ -166,6 +166,25 @@ def live_run() -> ColumnElement[bool]:
     )
 
 
+def not_started_run() -> ColumnElement[bool]:
+    """SQL encoding of ``is_never_started_run`` (services/lifecycle.py).
+
+    Kept beside ``live_run`` so the list endpoint's ``exclude_not_started``
+    filter and the stats cohort classify the same rows: an ``error`` run
+    without ``started_at`` whose no-verdict reason is not judge/generations
+    (those mean checks ran). A NULL reason must count as never-started, which
+    plain ``NOT IN`` would drop.
+    """
+    return and_(
+        AGENT_TASK_RUN_STATUS_COL == "error",
+        AGENT_TASK_RUN_STARTED_AT_COL.is_(None),
+        or_(
+            AGENT_TASK_RUN_NO_VERDICT_REASON_COL.is_(None),
+            AGENT_TASK_RUN_NO_VERDICT_REASON_COL.notin_(("judge", "generations")),
+        ),
+    )
+
+
 def in_since_window(cutoff: datetime) -> ColumnElement[bool]:
     """A run is inside a ``since`` window by when it started, or, if it never
     started, by when it ended; a live run waiting to start always is.
@@ -196,9 +215,10 @@ def runs_in_view(
     """Return every run in ``project_id`` matching ``view``, scoped to ``task_ids``.
 
     The cohort is the set of runs both stats and comparison operate on. It
-    is ordered by ``started_at DESC`` so consumers can rely on the first row per
-    task being the most recent. Empty ``task_ids`` returns an empty list
-    (matches the original guard in both consumers).
+    is ordered latest-first — a live queued or running run leads its task,
+    then the most recently started — so consumers can rely on the first row
+    per task being that task's latest run. Empty ``task_ids`` returns an
+    empty list (matches the original guard in both consumers).
 
     The view filter is interpreted as: ``model`` exact match (None = any),
     ``effort`` exact match (None = any), ``since`` is a ``"Nh"``/``"Nd"``

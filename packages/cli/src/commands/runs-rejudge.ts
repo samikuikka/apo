@@ -38,7 +38,11 @@ export async function run(argv: string[]): Promise<number> {
   if (!input) {
     console.error("Missing required argument: <run-id>");
     console.error(
-      dim("Usage: apo runs rejudge <run-id> [--judge-model <m>] [--samples <n>] [--label <text>] [--dry-run]"),
+      dim(
+        "Usage: apo runs rejudge <run-id> [--judge-model <m>] [--judge-base-url <url>] " +
+          "[--samples <n>] [--label <text>] [--definition-revision <id>] " +
+          "[--task-dir <path>] [--task <id>] [--dry-run] [--verbose] [--exit-status]",
+      ),
     );
     return 2;
   }

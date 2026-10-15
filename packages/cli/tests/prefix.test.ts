@@ -94,6 +94,16 @@ describe("findByPrefix", () => {
   it("returns none when nothing matches", () => {
     expect(findByPrefix(items, "zzz", (i) => i.id).status).toBe("none");
   });
+
+  it("matches without regard to case, like the server's prefix filter", () => {
+    // Canonical ids are lowercase; a typed `RUN_…` or uppercase hex must
+    // still resolve, or the server's LIKE matches get dropped client-side
+    // and an existing run reads as "no run".
+    expect(findByPrefix(items, "874A", (i) => i.id)).toEqual({
+      status: "unique",
+      item: items[1],
+    });
+  });
 });
 
 describe("resolveProject", () => {

@@ -64,7 +64,7 @@ from ..services.agent_task_projection import (
     to_task_run_summary,
 )
 from ..services.trace_backend import model_drift_summary, parse_model_providers
-from ..services.view_runs import in_since_window, live_run, since_cutoff
+from ..services.view_runs import in_since_window, not_started_run, since_cutoff
 from ..services.demo_workspace import require_project_not_demo
 from ..services.agent_task_runner import finalize_external_task_run
 from ..services.project_memberships import (
@@ -911,8 +911,10 @@ def list_agent_task_runs(
     development open-dev mode).
 
     ``limit`` caps the response (default 1000, max 5000) over the
-    ``started_at``-descending order, unstarted runs first — the endpoint answers "the newest N
-    runs for this filter", never an unbounded dump. The default keeps
+    ``started_at``-descending order, runs that never started last — the
+    endpoint answers "the newest N runs for this filter", never an unbounded
+    dump. Unstarted-last keeps a task's drill-down showing its real runs even
+    when expired ones pile up past the limit. The default keeps
     every current caller whole (the dashboard reads one task's history
     at a time); an explicit ``limit`` is there for API consumers with
     larger cohorts.
@@ -994,15 +996,18 @@ def list_agent_task_runs(
     if since_cutoff_value is not None:
         query = query.where(in_since_window(since_cutoff_value))
     if exclude_not_started:
-        query = query.where(
-            or_(col(AgentTaskRunDB.started_at).is_not(None), live_run())
-        )
+        # The same classification the stats cohort uses (is_never_started_run),
+        # so a run stats counts as real is never hidden from the drill-down.
+        query = query.where(~not_started_run())
 
-    # Unstarted runs (queued, or ended before starting) first, then newest
-    # started. NULLS FIRST is Postgres's own DESC order, so the started_at
-    # index still serves it; spelling it out makes SQLite agree.
+    # Runs that never started sort last: with them first, a task whose
+    # executor pool died long ago shows nothing but expired rows once they
+    # reach the limit, while its real history stays invisible. Within the
+    # started runs, NULLS FIRST keeps a live queued run at the top (it is the
+    # latest); spelling NULLS out makes SQLite and Postgres agree.
     query = query.order_by(
-        desc(as_column(cast(object, AgentTaskRunDB.started_at))).nulls_first()
+        asc(not_started_run()),
+        desc(as_column(cast(object, AgentTaskRunDB.started_at))).nulls_first(),
     )
     query = query.limit(limit)
     task_runs = session.exec(query).all()

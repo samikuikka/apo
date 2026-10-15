@@ -75,8 +75,8 @@ export function secondJudgeFacts(check: SecondJudgeFactsInput): SecondJudgeFacts
   // expect:"fail" check) the outcome is deliberately opposite to the judge's
   // verdict, so comparing the second judge to `pass` reads two judges that
   // both FAILed a known-bad deliverable as a contradiction. `verdict_pass`
-  // is what the judge concluded; runs recorded before it exist fall back to
-  // the outcome, which is identical whenever no `expect` was pinned.
+  // is what the judge concluded; runs recorded before it existed fall back
+  // to the outcome, which is identical whenever no `expect` was pinned.
   const verdictPass = check.judge?.verdict_pass ?? check.pass;
   if ((sj.choice === "pass") !== (verdictPass === true)) {
     return { kind: "split", confidence: conf };

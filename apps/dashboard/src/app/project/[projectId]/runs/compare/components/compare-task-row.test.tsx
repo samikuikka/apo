@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { StrictMode, type ReactNode } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import type { AgentTaskRunDetail } from "@/lib/agent-task-api";
+import { getAgentTaskRun, type AgentTaskRunDetail } from "@/lib/agent-task-api";
+import type { TaskComparisonEvidenceLoader } from "@/lib/agent-task-view-api";
 
 // Mock next/dynamic so it follows the loader: the stub renders nothing until
 // the real (mocked) module resolves, then renders it with the props — so
@@ -605,11 +606,6 @@ describe("CompareTaskRow check source for generated-title checks (issue #178)", 
   });
 });
 
-// ─── reopening from memory ──────────────────────────────────────────────────
-
-import { getAgentTaskRun } from "@/lib/agent-task-api";
-import type { TaskComparisonEvidenceLoader } from "@/lib/agent-task-view-api";
-
 describe("CompareTaskRow reopened rows and checks", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -773,7 +769,8 @@ describe("CompareTaskRow reopened rows and checks", () => {
   });
 
   it("loads a source again on every opening when it fell back to the working tree", async () => {
-    // The pinned definition read failed, so the source came from an unpinned read.
+    // The mock resolves readTaskFile without a sha, so the component must
+    // treat the result as unpinned working-tree content — never kept.
     vi.mocked(loadCheckSource).mockImplementation(async (input) => {
       await input.deps.readTaskFile(input.taskId, "task.eval.ts", undefined);
       return { content: tableDrivenFile, language: "typescript" };

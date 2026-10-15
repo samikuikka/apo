@@ -33,13 +33,19 @@ export type PrefixResolveResult<T> =
  * Resolve `prefix` against `items` by leading characters of each item's id.
  * Returns "unique" when exactly one id starts with the prefix, "ambiguous"
  * when several do, "none" otherwise. (Like jj/git change-id prefixes.)
+ *
+ * Case-insensitive: the server-side prefix filter compiles to LIKE, which on
+ * SQLite matches without regard to case, so an uppercase `RUN_ABC` must
+ * resolve the same run here — silently dropping the server's matches would
+ * report "no run" for an id that exists.
  */
 export function findByPrefix<T>(
   items: T[],
   prefix: string,
   idOf: (item: T) => string,
 ): PrefixResolveResult<T> {
-  const matches = items.filter((it) => idOf(it).startsWith(prefix));
+  const needle = prefix.toLowerCase();
+  const matches = items.filter((it) => idOf(it).toLowerCase().startsWith(needle));
   if (matches.length === 0) return { status: "none" };
   if (matches.length === 1) return { status: "unique", item: matches[0] };
   return { status: "ambiguous", items: matches };
