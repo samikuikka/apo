@@ -52,6 +52,8 @@ from apo.models.db import (
     OtlpIngestBatchDB,
     OtlpSpanDB,
     ProjectDB,
+    ProjectTaskInventoryDB,
+    ProjectTaskSourceDB,
     RunDB,
     TaskExecutionAttemptDB,
     TaskRevisionDB,
@@ -1414,3 +1416,109 @@ def test_v19_killed_between_rename_and_create_boots(sqlite_engine: Engine) -> No
     assert _attempts_state(sqlite_engine) == {**UNTOUCHED, "revision_nullable": True}
     assert indexes <= _attempt_indexes(sqlite_engine)
     _assert_attempts_rebuilt(sqlite_engine)
+
+
+def _pre_v59_digest(tasks: list[dict[str, object]]) -> str:
+    """The digest as computed before v59: ``ensure_ascii`` defaults to True,
+    so non-ASCII hashed as ``\\uXXXX`` escapes while the CLI hashed raw
+    UTF-8 — a spurious ``catalog_mismatch`` for the identical catalog."""
+    import hashlib
+
+    metadata = sorted(tasks, key=lambda t: str(t["task_id"]))
+    payload = json.dumps(
+        {"schema_version": 1, "tasks": metadata}, sort_keys=True, separators=(",", ":")
+    )
+    return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def test_v59_recomputes_published_catalog_digests(sqlite_engine: Engine) -> None:
+    """v59 moves stored digests to the canonical form (raw UTF-8, code-point
+    task order) so the column matches what an updated CLI computes without
+    waiting for the next publish. Demo sources keep their file-hash digest."""
+    from apo.services.task_catalog import compute_catalog_digest
+
+    metadata = [
+        {
+            "task_id": "Support/refund",
+            "display_name": "Issue a refund",
+            "task_path": "Support/refund",
+            "folder_path": "Support",
+            "adapter_name": "x",
+            "has_checks": True,
+            "tags": [],
+        },
+        {
+            "task_id": "admin/report",
+            "display_name": "Résumé review",
+            "task_path": "admin/report",
+            "folder_path": "admin",
+            "adapter_name": "x",
+            "has_checks": True,
+            "tags": [],
+        },
+    ]
+    old_digest = _pre_v59_digest(metadata)
+    canonical_digest = compute_catalog_digest(metadata)
+    assert old_digest != canonical_digest  # both asymmetries are exercised
+
+    SQLModel.metadata.create_all(sqlite_engine)
+    with Session(sqlite_engine) as session:
+        session.add(UserDB(id="u1", email="u1@example.com", name="U", password_hash="x"))
+        session.flush()
+        session.add(ProjectDB(id="p1", name="P1", created_by="u1"))
+        session.add(ProjectDB(id="p-demo", name="Demo", created_by="u1"))
+        session.flush()
+        published = ProjectTaskSourceDB(
+            project="p1",
+            source_type="published",
+            status="ready",
+            catalog_digest=old_digest,
+        )
+        session.add(published)
+        session.add(
+            ProjectTaskSourceDB(
+                project="p-demo",
+                source_type="demo",
+                status="ready",
+                catalog_digest="sha256:fixture-file-hash",
+            )
+        )
+        session.flush()
+        for task in metadata:
+            session.add(
+                ProjectTaskInventoryDB(
+                    project="p1",
+                    task_source_id=published.id,
+                    source_type="published",
+                    task_id=str(task["task_id"]),
+                    display_name=str(task["display_name"]),
+                    task_path=str(task["task_path"]),
+                    folder_path=str(task["folder_path"]),
+                    adapter_name=str(task["adapter_name"]),
+                    has_checks=bool(task["has_checks"]),
+                    tags_json=[],
+                )
+            )
+        session.commit()
+    _stamp(sqlite_engine, 58)
+
+    apo_db.init_db()
+
+    assert _schema_versions(sqlite_engine) == LATEST
+    with Session(sqlite_engine) as session:
+        digests = {
+            source.project: source.catalog_digest
+            for source in session.exec(select(ProjectTaskSourceDB)).all()
+        }
+    assert digests == {"p1": canonical_digest, "p-demo": "sha256:fixture-file-hash"}
+
+    # Re-running the ladder is a no-op: recomputing a recomputed digest is
+    # the same value.
+    apo_db.init_db()
+    with Session(sqlite_engine) as session:
+        assert (
+            session.exec(
+                select(ProjectTaskSourceDB).where(ProjectTaskSourceDB.project == "p1")
+            ).one().catalog_digest
+            == canonical_digest
+        )

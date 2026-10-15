@@ -135,10 +135,22 @@ def compute_catalog_digest(normalized_tasks: list[dict[str, Any]]) -> str:
 
     Commits to task metadata only, never to ``definition``: it must equal the
     CLI's computeCatalogDigest, which ``apo connect`` reports and claims gate on.
+
+    The canonical form is pinned by tests against the TypeScript twin
+    (``packages/cli/src/lib/task-catalog-digest.ts``): tasks sorted by
+    ``task_id`` in Unicode code-point order (the sort happens here, so any
+    input order digests identically), keys sorted, compact separators, and
+    characters serialized raw (``ensure_ascii=False``) so both languages
+    hash the same UTF-8 bytes. ASCII-only catalogs digest identically to the
+    pre-canonical form; catalogs with non-ASCII or mixed-case ids previously
+    mismatched across the two languages (a spurious ``catalog_mismatch``).
     """
     metadata = [{k: v for k, v in t.items() if k != "definition"} for t in normalized_tasks]
+    metadata.sort(key=lambda t: t["task_id"])
     doc = {"schema_version": 1, "tasks": metadata}
-    payload = json.dumps(doc, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    payload = json.dumps(
+        doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 

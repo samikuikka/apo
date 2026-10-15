@@ -4035,7 +4035,101 @@ def _migrate_task_notes_schema(conn: Connection) -> None:
     )
 
 
-LATEST_SCHEMA_VERSION = 58
+def _migrate_to_v59() -> None:
+    """Version 59: recompute published catalog digests under the canonical form.
+
+    ``compute_catalog_digest`` serialized non-ASCII as ``\\uXXXX`` escapes
+    while the TypeScript twin hashed raw UTF-8, and sorted task ids by code
+    point while the CLI used locale collation — so a catalog with non-ASCII
+    text or mixed-case ids got a different digest on each side and every
+    ``apo connect`` reported a spurious ``catalog_mismatch``. The canonical
+    form is now raw UTF-8 + code-point order on both sides; ASCII-only
+    digests are unchanged. This pass recomputes each published source's
+    stored ``catalog_digest`` from its inventory rows so the server-side
+    column matches what an updated CLI computes without waiting for the next
+    publish. Demo sources keep their file-hash digest and are left alone.
+    Re-entry is idempotent: recomputing a recomputed digest is a no-op.
+    """
+    import logging
+
+    from sqlalchemy import select as sa_select
+    from sqlmodel import Session as SQLModelSession
+    from sqlmodel import (
+        col,
+        select as sqlmodel_select,
+        update as sqlmodel_update,
+    )
+
+    from .db_helpers import as_column
+    from .models.db import ProjectTaskInventoryDB, ProjectTaskSourceDB
+    from .services.task_catalog import compute_catalog_digest
+
+    logger = logging.getLogger(__name__)
+    with engine.begin() as conn:
+        # A database from before the task-catalog feature has no digest
+        # column at all (init_db's post-ladder ensure step adds it empty) —
+        # nothing to recompute there.
+        if "catalog_digest" not in _get_column_names(conn, "project_task_sources"):
+            return
+    updated = 0
+    with SQLModelSession(engine) as session:
+        # Column-tuple selects, never full entities: this runs at version 58,
+        # where the ORM classes may already declare later columns.
+        source_ids = session.exec(
+            sqlmodel_select(ProjectTaskSourceDB.id).where(
+                col(ProjectTaskSourceDB.source_type) == "published",
+                col(ProjectTaskSourceDB.catalog_digest).is_not(None),
+            )
+        ).all()
+        for source_id in source_ids:
+            # session.exec is entity-typed; a column-tuple select rides the
+            # underlying execute (same as run_deletion / admin).
+            rows = session.execute(  # pyright: ignore[reportDeprecated]
+                sa_select(
+                    as_column(ProjectTaskInventoryDB.task_id),
+                    as_column(ProjectTaskInventoryDB.display_name),
+                    as_column(ProjectTaskInventoryDB.task_path),
+                    as_column(ProjectTaskInventoryDB.folder_path),
+                    as_column(ProjectTaskInventoryDB.adapter_name),
+                    as_column(ProjectTaskInventoryDB.has_checks),
+                    as_column(ProjectTaskInventoryDB.tags_json),
+                ).where(col(ProjectTaskInventoryDB.task_source_id) == source_id)
+            ).all()
+            if not rows:
+                continue
+            metadata = [
+                {
+                    "task_id": task_id,
+                    "display_name": display_name,
+                    "task_path": task_path,
+                    "folder_path": folder_path,
+                    "adapter_name": adapter_name,
+                    "has_checks": has_checks,
+                    "tags": sorted(tags_json or []),
+                }
+                for (
+                    task_id,
+                    display_name,
+                    task_path,
+                    folder_path,
+                    adapter_name,
+                    has_checks,
+                    tags_json,
+                ) in rows
+            ]
+            digest = compute_catalog_digest(metadata)
+            session.exec(
+                sqlmodel_update(ProjectTaskSourceDB)
+                .where(col(ProjectTaskSourceDB.id) == source_id)
+                .values(catalog_digest=digest)
+            )
+            updated += 1
+        session.commit()
+    if updated:
+        logger.info("Schema v59: recomputed the catalog digest for %d source(s)", updated)
+
+
+LATEST_SCHEMA_VERSION = 59
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -4096,6 +4190,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     56: _migrate_to_v56,
     57: _migrate_to_v57,
     58: _migrate_to_v58,
+    59: _migrate_to_v59,
 }
 
 
