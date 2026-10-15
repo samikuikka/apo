@@ -49,6 +49,7 @@ _CAPPED_WRITE_PATHS = [
     ("POST", "/v1/agent-task-runs/tr-1/judgments"),
     ("POST", "/api/v1/comments"),
     ("POST", "/api/v1/comments/cm-1/reactions"),
+    ("PUT", "/v1/projects/p-1/task-catalog"),
     ("POST", "/v1/runs"),
     ("POST", "/v1/runs/r-1/custom-metrics"),
     ("POST", "/v1/runs/bulk-export"),
@@ -61,6 +62,9 @@ _UNCAPPED_PATHS = [
     ("POST", "/v1/agent-task-runs/tr-1/cancel"),
     ("POST", "/v1/agent-task-runs/tr-1/test-result-corrections"),
     ("PUT", "/v1/executor-protocol/v1/attempts/att-1/result"),
+    # The catalog cap is suffix-scoped; other project writes are untouched.
+    ("PUT", "/v1/projects/p-1/settings"),
+    ("POST", "/v1/projects/p-1/task-catalog"),
 ]
 
 

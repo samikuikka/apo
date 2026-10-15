@@ -73,6 +73,10 @@ _LIMITED_PATH_SPECS: tuple[tuple[str, str, str | None], ...] = (
     ("PUT", "/v1/executor-protocol/result-evidence/", None),
     ("POST", "/v1/agent-task-runs/", "judgments"),
     ("POST", "/api/v1/comments", None),
+    # The catalog PUT carries every task definition in one request (5000 ×
+    # ~1 MB worst case); the shared write cap bounds it at the boundary so a
+    # runaway task glob 413s instead of buffering gigabytes.
+    ("PUT", "/v1/projects/", "task-catalog"),
     # Prefix match also covers /{run_id}/custom-metrics, /bulk-delete,
     # /bulk-export, /reproject — all small-body POSTs.
     ("POST", "/v1/runs", None),
