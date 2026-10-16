@@ -42,6 +42,7 @@ export function TaskCard({
   const cohort = useRunCohort();
   const viewId = useRunCohortViewId();
   const s = status !== "idle" ? STATUS_CONFIG[status] : null;
+  const addedLabel = provenanceLabel(task);
   return (
     <Link
       href={withViewId(hrefWithRunCohort(taskDetailHref(projectId, task.id), cohort), viewId)}
@@ -84,6 +85,17 @@ export function TaskCard({
               <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>
             ))}
           </div>
+
+          {(task.description || addedLabel) && (
+            <div className="mt-1 min-w-0">
+              {task.description && (
+                <p className="truncate text-[12px] text-muted-foreground/70">{task.description}</p>
+              )}
+              {addedLabel && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground/50">{addedLabel}</p>
+              )}
+            </div>
+          )}
 
           {status === "idle" ? (
             <div className="mt-1.5 flex items-center gap-1.5 text-[12px] text-muted-foreground/50">
@@ -130,6 +142,19 @@ export function TaskCard({
 export function notStartedLabel(notStarted: number): string {
   if (notStarted === 0) return "Ready to run";
   return notStarted === 1 ? "1 run never started" : `${notStarted} runs never started`;
+}
+
+/**
+ * The card's quiet answer to "where did this task come from" (issue #444):
+ * the git author of the adding commit when git can tell, else the first
+ * publisher; the matching date for whichever name is shown.
+ */
+export function provenanceLabel(task: AgentTaskSummary): string | null {
+  const date = task.git_first_commit_at ?? task.first_published_at;
+  if (!date) return null;
+  const who = task.git_author_name ?? task.first_published_by;
+  const when = new Date(date).toISOString().slice(0, 10);
+  return who ? `Added ${when} by ${who}` : `Added ${when}`;
 }
 
 const TASK_ROOT = process.env.NEXT_PUBLIC_AGENT_TASK_ROOT ?? null;

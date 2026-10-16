@@ -104,6 +104,9 @@ def replace_inventory(
     removed = {
         row.task_id: row.task_path or "" for row in existing
     }
+    # First-seen provenance survives the replace keyed by task_id (issue #444):
+    # a re-sync of an unchanged source must not reset a task's first appearance.
+    prior = {row.task_id: row for row in existing}
     for row in existing:
         session.delete(row)
     session.flush()
@@ -118,6 +121,15 @@ def replace_inventory(
             resolved_commit_sha=resolved_commit_sha,
             discovered_at=now,
         )
+        prev = prior.get(task.id)
+        if prev is not None:
+            row.first_published_at = prev.first_published_at or now
+            row.first_published_by_user_id = prev.first_published_by_user_id
+            row.git_author_name = prev.git_author_name
+            row.git_author_email = prev.git_author_email
+            row.git_first_commit_at = prev.git_first_commit_at
+            row.git_first_commit_sha = prev.git_first_commit_sha
+            row.description = prev.description
         session.add(row)
         new_rows.append(row)
 
@@ -229,6 +241,13 @@ def to_summary(row: ProjectTaskInventoryDB) -> AgentTaskSummary:
         has_checks=row.has_checks,
         tags=list(row.tags_json) if row.tags_json else [],
         run_stats=None,
+        description=row.description,
+        first_published_at=row.first_published_at,
+        first_published_by_user_id=row.first_published_by_user_id,
+        git_author_name=row.git_author_name,
+        git_author_email=row.git_author_email,
+        git_first_commit_at=row.git_first_commit_at,
+        git_first_commit_sha=row.git_first_commit_sha,
     )
 
 
@@ -248,7 +267,38 @@ def to_detail(row: ProjectTaskInventoryDB) -> AgentTaskDetail:
         tags=list(row.tags_json) if row.tags_json else [],
         latest_run=None,
         run_stats=None,
+        description=row.description,
+        first_published_at=row.first_published_at,
+        first_published_by_user_id=row.first_published_by_user_id,
+        git_author_name=row.git_author_name,
+        git_author_email=row.git_author_email,
+        git_first_commit_at=row.git_first_commit_at,
+        git_first_commit_sha=row.git_first_commit_sha,
     )
+
+
+def attach_publisher_labels(
+    session: Session,
+    tasks: "list[AgentTaskSummary] | list[AgentTaskDetail]",
+) -> None:
+    """Resolve ``first_published_by_user_id`` into a human-readable label.
+
+    Mutates in place (the same shape as the route-side ``run_stats``
+    enrichment): name when the user set one, else email. Unknown ids keep
+    ``None`` — a deleted publisher is silence, not an error.
+    """
+    from sqlmodel import col
+
+    from ..models.db import UserDB
+
+    ids = {t.first_published_by_user_id for t in tasks if t.first_published_by_user_id}
+    if not ids:
+        return
+    users = session.exec(select(UserDB).where(col(UserDB.id).in_(ids))).all()
+    labels = {u.id: (u.name or u.email) for u in users}
+    for t in tasks:
+        if t.first_published_by_user_id:
+            t.first_published_by = labels.get(t.first_published_by_user_id)
 
 
 def seed_demo_inventory(

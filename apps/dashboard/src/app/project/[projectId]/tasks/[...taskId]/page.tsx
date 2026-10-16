@@ -1,6 +1,7 @@
 import {
   getProjectAgentTask,
   listTaskRuns,
+  type AgentTaskDetail,
   type TaskRunCohortFilter,
 } from "@/lib/agent-task-api";
 import { fetchTaskViewConfigFacets } from "@/lib/agent-task-view-api";
@@ -223,6 +224,16 @@ export default async function TaskDetailPage({
                 : `${taskRuns.length} task runs`}
           </Badge>
         </div>
+        {task && (task.description || provenanceLine(task)) && (
+          <div className="mt-3 min-w-0">
+            {task.description && (
+              <p className="max-w-3xl text-[13px] leading-relaxed text-muted-foreground">{task.description}</p>
+            )}
+            <p className="mt-1 text-[12px] text-muted-foreground/60 font-mono">
+              {provenanceLine(task)}
+            </p>
+          </div>
+        )}
       </div>
 
       {!inCatalog ? (
@@ -277,4 +288,29 @@ export default async function TaskDetailPage({
       </Tabs>
     </div>
   );
+}
+
+/**
+ * The detail header's provenance line (issue #444): git authorship when the
+ * publisher could see it (with the adding commit), first publication always.
+ * Both halves are shown when both exist — they answer different questions
+ * ("who wrote it" vs "who brought it to this project").
+ */
+function provenanceLine(task: AgentTaskDetail): string | null {
+  const parts: string[] = [];
+  if (task.git_author_name && task.git_first_commit_at) {
+    const sha = task.git_first_commit_sha ? ` (${task.git_first_commit_sha.slice(0, 8)})` : "";
+    parts.push(
+      `Written by ${task.git_author_name} on ${isoDate(task.git_first_commit_at)}${sha}`,
+    );
+  }
+  if (task.first_published_at) {
+    const by = task.first_published_by ? ` by ${task.first_published_by}` : "";
+    parts.push(`First published ${isoDate(task.first_published_at)}${by}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function isoDate(iso: string): string {
+  return new Date(iso).toISOString().slice(0, 10);
 }

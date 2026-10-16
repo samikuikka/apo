@@ -69,6 +69,7 @@ from ..services.project_memberships import (
 from ..db_helpers import as_column
 from ..services.runtime_config import get_runtime_config
 from ..services.project_task_inventory import (
+    attach_publisher_labels,
     get_inventory_row,
     list_inventory_for_project,
     to_detail,
@@ -514,6 +515,7 @@ async def list_project_agent_tasks(
     if not summaries:
         return summaries
 
+    attach_publisher_labels(session, summaries)
     runs_by_task = _load_runs_by_task(
         session, project_id, [summary.id for summary in summaries]
     )
@@ -706,6 +708,7 @@ async def get_project_agent_task(
         raise HTTPException(status_code=404, detail="Task not found in inventory.")
 
     detail = to_detail(row)
+    attach_publisher_labels(session, [detail])
     runs = _load_runs_by_task(session, project_id, [task_id]).get(task_id, [])
     if runs:
         detail.run_stats = _compute_run_stats(runs)

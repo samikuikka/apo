@@ -42,6 +42,15 @@ export interface AgentTaskSummary {
   has_checks: boolean;
   tags: string[];
   run_stats: AgentTaskRunStats | null;
+  // Provenance (issue #444): git authorship is best-effort; first-published
+  // is authoritative. Optional — summaries from older backends and cached
+  // payloads predate the fields, and the UI null-guards every use.
+  description?: string | null;
+  first_published_at?: string | null;
+  first_published_by?: string | null;
+  git_author_name?: string | null;
+  git_first_commit_at?: string | null;
+  git_first_commit_sha?: string | null;
 }
 
 export interface AgentTaskDetail extends AgentTaskSummary {

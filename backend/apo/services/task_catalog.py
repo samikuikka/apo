@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -29,6 +30,13 @@ _MAX_NAME_BYTES = 255
 _MAX_PATH_BYTES = 1024
 _MAX_TAGS = 32
 _MAX_TAG_BYTES = 64
+_MAX_AUTHOR_BYTES = 200
+# The eval-declared description, one bounded paragraph on the card/detail.
+_MAX_DESCRIPTION_BYTES = 4000
+
+# A git object id as the CLI sends it: full 40-char (or SHA-256 64) sha,
+# possibly shortened but never shorter than git's minimum abbreviation.
+_GIT_SHA_RE = re.compile(r"^[0-9a-f]{7,64}$")
 
 
 def _utf8_bytes(s: str) -> int:
@@ -51,6 +59,50 @@ def _validate_path(value: str, field: str, max_bytes: int, allow_empty: bool = F
     segments = value.split("/")
     if any(seg in (".", "..") for seg in segments):
         raise ValueError(f"{field} must not contain . or .. segments")
+
+
+def _validated_git_provenance(task: dict[str, Any], index: int) -> dict[str, Any]:
+    """Validate the optional, best-effort git authorship fields (issue #444).
+
+    All four are absent on shallow clones and non-git task roots — absence is
+    normal, never an error. Present-but-malformed is an error: a wrong sha or
+    unparseable date would silently poison the recorded authorship, which
+    cannot be recomputed server-side.
+    """
+    provenance: dict[str, Any] = {}
+    for field in ("git_author_name", "git_author_email"):
+        value = task.get(field)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"Task {index}: {field} must be a non-empty string")
+        if _utf8_bytes(value) > _MAX_AUTHOR_BYTES:
+            raise ValueError(f"Task {index}: {field} exceeds {_MAX_AUTHOR_BYTES} UTF-8 bytes")
+        if any(ch in value for ch in ("\n", "\r", "\x00")):
+            raise ValueError(f"Task {index}: {field} must not contain control characters")
+        provenance[field] = value
+
+    sha = task.get("git_first_commit_sha")
+    if sha is not None:
+        if not isinstance(sha, str) or not _GIT_SHA_RE.fullmatch(sha):
+            raise ValueError(f"Task {index}: git_first_commit_sha must be a git object id")
+        provenance["git_first_commit_sha"] = sha.lower()
+
+    committed_at = task.get("git_first_commit_at")
+    if committed_at is not None:
+        if not isinstance(committed_at, str):
+            raise ValueError(f"Task {index}: git_first_commit_at must be an ISO-8601 string")
+        try:
+            parsed = datetime.fromisoformat(committed_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(
+                f"Task {index}: git_first_commit_at is not a valid ISO-8601 datetime"
+            ) from exc
+        if parsed.tzinfo is None:
+            raise ValueError(f"Task {index}: git_first_commit_at must carry a timezone")
+        provenance["git_first_commit_at"] = parsed
+
+    return provenance
 
 
 def validate_catalog_request(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -116,6 +168,16 @@ def validate_catalog_request(tasks: list[dict[str, Any]]) -> list[dict[str, Any]
             "has_checks": bool(task.get("has_checks", False)),
             "tags": sorted(tags),
         }
+        description = task.get("description")
+        if description is not None:
+            if not isinstance(description, str):
+                raise ValueError(f"Task {i}: description must be a string")
+            if _utf8_bytes(description) > _MAX_DESCRIPTION_BYTES:
+                raise ValueError(f"Task {i}: description exceeds {_MAX_DESCRIPTION_BYTES} UTF-8 bytes")
+            if "\x00" in description:
+                raise ValueError(f"Task {i}: description must not contain NUL")
+            entry["description"] = description
+        entry.update(_validated_git_provenance(task, i))
         definition = task.get("definition")
         if definition is not None:
             try:
@@ -144,8 +206,20 @@ def compute_catalog_digest(normalized_tasks: list[dict[str, Any]]) -> str:
     hash the same UTF-8 bytes. ASCII-only catalogs digest identically to the
     pre-canonical form; catalogs with non-ASCII or mixed-case ids previously
     mismatched across the two languages (a spurious ``catalog_mismatch``).
+
+    Provenance fields are excluded like ``definition``: they describe the
+    task's origin, not its content, and they are best-effort — the same
+    catalog published once from a full clone and once from a shallow one
+    must digest identically, or ``apo connect`` claims would spuriously
+    mismatch.
     """
-    metadata = [{k: v for k, v in t.items() if k != "definition"} for t in normalized_tasks]
+    _NON_CONTENT_KEYS = frozenset(
+        {"definition", "description", "git_author_name", "git_author_email", "git_first_commit_at", "git_first_commit_sha"}
+    )
+    metadata = [
+        {k: v for k, v in t.items() if k not in _NON_CONTENT_KEYS}
+        for t in normalized_tasks
+    ]
     metadata.sort(key=lambda t: t["task_id"])
     doc = {"schema_version": 1, "tasks": metadata}
     payload = json.dumps(
@@ -239,10 +313,23 @@ def publish_catalog(
         for row in old_rows
         if row.task_id not in {task["task_id"] for task in normalized_tasks}
     }
+    # First-seen facts ride across the delete/insert keyed by task_id: the
+    # replace-in-place design exists so rows reflect the latest publish, but
+    # provenance must reflect the FIRST one (issue #444). Git fields are
+    # sticky — once observed they outlive publishes that can't re-send them.
+    prior = {row.task_id: row for row in old_rows}
     for row in old_rows:
         session.delete(row)
 
     for task in normalized_tasks:
+        prev = prior.get(task["task_id"])
+        # The description is client-sent (the CLI reads the task's declared
+        # description statically from the eval source); blank or absent when
+        # the task declares none — then carry what was last stated rather
+        # than erasing it.
+        description: str | None = task.get("description")
+        if description is not None and not description.strip():
+            description = None
         inv = ProjectTaskInventoryDB(
             project=project_id,
             task_source_id=existing.id,
@@ -254,6 +341,16 @@ def publish_catalog(
             has_checks=task["has_checks"],
             source_type="published",
             task_definition_revision_id=revision_ids[task["task_id"]],
+            first_published_at=(prev.first_published_at if prev is not None else None) or now,
+            first_published_by_user_id=(
+                prev.first_published_by_user_id if prev is not None else user_id
+            ),
+            git_author_name=_carry_git_field(prev, task, "git_author_name"),
+            git_author_email=_carry_git_field(prev, task, "git_author_email"),
+            git_first_commit_at=_carry_git_field(prev, task, "git_first_commit_at"),
+            git_first_commit_sha=_carry_git_field(prev, task, "git_first_commit_sha"),
+            description=description if description is not None
+            else (prev.description if prev is not None else None),
         )
         session.add(inv)
 
@@ -291,6 +388,19 @@ def _pinned_revisions(session: Session, source_id: str | None) -> dict[str, str 
         select(ProjectTaskInventoryDB).where(ProjectTaskInventoryDB.task_source_id == source_id)
     ).all()
     return {row.task_id: row.task_definition_revision_id for row in rows}
+
+
+def _carry_git_field(
+    prev: ProjectTaskInventoryDB | None,
+    task: dict[str, Any],
+    field: str,
+) -> Any:
+    """First-observed wins for a git provenance field: the stored value from
+    the prior row when present, else what this publication carries (None when
+    the publisher could not see git history — e.g. a shallow clone)."""
+    if prev is not None and getattr(prev, field) is not None:
+        return getattr(prev, field)
+    return task.get(field)
 
 
 def get_catalog_status(session: Session, project_id: str) -> dict[str, Any] | None:

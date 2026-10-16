@@ -4129,7 +4129,41 @@ def _migrate_to_v59() -> None:
         logger.info("Schema v59: recomputed the catalog digest for %d source(s)", updated)
 
 
-LATEST_SCHEMA_VERSION = 59
+def _migrate_to_v60() -> None:
+    """Version 60: per-task provenance on inventory rows (issue #444).
+
+    ``first_published_at`` / ``first_published_by_user_id`` record a task's
+    first appearance and survive the replace-in-place publish by being carried
+    forward by ``task_id``. The git fields are best-effort client-sent
+    authorship (the CLI sends the adding commit of the ``*.eval.ts``);
+    ``description`` is extracted from the published definition. New DBs get
+    the columns from ``create_all``.
+
+    Backfill: the replace-in-place design destroyed anything earlier than a
+    row's last publish, so pre-v60 rows get ``first_published_at = discovered_at``
+    — the earliest evidence that survives, honestly meaning "first seen by
+    this migration". The backfill is a single column-to-column UPDATE, never
+    a full-row ORM load (the model class knows columns later migrations may
+    not have added).
+    """
+    with engine.begin() as conn:
+        ts = _timestamp_type(conn)
+        _add_column_if_missing(conn, "project_task_inventory", "first_published_at", ts)
+        _add_column_if_missing(conn, "project_task_inventory", "first_published_by_user_id", "VARCHAR")
+        _add_column_if_missing(conn, "project_task_inventory", "git_author_name", "VARCHAR")
+        _add_column_if_missing(conn, "project_task_inventory", "git_author_email", "VARCHAR")
+        _add_column_if_missing(conn, "project_task_inventory", "git_first_commit_at", ts)
+        _add_column_if_missing(conn, "project_task_inventory", "git_first_commit_sha", "VARCHAR")
+        _add_column_if_missing(conn, "project_task_inventory", "description", "TEXT")
+        conn.execute(
+            text(
+                "UPDATE project_task_inventory SET first_published_at = discovered_at "
+                "WHERE first_published_at IS NULL"
+            )
+        )
+
+
+LATEST_SCHEMA_VERSION = 60
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -4191,6 +4225,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     57: _migrate_to_v57,
     58: _migrate_to_v58,
     59: _migrate_to_v59,
+    60: _migrate_to_v60,
 }
 
 

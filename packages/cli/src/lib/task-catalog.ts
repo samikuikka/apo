@@ -20,6 +20,20 @@ export type PublishedTask = {
   tags: string[];
   /** The canonical eval source. */
   definition?: TaskDefinitionDocument;
+  /**
+   * Best-effort authorship (issue #444): the commit that added the eval
+   * file. Absent on shallow clones and non-git task roots — the server
+   * falls back to first-published. Excluded from the catalog digest on
+   * both sides, so provenance availability can never move the digest
+   * `apo connect` claims gate on.
+   */
+  git_author_name?: string;
+  git_author_email?: string;
+  /** ISO-8601 author date of the adding commit. */
+  git_first_commit_at?: string;
+  git_first_commit_sha?: string;
+  /** The eval's declared description, read statically by the scanner. */
+  description?: string;
 };
 
 export type PublishTaskCatalogRequest = {
