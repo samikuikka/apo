@@ -48,11 +48,6 @@ export function evaluateComputeExpression(expression: string): ComputeResult {
     const parser = new Parser(tokens);
     const value = parser.parseExpression(0);
     parser.expectEnd();
-    // The walk already rejects non-finite intermediates; this guards the
-    // single top-level result for the same guarantee.
-    if (!Number.isFinite(value)) {
-      return { error: "result is not finite" };
-    }
     return { value, text: Number(value.toPrecision(12)).toString() };
   } catch (error) {
     return { error: error instanceof ComputeError ? error.message : String(error) };

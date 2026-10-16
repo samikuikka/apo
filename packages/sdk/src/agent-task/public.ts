@@ -101,8 +101,6 @@ export {
   type AgentEvidence,
   type AgentJudgeOptions,
 } from "./checks/agent-session.ts";
-// The judge's arithmetic evaluator — exported for reuse and pinned by tests;
-// the t.agent compute tool is a thin budgeted wrapper around it.
 export {
   evaluateComputeExpression,
   type ComputeResult,
