@@ -23,6 +23,7 @@ import {
   updateAgentTaskSchedule,
 } from "@/lib/agent-task-api";
 import { Button } from "@/components/ui/button";
+import { errorDetailKind, isApiError } from "@/lib/api-error";
 import { ScheduleOccurrenceList } from "@/app/project/[projectId]/schedules/[scheduleId]/schedule-occurrence-list";
 import { ExecutorPoolSelect } from "@/components/executor-pool-select";
 import type { ExecutorPoolSummary } from "@/lib/executor-api";
@@ -102,15 +103,19 @@ export function ScheduleDetailClient({
   const [schedule, setSchedule] = useState(initialSchedule);
   const clientNow = useClientNow();
   const [triggering, setTriggering] = useState(false);
+  const [triggerError, setTriggerError] = useState<string | null>(null);
   const [poolError, setPoolError] = useState<string | null>(null);
 
   const handleTrigger = useCallback(async () => {
     setTriggering(true);
+    setTriggerError(null);
     try {
       const result = await triggerSchedule(schedule.id);
       router.push(
         `/project/${projectId}/runs/${result.batch_run_id}`,
       );
+    } catch (error: unknown) {
+      setTriggerError(describeTriggerRefusal(error));
     } finally {
       setTriggering(false);
     }
@@ -233,6 +238,11 @@ export function ScheduleDetailClient({
             </Button>
           )}
         </div>
+        {triggerError && (
+          <p role="alert" className="border-t border-border px-6 py-2 text-[12px] text-destructive">
+            {triggerError}
+          </p>
+        )}
         {poolError && (
           <p className="border-t border-border px-6 py-2 text-[12px] text-destructive">
             {poolError}
@@ -264,6 +274,44 @@ export function ScheduleDetailClient({
       </div>
     </div>
   );
+}
+
+/** Copy for the known "Run now" refusals: what happened + what to do.
+ * Source-owned schedules hard-pause when their target breaks; pooled
+ * schedules refuse while their pool is unusable — picking a pool in the
+ * toolbar repairs those. */
+const TRIGGER_REFUSAL_COPY: Record<string, string> = {
+  execution_owner_unavailable:
+    "Run now refused — this schedule is hard-paused because its execution owner is no longer a project member. Re-add the owner, then resume the schedule.",
+  catalog_changed:
+    "Run now refused — this schedule is hard-paused because the task catalog changed under its selection. Review the selection against the current catalog and recreate the schedule if these tasks should keep running.",
+  selection_empty:
+    "Run now refused — this schedule is hard-paused because its selection contains no tasks. Review the selection and recreate the schedule if these tasks should keep running.",
+  executor_pool_required:
+    "Run now refused — this schedule has no executor pool. Choose a pool next to Run now, then run again.",
+  executor_pool_disabled:
+    "Run now refused — this schedule's executor pool is disabled. Choose an available pool next to Run now, then run again.",
+  executor_pool_archived:
+    "Run now refused — this schedule's executor pool was retired. Choose an available pool next to Run now, then run again.",
+  executor_pool_not_owned:
+    "Run now refused — this schedule's executor pool belongs to another project. Choose one of this project's pools next to Run now, then run again.",
+};
+
+function describeTriggerRefusal(error: unknown): string {
+  const kind = errorDetailKind(error);
+  const known = kind ? TRIGGER_REFUSAL_COPY[kind] : undefined;
+  if (known) return known;
+  if (isApiError(error)) {
+    // A 422 from trigger means the server has no checkout to run these
+    // tasks from (published catalog) — only a connected executor can.
+    if (error.status === 422) {
+      return `Run now refused — ${error.message} Run it from a connected executor (apo connect) instead.`;
+    }
+    return `Run now failed — ${error.message}`;
+  }
+  return error instanceof Error && error.message
+    ? `Run now failed — ${error.message}`
+    : "Run now failed.";
 }
 
 function OccurrenceHistory({ scheduleId }: { scheduleId: string }) {

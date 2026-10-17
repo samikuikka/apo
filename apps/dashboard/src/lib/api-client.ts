@@ -50,7 +50,13 @@ function buildUrl(path: string, query?: RequestOptions["query"]): string {
   return qs ? `${url}?${qs}` : url;
 }
 
-async function parseErrorDetail(res: Response): Promise<string> {
+/** Parsed error body: a readable message plus the raw FastAPI `detail`. */
+interface ParsedError {
+  message: string;
+  detail: unknown;
+}
+
+async function parseErrorDetail(res: Response): Promise<ParsedError> {
   let body: unknown;
   let rawText = "";
 
@@ -69,17 +75,32 @@ async function parseErrorDetail(res: Response): Promise<string> {
 
   if (body && typeof body === "object") {
     const errorBody = body as Record<string, unknown>;
+    const detail = errorBody.detail;
+    // Structured refusals (`{"detail": {"kind": ..., "msg": ...}}`) read as
+    // their `msg`; the object itself rides along on the ApiError for
+    // kind-branching callers.
+    if (detail !== null && typeof detail === "object") {
+      const msg = (detail as Record<string, unknown>).msg;
+      if (typeof msg === "string" && msg.trim()) {
+        return { message: msg.trim(), detail };
+      }
+    }
     for (const key of ["detail", "message", "error"]) {
       const value = errorBody[key];
-      if (typeof value === "string" && value.trim()) return value;
+      if (typeof value === "string" && value.trim()) {
+        return { message: value.trim(), detail };
+      }
     }
   }
 
-  if (rawText.trim()) return rawText.trim();
+  if (rawText.trim()) return { message: rawText.trim(), detail: undefined };
   const statusText = res.statusText?.trim();
-  return statusText
-    ? `Request failed (${res.status} ${statusText})`
-    : `Request failed (${res.status})`;
+  return {
+    message: statusText
+      ? `Request failed (${res.status} ${statusText})`
+      : `Request failed (${res.status})`,
+    detail: undefined,
+  };
 }
 
 function buildInit(opts: RequestOptions): RequestInit {
@@ -102,7 +123,8 @@ export async function apiClient<T>(
 ): Promise<T> {
   const res = await backendFetch(buildUrl(path, opts.query), buildInit(opts));
   if (!res.ok) {
-    throw new ApiError(res.status, await parseErrorDetail(res));
+    const parsed = await parseErrorDetail(res);
+    throw new ApiError(res.status, parsed.message, parsed.detail);
   }
   // Empty responses (204 / no content) — return undefined for `void` callers.
   if (
@@ -125,7 +147,8 @@ export async function apiClientRaw(
 ): Promise<Response> {
   const res = await backendFetch(buildUrl(path, opts.query), buildInit(opts));
   if (!res.ok) {
-    throw new ApiError(res.status, await parseErrorDetail(res));
+    const parsed = await parseErrorDetail(res);
+    throw new ApiError(res.status, parsed.message, parsed.detail);
   }
   return res;
 }
