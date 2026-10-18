@@ -16,6 +16,8 @@ from typing import cast
 from urllib.parse import urlparse
 from uuid import uuid4
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from sqlalchemy import ColumnElement, desc, func
@@ -35,8 +37,10 @@ from ..models.db import (
 )
 from ..models.schemas import (
     AgentTaskDetail,
-    RunHostFacet,
     AgentTaskRunStats,
+    ArchivedAgentTask,
+    ArchivedAgentTasks,
+    RunHostFacet,
     AgentTaskRunSummary,
     AgentTaskSummary,
     ApiKeyCreateResponse,
@@ -74,6 +78,10 @@ from ..services.project_task_inventory import (
     list_inventory_for_project,
     to_detail,
     to_summary,
+)
+from ..services.task_lifecycle import (
+    get_removed_event,
+    list_removed_events,
 )
 from ..services.project_task_sources import (
     get_task_source_db,
@@ -679,6 +687,49 @@ async def get_project_onboarding_status(
 
 
 @router.get(
+    "/{project_id}/agent-tasks/archived",
+    response_model=ArchivedAgentTasks,
+)
+async def list_archived_project_agent_tasks(
+    project_id: str,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    """List the project's tasks that are not in the active suite.
+
+    Read-only derived view over the lifecycle tombstones (SPEC-216): every
+    task that left the catalog, with its last-known metadata, removal date,
+    best-effort commit, and live run stats. Runs are the point — removal
+    never deletes them. Declared BEFORE the ``{task_id:path}`` catch-all so
+    FastAPI resolves the literal segment first.
+    """
+    _project, _role = _load_project_for_request(session, project_id, request)
+
+    events = list_removed_events(session, project_id)
+    archived = [
+        ArchivedAgentTask(
+            task_id=event.task_id,
+            display_name=event.display_name,
+            folder_path=event.folder_path,
+            task_path=event.task_path,
+            removed_at=event.detected_at,
+            source_commit_sha=event.source_commit_sha,
+            run_count=event.run_count,
+        )
+        for event in events
+    ]
+    if archived:
+        runs_by_task = _load_runs_by_task(
+            session, project_id, [task.task_id for task in archived]
+        )
+        for task in archived:
+            task_runs = runs_by_task.get(task.task_id, [])
+            if task_runs:
+                task.run_stats = _compute_run_stats(task_runs)
+    return ArchivedAgentTasks(removed=archived)
+
+
+@router.get(
     "/{project_id}/agent-tasks/{task_id:path}",
     response_model=AgentTaskDetail,
 )
@@ -693,6 +744,10 @@ async def get_project_agent_task(
     Enriches the row with the latest run (if any) scoped to the project.
     Use this in place of ``GET /v1/agent-tasks/{task_id}?project=...``
     for the canonical project-scoped path.
+
+    A task that left the catalog but has a removal tombstone or retained
+    runs resolves to a synthesized ``state: "removed"`` detail instead of
+    404 — the runs the server still holds must stay reachable (SPEC-216).
     """
     _project, _role = _load_project_for_request(session, project_id, request)
 
@@ -705,11 +760,58 @@ async def get_project_agent_task(
 
     row = get_inventory_row(session, project_id, task_id)
     if row is None:
+        synthesized = _synthesize_removed_detail(session, project_id, task_id)
+        if synthesized is not None:
+            return synthesized
         raise HTTPException(status_code=404, detail="Task not found in inventory.")
 
     detail = to_detail(row)
     attach_publisher_labels(session, [detail])
     runs = _load_runs_by_task(session, project_id, [task_id]).get(task_id, [])
+    if runs:
+        detail.run_stats = _compute_run_stats(runs)
+    return detail
+
+
+def _synthesize_removed_detail(
+    session: Session, project_id: str, task_id: str
+) -> AgentTaskDetail | None:
+    """Build a detail for a task absent from inventory, from its evidence.
+
+    Prefers the lifecycle tombstone (last-known metadata + removal date);
+    falls back to runs alone for removals that predate tombstones, with
+    ``removed_at=None`` — the date is unknown, not today. Returns ``None``
+    only when the server holds nothing for the id.
+    """
+    event = get_removed_event(session, project_id=project_id, task_id=task_id)
+    runs = _load_runs_by_task(session, project_id, [task_id]).get(task_id, [])
+    if event is None and not runs:
+        return None
+
+    if event is not None:
+        display_name = event.display_name
+        folder_path = event.folder_path
+        task_path = event.task_path
+        removed_at: datetime | None = event.detected_at
+        commit_sha = event.source_commit_sha
+    else:
+        display_name = task_id.rsplit("/", 1)[-1]
+        folder_path = task_id.rsplit("/", 1)[0] if "/" in task_id else ""
+        task_path = ""
+        removed_at = None
+        commit_sha = None
+
+    detail = AgentTaskDetail(
+        id=task_id,
+        task_path=task_path,
+        folder_path=folder_path,
+        display_name=display_name,
+        adapter_name="unknown",
+        has_checks=False,
+        state="removed",
+        removed_at=removed_at,
+        removed_commit_sha=commit_sha,
+    )
     if runs:
         detail.run_stats = _compute_run_stats(runs)
     return detail
@@ -801,5 +903,27 @@ async def publish_task_catalog(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+    # Best-effort working-tree HEAD from the publishing CLI — recorded on
+    # removal tombstones so "removed by publish {sha}" points into git
+    # history. Absent on non-git task roots; malformed is rejected because a
+    # wrong sha would silently poison every tombstone of this publish.
+    import re as _re
+
+    head_commit_sha = body.get("head_commit_sha")
+    if head_commit_sha is not None:
+        if not isinstance(head_commit_sha, str) or not _re.fullmatch(
+            r"[0-9a-f]{7,64}", head_commit_sha
+        ):
+            raise HTTPException(
+                status_code=422, detail="head_commit_sha must be a git object id"
+            )
+        head_commit_sha = head_commit_sha.lower()
+
     user_id = getattr(request.state, "user_id", None)
-    return publish_catalog(session, project_id, normalized, user_id=user_id)
+    return publish_catalog(
+        session,
+        project_id,
+        normalized,
+        user_id=user_id,
+        head_commit_sha=head_commit_sha,
+    )

@@ -15,7 +15,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from ..models.db import ProjectTaskInventoryDB, ProjectTaskSourceDB
 from .task_definition_revisions import (
@@ -233,6 +233,7 @@ def publish_catalog(
     project_id: str,
     normalized_tasks: list[dict[str, Any]],
     user_id: str | None = None,
+    head_commit_sha: str | None = None,
 ) -> dict[str, Any]:
     """Atomically replace a Project's task catalog.
 
@@ -241,6 +242,13 @@ def publish_catalog(
     rows and pinned on the inventory pointer. The catalog digest stays over
     metadata only (see ``compute_catalog_digest``), so a source-only edit
     re-pins revisions without moving the digest executors match on.
+
+    Tasks that leave the catalog get a ``removed`` lifecycle tombstone
+    (findable with their runs forever); tasks that return delete theirs.
+    The response carries the publish ``diff`` — added ids, removed ids with
+    retained-run counts and referencing schedules, and possible renames
+    (removed + added ids pinning the same definition content) — so the
+    publishing CLI can report consequences at the moment they happen.
     Returns the TaskCatalog response dict.
     """
     revision_ids: dict[str, str | None] = {}
@@ -281,6 +289,7 @@ def publish_catalog(
             "catalog_digest": digest,
             "published_at": now.isoformat(),
             "execution_mode": "caller",
+            "diff": {"added": [], "removed": [], "possible_renames": []},
         }
 
     # Upsert catalog status
@@ -308,10 +317,25 @@ def publish_catalog(
             ProjectTaskInventoryDB.task_source_id == existing.id
         )
     ).all()
+    new_id_set = {task["task_id"] for task in normalized_tasks}
     removed = {
         row.task_id: row.task_path or ""
         for row in old_rows
-        if row.task_id not in {task["task_id"] for task in normalized_tasks}
+        if row.task_id not in new_id_set
+    }
+    added_ids = sorted(
+        new_id_set - {row.task_id for row in old_rows}
+    )
+    # The tombstone snapshot: last-known metadata from the row that is
+    # about to be replaced away (SPEC-216).
+    removed_meta = {
+        row.task_id: {
+            "display_name": row.display_name,
+            "folder_path": row.folder_path or "",
+            "task_path": row.task_path or "",
+        }
+        for row in old_rows
+        if row.task_id in removed
     }
     # First-seen facts ride across the delete/insert keyed by task_id: the
     # replace-in-place design exists so rows reflect the latest publish, but
@@ -366,6 +390,41 @@ def publish_catalog(
         )
         session.commit()
 
+    # Lifecycle observation (SPEC-216): tombstone the removals, clear the
+    # events of tasks that came back. The server observes; git stays the
+    # source of truth — a returned task is simply active again.
+    from .task_lifecycle import (
+        clear_events_for_returned_tasks,
+        record_removals,
+    )
+
+    if removed_meta:
+        record_removals(
+            session,
+            project_id=project_id,
+            removed=removed_meta,
+            source_commit_sha=head_commit_sha,
+        )
+        session.commit()
+    clear_events_for_returned_tasks(
+        session, project_id=project_id, present_task_ids=new_id_set
+    )
+    session.commit()
+
+    removed_diff = _removed_diff_entries(
+        session,
+        project_id=project_id,
+        removed_meta=removed_meta,
+        affected_schedules=affected_schedules,
+    )
+    possible_renames = _detect_possible_renames(
+        session,
+        removed_meta=removed_meta,
+        added_ids=added_ids,
+        prior=prior,
+        new_revision_ids=revision_ids,
+    )
+
     result: dict[str, Any] = {
         "project": project_id,
         "schema_version": 2,
@@ -373,6 +432,11 @@ def publish_catalog(
         "catalog_digest": digest,
         "published_at": now.isoformat(),
         "execution_mode": "caller",
+        "diff": {
+            "added": added_ids,
+            "removed": removed_diff,
+            "possible_renames": possible_renames,
+        },
     }
     if removed:
         # Publish-time warning (tasks with schedules/history left the
@@ -381,6 +445,107 @@ def publish_catalog(
         result["removed_tasks"] = sorted(removed)
         result["affected_schedules"] = affected_schedules
     return result
+
+
+def _removed_diff_entries(
+    session: Session,
+    *,
+    project_id: str,
+    removed_meta: dict[str, dict[str, str]],
+    affected_schedules: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Per-removed-task entries for the publish diff.
+
+    Each entry carries what the removal actually leaves behind — the
+    retained run count — and the schedules whose selection referenced the
+    task, so the report can warn at publish time instead of surfacing a
+    generic trigger-time failure later.
+    """
+    if not removed_meta:
+        return []
+    from .task_lifecycle import get_removed_event
+
+    entries: list[dict[str, Any]] = []
+    for task_id in sorted(removed_meta):
+        event = get_removed_event(session, project_id=project_id, task_id=task_id)
+        schedules = sorted(
+            entry["name"]
+            for entry in affected_schedules
+            if task_id in entry.get("selection_references", [])
+        )
+        entries.append(
+            {
+                "task_id": task_id,
+                "display_name": removed_meta[task_id]["display_name"],
+                "run_count": event.run_count if event else 0,
+                "schedules": schedules,
+            }
+        )
+    return entries
+
+
+def _detect_possible_renames(
+    session: Session,
+    *,
+    removed_meta: dict[str, dict[str, str]],
+    added_ids: list[str],
+    prior: dict[str, ProjectTaskInventoryDB],
+    new_revision_ids: dict[str, str | None],
+) -> list[dict[str, str]]:
+    """Removed + added ids pinning identical definition content.
+
+    Definition revisions are content-addressed, so an identical hash across
+    a vanished and a fresh id in one publish is near-certainly a move or
+    rename. Reported only — history is never rewritten; a future
+    ``apo task migrate`` may act on it.
+    """
+    if not removed_meta or not added_ids:
+        return []
+    from ..models.db import TaskDefinitionRevisionDB
+
+    prior_revision_ids = {
+        prior[task_id].task_definition_revision_id
+        for task_id in removed_meta
+        if prior[task_id].task_definition_revision_id is not None
+    }
+    new_revision_id_set = {
+        new_revision_ids[task_id]
+        for task_id in added_ids
+        if new_revision_ids.get(task_id) is not None
+    }
+    ids = prior_revision_ids | new_revision_id_set
+    if not ids:
+        return []
+    rows = session.exec(
+        select(TaskDefinitionRevisionDB).where(
+            col(TaskDefinitionRevisionDB.id).in_(list(ids))
+        )
+    ).all()
+    sha_by_revision = {row.id: row.content_sha256 for row in rows}
+
+    old_sha_by_task = {
+        task_id: sha_by_revision.get(prior[task_id].task_definition_revision_id or "")
+        for task_id in removed_meta
+    }
+    new_sha_by_task = {
+        task_id: sha_by_revision.get(new_revision_ids[task_id] or "")
+        for task_id in added_ids
+    }
+
+    renames: list[dict[str, str]] = []
+    for old_id, old_sha in sorted(old_sha_by_task.items()):
+        if old_sha is None:
+            continue
+        for new_id, new_sha in sorted(new_sha_by_task.items()):
+            if new_sha == old_sha:
+                renames.append(
+                    {
+                        "from": old_id,
+                        "to": new_id,
+                        "definition_sha256": old_sha,
+                    }
+                )
+    return renames
 
 
 def _pinned_revisions(session: Session, source_id: str | None) -> dict[str, str | None]:

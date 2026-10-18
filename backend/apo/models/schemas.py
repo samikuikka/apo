@@ -574,6 +574,35 @@ class AgentTaskDetail(SQLModel):
     git_author_email: str | None = None
     git_first_commit_at: datetime | None = None
     git_first_commit_sha: str | None = None
+    # Lifecycle (SPEC-216): ``"removed"`` when the task is no longer in the
+    # catalog but is still findable through its tombstone or its runs. The
+    # detail route synthesizes this instead of 404ing; ``None`` on active
+    # tasks, so existing consumers never see a change.
+    state: str | None = None
+    removed_at: datetime | None = None
+    removed_commit_sha: str | None = None
+
+
+class ArchivedAgentTask(SQLModel):
+    """One task not in the active suite, as the Archived view shows it.
+
+    ``removed`` rows are built from the lifecycle tombstone (last-known
+    inventory metadata + removal date) plus live run stats — the runs are
+    the point: removal never deletes them.
+    """
+
+    task_id: str
+    display_name: str
+    folder_path: str
+    task_path: str
+    removed_at: datetime
+    source_commit_sha: str | None = None
+    run_count: int = 0
+    run_stats: AgentTaskRunStats | None = None
+
+
+class ArchivedAgentTasks(SQLModel):
+    removed: list[ArchivedAgentTask] = Field(default_factory=list)
 
 
 class AgentTaskRunTrigger(SQLModel):

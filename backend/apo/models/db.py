@@ -1565,6 +1565,47 @@ class ProjectTaskInventoryDB(SQLModel, table=True):
     description: str | None = Field(default=None, sa_column=Column(Text))
 
 
+class TaskLifecycleEventDB(SQLModel, table=True):
+    """Server-side observation of a task leaving the project's catalog.
+
+    A ``removed`` tombstone snapshots the last-known inventory metadata so
+    the task stays findable — the Archived view and the task-detail
+    fallback — together with the runs that outlive it. Derived, never
+    authoritative: the moment a task reappears in the catalog its event is
+    deleted and the task is active again (prior runs reattach through the
+    shared string ``task_id`` on the runs).
+
+    One row per (project, task_id, event); re-removal after a return
+    overwrites. The ``event`` column is deliberately verb-agnostic so a
+    future lifecycle verb (e.g. an in-spec retirement marker) lands as a
+    new event value, not a schema change.
+    """
+
+    __tablename__: ClassVar[str] = "task_lifecycle_event"
+    __table_args__: ClassVar[tuple[object, ...]] = (
+        UniqueConstraint("project", "task_id", "event", name="uq_task_lifecycle_event"),
+        Index("ix_task_lifecycle_event_project", "project", "task_id"),
+    )
+
+    id: str = Field(primary_key=True, default_factory=lambda: uuid4().hex[:16])
+    project: str = Field(foreign_key="projects.id")
+    task_id: str = Field(index=True)
+    event: str = "removed"
+    display_name: str
+    folder_path: str = ""
+    task_path: str = ""
+    # Best-effort: the working-tree HEAD the publishing CLI saw, when it
+    # could see git history. Absent on non-git task roots.
+    source_commit_sha: str | None = None
+    detected_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(UTCDateTime, server_default=func.now()),
+    )
+    # Runs retained at removal time — the number the publish report warns
+    # about and the Archived card shows.
+    run_count: int = 0
+
+
 class TaskDefinitionRevisionDB(SQLModel, table=True):
     """Immutable, content-addressed Task Definition source.
 

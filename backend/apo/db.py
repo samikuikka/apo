@@ -4163,7 +4163,50 @@ def _migrate_to_v60() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 60
+def _migrate_to_v61() -> None:
+    """Version 61: task lifecycle events — the removal tombstones.
+
+    ``task_lifecycle_event`` records the server's observation that a task
+    left the catalog (display name, folder, date, best-effort commit, run
+    count) so removed tasks stay findable next to the runs that outlive
+    them. Pure additive table — no backfill, no data movement: pre-v61
+    removals left no observation behind, and inventing dates for them
+    would be false precision. New DBs get the table from ``create_all``.
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS task_lifecycle_event (
+                    id VARCHAR PRIMARY KEY,
+                    project VARCHAR NOT NULL REFERENCES projects(id),
+                    task_id VARCHAR NOT NULL,
+                    event VARCHAR NOT NULL DEFAULT 'removed',
+                    display_name VARCHAR NOT NULL,
+                    folder_path VARCHAR NOT NULL DEFAULT '',
+                    task_path VARCHAR NOT NULL DEFAULT '',
+                    source_commit_sha VARCHAR,
+                    detected_at TIMESTAMP NOT NULL,
+                    run_count INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_task_lifecycle_event "
+                "ON task_lifecycle_event(project, task_id, event)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_task_lifecycle_event_project "
+                "ON task_lifecycle_event(project, task_id)"
+            )
+        )
+
+
+LATEST_SCHEMA_VERSION = 61
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -4226,6 +4269,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     58: _migrate_to_v58,
     59: _migrate_to_v59,
     60: _migrate_to_v60,
+    61: _migrate_to_v61,
 }
 
 

@@ -141,13 +141,37 @@ def replace_inventory(
     }
 
     session.commit()
-    if removed:
-        from .adaptive_scheduler import handle_tasks_removed_from_catalog
+    from .adaptive_scheduler import handle_tasks_removed_from_catalog
+    from .task_lifecycle import (
+        clear_events_for_returned_tasks,
+        record_removals,
+    )
 
+    if removed:
         _ = handle_tasks_removed_from_catalog(
             session, project_id=project_id, removed=removed
         )
+        # Same observation as catalog publication (SPEC-216): tombstone the
+        # removals with the resolved commit, clear tasks that came back.
+        record_removals(
+            session,
+            project_id=project_id,
+            removed={
+                task_id: {
+                    "display_name": prior[task_id].display_name,
+                    "folder_path": prior[task_id].folder_path or "",
+                    "task_path": prior[task_id].task_path or "",
+                }
+                for task_id in removed
+                if task_id in prior
+            },
+            source_commit_sha=resolved_commit_sha,
+        )
         session.commit()
+    clear_events_for_returned_tasks(
+        session, project_id=project_id, present_task_ids=surviving_ids
+    )
+    session.commit()
     for row in new_rows:
         session.refresh(row)
     return new_rows

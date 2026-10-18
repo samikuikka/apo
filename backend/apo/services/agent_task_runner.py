@@ -126,7 +126,9 @@ def create_batch_run(
             grep=grep,
         )
         if not inventory_rows:
-            raise SelectionEmptyError(_no_tasks_found_message(task_source))
+            raise SelectionEmptyError(
+                _no_tasks_found_message(session, task_source, task_paths, grep)
+            )
     else:
         resolved = resolve_task_paths(resolved_task_root, selection_type, task_paths, grep)
         if not resolved:
@@ -288,23 +290,74 @@ def _resolve_inventory_rows(
     return []
 
 
-def _no_tasks_found_message(task_source: ProjectTaskSourceDB) -> str:
+def _no_tasks_found_message(
+    session: Session,
+    task_source: ProjectTaskSourceDB,
+    task_paths: list[str] | None,
+    grep: str | None,
+) -> str:
     """Actionable "no tasks" message (issue #17).
 
     Filesystem sources are lazily re-synced on run, so if the selection still
     matches nothing the task genuinely isn't on disk. Other sources (git/demo)
     are not auto-refreshed, so the most useful nudge is to run a sync.
+
+    When the selection overlaps tasks that were removed from the catalog
+    (SPEC-216), the removals are named with their dates — "x was removed on
+    Oct 15" answers the question the generic message leaves open.
     """
+    base: str
     if task_source.source_type == "filesystem":
-        return (
+        base = (
             "No tasks found for the given selection. The filesystem source was "
             "re-scanned and no matching task exists on disk."
         )
-    return (
-        "No tasks found for the given selection. If you recently added or "
-        "renamed a task, run `apo project source sync` to refresh the project "
-        "inventory."
+    else:
+        base = (
+            "No tasks found for the given selection. If you recently added or "
+            "renamed a task, run `apo project source sync` to refresh the project "
+            "inventory."
+        )
+    removals = _removed_tasks_matching_selection(
+        session, project_id=task_source.project, task_paths=task_paths, grep=grep
     )
+    if removals:
+        dated = "; ".join(
+            f"'{task_id}' was removed from the catalog on {date}" for task_id, date in removals
+        )
+        return f"{base} However, {dated}."
+    return base
+
+
+def _removed_tasks_matching_selection(
+    session: Session,
+    *,
+    project_id: str,
+    task_paths: list[str] | None,
+    grep: str | None,
+) -> list[tuple[str, str]]:
+    """Tombstoned tasks the empty selection plausibly pointed at.
+
+    Best-effort dating of the failure: match explicit selection paths by
+    prefix (a selected folder can contain the removed task), and a grep
+    term by substring on the task id. No selection filters given means
+    the message can't attribute anything — return nothing.
+    """
+    from .task_lifecycle import list_removed_events
+
+    if not task_paths and not grep:
+        return []
+    events = list_removed_events(session, project_id)
+    matches: list[tuple[str, str]] = []
+    for event in events:
+        if task_paths and any(
+            event.task_id.startswith(path.rstrip("/") + "/") or event.task_id == path
+            for path in task_paths
+        ):
+            matches.append((event.task_id, event.detected_at.date().isoformat()))
+        elif grep and grep.lower() in event.task_id.lower():
+            matches.append((event.task_id, event.detected_at.date().isoformat()))
+    return matches
 
 
 def update_batch_run_status(session: Session, batch: AgentTaskBatchRunDB) -> None:
