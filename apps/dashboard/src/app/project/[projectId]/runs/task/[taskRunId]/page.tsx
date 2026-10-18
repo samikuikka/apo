@@ -1,5 +1,5 @@
 import { getAgentTaskRun, listAgentTaskRunJudgments } from "@/lib/agent-task-api";
-import type { ModelProviderPair } from "@/lib/agent-task-api";
+import type { AgentTaskRunDetail } from "@/lib/agent-task-api";
 import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
 import { TraceHomeLink } from "@/components/trace-detail";
@@ -27,13 +27,12 @@ import {
   runStatusLabel,
   showsErrorBanner,
 } from "@/lib/run-verdict";
-import { RequestedByInline, TriggerInline } from "@/components/trigger-badge";
 import { DeleteRunButton } from "@/components/runs/DeleteRunButton";
 import { TaskRunDetailBody } from "./task-run-detail-body";
+import { RunHeaderMetadata, type RunHeaderFacts } from "./run-header-details";
 import { TaskRunAutoRefresh } from "@/components/agent-task-execution/task-run-auto-refresh";
 import { OutcomeSummary } from "@/components/run-outcome";
 import { formatTokenTotal, formatCostMicro } from "@/lib/format";
-import { isDominantReasoningCall } from "@/lib/dominant-reasoning-call";
 import { getProject } from "@/lib/projects-api";
 import GenerationExecutionNotice from "@/components/generation-execution-notice";
 import { RunJudgmentsSection } from "./run-judgments-section";
@@ -66,21 +65,6 @@ export async function generateMetadata({
   }
 }
 
-const utcDateTimeSecondsFormatter = new Intl.DateTimeFormat("en-US", {
-  timeZone: "UTC",
-  year: "numeric",
-  month: "short",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
-
-function formatDate(value: string | null) {
-  if (!value) return "—";
-  return utcDateTimeSecondsFormatter.format(new Date(value));
-}
-
 function formatDuration(start: string | null, end: string | null) {
   if (!start || !end) return "—";
   const ms = new Date(end).getTime() - new Date(start).getTime();
@@ -91,30 +75,32 @@ function formatDuration(start: string | null, end: string | null) {
   return `${mins}m ${secs}s`;
 }
 
-/** Distinct serving-host labels (route wins over provider) for the run
- * header (issue #307). Empty when nothing reported a host. */
-function hostLabels(pairs: ModelProviderPair[] | undefined): string[] {
-  if (!pairs) return [];
-  const seen = new Set<string>();
-  const labels: string[] = [];
-  for (const pair of pairs) {
+/** Facts for the run header's quiet line + Details card, pre-resolved so
+ * the client component stays a dumb renderer. */
+function runHeaderFacts(run: AgentTaskRunDetail, projectId: string): RunHeaderFacts {
+  // The provider rollup is keyed on (model, provider, route), so one host
+  // label legitimately spans several pairs (task model and judge model on
+  // the same host) — sum the calls per label (route wins over provider).
+  const calls = new Map<string, number>();
+  for (const pair of run.model_providers ?? []) {
     const label = pair.route || pair.provider;
-    if (label && !seen.has(label)) {
-      seen.add(label);
-      labels.push(label);
-    }
+    if (label) calls.set(label, (calls.get(label) ?? 0) + pair.calls);
   }
-  return labels;
-}
-
-/** Call count behind one host label. Sums every pair the label covers —
- * the rollup is keyed on (model, provider, route), so one host legitimately
- * spans several pairs (task model and judge model on the same host). */
-function hostPairCalls(pairs: ModelProviderPair[] | undefined, label: string): number {
-  return (pairs ?? []).reduce(
-    (n, pair) => n + (pair.route === label || pair.provider === label ? pair.calls : 0),
-    0,
-  );
+  const configured = run.run_configuration?.model ?? null;
+  return {
+    taskPathFull: run.task_path,
+    taskPathTail: run.task_path.split("/").slice(-2).join("/"),
+    adapterName: run.adapter_name,
+    model: configured,
+    effort: run.run_configuration?.effort ?? null,
+    observedModel:
+      run.primary_model && run.primary_model !== configured ? run.primary_model : null,
+    hosts: [...calls].map(([label, count]) => ({ label, calls: count })),
+    trigger: run.trigger,
+    batchRunId: run.batch_run_id,
+    batchHref: `/project/${projectId}/runs/${run.batch_run_id}`,
+    startedAt: run.started_at,
+  };
 }
 
 /** tok/s with one decimal under 100 and integers above — the precision a
@@ -123,6 +109,9 @@ function formatTokPerS(value: number): string {
   return `${value < 100 ? value.toFixed(1) : Math.round(value)} tok/s`;
 }
 
+/** Chip value that deep-links into the trace observation behind a max
+ * metric (issue #309) — "slowest call" / "max reasoning" jump straight to
+ * the winning span. Plain text when the run has no trace to link into. */
 function observationValue(
   projectId: string,
   traceRunId: string | null,
@@ -231,10 +220,6 @@ export default async function TaskRunDetailPage({
 
   const isRunning = ["running", "pending", "queued"].includes(taskRun.status);
   const generationErrors = taskRun.generation_execution?.errored ?? 0;
-  const reasoningDominated = isDominantReasoningCall(
-    taskRun.total_reasoning_tokens,
-    taskRun.max_call_reasoning_tokens,
-  );
   // #149 withholds the verdict only when errored generations dominate; a
   // recovered minority keeps the verdict (and the error banner below).
   const verdictSuppressed = isVerdictSuppressedByGenerations(taskRun);
@@ -294,66 +279,7 @@ export default async function TaskRunDetailPage({
               </span>
               <h1 className="text-[20px] font-semibold tracking-tight">{taskRun.task_id}</h1>
             </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
-              <span className="font-mono">{taskRun.task_path.split("/").slice(-2).join("/")}</span>
-              {taskRun.adapter_name && (
-                <>
-                  <span className="text-muted-foreground/50">·</span>
-                  <span>{taskRun.adapter_name}</span>
-                </>
-              )}
-              {taskRun.run_configuration && (
-                <>
-                  <span className="text-muted-foreground/50">·</span>
-                  <span className="text-muted-foreground">Model</span>
-                  <span className="font-mono text-foreground">{taskRun.run_configuration.model}</span>
-                  <span className="text-muted-foreground">Effort</span>
-                  <span className="font-mono text-foreground">
-                    {taskRun.run_configuration.effort ?? "—"}
-                  </span>
-                  <span className="text-muted-foreground/50">(reported by adapter)</span>
-                </>
-              )}
-              {taskRun.primary_model &&
-                (!taskRun.run_configuration ||
-                  taskRun.run_configuration.model !== taskRun.primary_model) && (
-                  <>
-                    <span className="text-muted-foreground/50">·</span>
-                    <span className="text-muted-foreground">Observed</span>
-                    <span className="font-mono text-foreground">{taskRun.primary_model}</span>
-                  </>
-                )}
-              {hostLabels(taskRun.model_providers).length > 0 && (
-                <>
-                  <span className="text-muted-foreground/50">·</span>
-                  <span className="text-muted-foreground">Hosts</span>
-                  {hostLabels(taskRun.model_providers).map((label, i) => (
-                    <span key={label} className="flex items-center gap-1">
-                      {i > 0 && <span className="text-muted-foreground/50">·</span>}
-                      <span className="font-mono text-foreground">{label}</span>
-                      <span className="text-muted-foreground">
-                        ×{hostPairCalls(taskRun.model_providers, label)}
-                      </span>
-                    </span>
-                  ))}
-                </>
-              )}
-              {taskRun.trigger?.source && (
-                <>
-                  <span className="text-muted-foreground/50">·</span>
-                  <TriggerInline trigger={taskRun.trigger} />
-                </>
-              )}
-              <RequestedByInline label={taskRun.requested_by_label} />
-              <>
-                <span className="text-muted-foreground/50">·</span>
-                <Link href={`/project/${projectId}/runs/${taskRun.batch_run_id}`} className="font-mono hover:text-foreground">
-                  batch {taskRun.batch_run_id.slice(0, 8)}
-                </Link>
-              </>
-              <span className="text-muted-foreground/50">·</span>
-              <span>{formatDate(taskRun.started_at)}</span>
-            </div>
+            <RunHeaderMetadata facts={runHeaderFacts(taskRun, projectId)} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" asChild variant="outline" size="sm" className="h-8 border-border bg-card text-[13px] font-normal hover:bg-card/80">
@@ -413,8 +339,7 @@ export default async function TaskRunDetailPage({
               },
               // Reasoning rollup (issue #309): unknown renders as an em dash —
               // a provider that never sent the reasoning dimension must not
-              // read as "the model didn't think". Linked to the deepest call
-              // when that call dominates the run's reasoning.
+              // read as "the model didn't think". Linked to the deepest call.
               ...(taskRun.total_reasoning_tokens != null
                 ? [{
                     icon: Brain,
@@ -422,9 +347,9 @@ export default async function TaskRunDetailPage({
                     value: observationValue(
                       projectId,
                       taskRun.trace_run_id,
-                      reasoningDominated ? taskRun.max_call_reasoning_call_id : null,
+                      taskRun.max_call_reasoning_call_id,
                       formatTokenTotal(taskRun.total_reasoning_tokens),
-                      reasoningDominated && taskRun.max_call_reasoning_tokens != null
+                      taskRun.max_call_reasoning_tokens != null
                         ? `max ${formatTokenTotal(taskRun.max_call_reasoning_tokens)} in a single call`
                         : undefined,
                     ),
@@ -448,6 +373,8 @@ export default async function TaskRunDetailPage({
           />
         </div>
 
+        {/* Run-level notices (issue #410): corrections + model drift share
+            one strip under the outcome summary. */}
         <RunNotices correctedChecks={correctedNotices} drift={taskRun.model_drift} />
 
         {judgments && judgments.judgments.length > 0 && (
@@ -491,7 +418,6 @@ export default async function TaskRunDetailPage({
             taskDefinition={taskRun.task_definition ?? null}
             taskRunId={taskRun.id}
             correctable={correctable}
-            taskNotes={taskRun.task_notes ?? []}
           />
         </Suspense>
       </div>
