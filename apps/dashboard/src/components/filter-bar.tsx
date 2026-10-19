@@ -16,7 +16,7 @@
  */
 
 import { type ComponentPropsWithoutRef, type ReactNode, type Ref } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Search, X } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import {
@@ -90,8 +90,24 @@ export function FilterBar(props: FilterBarProps) {
             placeholder={props.searchPlaceholder ?? "Filter…"}
             aria-label="Search"
             data-testid={props.searchTestId}
-            className="h-8 border-border bg-card pl-8 text-[13px] placeholder:text-muted-foreground/50 focus-visible:border-border"
+            className={cn(
+              "h-8 border-border bg-card pl-8 text-[13px] placeholder:text-muted-foreground/50 focus-visible:border-border",
+              // A term that arrived with the URL is a filter the user did not
+              // just type, so the box wears the same "filtered" look as the
+              // other controls and offers a one-click way out.
+              props.query && "border-foreground/30 bg-muted/60 pr-8",
+            )}
           />
+          {props.query && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => props.onQueryChange?.("")}
+              className="absolute right-1.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       )}
 
@@ -174,6 +190,7 @@ function countActive(p: FilterBarProps): number {
     p.status.size > 0 && p.status.size < p.statusOptions.length ? 1 : 0;
   return (
     filtered +
+    (p.query ? 1 : 0) +
     (p.selectedModels.size > 0 ? 1 : 0) +
     ((p.selectedHosts?.size ?? 0) > 0 ? 1 : 0) +
     (p.effort ? 1 : 0) +

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AgentTasksClient } from "@/app/project/[projectId]/tasks/tasks-client";
@@ -37,8 +37,12 @@ vi.mock("@/lib/agent-task-view-api", async () => {
   };
 });
 
+// Tests that start from a bookmarked / reloaded URL set `search` before
+// rendering; the client reads its initial search and status from it.
+const navState = vi.hoisted(() => ({ search: "" }));
+
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(""),
+  useSearchParams: () => new URLSearchParams(navState.search),
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
   useParams: () => ({ projectId: "acme-evals" }),
 }));
@@ -424,5 +428,108 @@ describe("AgentTasksClient — active view tab in the URL", () => {
       expect(new URLSearchParams(window.location.search).get("view")).toBeNull();
     });
     expect(screen.queryByText("scoped to this view")).not.toBeInTheDocument();
+  });
+});
+
+describe("AgentTasksClient — a filter that arrived with the URL", () => {
+  const tasks = [
+    task({ id: "support/refund", display_name: "refund", folder_path: "support" }),
+    task({ id: "support/invoice", display_name: "invoice", folder_path: "support", task_path: "tasks/support/invoice" }),
+    task({ id: "billing/proj-sync", display_name: "proj-sync", folder_path: "billing", task_path: "tasks/billing/proj-sync" }),
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(window, "location", {
+      value: originalLocation,
+      writable: true,
+    });
+    window.history.replaceState(null, "", "/?q=proj");
+    navState.search = "q=proj";
+  });
+
+  afterEach(() => {
+    navState.search = "";
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("says how many tasks the search hides and clears it in one click", async () => {
+    const user = userEvent.setup();
+    render(
+      <AgentTasksClient tasks={tasks} error={null} taskSource={taskSource} isDemo={false} />,
+    );
+
+    // The list opens narrowed: only the matching task, with the notice
+    // saying so next to it rather than only the text inside the search box.
+    expect(screen.getByText("proj-sync")).toBeInTheDocument();
+    expect(screen.queryByText("refund")).not.toBeInTheDocument();
+    const notice = screen.getByTestId("tasks-filter-notice");
+    expect(notice).toHaveTextContent('Showing 1 of 3 tasks matching "proj"');
+    expect(screen.getByTestId("tasks-search-input")).toHaveValue("proj");
+
+    await user.click(within(notice).getByRole("button", { name: "Clear filters" }));
+
+    expect(screen.queryByTestId("tasks-filter-notice")).not.toBeInTheDocument();
+    expect(screen.getByText("refund")).toBeInTheDocument();
+    expect(screen.getByText("invoice")).toBeInTheDocument();
+    expect(screen.getByTestId("tasks-search-input")).toHaveValue("");
+    expect(new URLSearchParams(window.location.search).get("q")).toBeNull();
+  });
+
+  it("offers a way out of a search that matches nothing", async () => {
+    const user = userEvent.setup();
+    navState.search = "q=nothing-here";
+    window.history.replaceState(null, "", "/?q=nothing-here");
+    render(
+      <AgentTasksClient tasks={tasks} error={null} taskSource={taskSource} isDemo={false} />,
+    );
+
+    expect(screen.getByText(/No tasks match/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(screen.queryByText(/No tasks match/)).not.toBeInTheDocument();
+    expect(screen.getByText("refund")).toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).get("q")).toBeNull();
+  });
+
+  it("a status-only filter gets the notice without a search term", async () => {
+    const user = userEvent.setup();
+    navState.search = "status=failed";
+    window.history.replaceState(null, "", "/?status=failed");
+    const withOutcome = [
+      task({
+        id: "support/refund",
+        display_name: "refund",
+        folder_path: "support",
+        run_stats: { last_run_status: "completed", last_run_passed: false } as AgentTaskSummary["run_stats"],
+      }),
+      task({ id: "support/invoice", display_name: "invoice", folder_path: "support", task_path: "tasks/support/invoice" }),
+    ];
+    render(
+      <AgentTasksClient tasks={withOutcome} error={null} taskSource={taskSource} isDemo={false} />,
+    );
+
+    const notice = screen.getByTestId("tasks-filter-notice");
+    expect(notice).toHaveTextContent("Showing 1 of 2 tasks");
+    expect(notice).not.toHaveTextContent("matching");
+
+    await user.click(within(notice).getByRole("button", { name: "Clear filters" }));
+
+    expect(screen.queryByTestId("tasks-filter-notice")).not.toBeInTheDocument();
+    expect(screen.getByText("invoice")).toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).get("status")).toBeNull();
+  });
+
+  it("the search box's own clear button empties it", async () => {
+    const user = userEvent.setup();
+    render(
+      <AgentTasksClient tasks={tasks} error={null} taskSource={taskSource} isDemo={false} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+
+    expect(screen.getByTestId("tasks-search-input")).toHaveValue("");
+    expect(screen.queryByTestId("tasks-filter-notice")).not.toBeInTheDocument();
+    expect(screen.getByText("refund")).toBeInTheDocument();
   });
 });
