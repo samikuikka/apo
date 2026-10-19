@@ -25,6 +25,10 @@ export interface ViewTab {
 export const STATUS_FILTER_KEYS = TASK_STATUS_FILTERS.map((s) => s.value);
 
 export function taskFilterStatus(task: AgentTaskSummary): TaskStatus {
+  // Archived rows (task removal archiving) are their own state — a removed task's runs
+  // still carry a last outcome, but the honest label is why it's not in
+  // the suite.
+  if (task.state === "removed") return "removed";
   const stats = task.run_stats;
   if (!stats || !stats.last_run_status) return "idle";
   if (stats.last_run_status === "error") return stats.last_run_no_verdict ? "no_verdict" : "errored";
@@ -43,7 +47,7 @@ export function groupByFolder(tasks: AgentTaskSummary[]): FolderNode[] {
   return Object.entries(groups).map(([name, tasks]) => ({ id: name, tasks }));
 }
 
-export type TaskStatus = "passed" | "failed" | "errored" | "no_verdict" | "running" | "idle";
+export type TaskStatus = "passed" | "failed" | "errored" | "no_verdict" | "running" | "idle" | "removed";
 
 /** The latest run's verdict; agrees with {@link taskFilterStatus}. An `error`
  * run is never FAILED: a judge that gave no verdict (issue #323) reads "No
@@ -59,4 +63,5 @@ export const STATUS_CONFIG: Record<Exclude<TaskStatus, "idle">, { label: string;
   errored:    { label: "Errored",    dot: "bg-warning",              text: "text-warning" },
   no_verdict: { label: "No verdict", dot: "bg-warning",              text: "text-warning" },
   running:    { label: "Running",    dot: "bg-foreground animate-pulse", text: "text-muted-foreground" },
+  removed:    { label: "Removed",    dot: "bg-destructive/70",       text: "text-destructive/90" },
 };

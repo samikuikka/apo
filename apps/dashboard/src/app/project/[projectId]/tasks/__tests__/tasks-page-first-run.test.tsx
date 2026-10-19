@@ -9,6 +9,18 @@ import { render, screen } from "@testing-library/react";
 
 vi.mock("@/lib/agent-task-api", () => ({
   listProjectAgentTasks: vi.fn().mockResolvedValue([]),
+  listArchivedAgentTasks: vi.fn().mockResolvedValue([]),
+  archivedTaskToSummary: (entry: { task_id: string; display_name: string; folder_path: string; task_path: string; run_stats: unknown }) => ({
+    id: entry.task_id,
+    task_path: entry.task_path,
+    folder_path: entry.folder_path,
+    display_name: entry.display_name,
+    adapter_name: "unknown",
+    has_checks: false,
+    tags: [],
+    run_stats: entry.run_stats as never,
+    state: "removed" as const,
+  }),
 }));
 
 vi.mock("@/lib/agent-task-view-api", () => ({

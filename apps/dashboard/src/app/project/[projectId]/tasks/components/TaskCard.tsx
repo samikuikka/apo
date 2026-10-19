@@ -97,6 +97,10 @@ export function TaskCard({
             </div>
           )}
 
+          {task.state === "removed" && (
+            <p className="mt-0.5 text-[11px] text-muted-foreground/50">{removedLabel(task)}</p>
+          )}
+
           {status === "idle" ? (
             <div className="mt-1.5 flex items-center gap-1.5 text-[12px] text-muted-foreground/50">
               <Play className="h-3 w-3" />
@@ -135,6 +139,18 @@ export function TaskCard({
       </div>
     </Link>
   );
+}
+
+/**
+ * An archived card's one-line removal note (task removal archiving): when it left the
+ * catalog and — when the publishing CLI could see git — by which commit.
+ * The date is unknown (not today) for removals that predate tombstones;
+ * then the note says only what is honest.
+ */
+export function removedLabel(task: AgentTaskSummary): string {
+  const when = task.removed_at ? new Date(task.removed_at).toISOString().slice(0, 10) : null;
+  const sha = task.removed_commit_sha ? ` · publish ${task.removed_commit_sha.slice(0, 7)}` : "";
+  return when ? `Removed ${when}${sha}` : "Removed from the catalog";
 }
 
 /** An idle task may still have runs that ended before starting (no executor

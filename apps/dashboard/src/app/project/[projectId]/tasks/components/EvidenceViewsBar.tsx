@@ -38,6 +38,7 @@ export function EvidenceViewsBar({
   viewsActive,
   addingTab,
   statusCounts,
+  archivedStatus,
   query,
   onQueryChange,
   selectedCount,
@@ -63,6 +64,12 @@ export function EvidenceViewsBar({
   addingTab: boolean;
   /** Per-status task counts for the status menu rows. */
   statusCounts?: Record<string, number>;
+  /** "Not in the suite" entry in the status menu (task removal archiving); omitted hides it. */
+  archivedStatus?: {
+    count: number;
+    active: boolean;
+    onToggle: () => void;
+  };
   query: string;
   onQueryChange: (value: string) => void;
   selectedCount: number;
@@ -225,6 +232,7 @@ export function EvidenceViewsBar({
           onEffortChange={(effort) => onChange({ effort })}
           since={viewsActive ? active.since : undefined}
           onSinceChange={viewsActive ? (since) => onChange({ since }) : undefined}
+          archivedStatus={archivedStatus}
           query={query}
           onQueryChange={onQueryChange}
           searchPlaceholder="Filter tasks..."

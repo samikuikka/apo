@@ -574,7 +574,7 @@ class AgentTaskDetail(SQLModel):
     git_author_email: str | None = None
     git_first_commit_at: datetime | None = None
     git_first_commit_sha: str | None = None
-    # Lifecycle (SPEC-216): ``"removed"`` when the task is no longer in the
+    # Lifecycle (task removal archiving): ``"removed"`` when the task is no longer in the
     # catalog but is still findable through its tombstone or its runs. The
     # detail route synthesizes this instead of 404ing; ``None`` on active
     # tasks, so existing consumers never see a change.

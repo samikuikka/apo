@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { run as runTaskPublish } from "../src/commands/task-publish.ts";
 
 /**
- * `apo task publish` reports the server's publish diff (SPEC-216): removals
+ * `apo task publish` reports the server's publish diff (task removal archiving): removals
  * with their consequences (retained runs, referencing schedules), additions,
  * and probable moves. Warning-only, exit 0 — the catalog must converge with
  * git either way. The request also carries the best-effort working-tree HEAD

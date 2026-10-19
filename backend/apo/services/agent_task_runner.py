@@ -303,7 +303,7 @@ def _no_tasks_found_message(
     are not auto-refreshed, so the most useful nudge is to run a sync.
 
     When the selection overlaps tasks that were removed from the catalog
-    (SPEC-216), the removals are named with their dates — "x was removed on
+    (task removal archiving), the removals are named with their dates — "x was removed on
     Oct 15" answers the question the generic message leaves open.
     """
     base: str

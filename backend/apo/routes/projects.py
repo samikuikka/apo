@@ -697,7 +697,7 @@ async def list_archived_project_agent_tasks(
 ):
     """List the project's tasks that are not in the active suite.
 
-    Read-only derived view over the lifecycle tombstones (SPEC-216): every
+    Read-only derived view over the lifecycle tombstones (task removal archiving): every
     task that left the catalog, with its last-known metadata, removal date,
     best-effort commit, and live run stats. Runs are the point — removal
     never deletes them. Declared BEFORE the ``{task_id:path}`` catch-all so
@@ -747,7 +747,7 @@ async def get_project_agent_task(
 
     A task that left the catalog but has a removal tombstone or retained
     runs resolves to a synthesized ``state: "removed"`` detail instead of
-    404 — the runs the server still holds must stay reachable (SPEC-216).
+    404 — the runs the server still holds must stay reachable (task removal archiving).
     """
     _project, _role = _load_project_for_request(session, project_id, request)
 

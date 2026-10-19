@@ -1,4 +1,4 @@
-"""Task removal archiving (SPEC-216).
+"""Task removal archiving (task removal archiving).
 
 Pins the full remove → tombstone → archived → restore loop:
 

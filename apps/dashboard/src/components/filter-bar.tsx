@@ -24,6 +24,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ModelFilterMenu } from "@/components/model-filter-menu";
@@ -64,6 +65,18 @@ export interface FilterBarProps {
   /** Omit to hide the date control (e.g. demo projects have no cohort scoping). */
   since?: string | null;
   onSinceChange?: (since: string | null) => void;
+  /**
+   * "Not in the suite" entry (task removal archiving): tasks removed from the catalog,
+   * findable with their runs. Rendered as its own separated group at the
+   * bottom of the status menu — exclusive, not part of the multi-select.
+   * Omitted or count 0 (and inactive) hides it: nothing archived means no
+   * new furniture.
+   */
+  archivedStatus?: {
+    count: number;
+    active: boolean;
+    onToggle: () => void;
+  };
   query?: string;
   onQueryChange?: (value: string) => void;
   searchPlaceholder?: string;
@@ -99,6 +112,7 @@ export function FilterBar(props: FilterBarProps) {
         options={props.statusOptions}
         status={props.status}
         onChange={props.onStatusChange}
+        archivedStatus={props.archivedStatus}
       />
 
       {showModelControl && (
@@ -174,6 +188,7 @@ function countActive(p: FilterBarProps): number {
     p.status.size > 0 && p.status.size < p.statusOptions.length ? 1 : 0;
   return (
     filtered +
+    (p.archivedStatus?.active ? 1 : 0) +
     (p.selectedModels.size > 0 ? 1 : 0) +
     ((p.selectedHosts?.size ?? 0) > 0 ? 1 : 0) +
     (p.effort ? 1 : 0) +
@@ -185,12 +200,18 @@ function StatusFilterMenu({
   options,
   status,
   onChange,
+  archivedStatus,
 }: {
   options: StatusFilterOption[];
   status: Set<string>;
   onChange: (next: Set<string>) => void;
+  archivedStatus?: {
+    count: number;
+    active: boolean;
+    onToggle: () => void;
+  };
 }) {
-  const summary = statusSummary(options, status);
+  const summary = archivedStatus?.active ? "Archived" : statusSummary(options, status);
   const filtered = summary !== "All";
 
   return (
@@ -252,6 +273,25 @@ function StatusFilterMenu({
               )}
             </DropdownMenuCheckboxItem>
           ))}
+          {archivedStatus && (archivedStatus.count > 0 || archivedStatus.active) && (
+            <>
+              <DropdownMenuSeparator className="my-1" />
+              <DropdownMenuLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Not in the suite
+              </DropdownMenuLabel>
+              <DropdownMenuCheckboxItem
+                checked={archivedStatus.active}
+                onCheckedChange={archivedStatus.onToggle}
+                className="text-[12px]"
+              >
+                <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-destructive/70" aria-hidden />
+                Archived
+                <span className="ml-auto pl-3 font-mono text-[10px] tabular-nums text-muted-foreground/60">
+                  {archivedStatus.count}
+                </span>
+              </DropdownMenuCheckboxItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

@@ -52,10 +52,47 @@ export interface AgentTaskSummary {
   git_author_name?: string | null;
   git_first_commit_at?: string | null;
   git_first_commit_sha?: string | null;
+  /**
+   * Lifecycle (task removal archiving): `"removed"` when this row is a synthesized
+   * archived task — not in the catalog, findable with its runs. Absent on
+   * active tasks so existing consumers never see a change.
+   */
+  state?: "removed" | null;
+  removed_at?: string | null;
+  removed_commit_sha?: string | null;
 }
 
 export interface AgentTaskDetail extends AgentTaskSummary {
   latest_run: AgentTaskRunSummary | null;
+}
+
+/** One removed task, as the Archived view shows it (task removal archiving). */
+export interface ArchivedAgentTask {
+  task_id: string;
+  display_name: string;
+  folder_path: string;
+  task_path: string;
+  removed_at: string;
+  source_commit_sha: string | null;
+  run_count: number;
+  run_stats: AgentTaskRunStats | null;
+}
+
+/** Map an archived entry onto the task-summary shape the list renders. */
+export function archivedTaskToSummary(entry: ArchivedAgentTask): AgentTaskSummary {
+  return {
+    id: entry.task_id,
+    task_path: entry.task_path,
+    folder_path: entry.folder_path,
+    display_name: entry.display_name,
+    adapter_name: "unknown",
+    has_checks: false,
+    tags: [],
+    run_stats: entry.run_stats,
+    state: "removed",
+    removed_at: entry.removed_at,
+    removed_commit_sha: entry.source_commit_sha,
+  };
 }
 
 export interface AgentTaskRunTrigger {
@@ -826,6 +863,23 @@ export const listProjectAgentTasks = (
   });
 
 /**
+ * Tasks not in the active suite (task removal archiving): removal tombstones with their
+ * retained runs. Cheap (one small table) — safe to load for the filter's
+ * count on every Tasks-page visit.
+ */
+export const listArchivedAgentTasks = (
+  projectId: string,
+): Promise<ArchivedAgentTask[]> =>
+  apiClient<ArchivedAgentTasksResponse>(
+    `/v1/projects/${encodeURIComponent(projectId)}/agent-tasks/archived`,
+    NO_CACHE,
+  ).then((body) => body.removed ?? []);
+
+interface ArchivedAgentTasksResponse {
+  removed: ArchivedAgentTask[];
+}
+
+/**
  * Resolve one project task through the inventory collection endpoint.
  *
  * Task ids are hierarchical (for example `claude-agent/data-extraction`).
@@ -840,10 +894,19 @@ export const getProjectAgentTask = async (
 ): Promise<AgentTaskDetail> => {
   const tasks = await listProjectAgentTasks(projectId, taskId);
   const task = tasks.find((candidate) => candidate.id === taskId);
-  if (!task) {
-    throw new ApiError(404, "Task not found in inventory.");
+  if (task) {
+    return { ...task, latest_run: null };
   }
-  return { ...task, latest_run: null };
+  // Not in the catalog — but it may be a removed task the server still
+  // holds runs for (task removal archiving). Resolve through the archived collection
+  // rather than the catch-all detail path: hierarchical ids in a path
+  // segment decode differently across SSR fetches and proxies.
+  const archived = await listArchivedAgentTasks(projectId).catch(() => []);
+  const entry = archived.find((candidate) => candidate.task_id === taskId);
+  if (entry) {
+    return { ...archivedTaskToSummary(entry), latest_run: null };
+  }
+  throw new ApiError(404, "Task not found in inventory.");
 };
 
 /**

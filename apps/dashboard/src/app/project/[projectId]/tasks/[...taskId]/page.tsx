@@ -184,7 +184,11 @@ export default async function TaskDetailPage({
   }
 
   // Off-catalog task that still has run history — show the evidence.
-  const inCatalog = task !== null;
+  // A synthesized tombstone row (state === "removed", task removal archiving) counts as
+  // off-catalog: it carries no files and no executable definition, only
+  // metadata and the runs that outlive the removal.
+  const removedTask = task?.state === "removed" ? task : null;
+  const inCatalog = task !== null && removedTask === null;
   const displayName = task ? task.display_name : taskId;
 
   return (
@@ -200,10 +204,10 @@ export default async function TaskDetailPage({
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-3">
           <FolderOpen className="h-4 w-4 shrink-0 text-primary" />
           <h1 className="min-w-0 truncate text-[20px] font-semibold tracking-tight">{displayName}</h1>
-          {task ? (
+          {inCatalog && task ? (
             <Badge variant="outline" className="text-[10px]">{task.adapter_name}</Badge>
           ) : (
-            <Badge variant="outline" className="text-[10px]">removed from catalog</Badge>
+            <Badge variant="outline" className="text-[10px] text-destructive/90">removed from catalog</Badge>
           )}
         </div>
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
@@ -233,11 +237,29 @@ export default async function TaskDetailPage({
       </div>
 
       {!inCatalog ? (
-        <div className="border-b border-warning/30 bg-warning/10 px-6 py-3 text-[13px] text-warning">
-          This task is no longer in the project catalog (removed or renamed in
-          the task source). Its recorded runs are shown below; task files are
-          unavailable.
-        </div>
+        removedTask ? (
+          <div className="border-b border-destructive/25 bg-destructive/5 px-6 py-3 text-[13px]">
+            <span className="font-medium text-destructive">Removed from the catalog</span>
+            <span className="text-muted-foreground">
+              {" "}on {removedTask.removed_at ? new Date(removedTask.removed_at).toISOString().slice(0, 10) : "an unknown date"}
+              {removedTask.removed_commit_sha
+                ? ` · publish ${removedTask.removed_commit_sha.slice(0, 7)}`
+                : ""}
+              {taskRuns.length > 0
+                ? ` · ${taskRuns.length} run${taskRuns.length === 1 ? "" : "s"} retained below`
+                : ""}
+              . The task folder no longer exists in the task source — restore it with{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[12px]">git revert</code>
+              {" "}and republish.
+            </span>
+          </div>
+        ) : (
+          <div className="border-b border-warning/30 bg-warning/10 px-6 py-3 text-[13px] text-warning">
+            This task is no longer in the project catalog (removed or renamed in
+            the task source). Its recorded runs are shown below; task files are
+            unavailable.
+          </div>
+        )
       ) : null}
 
       {/* Run-history scope: the shared filter bar in its own strip, hosted the

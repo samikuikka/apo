@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { type AgentTaskSummary } from "@/lib/agent-task-api";
+import {
+  archivedTaskToSummary,
+  listArchivedAgentTasks,
+  type AgentTaskSummary,
+  type ArchivedAgentTask,
+} from "@/lib/agent-task-api";
 
 import { usePersistentStringSet } from "@/hooks/use-persistent-string-set";
 import { useProjectId, useIsDemo } from "@/lib/project-router";
@@ -89,6 +94,30 @@ export function AgentTasksClient({
     [],
   );
 
+  // Archived mode (task removal archiving): "Not in the suite" in the status menu. The
+  // archived list loads once per visit (cheap — one small table) so the
+  // filter can show its count and a fruitless search can point at removed
+  // tasks instead of a bare "no results".
+  const [archivedActive, setArchivedActiveState] = useState(
+    () => searchParams.get("archived") === "1",
+  );
+  const setArchivedActive = useCallback((next: boolean) => {
+    setArchivedActiveState(next);
+    setSearchParamShallow("archived", next ? "1" : null);
+  }, []);
+  const [archived, setArchived] = useState<ArchivedAgentTask[]>([]);
+  useEffect(() => {
+    if (isDemoProject) {
+      setArchived([]);
+      return;
+    }
+    const controller = new AbortController();
+    listArchivedAgentTasks(projectId)
+      .then(setArchived)
+      .catch(() => {});
+    return () => controller.abort();
+  }, [projectId, isDemoProject]);
+
   const {
     views,
     activeView,
@@ -170,6 +199,36 @@ export function AgentTasksClient({
 
   const folders = useMemo(() => groupByFolder(statusFilteredTasks), [statusFilteredTasks]);
 
+  // The archived view is the same list, different membership: same folder
+  // grouping, same cards — only the rows change (the removal-archiving filter contract).
+  const archivedSummaries = useMemo(
+    () => archived.map(archivedTaskToSummary),
+    [archived],
+  );
+  const archivedFolders = useMemo(() => {
+    const grouped = groupByFolder(archivedSummaries);
+    if (!query) return grouped;
+    const q = query.toLowerCase();
+    return grouped.filter(
+      (f) =>
+        f.id.toLowerCase().includes(q) ||
+        f.tasks.some(
+          (t) =>
+            t.display_name.toLowerCase().includes(q) ||
+            t.task_path.toLowerCase().includes(q),
+        ),
+    );
+  }, [query, archivedSummaries]);
+  const archivedQueryMatches = useMemo(() => {
+    if (!query) return [];
+    const q = query.toLowerCase();
+    return archived.filter(
+      (t) =>
+        t.task_id.toLowerCase().includes(q) ||
+        t.display_name.toLowerCase().includes(q),
+    );
+  }, [query, archived]);
+
   const filtered = useMemo(() => {
     if (!query) return folders;
     const q = query.toLowerCase();
@@ -190,6 +249,11 @@ export function AgentTasksClient({
     selectAllState,
     visibleTaskIds,
   } = useTaskSelection({ folders: filtered });
+  // Selection runs tasks — meaningless for archived rows, so the archived
+  // view renders the same list with inert checkboxes.
+  const noOp = useCallback(() => {}, []);
+  const listFolders = archivedActive ? archivedFolders : filtered;
+  const listSelected = archivedActive ? new Set<string>() : selected;
 
   const {
     syncing,
@@ -212,8 +276,8 @@ export function AgentTasksClient({
     canRunTasks && !isDemoProject && selected.size > 0,
   );
 
-  const folderIds = folders.map((folder) => folder.id);
-  const visibleFolderIds = filtered.map((folder) => folder.id);
+  const folderIds = listFolders.map((folder) => folder.id);
+  const visibleFolderIds = folderIds;
   const expanded = new Set(folderIds.filter((id) => !collapsed.has(id)));
   const allExpanded =
     visibleFolderIds.length > 0 &&
@@ -289,8 +353,17 @@ export function AgentTasksClient({
               onClearSelection={() => setSelected(new Set())}
               onToggleExpandAll={toggleExpandAll}
               allExpanded={allExpanded}
-              status={statusFilter}
+              status={archivedActive ? new Set<string>() : statusFilter}
               onStatusChange={handleStatusChange}
+              archivedStatus={
+                isDemoProject
+                  ? undefined
+                  : {
+                      count: archived.length,
+                      active: archivedActive,
+                      onToggle: () => setArchivedActive(!archivedActive),
+                    }
+              }
               onSelect={setActiveViewId}
               onChange={updateActiveView}
               onSetArchived={setModelArchivedState}
@@ -317,17 +390,61 @@ export function AgentTasksClient({
         </div>
       )}
 
+      {/* Archived banner: same page, different membership — with a way back. */}
+      {archivedActive && (
+        <div className="mx-6 mt-4 flex flex-wrap items-center gap-3 border border-border bg-muted/10 px-4 py-2.5 text-[12px] text-muted-foreground">
+          <span className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground/60">
+            Archived
+          </span>
+          <span>
+            {archivedSummaries.length} task{archivedSummaries.length === 1 ? "" : "s"} not in
+            the active suite — removed from the catalog, runs retained. Restore by
+            re-adding the task folder and publishing.
+          </span>
+          <button
+            type="button"
+            onClick={() => setArchivedActive(false)}
+            className="ml-auto py-1 text-foreground/70 underline underline-offset-4 hover:text-foreground"
+          >
+            &larr; back to the active suite
+          </button>
+        </div>
+      )}
+
+      {/* A search that matches nothing active but a removed task answers
+          "where did it go?" instead of a bare empty state (task removal archiving). */}
+      {!archivedActive && query && filtered.length === 0 && archivedQueryMatches.length > 0 && (
+        <div className="mx-6 mt-4 border border-dashed border-border bg-muted/10 p-4 text-center text-[13px] text-muted-foreground">
+          No active tasks match &ldquo;{query}&rdquo; —{" "}
+          {archivedQueryMatches.length} archived match
+          {archivedQueryMatches.length === 1 ? "" : "es"}:{" "}
+          <span className="font-medium text-foreground/80">
+            {archivedQueryMatches.slice(0, 3).map((t) => t.display_name).join(", ")}
+            {archivedQueryMatches.length > 3 ? `, +${archivedQueryMatches.length - 3}` : ""}
+          </span>
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => setArchivedActive(true)}
+              className="border border-border px-2.5 py-1 text-[12px] text-foreground/80 hover:border-foreground/40 hover:text-foreground"
+            >
+              Show the archived view
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Folder list */}
       <FolderList
-        folders={filtered}
+        folders={listFolders}
         expanded={expanded}
-        selected={selected}
+        selected={listSelected}
         query={query}
-        selectAllState={selectAllState}
-        visibleTaskCount={visibleTaskIds.length}
-        onToggleSelectAll={toggleSelectAll}
-        onToggleFolder={toggleFolder}
-        onToggleTask={toggleTask}
+        selectAllState={archivedActive ? "none" : selectAllState}
+        visibleTaskCount={archivedActive ? archivedFolders.reduce((n, f) => n + f.tasks.length, 0) : visibleTaskIds.length}
+        onToggleSelectAll={archivedActive ? noOp : toggleSelectAll}
+        onToggleFolder={archivedActive ? noOp : toggleFolder}
+        onToggleTask={archivedActive ? noOp : toggleTask}
         onToggleExpand={toggleExpand}
       />
 
