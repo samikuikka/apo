@@ -244,7 +244,7 @@ export function ScheduleDetailClient({
           </p>
         )}
         {poolError && (
-          <p className="border-t border-border px-6 py-2 text-[12px] text-destructive">
+          <p role="alert" className="border-t border-border px-6 py-2 text-[12px] text-destructive">
             {poolError}
           </p>
         )}

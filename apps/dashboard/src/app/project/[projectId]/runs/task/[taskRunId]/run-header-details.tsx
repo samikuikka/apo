@@ -18,15 +18,19 @@ export interface RunHeaderFacts {
   taskPathTail: string;
   adapterName: string | null;
   /** Configured model — what the adapter was told to run. */
-  model: string | null;
+  configuredModel: string | null;
   /** Configured effort; null when the adapter reported none. */
   effort: string | null;
   /** primary_model when it diverged from the configured one (gateway
-   * fallback). The drift notice strip owns the loud treatment; this is
-   * the quiet reference value. */
+   * fallback, or no configuration at all on pre-config runs). The drift
+   * notice strip owns the loud treatment; this is the quiet reference
+   * value. */
   observedModel: string | null;
   hosts: RunHeaderHostFact[];
   trigger: AgentTaskRunTrigger | null;
+  /** Who asked for the batch, resolved from their credential — distinct
+   * from the free-text trigger actor, which a caller chose themselves. */
+  requestedBy: string | null;
   batchRunId: string;
   batchHref: string;
   startedAt: string | null;
@@ -76,7 +80,10 @@ export function RunHeaderMetadata({ facts }: { facts: RunHeaderFacts }) {
       ),
     },
   ];
-  if (facts.model) {
+  // Pre-config runs never reported a configured model; the observed one is
+  // the model the run actually served, so the line falls back to it.
+  const lineModel = facts.configuredModel ?? facts.observedModel;
+  if (lineModel) {
     lineItems.push({
       key: "model",
       node: (
@@ -84,7 +91,7 @@ export function RunHeaderMetadata({ facts }: { facts: RunHeaderFacts }) {
           className="font-mono text-foreground/80"
           title={facts.effort ? `effort ${facts.effort} (adapter-reported)` : undefined}
         >
-          {facts.model}
+          {lineModel}
         </span>
       ),
     });
@@ -133,12 +140,16 @@ export function RunHeaderMetadata({ facts }: { facts: RunHeaderFacts }) {
       {open && (
         <div className="mt-3 max-w-3xl border border-border bg-card px-4 py-3">
           <div className="grid gap-x-8 gap-y-4 sm:grid-cols-3">
-            {facts.model && (
+            {(facts.configuredModel || facts.observedModel || facts.hosts.length > 0) && (
               <section className="space-y-1.5">
                 <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
                   Model
                 </h3>
-                <GroupRow label="Configured">{facts.model}</GroupRow>
+                <GroupRow label="Configured">
+                  {facts.configuredModel ?? (
+                    <span className="text-muted-foreground">not reported</span>
+                  )}
+                </GroupRow>
                 <GroupRow label="Effort">
                   {facts.effort ?? (
                     <span className="text-muted-foreground">not reported</span>
@@ -172,6 +183,7 @@ export function RunHeaderMetadata({ facts }: { facts: RunHeaderFacts }) {
                   <TriggerInline trigger={facts.trigger} />
                 </GroupRow>
               )}
+              {facts.requestedBy && <GroupRow label="Requested by">{facts.requestedBy}</GroupRow>}
               <GroupRow label="Batch">
                 <Link
                   href={facts.batchHref}
@@ -214,10 +226,10 @@ function GroupRow({
 }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
-      <dt className="shrink-0 text-xs text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 truncate font-mono text-xs text-foreground" title={title}>
+      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
+      <span className="min-w-0 truncate font-mono text-xs text-foreground" title={title}>
         {children}
-      </dd>
+      </span>
     </div>
   );
 }

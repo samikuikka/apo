@@ -91,12 +91,13 @@ function runHeaderFacts(run: AgentTaskRunDetail, projectId: string): RunHeaderFa
     taskPathFull: run.task_path,
     taskPathTail: run.task_path.split("/").slice(-2).join("/"),
     adapterName: run.adapter_name,
-    model: configured,
+    configuredModel: configured,
     effort: run.run_configuration?.effort ?? null,
     observedModel:
       run.primary_model && run.primary_model !== configured ? run.primary_model : null,
     hosts: [...calls].map(([label, count]) => ({ label, calls: count })),
     trigger: run.trigger,
+    requestedBy: run.requested_by_label ?? null,
     batchRunId: run.batch_run_id,
     batchHref: `/project/${projectId}/runs/${run.batch_run_id}`,
     startedAt: run.started_at,
@@ -418,6 +419,7 @@ export default async function TaskRunDetailPage({
             taskDefinition={taskRun.task_definition ?? null}
             taskRunId={taskRun.id}
             correctable={correctable}
+            taskNotes={taskRun.task_notes ?? []}
           />
         </Suspense>
       </div>

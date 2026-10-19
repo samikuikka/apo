@@ -19,10 +19,11 @@ function baseFacts(overrides: Partial<RunHeaderFacts> = {}): RunHeaderFacts {
     taskPathFull: "folder/ai-sdk-agent/data-extraction",
     taskPathTail: "ai-sdk-agent/data-extraction",
     adapterName: "ai-sdk-agent",
-    model: "deepseek/deepseek-v4.1-flash",
+    configuredModel: "deepseek/deepseek-v4.1-flash",
     effort: "medium",
     observedModel: null,
     hosts: [{ label: "openai.chat", calls: 5 }],
+    requestedBy: "runner@test.com",
     trigger: { source: "cli", actor: null, hostname: null, user_agent: null, entrypoint: null, initiated_at: null, ci_system: null, ci_run_id: null, ci_run_url: null, repository: null, branch: null, commit_sha: null, pr_number: null, schedule_id: null, schedule_name: null },
     batchRunId: "bch_3e444461acc34422708ae409",
     batchHref: "/project/p1/runs/bch_3e444461acc34422708ae409",
@@ -45,6 +46,7 @@ describe("RunHeaderMetadata", () => {
     expect(screen.queryByText("bch_3e444461acc34422708ae409")).not.toBeInTheDocument();
     expect(screen.queryByText("folder/ai-sdk-agent/data-extraction")).not.toBeInTheDocument();
     expect(screen.queryByText("openai.chat")).not.toBeInTheDocument();
+    expect(screen.queryByText("runner@test.com")).not.toBeInTheDocument();
 
     const toggle = screen.getByRole("button", { name: /details/i });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -55,6 +57,7 @@ describe("RunHeaderMetadata", () => {
     expect(screen.getByText("medium")).toBeInTheDocument();
     expect(screen.getByText(/adapter-reported/)).toBeInTheDocument();
     expect(screen.getByText(/openai.chat/)).toBeInTheDocument();
+    expect(screen.getByText("runner@test.com")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "bch_3e444461acc34422708ae409" }),
     ).toHaveAttribute("href", "/project/p1/runs/bch_3e444461acc34422708ae409");
@@ -68,6 +71,7 @@ describe("RunHeaderMetadata", () => {
           adapterName: null,
           effort: null,
           hosts: [],
+          requestedBy: null,
         })}
       />,
     );
@@ -77,24 +81,49 @@ describe("RunHeaderMetadata", () => {
     expect(screen.queryByText("Adapter")).not.toBeInTheDocument();
     expect(screen.queryByText("Hosts")).not.toBeInTheDocument();
     expect(screen.queryByText("Observed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Requested by")).not.toBeInTheDocument();
   });
 
   it("drops the model from the line and the Model group when unconfigured", () => {
     render(
       <RunHeaderMetadata
         facts={baseFacts({
-          model: null,
+          configuredModel: null,
           effort: null,
           observedModel: null,
+          hosts: [],
           trigger: null,
         })}
       />,
     );
 
     expect(screen.queryByText("deepseek/deepseek-v4.1-flash")).not.toBeInTheDocument();
-    // Model group caption never renders without configured-model facts.
+    // Model group caption never renders without model facts.
     expect(screen.queryByRole("heading", { name: "Model" })).not.toBeInTheDocument();
     // No trigger on the run — the line falls back to "batch".
     expect(screen.getByText("batch")).toBeInTheDocument();
+  });
+
+  it("falls back to the observed model for runs without a configuration", async () => {
+    const user = userEvent.setup();
+    render(
+      <RunHeaderMetadata
+        facts={baseFacts({
+          configuredModel: null,
+          effort: null,
+          observedModel: "qwen/qwen3.5-72b",
+        })}
+      />,
+    );
+
+    // The observed model is the run's model when nothing was configured.
+    expect(screen.getByText("qwen/qwen3.5-72b")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /details/i }));
+
+    // Quiet line + the Observed row both carry it; Configured and Effort
+    // read as not reported.
+    expect(screen.getAllByText("qwen/qwen3.5-72b")).toHaveLength(2);
+    expect(screen.getByText("Observed")).toBeInTheDocument();
+    expect(screen.getAllByText("not reported")).toHaveLength(2);
   });
 });
