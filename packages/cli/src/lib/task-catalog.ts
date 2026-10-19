@@ -41,6 +41,27 @@ export type PublishTaskCatalogRequest = {
   tasks: PublishedTask[];
 };
 
+/** One task that left the catalog in this publish, with consequences. */
+export type RemovedTaskDiffEntry = {
+  task_id: string;
+  display_name: string;
+  run_count: number;
+  schedules: string[];
+};
+
+/** Removed + added ids pinning identical definition content — a probable move. */
+export type PossibleRename = {
+  from: string;
+  to: string;
+  definition_sha256: string;
+};
+
+export type PublishDiff = {
+  added: string[];
+  removed: RemovedTaskDiffEntry[];
+  possible_renames: PossibleRename[];
+};
+
 export type TaskCatalog = {
   project: string;
   schema_version: 1 | 2;
@@ -48,6 +69,15 @@ export type TaskCatalog = {
   catalog_digest: string;
   published_at: string;
   execution_mode: "caller" | "bundled_demo";
+  diff?: PublishDiff;
+  /** Legacy pre-diff keys, kept so old servers still print. */
+  removed_tasks?: string[];
+  affected_schedules?: Array<{
+    id: string;
+    name: string;
+    pruned_states: number;
+    selection_references: string[];
+  }>;
 };
 
 /**

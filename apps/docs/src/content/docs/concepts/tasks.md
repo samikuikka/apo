@@ -58,6 +58,20 @@ The `test` function comes from the task because its types do too. The adapter de
 
 The task name is the folder name. Discovery scans for `.eval.ts` files: drop the folder into your task source and it's registered. No manifest.
 
+## Removing a task
+
+A task leaves the suite the same way it arrived: through your repo. Delete the task folder and run [`apo task publish`](/cli/task-publish/) — nothing else.
+
+Removal is **not** destructive:
+
+- **Every run, check, judgment, and trace is kept.** Runs reference tasks by id, not by a live row, so history survives the delete.
+- **The server records the removal.** The publish that carried the deletion writes a tombstone — last-known name and folder, the removal date, and the commit you published from — and reports what left, how many runs it retains, and whether any schedule selected it.
+- **The task stays findable.** In the dashboard's Tasks page, open **Status → Archived** to see removed tasks with their folders and run history. Searching a removed task's name points you there. Its detail page shows the removal date and its runs instead of erroring.
+
+Restoring is just git: revert the deletion (or re-add the folder), publish again. The task is back in the suite with its old runs attached — the server never owned the lifecycle, it only watched.
+
+Renaming or moving a task (its id is the folder-scoped name) looks to the server like a removal plus an addition. When both definitions have identical content, `apo task publish` reports it as a probable move so you know the history split is intentional.
+
 ## Next
 
 - [Adapters](/concepts/adapters/): what the `adapter` option actually is, and why you write it.

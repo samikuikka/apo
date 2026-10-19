@@ -55,7 +55,7 @@ function gitRemoteOrigin(cwd: string): string | null {
   return sanitizeGitUrl(git(["remote", "get-url", "origin"], cwd));
 }
 
-function gitHeadSha(cwd: string): string | null {
+export function gitHeadSha(cwd: string): string | null {
   const sha = git(["rev-parse", "HEAD"], cwd);
   if (sha && /^[0-9a-f]{40}$/.test(sha)) return sha;
   return null;

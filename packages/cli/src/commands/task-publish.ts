@@ -6,13 +6,13 @@
  */
 
 import { join } from "node:path";
-import { green, red, dim, cyan } from "../lib/format.ts";
+import { green, red, yellow, dim, cyan } from "../lib/format.ts";
 import { parseArgs, getFlagValue, getBoolFlag } from "../lib/args.ts";
 import { resolveConfig } from "../lib/config.ts";
 import { discoverTaskMeta } from "../lib/task-meta.ts";
 import { toPublishedTask, type PublishTaskCatalogRequest, type TaskCatalog } from "../lib/task-catalog.ts";
 import { prepareTaskDefinition } from "../lib/task-definition.ts";
-import { firstCommitForFile } from "../lib/git-provenance.ts";
+import { firstCommitForFile, gitHeadSha } from "../lib/git-provenance.ts";
 import { apiPut } from "../lib/api.ts";
 
 export async function run(argv: string[]): Promise<number> {
@@ -66,10 +66,15 @@ export async function run(argv: string[]): Promise<number> {
     t.tags.sort();
   }
 
-  const request: PublishTaskCatalogRequest = {
+  const request: PublishTaskCatalogRequest & { head_commit_sha?: string } = {
     schema_version: 2 as const,
     tasks: published,
   };
+  // Best-effort working-tree HEAD: recorded on removal tombstones so
+  // "removed by publish {sha}" points into git history. Absent on
+  // non-git task roots — the server treats absence as normal.
+  const headSha = gitHeadSha(taskRoot);
+  if (headSha) request.head_commit_sha = headSha;
 
   // 3. Dry run — print and exit
   if (dryRun) {
@@ -94,11 +99,43 @@ export async function run(argv: string[]): Promise<number> {
       console.log(green(`\u2713 Published ${result.task_count} task${result.task_count === 1 ? "" : "s"} to ${projectId}`));
       console.log(dim(`  digest: ${result.catalog_digest?.slice(0, 20) ?? "?"}...`));
       console.log(dim(`  published_at: ${result.published_at ?? "?"}`));
+      printPublishDiff(result);
     }
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(red(`error: ${message}`));
     return 2;
+  }
+}
+
+/**
+ * Report what this publish changed — removals with their consequences
+ * (retained runs, referencing schedules), additions, and probable moves.
+ *
+ * Warning-only by design: the catalog must converge with git either way
+ * (publish runs in CI), so the report informs instead of blocking. The
+ * removed tasks stay findable in the dashboard under Status → Archived.
+ */
+function printPublishDiff(result: TaskCatalog): void {
+  const diff = result.diff;
+  if (!diff) return;
+  const hasContent = diff.removed.length > 0 || diff.added.length > 0 || diff.possible_renames.length > 0;
+  if (!hasContent) return;
+
+  console.log();
+  for (const entry of diff.removed) {
+    console.log(red(`  removed    ${entry.task_id}`));
+    console.log(yellow(`             \u26a0 ${entry.run_count} run${entry.run_count === 1 ? "" : "s"} retained — findable under Status \u25b8 Archived`));
+    for (const schedule of entry.schedules) {
+      console.log(yellow(`             \u26a0 selected by schedule "${schedule}" — resolution will name the removal date`));
+    }
+  }
+  for (const taskId of diff.added) {
+    console.log(green(`  added      ${taskId}`));
+  }
+  for (const rename of diff.possible_renames) {
+    const sha = rename.definition_sha256.replace(/^sha256:/, "").slice(0, 7);
+    console.log(`  moved?     ${rename.from} \u2192 ${rename.to} ${dim(`(identical definition ${sha}\u2026)`)}`);
   }
 }

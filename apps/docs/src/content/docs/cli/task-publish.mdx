@@ -44,6 +44,26 @@ Output:
   published_at: 2026-07-31T12:00:00Z
 ```
 
+## Removal report
+
+When a publish changes which Tasks exist, the command reports the diff after the success line — removals first, with their consequences:
+
+```
+✓ Published 43 tasks to acme-evals
+  digest: sha256:9f3ab2e1...
+  published_at: 2026-10-15T12:00:00Z
+
+  removed    ai-sdk-agent/serving-integrity
+             ⚠ 43 runs retained — findable under Status ▸ Archived
+             ⚠ selected by schedule "nightly" — resolution will name the removal date
+  added      harbor/terminal-bench/query-tcp-ports
+  moved?     (root)/t-jev-split → (root)/t-jev-cascade (identical definition 7c1e55…)
+```
+
+The report is warning-only and the command still exits `0` — the catalog must converge with your repo either way, including in CI. Nothing is destroyed by a removal: every run, check, and trace is kept, and the removed Task stays findable in the dashboard under **Status → Archived** with its folders and run history (see [Tasks: removing a task](/concepts/tasks/)).
+
+`moved?` appears when a removed and an added Task pin byte-identical definition content in the same publish — near-certainly a rename or move. History is never rewritten automatically; the report just tells you the split happened.
+
 ## When to re-publish
 
 Re-publish whenever you:

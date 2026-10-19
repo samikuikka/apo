@@ -186,7 +186,7 @@ const commands: Record<string, CommandEntry> = {
       "apo task publish --dry-run --json",
       "apo task publish --dir ./tasks --project acme",
     ],
-    note: "Scans local tasks and publishes bounded metadata only — no source files, prompts, or credentials leave your machine.",
+    note: "Scans local tasks and publishes bounded metadata only — no source files, prompts, or credentials leave your machine. Reports removals (retained runs, affected schedules), additions, and probable moves; removed tasks stay findable in the dashboard under Status \u25b8 Archived.",
   },
   connect: {
     handler: loadCommand("connect"),
