@@ -140,78 +140,104 @@ export function RunHeaderMetadata({ facts }: { facts: RunHeaderFacts }) {
       {open && (
         <div className="mt-3 max-w-3xl border border-border bg-card px-4 py-3">
           <div className="grid gap-x-8 gap-y-4 sm:grid-cols-3">
-            {(facts.configuredModel || facts.observedModel || facts.hosts.length > 0) && (
-              <section className="space-y-1.5">
-                <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-                  Model
-                </h3>
-                <GroupRow label="Configured">
-                  {facts.configuredModel ?? (
-                    <span className="text-muted-foreground">not reported</span>
-                  )}
-                </GroupRow>
-                <GroupRow label="Effort">
-                  {facts.effort ?? (
-                    <span className="text-muted-foreground">not reported</span>
-                  )}
-                  <span className="ml-2 font-sans text-[10px] text-muted-foreground/60">
-                    adapter-reported
-                  </span>
-                </GroupRow>
-                {facts.observedModel && (
-                  <GroupRow
-                    label="Observed"
-                    title="differs from the configured model — see drift notice below"
-                  >
-                    {facts.observedModel}
-                  </GroupRow>
-                )}
-                {facts.hosts.length > 0 && (
-                  <GroupRow label="Hosts" title={facts.hosts.map((h) => h.label).join(" · ")}>
-                    <HostsValue facts={facts} />
-                  </GroupRow>
-                )}
-              </section>
-            )}
-            <section className="space-y-1.5">
-              <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-                Origin
-              </h3>
-              {facts.adapterName && <GroupRow label="Adapter">{facts.adapterName}</GroupRow>}
-              {facts.trigger?.source && (
-                <GroupRow label="Trigger">
-                  <TriggerInline trigger={facts.trigger} />
-                </GroupRow>
-              )}
-              {facts.requestedBy && <GroupRow label="Requested by">{facts.requestedBy}</GroupRow>}
-              <GroupRow label="Batch">
-                <Link
-                  href={facts.batchHref}
-                  className="hover:text-foreground hover:underline"
-                  title={facts.batchRunId}
-                >
-                  {facts.batchRunId}
-                </Link>
-              </GroupRow>
-            </section>
-            <section className="space-y-1.5">
-              <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-                Task
-              </h3>
-              <GroupRow label="Path" title={facts.taskPathFull}>
-                {facts.taskPathFull}
-              </GroupRow>
-              <GroupRow
-                label="Started"
-                title={facts.startedAt ? formatRelativeTime(facts.startedAt) : undefined}
-              >
-                {formatFull(facts.startedAt)}
-              </GroupRow>
-            </section>
+            <ModelSection facts={facts} />
+            <OriginSection facts={facts} />
+            <TaskSection facts={facts} />
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function ModelSection({ facts }: { facts: RunHeaderFacts }) {
+  if (!facts.configuredModel && !facts.observedModel && facts.hosts.length === 0) {
+    return null;
+  }
+  return (
+    <DetailsSection title="Model">
+      <GroupRow label="Configured">
+        {facts.configuredModel ?? (
+          <span className="text-muted-foreground">not reported</span>
+        )}
+      </GroupRow>
+      <GroupRow label="Effort">
+        {facts.effort ?? <span className="text-muted-foreground">not reported</span>}
+        <span className="ml-2 font-sans text-[10px] text-muted-foreground/60">
+          adapter-reported
+        </span>
+      </GroupRow>
+      {facts.observedModel && (
+        <GroupRow
+          label="Observed"
+          // The drift pointer only holds when something was configured to
+          // drift from; pre-config runs show the observed model with no
+          // notice behind it.
+          title={
+            facts.configuredModel
+              ? "differs from the configured model — see drift notice below"
+              : undefined
+          }
+        >
+          {facts.observedModel}
+        </GroupRow>
+      )}
+      {facts.hosts.length > 0 && (
+        <GroupRow label="Hosts" title={facts.hosts.map((h) => h.label).join(" · ")}>
+          <HostsValue hosts={facts.hosts} />
+        </GroupRow>
+      )}
+    </DetailsSection>
+  );
+}
+
+function OriginSection({ facts }: { facts: RunHeaderFacts }) {
+  return (
+    <DetailsSection title="Origin">
+      {facts.adapterName && <GroupRow label="Adapter">{facts.adapterName}</GroupRow>}
+      {facts.trigger?.source && (
+        <GroupRow label="Trigger">
+          <TriggerInline trigger={facts.trigger} />
+        </GroupRow>
+      )}
+      {facts.requestedBy && <GroupRow label="Requested by">{facts.requestedBy}</GroupRow>}
+      <GroupRow label="Batch">
+        <Link
+          href={facts.batchHref}
+          className="hover:text-foreground hover:underline"
+          title={facts.batchRunId}
+        >
+          {facts.batchRunId}
+        </Link>
+      </GroupRow>
+    </DetailsSection>
+  );
+}
+
+function TaskSection({ facts }: { facts: RunHeaderFacts }) {
+  return (
+    <DetailsSection title="Task">
+      <GroupRow label="Path" title={facts.taskPathFull}>
+        {facts.taskPathFull}
+      </GroupRow>
+      <GroupRow
+        label="Started"
+        title={facts.startedAt ? formatRelativeTime(facts.startedAt) : undefined}
+      >
+        {formatFull(facts.startedAt)}
+      </GroupRow>
+    </DetailsSection>
+  );
+}
+
+function DetailsSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="space-y-1.5">
+      <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+        {title}
+      </h3>
+      {children}
+    </section>
   );
 }
 
@@ -234,10 +260,10 @@ function GroupRow({
   );
 }
 
-function HostsValue({ facts }: { facts: RunHeaderFacts }) {
+function HostsValue({ hosts }: { hosts: RunHeaderHostFact[] }) {
   return (
     <>
-      {facts.hosts.map((host, i) => (
+      {hosts.map((host, i) => (
         <span key={host.label}>
           {i > 0 && <span className="text-muted-foreground/50"> · </span>}
           {host.label}

@@ -125,5 +125,24 @@ describe("RunHeaderMetadata", () => {
     expect(screen.getAllByText("qwen/qwen3.5-72b")).toHaveLength(2);
     expect(screen.getByText("Observed")).toBeInTheDocument();
     expect(screen.getAllByText("not reported")).toHaveLength(2);
+    // Nothing was configured, so there is no drift to point at.
+    expect(
+      screen.queryByTitle("differs from the configured model — see drift notice below"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("points the Observed row at the drift notice when a configured model diverged", async () => {
+    const user = userEvent.setup();
+    render(
+      <RunHeaderMetadata
+        facts={baseFacts({ observedModel: "qwen/qwen3.5-72b" })}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /details/i }));
+
+    expect(screen.getByText("Observed")).toBeInTheDocument();
+    expect(
+      screen.getByTitle("differs from the configured model — see drift notice below"),
+    ).toBeInTheDocument();
   });
 });

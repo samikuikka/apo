@@ -340,7 +340,7 @@ export default async function TaskRunDetailPage({
               },
               // Reasoning rollup (issue #309): unknown renders as an em dash —
               // a provider that never sent the reasoning dimension must not
-              // read as "the model didn't think". Linked to the deepest call.
+              // read as "the model didn't think".
               ...(taskRun.total_reasoning_tokens != null
                 ? [{
                     icon: Brain,
@@ -374,8 +374,6 @@ export default async function TaskRunDetailPage({
           />
         </div>
 
-        {/* Run-level notices (issue #410): corrections + model drift share
-            one strip under the outcome summary. */}
         <RunNotices correctedChecks={correctedNotices} drift={taskRun.model_drift} />
 
         {judgments && judgments.judgments.length > 0 && (
