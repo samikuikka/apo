@@ -100,6 +100,90 @@ describe("apo login as the switch", () => {
   });
 });
 
+describe("apo login --project is honored by the fast paths", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Regression: a remembered key is bound to ONE project. `apo login
+  // --project X` used to silently accept a valid key bound to a different
+  // project and claim success — every later command then 403'd. Agents
+  // following the dashboard handoff prompt hit exactly this.
+
+  it("does not switch when the remembered key cannot see the requested project", async () => {
+    vi.spyOn(credentials, "readCredentials").mockReturnValue(ACTIVE_ON_OTHER);
+    vi.spyOn(credentials, "readRememberedLogin").mockReturnValue(REMEMBERED);
+    const writeSpy = vi.spyOn(credentials, "writeCredentials").mockReturnValue("/tmp/fake-credentials");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/v1/api-keys")) return new Response("[]", { status: 200 });
+      // The remembered key only sees proj-main, not proj-other-target.
+      if (url.includes("/v1/projects")) {
+        return new Response(
+          JSON.stringify([{ id: "proj-main", name: "Main" }]),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/auth/verify-password")) {
+        return new Response(JSON.stringify({ detail: "bad credentials" }), { status: 401 });
+      }
+      throw new Error(`unexpected call: ${url}`);
+    });
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (msg: string) => { logs.push(msg); };
+    const errors: string[] = [];
+    const origErr = console.error;
+    console.error = (msg: string) => { errors.push(msg); };
+
+    const code = await runLogin([
+      "--backend", "http://localhost:8000",
+      "--project", "proj-other-target",
+      "--email", "dev@apo.local",
+      "--password", "irrelevant",
+    ]);
+
+    console.log = origLog;
+    console.error = origErr;
+    const out = stripAnsi(logs.join("\n"));
+    // No silent switch: the flow fell through to password re-authentication.
+    expect(out).toContain("cannot access project \"proj-other-target\"");
+    expect(out).not.toContain("Switched to dev@apo.local");
+    expect(writeSpy).not.toHaveBeenCalledWith(REMEMBERED);
+    expect(errors.join("\n")).toContain("Invalid email or password");
+    expect(code).toBe(2);
+  });
+
+  it("still switches without a password when the key sees the requested project", async () => {
+    vi.spyOn(credentials, "readCredentials").mockReturnValue(ACTIVE_ON_OTHER);
+    vi.spyOn(credentials, "readRememberedLogin").mockReturnValue(REMEMBERED);
+    const writeSpy = vi.spyOn(credentials, "writeCredentials").mockReturnValue("/tmp/fake-credentials");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/v1/api-keys")) return new Response("[]", { status: 200 });
+      if (url.includes("/v1/projects")) {
+        return new Response(
+          JSON.stringify([{ id: "proj-main", name: "Main" }]),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected call: ${url}`);
+    });
+    const { logs, restore } = captureLog();
+
+    const code = await runLogin([
+      "--backend", "http://localhost:8000",
+      "--project", "proj-main",
+    ]);
+
+    restore();
+    const out = stripAnsi(logs.join("\n"));
+    expect(code).toBe(0);
+    expect(out).toContain("Switched to dev@apo.local on http://localhost:8000");
+    expect(writeSpy).toHaveBeenCalledWith(REMEMBERED);
+  });
+});
+
 describe("apo logout forgets the remembered login", () => {
   afterEach(() => {
     vi.restoreAllMocks();

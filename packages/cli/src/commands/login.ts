@@ -5,9 +5,44 @@ import { isAbsolute, resolve } from "path";
 import { parseArgs, getBoolFlag, getFlagValue } from "../lib/args.ts";
 import { type BootstrapResponse } from "../lib/api-types.ts";
 import { dim, green, red } from "../lib/format.ts";
-import { apiPost, AuthError, checkSavedKey, isBackendReachable } from "../lib/api.ts";
+import {
+  apiPost,
+  AuthError,
+  checkSavedKey,
+  isBackendReachable,
+  resolveApiUrl,
+} from "../lib/api.ts";
 import { pickOption } from "../lib/picker.ts";
 import { resolveProject } from "../lib/projects.ts";
+
+/**
+ * Does this saved key grant access to the project the user asked for?
+ * A remembered key is bound to ONE project — `apo login --project X` used
+ * to silently accept a valid key bound to a DIFFERENT project (agents
+ * following the dashboard handoff prompt hit this: login "succeeded", every
+ * later command 403'd). The fast paths must only fire when the requested
+ * project is actually visible to the key; otherwise fall through to the
+ * password flow, which resolves the flag against the full account list and
+ * mints the right key. Failures here never block: on a fetch error the fast
+ * path keeps its existing behavior.
+ */
+async function keyCanSeeProject(
+  backendUrl: string,
+  apiKey: string,
+  projectFlag: string,
+): Promise<boolean> {
+  try {
+    const res = await fetch(resolveApiUrl(backendUrl, "/v1/projects").toString(), {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) return true; // cannot tell — keep the fast path
+    const projects = (await res.json()) as { id: string; name: string }[];
+    return resolveProject(projects, projectFlag).status === "unique";
+  } catch {
+    return true;
+  }
+}
 import {
   backendKey,
   readCredentials,
@@ -97,6 +132,8 @@ export async function run(argv: string[]): Promise<number> {
     }
   }
 
+  const projectFlag = getFlagValue(flags, "project");
+
   // Verify the saved key actually works against the CURRENT backend before
   // claiming success. The credentials file existing is not enough: switching
   // backends (e.g. `pnpm dev` <-> docker) leaves a key that's valid for one
@@ -106,10 +143,18 @@ export async function run(argv: string[]): Promise<number> {
     && backendKey(existing.backend_url) === backendKey(backendUrl)) {
     const status = await checkSavedKey(existing.backend_url, existing.api_key);
     if (status === "valid") {
-      console.log(green(`\u2713 Already logged in as ${existing.email}.`));
-      console.log(dim(`  Backend: ${existing.backend_url}`));
-      console.log(dim(`  Use \`apo logout\` to sign out, or \`apo login --force\` to re-authenticate.`));
-      return 0;
+      const fastPathOk = !projectFlag
+        || (await keyCanSeeProject(existing.backend_url, existing.api_key, projectFlag));
+      if (fastPathOk) {
+        console.log(green(`\u2713 Already logged in as ${existing.email}.`));
+        console.log(dim(`  Backend: ${existing.backend_url}`));
+        console.log(dim(`  Use \`apo logout\` to sign out, or \`apo login --force\` to re-authenticate.`));
+        return 0;
+      }
+      console.log(dim(
+        `Saved login cannot access project "${projectFlag}" — re-authenticating to mint a key for it…`,
+      ));
+      // fall through to the email + password flow
     }
     if (status === "invalid") {
       console.log(dim(`Saved key for ${existing.email} is not valid for ${existing.backend_url}. Re-authenticating…`));
@@ -123,25 +168,39 @@ export async function run(argv: string[]): Promise<number> {
     }
   }
 
-  // A remembered login for the target backend switches without a password.
+  // A remembered login for the target backend switches without a password —
+  // unless --project names a project the remembered key cannot see (then the
+  // password flow below mints a key for the right project).
   if (!force) {
     const remembered = readRememberedLogin(backendUrl);
     if (remembered) {
       const status = await checkSavedKey(backendUrl, remembered.api_key);
+      let projectMismatch = false;
       if (status === "valid") {
-        const path = writeCredentials(remembered);
-        console.log(green(`\u2713 Switched to ${remembered.email} on ${backendUrl}`));
-        console.log(dim(`  Project:    ${remembered.project ?? "(none)"}`));
-        console.log(dim(`  Task root:  ${remembered.task_root ?? "./e2e"}`));
-        console.log(dim(`  Active credentials: ${path}`));
-        return 0;
+        projectMismatch = projectFlag
+          ? !(await keyCanSeeProject(backendUrl, remembered.api_key, projectFlag))
+          : false;
+        if (!projectMismatch) {
+          const path = writeCredentials(remembered);
+          console.log(green(`\u2713 Switched to ${remembered.email} on ${backendUrl}`));
+          console.log(dim(`  Project:    ${remembered.project ?? "(none)"}`));
+          console.log(dim(`  Task root:  ${remembered.task_root ?? "./e2e"}`));
+          console.log(dim(`  Active credentials: ${path}`));
+          return 0;
+        }
+        console.log(dim(
+          `Remembered login cannot access project "${projectFlag}" — re-authenticating to mint a key for it…`,
+        ));
+        // fall through to the email + password flow
       }
       if (status === "unknown") {
         // Never switch blindly: an unreachable backend may be a typo'd URL.
         console.error(red(`Cannot reach ${backendUrl} to verify the remembered login.`));
         return 2;
       }
-      console.log(dim(`Remembered login for ${remembered.email} was rejected by ${backendUrl}. Re-authenticating…`));
+      if (status === "invalid") {
+        console.log(dim(`Remembered login for ${remembered.email} was rejected by ${backendUrl}. Re-authenticating…`));
+      }
       // fall through to the normal email + password flow
     }
   }
@@ -202,7 +261,6 @@ export async function run(argv: string[]): Promise<number> {
 
   // Select a project: `--project <id|name>` for agents/CI; an interactive
   // picker for humans; auto-select when only one is available.
-  const projectFlag = getFlagValue(flags, "project");
   let chosenProject: VerifyPasswordProject | undefined;
   if (projectFlag) {
     const result = resolveProject(projects, projectFlag);

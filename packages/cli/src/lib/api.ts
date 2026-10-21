@@ -223,7 +223,7 @@ export async function apiStream(
   }
 }
 
-function resolveApiUrl(baseUrl: string, path: string): URL {
+export function resolveApiUrl(baseUrl: string, path: string): URL {
   const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   const relativePath = path.replace(/^\/+/, "");
   return new URL(relativePath, normalizedBaseUrl);
