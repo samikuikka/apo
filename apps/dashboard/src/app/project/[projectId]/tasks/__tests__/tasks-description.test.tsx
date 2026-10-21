@@ -1,7 +1,9 @@
 /**
- * The task's authored description on the Tasks page: the card shows it as a
- * muted single line under the title (nothing when absent), and search finds
- * a task by what it is for — the same surfaces the backend's grep matches.
+ * Where a task's authored description lives on the Tasks page: not on the
+ * list card — a row is a link, and "what is this for?" is answered by
+ * opening the task — but search still finds a task by its description, so
+ * the list stays dense without hiding tasks from people who search by
+ * purpose.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -80,7 +82,7 @@ describe("Tasks page — task descriptions", () => {
     vi.mocked(getConnectedExecutorStatus).mockResolvedValue({ state: "ready" });
   });
 
-  it("shows the description as a muted line on the card", async () => {
+  it("keeps the card to its name — the description stays off the list", async () => {
     render(
       <AgentTasksClient
         tasks={[task({ description: "Extract structured data from an invoice." })]}
@@ -90,18 +92,10 @@ describe("Tasks page — task descriptions", () => {
       />,
     );
 
-    expect(
-      await screen.findByText("Extract structured data from an invoice."),
-    ).toBeInTheDocument();
-  });
-
-  it("renders no description line when the task declares none", async () => {
-    render(
-      <AgentTasksClient tasks={[task()]} error={null} taskSource={taskSource} isDemo={false} />,
-    );
-
     expect(await screen.findByText("invoice-parsing")).toBeInTheDocument();
-    expect(screen.queryByText(/Extract structured data/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Extract structured data from an invoice."),
+    ).not.toBeInTheDocument();
   });
 
   it("finds a task by its description in search", async () => {
