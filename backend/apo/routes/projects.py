@@ -669,9 +669,35 @@ async def get_project_onboarding_status(
         ).one()
         > 0
     )
+    # A scope="full" key is what `apo login` mints, so its existence is
+    # the detectable "CLI connected" signal for the onboarding timeline.
+    # Completion is derived from real rows, never a stored checklist flag
+    # that can drift (Sentry's organizationonboardingtasks drift bugs are
+    # the cautionary tale). One projection renders the whole onboarding
+    # surface, so ordinary members never need key-enumeration rights.
+    has_cli_key = (
+        session.exec(
+            select(func.count())
+            .select_from(ApiKeyDB)
+            .where(ApiKeyDB.project == project_id, ApiKeyDB.scope == "full")
+        ).one()
+        > 0
+    )
     trace_count = session.exec(
         select(func.count()).select_from(RunDB).where(RunDB.project == project_id)
     ).one()
+    _service_col: ColumnElement[str | None] = as_column(
+        cast(object, RunDB.service_name)
+    )
+    _run_created_col: ColumnElement[object] = as_column(
+        cast(object, RunDB.created_at)
+    )
+    latest_trace_service = session.exec(
+        select(_service_col)
+        .where(RunDB.project == project_id, _service_col.is_not(None))
+        .order_by(_run_created_col.desc())
+        .limit(1)
+    ).first()
     return {
         "published_task_count": int(published),
         "recorded_run_count": int(recorded),
@@ -683,6 +709,9 @@ async def get_project_onboarding_status(
         ),
         "has_ingest_key": bool(has_ingest_key),
         "has_traces": int(trace_count) > 0,
+        "has_cli_key": bool(has_cli_key),
+        "trace_count": int(trace_count),
+        "latest_trace_service": latest_trace_service,
     }
 
 
