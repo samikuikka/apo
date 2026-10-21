@@ -1,5 +1,9 @@
 .git/
+# Bare `node_modules/` matches only the repo root; nested workspace
+# installs (apps/dashboard/node_modules, …) must be excluded too or COPY
+# shadows the image's own pnpm links with host-local ones.
 node_modules/
+**/node_modules/
 .next/
 __pycache__/
 .uv-cache/
