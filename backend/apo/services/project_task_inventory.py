@@ -41,7 +41,9 @@ def list_inventory_for_project(
     """Return inventory rows for a project, optionally filtered by grep.
 
     Matches ``grep`` case-insensitively against ``task_id``,
-    ``display_name``, or ``folder_path``.
+    ``display_name``, ``folder_path``, or ``description`` — the same
+    surfaces the dashboard's search box exposes, so a task is findable by
+    what it is for, not only by its name and path.
     """
     statement = select(ProjectTaskInventoryDB).where(
         ProjectTaskInventoryDB.project == project_id
@@ -56,6 +58,7 @@ def list_inventory_for_project(
         if needle in row.task_id.lower()
         or needle in row.display_name.lower()
         or needle in (row.folder_path or "").lower()
+        or needle in (row.description or "").lower()
     ]
 
 
@@ -106,6 +109,9 @@ def replace_inventory(
     }
     # First-seen provenance survives the replace keyed by task_id (issue #444):
     # a re-sync of an unchanged source must not reset a task's first appearance.
+    # The description is deliberately NOT carried forward — unlike the git
+    # fields it is re-read from the eval source on every sync, so the row
+    # always states the current text (including its removal).
     prior = {row.task_id: row for row in existing}
     for row in existing:
         session.delete(row)
@@ -129,7 +135,6 @@ def replace_inventory(
             row.git_author_email = prev.git_author_email
             row.git_first_commit_at = prev.git_first_commit_at
             row.git_first_commit_sha = prev.git_first_commit_sha
-            row.description = prev.description
         session.add(row)
         new_rows.append(row)
 
@@ -196,6 +201,7 @@ def _build_inventory_row(
         task_path=task.task_path,
         has_checks=task.has_checks,
         tags_json=list(task.tags) if task.tags else None,
+        description=task.description,
         source_type=source.source_type,
         source_ref=_source_ref(source),
         source_commit_sha=resolved_commit_sha,

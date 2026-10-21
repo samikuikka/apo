@@ -172,11 +172,16 @@ def validate_catalog_request(tasks: list[dict[str, Any]]) -> list[dict[str, Any]
         if description is not None:
             if not isinstance(description, str):
                 raise ValueError(f"Task {i}: description must be a string")
+            # Whitespace-only is "no description": authors leave stray blank
+            # strings in the eval, and the dashboard renders absence as
+            # silence — so the blank never reaches the inventory row.
+            description = description.strip()
             if _utf8_bytes(description) > _MAX_DESCRIPTION_BYTES:
                 raise ValueError(f"Task {i}: description exceeds {_MAX_DESCRIPTION_BYTES} UTF-8 bytes")
             if "\x00" in description:
                 raise ValueError(f"Task {i}: description must not contain NUL")
-            entry["description"] = description
+            if description:
+                entry["description"] = description
         entry.update(_validated_git_provenance(task, i))
         definition = task.get("definition")
         if definition is not None:

@@ -33,6 +33,7 @@ class DiscoveredAgentTask:
     adapter_name: str
     has_checks: bool
     tags: list[str]
+    description: str | None = None
 
 
 def discover_agent_tasks(
@@ -186,6 +187,7 @@ def _parse_task_file(
         adapter_name=adapter,
         has_checks=has_checks,
         tags=tags,
+        description=_extract_description(content),
     )
 
 
@@ -220,6 +222,29 @@ def _detect_checks(content: str, task_dir: str) -> bool:
         return True
     # Legacy: separate checks.ts file
     return os.path.isfile(os.path.join(task_dir, "checks.ts"))
+
+
+def _extract_description(content: str) -> str | None:
+    """Extract the eval's declared ``description`` from the source text.
+
+    Mirrors the CLI scanner's ``extractDescription`` (task-meta.ts) so a
+    task synced from its source shows the same text a publish would have
+    sent: the key and its string may sit on different lines (``\\s*``
+    bridges the gap), any of the three quote styles is accepted, and only
+    the first non-empty line of the captured string is kept — the eval
+    source is never loaded, so multi-line descriptions stop at line one.
+    """
+    match = re.search(
+        r"description\s*:\s*(?:\"([^\"]*)\"|'([^']*)'|`([^`]*)`)", content
+    )
+    if not match:
+        return None
+    raw = next((g for g in match.groups() if g is not None), "")
+    for line in raw.split("\n"):
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return None
 
 
 def _find_eval_file(task_dir: str) -> str | None:

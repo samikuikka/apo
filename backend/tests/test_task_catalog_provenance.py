@@ -8,6 +8,8 @@ is client-sent from the eval's declared description. None of the three may
 move the catalog digest, which ``apo connect`` claims gate on.
 """
 
+# pyright: reportAny=false, reportExplicitAny=false
+
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -203,10 +205,91 @@ def test_summaries_carry_provenance_and_publisher_label(
     # The route enriches the raw id into a human label.
     assert alpha["first_published_by"] == "Catalog Owner"
 
+    detail = client.get(f"/v1/projects/{_PROJECT}/agent-tasks/chat/alpha").json()
+    assert detail["description"] == "Grades the Q3 summary against its work log."
 
-def test_sync_path_preserves_first_seen(
+
+def test_grep_matches_description(
     session: Session, make_authed_client: Callable[..., TestClient]
 ) -> None:
+    """Search finds a task by what it is for, not only by name and path."""
+    _seed(session)
+    client = make_authed_client(_USER, session)
+
+    _publish(client, [_task(), _task("chat/beta", git=False, description=None)])
+
+    hits = client.get(
+        f"/v1/projects/{_PROJECT}/agent-tasks", params={"grep": "invoice"}
+    ).json()
+    assert [h["id"] for h in hits] == []
+    hits = client.get(
+        f"/v1/projects/{_PROJECT}/agent-tasks", params={"grep": "summary"}
+    ).json()
+    assert [h["id"] for h in hits] == ["chat/alpha"]
+    assert hits[0]["description"] == "Grades the Q3 summary against its work log."
+
+
+def test_blank_description_is_normalized_to_absent(
+    session: Session, make_authed_client: Callable[..., TestClient]
+) -> None:
+    """A whitespace-only description is "declared none": the row and every
+    response read it back as ``None`` so the UI renders silence, not filler."""
+    _seed(session)
+    client = make_authed_client(_USER, session)
+
+    padded = _task(description="   ")
+    _publish(client, [padded, _task("chat/trimmed", git=False, description="  Padded edges  ")])
+
+    assert _row(session, "chat/alpha").description is None
+    assert _row(session, "chat/trimmed").description == "Padded edges"
+
+    summaries = client.get(f"/v1/projects/{_PROJECT}/agent-tasks").json()
+    alpha = next(s for s in summaries if s["id"] == "chat/alpha")
+    assert alpha["description"] is None
+
+
+def test_sync_path_sets_description_from_discovered_source(session: Session) -> None:
+    """Source sync reads the description from the eval file, so a re-sync
+    states the current text — including its removal — rather than carrying
+    the last one forward (unlike the best-effort git fields)."""
+    from apo.services.agent_task_discovery import DiscoveredAgentTask
+    from apo.services.project_task_inventory import replace_inventory
+
+    _seed(session)
+    now = datetime.now(timezone.utc)
+    source = ProjectTaskSourceDB(
+        project=_PROJECT, source_type="git", status="ready", created_at=now, updated_at=now
+    )
+    session.add(source)
+    session.commit()
+
+    def discovered(description: str | None) -> DiscoveredAgentTask:
+        return DiscoveredAgentTask(
+            id="chat/alpha",
+            task_path="chat/alpha",
+            folder_path="chat",
+            display_name="alpha",
+            adapter_name="chatAdapter",
+            has_checks=True,
+            tags=[],
+            description=description,
+        )
+
+    _ = replace_inventory(
+        session, project_id=_PROJECT, source=source,
+        discovered=[discovered("Extract structured data from an invoice.")],
+        resolved_commit_sha=None,
+    )
+    assert _row(session, "chat/alpha").description == "Extract structured data from an invoice."
+
+    _ = replace_inventory(
+        session, project_id=_PROJECT, source=source,
+        discovered=[discovered(None)], resolved_commit_sha="abc",
+    )
+    assert _row(session, "chat/alpha").description is None
+
+
+def test_sync_path_preserves_first_seen(session: Session) -> None:
     """``replace_inventory`` (source sync / demo) replaces rows too — the same
     carry-forward applies there, or a re-sync would reset first-seen."""
     from apo.services.agent_task_discovery import DiscoveredAgentTask
