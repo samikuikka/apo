@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { execSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { firstCommitForFile, readGitProvenance, sanitizeGitUrl, buildCallerIdentity } from "../src/lib/git-provenance.ts";
+import { readGitProvenance, sanitizeGitUrl, buildCallerIdentity } from "../src/lib/git-provenance.ts";
 
 /**
  * Git provenance for the caller attestation. Shells out to git (never
@@ -52,43 +52,6 @@ describe("git-provenance", () => {
       expect(prov.dirty).toBe(true);
       // base commit is still the last committed HEAD
       expect(prov.baseCommitSha).toMatch(/^[0-9a-f]{40}$/);
-    });
-
-    it("firstCommitForFile returns the ADDING commit, not later edits", () => {
-      // Author A adds the eval; author B later rewrites it. The catalog's
-      // "who added this task" is A (issue #444) — even after the file was
-      // amended by someone else.
-      execSync('git config user.email "author-a@t" && git config user.name "Author A"', { cwd: dir });
-      writeFileSync(join(dir, "alpha.eval.ts"), "task('alpha', {});\n");
-      execSync("git add . && git commit -qm add-eval", { cwd: dir });
-      execSync('git config user.email "author-b@t" && git config user.name "Author B"', { cwd: dir });
-      writeFileSync(join(dir, "alpha.eval.ts"), "task('alpha', { maxTurns: 2 });\n");
-      execSync("git add . && git commit -qm edit-eval", { cwd: dir });
-
-      const first = firstCommitForFile(join(dir, "alpha.eval.ts"));
-      expect(first).not.toBeNull();
-      expect(first!.authorName).toBe("Author A");
-      expect(first!.authorEmail).toBe("author-a@t");
-      expect(first!.authorDate).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-      expect(first!.sha).toMatch(/^[0-9a-f]{40}$/);
-      // The sha is the ADDING commit, not HEAD.
-      const head = execSync("git rev-parse HEAD", { cwd: dir }).toString().trim();
-      expect(first!.sha).not.toBe(head);
-    });
-
-    it("firstCommitForFile returns null for an untracked file", () => {
-      writeFileSync(join(dir, "untracked.eval.ts"), "task('x', {});\n");
-      expect(firstCommitForFile(join(dir, "untracked.eval.ts"))).toBeNull();
-    });
-
-    it("firstCommitForFile returns null outside a git repo", () => {
-      const nonGit = mkdtempSync(join(tmpdir(), "apo-nogit2-"));
-      try {
-        writeFileSync(join(nonGit, "alpha.eval.ts"), "task('alpha', {});\n");
-        expect(firstCommitForFile(join(nonGit, "alpha.eval.ts"))).toBeNull();
-      } finally {
-        rmSync(nonGit, { recursive: true, force: true });
-      }
     });
 
     it("returns nulls outside a git repo", () => {

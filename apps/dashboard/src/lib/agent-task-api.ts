@@ -43,15 +43,13 @@ export interface AgentTaskSummary {
   has_checks: boolean;
   tags: string[];
   run_stats: AgentTaskRunStats | null;
-  // Provenance (issue #444): git authorship is best-effort; first-published
-  // is authoritative. Optional — summaries from older backends and cached
-  // payloads predate the fields, and the UI null-guards every use.
+  // Provenance (issue #444): first-published, recorded server-side on the
+  // publish that introduced the task. Optional — summaries from older
+  // backends and cached payloads predate the fields, and the UI null-guards
+  // every use.
   description?: string | null;
   first_published_at?: string | null;
   first_published_by?: string | null;
-  git_author_name?: string | null;
-  git_first_commit_at?: string | null;
-  git_first_commit_sha?: string | null;
   /**
    * Lifecycle: `"removed"` when this row is a synthesized
    * archived task — not in the catalog, findable with its runs. Absent on

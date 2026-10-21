@@ -5,7 +5,6 @@
  * Catalog, and keeps source files/repository credentials off the server.
  */
 
-import { join } from "node:path";
 import { green, red, yellow, dim, cyan } from "../lib/format.ts";
 import { parseArgs, getFlagValue, getBoolFlag } from "../lib/args.ts";
 import { resolveConfig } from "../lib/config.ts";
@@ -18,7 +17,7 @@ import {
   type TaskCatalog,
 } from "../lib/task-catalog.ts";
 import { prepareTaskDefinition } from "../lib/task-definition.ts";
-import { firstCommitForFile, gitHeadSha } from "../lib/git-provenance.ts";
+import { gitHeadSha } from "../lib/git-provenance.ts";
 import { apiGet, apiPut } from "../lib/api.ts";
 
 export async function run(argv: string[]): Promise<number> {
@@ -54,15 +53,6 @@ export async function run(argv: string[]): Promise<number> {
       const task = toPublishedTask(meta);
       const prepared = prepareTaskDefinition(meta);
       task.definition = prepared.document;
-      // Who added this task, best-effort: absent without git history, and
-      // the server falls back to first-published (issue #444).
-      const provenance = firstCommitForFile(join(meta.path, meta.evalFileName));
-      if (provenance) {
-        task.git_author_name = provenance.authorName;
-        task.git_author_email = provenance.authorEmail;
-        task.git_first_commit_at = provenance.authorDate;
-        task.git_first_commit_sha = provenance.sha;
-      }
       return task;
     })
     .sort((a, b) => a.task_id.localeCompare(b.task_id));

@@ -157,14 +157,12 @@ export function notStartedLabel(notStarted: number): string {
 
 /**
  * The card's quiet answer to "where did this task come from" (issue #444):
- * the git author of the adding commit when git can tell, else the first
- * publisher; the matching date for whichever name is shown.
+ * the first publication, with the publisher when the backend recorded one.
  */
 export function provenanceLabel(task: AgentTaskSummary): string | null {
-  const date = task.git_first_commit_at ?? task.first_published_at;
-  if (!date) return null;
-  const who = task.git_author_name ?? task.first_published_by;
-  const when = new Date(date).toISOString().slice(0, 10);
+  if (!task.first_published_at) return null;
+  const when = new Date(task.first_published_at).toISOString().slice(0, 10);
+  const who = task.first_published_by;
   return who ? `Added ${when} by ${who}` : `Added ${when}`;
 }
 

@@ -82,19 +82,7 @@ describe("a task whose only runs never started", () => {
 });
 
 describe("provenanceLabel", () => {
-  it("prefers the git author of the adding commit, with its date", () => {
-    expect(
-      provenanceLabel({
-        ...baseTask(),
-        git_author_name: "Teammate",
-        git_first_commit_at: "2026-10-02T09:30:00Z",
-        first_published_at: "2026-10-14T12:00:00Z",
-        first_published_by: "Publisher",
-      }),
-    ).toBe("Added 2026-10-02 by Teammate");
-  });
-
-  it("falls back to first-published when git history was unavailable", () => {
+  it("uses the first publication, with the publisher when recorded", () => {
     expect(
       provenanceLabel({
         ...baseTask(),

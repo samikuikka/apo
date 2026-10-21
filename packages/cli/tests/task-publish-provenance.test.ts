@@ -9,9 +9,11 @@ import { computeCatalogDigest } from "../src/lib/task-catalog-digest.ts";
 
 /**
  * `apo task publish --dry-run` against a real temp git repo: the publication
- * carries the eval's declared description and the ADDING commit's authorship
- * (issue #444), and the digest stays over content metadata alone — provenance
- * availability can never move the digest `apo connect` claims gate on.
+ * carries the eval's declared description, and even with full git history
+ * available it carries no authorship fields — git identity in task repos is
+ * routinely a throwaway account, so recording it showed a synthetic author
+ * on every task. The digest stays over content metadata alone, so the
+ * description can never move the digest `apo connect` claims gate on.
  */
 
 describe("task publish — provenance fields", () => {
@@ -49,7 +51,7 @@ describe("task publish — provenance fields", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("dry-run payload carries description and git authorship of the adding commit", async () => {
+  it("dry-run payload carries the description and no git authorship", async () => {
     const lines: string[] = [];
     const origLog = console.log;
     console.log = (...args: unknown[]) => {
@@ -67,25 +69,20 @@ describe("task publish — provenance fields", () => {
     }
 
     const payload = JSON.parse(lines.join("\n")) as {
-      tasks: Array<{
-        task_id: string;
-        description?: string;
-        git_author_name?: string;
-        git_first_commit_at?: string;
-        git_first_commit_sha?: string;
-      }>;
+      tasks: Array<Record<string, unknown> & { task_id: string }>;
     };
     const alpha = payload.tasks.find((t) => t.task_id === "chat/alpha");
     expect(alpha).toBeDefined();
     expect(alpha!.description).toBe("Grades the Q3 summary against its work log.");
-    expect(alpha!.git_author_name).toBe("Author A");
-    expect(alpha!.git_first_commit_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
-    expect(alpha!.git_first_commit_sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(alpha!.git_author_name).toBeUndefined();
+    expect(alpha!.git_author_email).toBeUndefined();
+    expect(alpha!.git_first_commit_at).toBeUndefined();
+    expect(alpha!.git_first_commit_sha).toBeUndefined();
 
-    // Digest parity inside one publication: provenance and description are
-    // not content — the CLI digest must equal itself with those fields dropped.
+    // Digest parity inside one publication: the description is not content —
+    // the CLI digest must equal itself with that field dropped.
     const tasks = payload.tasks as Parameters<typeof computeCatalogDigest>[0];
-    const stripped = tasks.map(({ description: _d, git_author_name: _n, git_author_email: _e, git_first_commit_at: _a, git_first_commit_sha: _s, ...rest }) => rest);
+    const stripped = tasks.map(({ description: _d, ...rest }) => rest);
     expect(computeCatalogDigest(tasks)).toBe(computeCatalogDigest(stripped));
   });
 });

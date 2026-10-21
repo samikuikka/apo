@@ -306,24 +306,14 @@ export default async function TaskDetailPage({
 }
 
 /**
- * The detail header's provenance line (issue #444): git authorship when the
- * publisher could see it (with the adding commit), first publication always.
- * Both halves are shown when both exist — they answer different questions
- * ("who wrote it" vs "who brought it to this project").
+ * The detail header's provenance line (issue #444): when the task first
+ * appeared in this project, and who published it. Server-recorded on the
+ * first publication — the only authorship the backend can vouch for.
  */
 function provenanceLine(task: AgentTaskDetail): string | null {
-  const parts: string[] = [];
-  if (task.git_author_name && task.git_first_commit_at) {
-    const sha = task.git_first_commit_sha ? ` (${task.git_first_commit_sha.slice(0, 8)})` : "";
-    parts.push(
-      `Written by ${task.git_author_name} on ${isoDate(task.git_first_commit_at)}${sha}`,
-    );
-  }
-  if (task.first_published_at) {
-    const by = task.first_published_by ? ` by ${task.first_published_by}` : "";
-    parts.push(`First published ${isoDate(task.first_published_at)}${by}`);
-  }
-  return parts.length > 0 ? parts.join(" · ") : null;
+  if (!task.first_published_at) return null;
+  const by = task.first_published_by ? ` by ${task.first_published_by}` : "";
+  return `First published ${isoDate(task.first_published_at)}${by}`;
 }
 
 function isoDate(iso: string): string {

@@ -109,9 +109,9 @@ def replace_inventory(
     }
     # First-seen provenance survives the replace keyed by task_id (issue #444):
     # a re-sync of an unchanged source must not reset a task's first appearance.
-    # The description is deliberately NOT carried forward — unlike the git
-    # fields it is re-read from the eval source on every sync, so the row
-    # always states the current text (including its removal).
+    # The description is deliberately NOT carried forward — it is re-read from
+    # the eval source on every sync, so the row always states the current text
+    # (including its removal).
     prior = {row.task_id: row for row in existing}
     for row in existing:
         session.delete(row)
@@ -131,10 +131,6 @@ def replace_inventory(
         if prev is not None:
             row.first_published_at = prev.first_published_at or now
             row.first_published_by_user_id = prev.first_published_by_user_id
-            row.git_author_name = prev.git_author_name
-            row.git_author_email = prev.git_author_email
-            row.git_first_commit_at = prev.git_first_commit_at
-            row.git_first_commit_sha = prev.git_first_commit_sha
         session.add(row)
         new_rows.append(row)
 
@@ -274,10 +270,6 @@ def to_summary(row: ProjectTaskInventoryDB) -> AgentTaskSummary:
         description=row.description,
         first_published_at=row.first_published_at,
         first_published_by_user_id=row.first_published_by_user_id,
-        git_author_name=row.git_author_name,
-        git_author_email=row.git_author_email,
-        git_first_commit_at=row.git_first_commit_at,
-        git_first_commit_sha=row.git_first_commit_sha,
     )
 
 
@@ -300,10 +292,6 @@ def to_detail(row: ProjectTaskInventoryDB) -> AgentTaskDetail:
         description=row.description,
         first_published_at=row.first_published_at,
         first_published_by_user_id=row.first_published_by_user_id,
-        git_author_name=row.git_author_name,
-        git_author_email=row.git_author_email,
-        git_first_commit_at=row.git_first_commit_at,
-        git_first_commit_sha=row.git_first_commit_sha,
     )
 
 

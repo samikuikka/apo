@@ -547,5 +547,5 @@ def test_v61_is_registered_and_latest() -> None:
     """The schema-version guard: v61 is registered and the latest."""
     from apo.db import LATEST_SCHEMA_VERSION, _SCHEMA_MIGRATIONS
 
-    assert LATEST_SCHEMA_VERSION == 61
+    assert LATEST_SCHEMA_VERSION == 62
     assert 61 in _SCHEMA_MIGRATIONS

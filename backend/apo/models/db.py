@@ -1544,9 +1544,7 @@ class ProjectTaskInventoryDB(SQLModel, table=True):
     # Provenance (issue #444). Rows are replaced on every publish, so
     # ``discovered_at`` means "last published"; the first-seen facts below are
     # carried forward by ``task_id`` at replace time and therefore mean
-    # "first appearance". The git fields are best-effort, client-sent on the
-    # task's first publication, and sticky: a later publish without them
-    # (e.g. from a shallow clone) never wipes what was recorded.
+    # "first appearance".
     first_published_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(UTCDateTime, server_default=func.now()),
@@ -1554,12 +1552,6 @@ class ProjectTaskInventoryDB(SQLModel, table=True):
     first_published_by_user_id: str | None = Field(
         default=None, foreign_key="users.id"
     )
-    git_author_name: str | None = None
-    git_author_email: str | None = None
-    git_first_commit_at: datetime | None = Field(
-        default=None, sa_column=Column(UTCDateTime)
-    )
-    git_first_commit_sha: str | None = None
     # The eval's description, extracted from the published definition; what
     # the task is for, without opening the source.
     description: str | None = Field(default=None, sa_column=Column(Text))

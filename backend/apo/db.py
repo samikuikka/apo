@@ -4206,7 +4206,32 @@ def _migrate_to_v61() -> None:
         )
 
 
-LATEST_SCHEMA_VERSION = 61
+def _migrate_to_v62() -> None:
+    """Version 62: drop the client-sent git provenance columns.
+
+    ``git_author_name``/``git_author_email``/``git_first_commit_at``/
+    ``git_first_commit_sha`` recorded the git commit that added the eval
+    file, as the publishing CLI saw it. In practice that identity is the
+    throwaway repo's configured user (a dev account, an agent, a fixture),
+    never a meaningful author — every task in a real deployment showed the
+    same synthetic name, so the catalog displayed noise. The server-side
+    ``first_published_at``/``first_published_by_user_id`` stay: they are
+    authoritative and answer "when did this task first appear, who brought
+    it". New DBs never create the columns (the model dropped them); this
+    migration removes them from existing ones. SQLite DROP COLUMN requires
+    3.35+; older installs that cannot drop keep the dead columns harmlessly.
+    """
+    columns = ("git_author_name", "git_author_email", "git_first_commit_at", "git_first_commit_sha")
+    with engine.begin() as conn:
+        existing = _get_column_names(conn, "project_task_inventory")
+        for column in columns:
+            if column in existing:
+                conn.exec_driver_sql(
+                    f"ALTER TABLE project_task_inventory DROP COLUMN {column}"
+                )
+
+
+LATEST_SCHEMA_VERSION = 62
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -4270,6 +4295,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     59: _migrate_to_v59,
     60: _migrate_to_v60,
     61: _migrate_to_v61,
+    62: _migrate_to_v62,
 }
 
 

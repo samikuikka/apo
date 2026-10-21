@@ -542,18 +542,14 @@ class AgentTaskSummary(SQLModel):
     has_checks: bool
     tags: list[str] = Field(default_factory=list)
     run_stats: AgentTaskRunStats | None = None
-    # Provenance (issue #444): first appearance is authoritative; git
-    # authorship is best-effort and absent on shallow clones.
+    # Provenance (issue #444): first appearance, recorded server-side on the
+    # publish that introduced the task.
     description: str | None = None
     first_published_at: datetime | None = None
     first_published_by_user_id: str | None = None
     # Display label for the publisher (name, else email) — enriched by the
     # serving route, not stored on the row.
     first_published_by: str | None = None
-    git_author_name: str | None = None
-    git_author_email: str | None = None
-    git_first_commit_at: datetime | None = None
-    git_first_commit_sha: str | None = None
 
 
 class AgentTaskDetail(SQLModel):
@@ -570,10 +566,6 @@ class AgentTaskDetail(SQLModel):
     first_published_at: datetime | None = None
     first_published_by_user_id: str | None = None
     first_published_by: str | None = None
-    git_author_name: str | None = None
-    git_author_email: str | None = None
-    git_first_commit_at: datetime | None = None
-    git_first_commit_sha: str | None = None
     # Lifecycle: ``"removed"`` when the task is no longer in the
     # catalog but is still findable through its tombstone or its runs. The
     # detail route synthesizes this instead of 404ing; ``None`` on active
