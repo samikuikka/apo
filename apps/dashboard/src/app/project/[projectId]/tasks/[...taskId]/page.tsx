@@ -184,7 +184,7 @@ export default async function TaskDetailPage({
   }
 
   // Off-catalog task that still has run history — show the evidence.
-  // A synthesized tombstone row (state === "removed", task removal archiving) counts as
+  // A synthesized tombstone row (state === "removed") counts as
   // off-catalog: it carries no files and no executable definition, only
   // metadata and the runs that outlive the removal.
   const removedTask = task?.state === "removed" ? task : null;

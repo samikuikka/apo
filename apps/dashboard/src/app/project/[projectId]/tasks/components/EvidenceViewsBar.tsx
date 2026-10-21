@@ -4,7 +4,7 @@ import { Plus, X } from "lucide-react";
 
 import type { RunConfigModelFacet } from "@/lib/agent-task-view-api";
 import { cn } from "@/lib/utils";
-import { FilterBar } from "@/components/filter-bar";
+import { FilterBar, type ArchivedStatusControl } from "@/components/filter-bar";
 import { TASK_STATUS_FILTERS } from "@/lib/filter-status";
 
 import { MAIN_VIEW_ID, type ViewTab } from "./task-list-shared";
@@ -64,12 +64,8 @@ export function EvidenceViewsBar({
   addingTab: boolean;
   /** Per-status task counts for the status menu rows. */
   statusCounts?: Record<string, number>;
-  /** "Not in the suite" entry in the status menu (task removal archiving); omitted hides it. */
-  archivedStatus?: {
-    count: number;
-    active: boolean;
-    onToggle: () => void;
-  };
+  /** "Not in the suite" entry in the status menu; omitted hides it. */
+  archivedStatus?: ArchivedStatusControl;
   query: string;
   onQueryChange: (value: string) => void;
   selectedCount: number;

@@ -151,7 +151,7 @@ def replace_inventory(
         _ = handle_tasks_removed_from_catalog(
             session, project_id=project_id, removed=removed
         )
-        # Same observation as catalog publication (task removal archiving): tombstone the
+        # Same observation as catalog publication: tombstone the
         # removals with the resolved commit, clear tasks that came back.
         record_removals(
             session,

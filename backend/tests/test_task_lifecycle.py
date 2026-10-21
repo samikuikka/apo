@@ -1,4 +1,4 @@
-"""Task removal archiving (task removal archiving).
+"""Task removal: the remove → tombstone → archived → restore loop.
 
 Pins the full remove → tombstone → archived → restore loop:
 

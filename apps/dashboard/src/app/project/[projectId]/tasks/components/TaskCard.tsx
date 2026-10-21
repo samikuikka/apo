@@ -142,7 +142,7 @@ export function TaskCard({
 }
 
 /**
- * An archived card's one-line removal note (task removal archiving): when it left the
+ * An archived card's one-line removal note: when it left the
  * catalog and — when the publishing CLI could see git — by which commit.
  * The date is unknown (not today) for removals that predate tombstones;
  * then the note says only what is honest.

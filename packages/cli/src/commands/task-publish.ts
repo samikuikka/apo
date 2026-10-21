@@ -66,15 +66,11 @@ export async function run(argv: string[]): Promise<number> {
     t.tags.sort();
   }
 
-  const request: PublishTaskCatalogRequest & { head_commit_sha?: string } = {
+  const request: PublishTaskCatalogRequest = {
     schema_version: 2 as const,
     tasks: published,
+    head_commit_sha: gitHeadSha(taskRoot) ?? undefined,
   };
-  // Best-effort working-tree HEAD: recorded on removal tombstones so
-  // "removed by publish {sha}" points into git history. Absent on
-  // non-git task roots — the server treats absence as normal.
-  const headSha = gitHeadSha(taskRoot);
-  if (headSha) request.head_commit_sha = headSha;
 
   // 3. Dry run — print and exit
   if (dryRun) {

@@ -53,7 +53,7 @@ export interface AgentTaskSummary {
   git_first_commit_at?: string | null;
   git_first_commit_sha?: string | null;
   /**
-   * Lifecycle (task removal archiving): `"removed"` when this row is a synthesized
+   * Lifecycle: `"removed"` when this row is a synthesized
    * archived task — not in the catalog, findable with its runs. Absent on
    * active tasks so existing consumers never see a change.
    */
@@ -66,7 +66,7 @@ export interface AgentTaskDetail extends AgentTaskSummary {
   latest_run: AgentTaskRunSummary | null;
 }
 
-/** One removed task, as the Archived view shows it (task removal archiving). */
+/** One removed task, as the Archived view shows it. */
 export interface ArchivedAgentTask {
   task_id: string;
   display_name: string;
@@ -847,7 +847,7 @@ export interface AdaptiveTaskState {
 const NO_CACHE = { cache: "no-store" } as const;
 
 /**
- * canonical project-scoped task list backed by persisted
+ * The canonical project-scoped task list backed by persisted
  * inventory. Returns an empty array when the source is configured but has
  * no tasks yet (a valid ready state). Throws when the project has no
  * source configured yet (HTTP 404) — callers should branch on the project
@@ -863,16 +863,17 @@ export const listProjectAgentTasks = (
   });
 
 /**
- * Tasks not in the active suite (task removal archiving): removal tombstones with their
+ * Tasks not in the active suite: removal tombstones with their
  * retained runs. Cheap (one small table) — safe to load for the filter's
  * count on every Tasks-page visit.
  */
 export const listArchivedAgentTasks = (
   projectId: string,
+  signal?: AbortSignal,
 ): Promise<ArchivedAgentTask[]> =>
   apiClient<ArchivedAgentTasksResponse>(
     `/v1/projects/${encodeURIComponent(projectId)}/agent-tasks/archived`,
-    NO_CACHE,
+    { ...NO_CACHE, signal },
   ).then((body) => body.removed ?? []);
 
 interface ArchivedAgentTasksResponse {
@@ -898,8 +899,8 @@ export const getProjectAgentTask = async (
     return { ...task, latest_run: null };
   }
   // Not in the catalog — but it may be a removed task the server still
-  // holds runs for (task removal archiving). Resolve through the archived collection
-  // rather than the catch-all detail path: hierarchical ids in a path
+  // holds runs for. Resolve through the archived collection rather than
+  // the catch-all detail path: hierarchical ids in a path
   // segment decode differently across SSR fetches and proxies.
   const archived = await listArchivedAgentTasks(projectId).catch(() => []);
   const entry = archived.find((candidate) => candidate.task_id === taskId);

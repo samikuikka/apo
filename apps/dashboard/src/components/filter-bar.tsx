@@ -37,6 +37,13 @@ import { cn } from "@/lib/utils";
 
 const ANY_EFFORT_VALUE = "__any__";
 
+/** The "Not in the suite" entry in the status menu (see FilterBarProps). */
+export interface ArchivedStatusControl {
+  count: number;
+  active: boolean;
+  onToggle: () => void;
+}
+
 export interface FilterBarProps {
   statusOptions: StatusFilterOption[];
   status: Set<string>;
@@ -66,17 +73,13 @@ export interface FilterBarProps {
   since?: string | null;
   onSinceChange?: (since: string | null) => void;
   /**
-   * "Not in the suite" entry (task removal archiving): tasks removed from the catalog,
+   * "Not in the suite" entry: tasks removed from the catalog,
    * findable with their runs. Rendered as its own separated group at the
    * bottom of the status menu — exclusive, not part of the multi-select.
    * Omitted or count 0 (and inactive) hides it: nothing archived means no
    * new furniture.
    */
-  archivedStatus?: {
-    count: number;
-    active: boolean;
-    onToggle: () => void;
-  };
+  archivedStatus?: ArchivedStatusControl;
   query?: string;
   onQueryChange?: (value: string) => void;
   searchPlaceholder?: string;
@@ -205,11 +208,7 @@ function StatusFilterMenu({
   options: StatusFilterOption[];
   status: Set<string>;
   onChange: (next: Set<string>) => void;
-  archivedStatus?: {
-    count: number;
-    active: boolean;
-    onToggle: () => void;
-  };
+  archivedStatus?: ArchivedStatusControl;
 }) {
   const summary = archivedStatus?.active ? "Archived" : statusSummary(options, status);
   const filtered = summary !== "All";

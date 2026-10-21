@@ -302,8 +302,8 @@ def _no_tasks_found_message(
     matches nothing the task genuinely isn't on disk. Other sources (git/demo)
     are not auto-refreshed, so the most useful nudge is to run a sync.
 
-    When the selection overlaps tasks that were removed from the catalog
-    (task removal archiving), the removals are named with their dates — "x was removed on
+    When the selection overlaps tasks that were removed from the catalog,
+    the removals are named with their dates — "x was removed on
     Oct 15" answers the question the generic message leaves open.
     """
     base: str

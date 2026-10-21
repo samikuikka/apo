@@ -94,7 +94,7 @@ export function AgentTasksClient({
     [],
   );
 
-  // Archived mode (task removal archiving): "Not in the suite" in the status menu. The
+  // Archived mode: "Not in the suite" in the status menu. The
   // archived list loads once per visit (cheap — one small table) so the
   // filter can show its count and a fruitless search can point at removed
   // tasks instead of a bare "no results".
@@ -112,7 +112,7 @@ export function AgentTasksClient({
       return;
     }
     const controller = new AbortController();
-    listArchivedAgentTasks(projectId)
+    listArchivedAgentTasks(projectId, controller.signal)
       .then(setArchived)
       .catch(() => {});
     return () => controller.abort();
@@ -200,7 +200,7 @@ export function AgentTasksClient({
   const folders = useMemo(() => groupByFolder(statusFilteredTasks), [statusFilteredTasks]);
 
   // The archived view is the same list, different membership: same folder
-  // grouping, same cards — only the rows change (the removal-archiving filter contract).
+  // grouping, same cards — only the rows change.
   const archivedSummaries = useMemo(
     () => archived.map(archivedTaskToSummary),
     [archived],
@@ -276,9 +276,8 @@ export function AgentTasksClient({
     canRunTasks && !isDemoProject && selected.size > 0,
   );
 
-  const folderIds = listFolders.map((folder) => folder.id);
-  const visibleFolderIds = folderIds;
-  const expanded = new Set(folderIds.filter((id) => !collapsed.has(id)));
+  const visibleFolderIds = listFolders.map((folder) => folder.id);
+  const expanded = new Set(visibleFolderIds.filter((id) => !collapsed.has(id)));
   const allExpanded =
     visibleFolderIds.length > 0 &&
     visibleFolderIds.every((id) => expanded.has(id));
@@ -379,14 +378,28 @@ export function AgentTasksClient({
         </div>
       )}
 
-      {/* Empty state */}
-      {!error && tasks.length === 0 && (
+      {/* Empty state — not while the archived view is showing its own
+          rows; its banner already explains the different membership. */}
+      {!error && !archivedActive && tasks.length === 0 && (
         <div className="m-6 border border-dashed border-border bg-muted/10 p-10 text-center text-[13px] text-muted-foreground">
           No agent tasks discovered. Configure the task source above, or run{" "}
           <code className="rounded bg-muted px-1 py-0.5 font-mono text-[12px]">
             apo task list
           </code>{" "}
           in the project to verify discovery.
+          {archived.length > 0 && (
+            <div className="mt-2">
+              {archived.length} removed task{archived.length === 1 ? "" : "s"} still
+              hold{archived.length === 1 ? "s" : ""} retained runs.{" "}
+              <button
+                type="button"
+                onClick={() => setArchivedActive(true)}
+                className="text-foreground/80 underline underline-offset-4 hover:text-foreground"
+              >
+                Show the archived view
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -412,7 +425,7 @@ export function AgentTasksClient({
       )}
 
       {/* A search that matches nothing active but a removed task answers
-          "where did it go?" instead of a bare empty state (task removal archiving). */}
+          "where did it go?" instead of a bare empty state. */}
       {!archivedActive && query && filtered.length === 0 && archivedQueryMatches.length > 0 && (
         <div className="mx-6 mt-4 border border-dashed border-border bg-muted/10 p-4 text-center text-[13px] text-muted-foreground">
           No active tasks match &ldquo;{query}&rdquo; —{" "}

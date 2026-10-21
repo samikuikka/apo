@@ -327,7 +327,7 @@ def publish_catalog(
         new_id_set - {row.task_id for row in old_rows}
     )
     # The tombstone snapshot: last-known metadata from the row that is
-    # about to be replaced away (task removal archiving).
+    # about to be replaced away.
     removed_meta = {
         row.task_id: {
             "display_name": row.display_name,
@@ -390,7 +390,7 @@ def publish_catalog(
         )
         session.commit()
 
-    # Lifecycle observation (task removal archiving): tombstone the removals, clear the
+    # Lifecycle observation: tombstone the removals, clear the
     # events of tasks that came back. The server observes; git stays the
     # source of truth — a returned task is simply active again.
     from .task_lifecycle import (

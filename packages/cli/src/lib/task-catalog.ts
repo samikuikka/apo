@@ -39,6 +39,13 @@ export type PublishedTask = {
 export type PublishTaskCatalogRequest = {
   schema_version: 1 | 2;
   tasks: PublishedTask[];
+  /**
+   * Best-effort working-tree HEAD of the publishing machine: recorded on
+   * removal tombstones so "removed by publish {sha}" points into git
+   * history. Absent on non-git task roots — the server treats absence as
+   * normal.
+   */
+  head_commit_sha?: string;
 };
 
 /** One task that left the catalog in this publish, with consequences. */

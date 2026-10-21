@@ -25,7 +25,7 @@ export interface ViewTab {
 export const STATUS_FILTER_KEYS = TASK_STATUS_FILTERS.map((s) => s.value);
 
 export function taskFilterStatus(task: AgentTaskSummary): TaskStatus {
-  // Archived rows (task removal archiving) are their own state — a removed task's runs
+  // Archived rows are their own state — a removed task's runs
   // still carry a last outcome, but the honest label is why it's not in
   // the suite.
   if (task.state === "removed") return "removed";

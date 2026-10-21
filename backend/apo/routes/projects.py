@@ -11,12 +11,12 @@ live filesystem scan on every request.
 
 # pyright: reportAny=false, reportCallInDefaultInitializer=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnusedCallResult=false
 
+import re
 from collections.abc import Sequence
+from datetime import datetime
 from typing import cast
 from urllib.parse import urlparse
 from uuid import uuid4
-
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -697,7 +697,7 @@ async def list_archived_project_agent_tasks(
 ):
     """List the project's tasks that are not in the active suite.
 
-    Read-only derived view over the lifecycle tombstones (task removal archiving): every
+    Read-only derived view over the lifecycle tombstones: every
     task that left the catalog, with its last-known metadata, removal date,
     best-effort commit, and live run stats. Runs are the point — removal
     never deletes them. Declared BEFORE the ``{task_id:path}`` catch-all so
@@ -747,7 +747,7 @@ async def get_project_agent_task(
 
     A task that left the catalog but has a removal tombstone or retained
     runs resolves to a synthesized ``state: "removed"`` detail instead of
-    404 — the runs the server still holds must stay reachable (task removal archiving).
+    404 — the runs the server still holds must stay reachable.
     """
     _project, _role = _load_project_for_request(session, project_id, request)
 
@@ -907,11 +907,9 @@ async def publish_task_catalog(
     # removal tombstones so "removed by publish {sha}" points into git
     # history. Absent on non-git task roots; malformed is rejected because a
     # wrong sha would silently poison every tombstone of this publish.
-    import re as _re
-
     head_commit_sha = body.get("head_commit_sha")
     if head_commit_sha is not None:
-        if not isinstance(head_commit_sha, str) or not _re.fullmatch(
+        if not isinstance(head_commit_sha, str) or not re.fullmatch(
             r"[0-9a-f]{7,64}", head_commit_sha
         ):
             raise HTTPException(

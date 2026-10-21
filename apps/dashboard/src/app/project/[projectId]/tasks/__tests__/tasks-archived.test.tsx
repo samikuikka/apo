@@ -36,8 +36,15 @@ vi.mock("@/lib/agent-task-view-api", async () => {
   };
 });
 
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+// Per-test URL state: tests that arrive via ?archived=1 swap the params.
+const { urlState } = vi.hoisted(() => ({
+  urlState: { params: new URLSearchParams("") },
+}));
+
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(""),
+  useSearchParams: () => urlState.params,
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
   useParams: () => ({ projectId: "acme-evals" }),
 }));
@@ -48,8 +55,6 @@ vi.mock("@/lib/project-router", () => ({
   DEFAULT_PROJECT: "example-service",
   DEMO_PROJECT: "demo",
 }));
-
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const taskSource = {
   source_type: "published",
@@ -103,9 +108,10 @@ async function openStatusMenu(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Status filter" }));
 }
 
-describe("Tasks page — archived (task removal archiving)", () => {
+describe("Tasks page — archived (task removal)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    urlState.params = new URLSearchParams("");
     vi.mocked(getConnectedExecutorStatus).mockResolvedValue({ state: "ready" });
   });
 
@@ -179,5 +185,34 @@ describe("Tasks page — archived (task removal archiving)", () => {
     await waitFor(() => {
       expect(listArchivedAgentTasks).not.toHaveBeenCalled();
     });
+  });
+
+  it("does not show the active-catalog empty state while the archived view is open", async () => {
+    // Every task was removed: arriving via ?archived=1 must show the
+    // banner and the retained rows, not "No agent tasks discovered".
+    urlState.params = new URLSearchParams("archived=1");
+    vi.mocked(listArchivedAgentTasks).mockResolvedValue([archivedEntry()]);
+    render(
+      <AgentTasksClient tasks={[]} error={null} taskSource={taskSource} isDemo={false} />,
+    );
+
+    expect(await screen.findByText(/1 task not in the active suite/)).toBeInTheDocument();
+    expect(screen.getByText("serving-integrity")).toBeInTheDocument();
+    expect(screen.queryByText(/No agent tasks discovered/)).not.toBeInTheDocument();
+  });
+
+  it("points at the archived view from the empty-catalog state", async () => {
+    // With every task removed the status menu is gone (no active rows);
+    // the empty state is then the only road in.
+    vi.mocked(listArchivedAgentTasks).mockResolvedValue([archivedEntry()]);
+    const user = userEvent.setup();
+    render(
+      <AgentTasksClient tasks={[]} error={null} taskSource={taskSource} isDemo={false} />,
+    );
+
+    expect(await screen.findByText(/1 removed task still holds retained runs/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Show the archived view/ }));
+    expect(await screen.findByText(/1 task not in the active suite/)).toBeInTheDocument();
+    expect(screen.getByText("serving-integrity")).toBeInTheDocument();
   });
 });
