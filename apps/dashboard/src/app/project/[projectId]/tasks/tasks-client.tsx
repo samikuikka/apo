@@ -234,7 +234,9 @@ export function AgentTasksClient({
     const q = query.toLowerCase();
     return folders.reduce<typeof folders>((acc, f) => {
       const fm = f.id.toLowerCase().includes(q);
-      const fTasks = fm ? f.tasks : f.tasks.filter((t) => t.display_name.toLowerCase().includes(q) || t.task_path.toLowerCase().includes(q));
+      // The description matches too: a task is findable by what it is for,
+      // not only by its name and path (mirrors the backend's grep).
+      const fTasks = fm ? f.tasks : f.tasks.filter((t) => t.display_name.toLowerCase().includes(q) || t.task_path.toLowerCase().includes(q) || (t.description?.toLowerCase().includes(q) ?? false));
       if (fTasks.length > 0) acc.push({ ...f, tasks: fTasks });
       return acc;
     }, []);

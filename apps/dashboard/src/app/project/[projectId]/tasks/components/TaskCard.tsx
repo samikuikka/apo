@@ -89,7 +89,11 @@ export function TaskCard({
           {(task.description || addedLabel) && (
             <div className="mt-1 min-w-0">
               {task.description && (
-                <p className="truncate text-[12px] text-muted-foreground/70">{task.description}</p>
+                // Truncation hides the tail; the title attr carries the full
+                // text so hover reads what the clip cut off.
+                <p className="truncate text-[12px] text-muted-foreground/70" title={task.description}>
+                  {task.description}
+                </p>
               )}
               {addedLabel && (
                 <p className="mt-0.5 text-[11px] text-muted-foreground/50">{addedLabel}</p>
