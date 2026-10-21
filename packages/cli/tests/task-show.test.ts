@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import * as credentials from "../src/lib/credentials.ts";
 import { run } from "../src/commands/task-show.ts";
 import { stripAnsi } from "../src/lib/format.ts";
@@ -26,6 +29,7 @@ function mockDetail(): Record<string, unknown> {
     adapter_name: "realAgentAdapter",
     has_checks: true,
     tags: ["documents", "smoke"],
+    description: "Extract structured data from an invoice.",
     run_stats: {
       total_runs: 5,
       passed_runs: 2,
@@ -78,6 +82,7 @@ describe("task show", () => {
     const out = stripAnsi(logs.join("\n"));
     expect(code).toBe(0);
     expect(out).toContain("Name:        data-extraction");
+    expect(out).toContain("Description: Extract structured data from an invoice.");
     expect(out).toContain("Runs:        5 total · 2 passed · 2 failed · 1 errored (40% pass) · avg 3.2s");
     expect(out).toContain("Not started: 3 (ended before an executor started them)");
     expect(out).toContain("run_db3993122048ce4a55a06e2b");
@@ -113,5 +118,38 @@ describe("task show", () => {
     restore();
     expect(code).toBe(2);
     expect(errors.join("\n")).toContain("Task root not found");
+  });
+
+  it("prints Description for a local task and nothing for one without", async () => {
+    vi.spyOn(credentials, "readCredentials").mockReturnValue(null);
+    const root = mkdtempSync(join(tmpdir(), "apo-task-show-desc-"));
+    const described = join(root, "described");
+    mkdirSync(described, { recursive: true });
+    writeFileSync(
+      join(described, "described.eval.ts"),
+      'task("described", { adapter: a, description: "Extract structured data from an invoice." });\n',
+    );
+    const plain = join(root, "plain");
+    mkdirSync(plain, { recursive: true });
+    writeFileSync(join(plain, "plain.eval.ts"), 'task("plain", { adapter: a });\n');
+
+    try {
+      let { logs, restore } = captureLog();
+      let code = await run(["--dir", root, "described"]);
+      restore();
+      const withDesc = stripAnsi(logs.join("\n"));
+      expect(code).toBe(0);
+      expect(withDesc).toContain("Adapter:     a");
+      expect(withDesc).toContain("Description: Extract structured data from an invoice.");
+
+      ({ logs, restore } = captureLog());
+      code = await run(["--dir", root, "plain"]);
+      restore();
+      const withoutDesc = stripAnsi(logs.join("\n"));
+      expect(code).toBe(0);
+      expect(withoutDesc).not.toContain("Description:");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

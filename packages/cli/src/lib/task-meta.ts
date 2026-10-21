@@ -26,7 +26,8 @@ export type TaskMeta = {
    * First line of the task's declared `description`, read statically from
    * the `.eval.ts` (the key and its string may sit on different lines).
    * `null` when the task declares none — human-facing pickers show nothing
-   * rather than filler.
+   * rather than filler. Untruncated: publication sends the whole first
+   * line, and each display site truncates to its own width.
    */
   description: string | null;
   /**
@@ -164,7 +165,8 @@ function parseTaskMeta(taskDir: string, rootDir: string): TaskMeta | undefined {
 }
 
 /**
- * First line of the task's `description` field, truncated for pickers.
+ * First line of the task's `description` field, untruncated — publication
+ * sends the whole line and display sites clip to their own width.
  * The key and the string may sit on different lines (`description:\n  "…"`),
  * so `\s*` bridges the gap — same trick as the other extract* helpers,
  * never loading the module.
@@ -174,7 +176,6 @@ function extractDescription(content: string): string | null {
   if (!match) return null;
   const raw = match[1] ?? match[2] ?? match[3] ?? "";
   const firstLine = raw.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
-  if (firstLine.length > 100) return `${firstLine.slice(0, 99)}…`;
   return firstLine || null;
 }
 

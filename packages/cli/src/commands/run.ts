@@ -224,9 +224,17 @@ function manifestText(tasks: TaskMeta[], model: string | undefined, view: EnvVie
 
   if (tasks.length === 1) {
     const t = tasks[0]!;
+    // The description is published untruncated, but this manifest is a
+    // compact pre-run summary — clip it here so one long line cannot
+    // wrap the whole block off the terminal edge.
+    const what = t.description
+      ? t.description.length > 100
+        ? `${t.description.slice(0, 99)}…`
+        : t.description
+      : null;
     return [
       `${bold("task")}   ${t.id}`,
-      t.description ? `${dim("what")}    ${t.description}` : "",
+      what ? `${dim("what")}    ${what}` : "",
       modelLine,
       `${bold("judge")}  ${checksHint(t)}`,
       "",

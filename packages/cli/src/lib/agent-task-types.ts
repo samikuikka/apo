@@ -26,6 +26,8 @@ export type AgentTaskSummary = {
   has_checks: boolean;
   tags: string[];
   run_stats: AgentTaskRunStats | null;
+  /** The eval's declared description; `null` when it declares none. */
+  description?: string | null;
 };
 
 export type AgentTaskDetail = AgentTaskSummary & {

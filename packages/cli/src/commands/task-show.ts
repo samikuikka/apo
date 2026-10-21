@@ -58,6 +58,9 @@ export async function run(argv: string[]): Promise<number> {
   console.log(bold(`Task: ${task.id}`));
   if (isRemoteTask(task)) {
     console.log(`  Name:        ${task.display_name}`);
+    if (task.description) {
+      console.log(`  Description: ${task.description}`);
+    }
     console.log(`  Adapter:     ${task.adapter_name}`);
     console.log(`  Checks:      ${task.has_checks ? "yes" : "no"}`);
     console.log(`  Path:        ${task.task_path}`);
@@ -78,6 +81,9 @@ export async function run(argv: string[]): Promise<number> {
     }
   } else {
     console.log(`  Adapter:     ${task.adapter}`);
+    if (task.description) {
+      console.log(`  Description: ${task.description}`);
+    }
     console.log(`  Checks:      ${task.hasChecks ? "yes" : "no"}`);
     console.log(`  Path:        ${task.path}`);
 

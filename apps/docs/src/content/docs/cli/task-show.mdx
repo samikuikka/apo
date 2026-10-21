@@ -13,6 +13,7 @@ Show a task's details, adapter, checks, and how it has been performing. With a b
   lines={[
     { text: "Task: real-agent/documents/document-qa" },
     { text: "  Name:        document-qa" },
+    { text: "  Description: Answer questions about a document set with cited spans." },
     { text: "  Adapter:     realAgentAdapter" },
     { text: "  Checks:      yes" },
     { text: "  Path:        real-agent/documents/document-qa" },
@@ -44,6 +45,7 @@ With a backend project, the task comes from the synced inventory and includes th
   lines={[
     { text: "Task: real-agent/documents/document-qa" },
     { text: "  Name:        document-qa" },
+    { text: "  Description: Answer questions about a document set with cited spans." },
     { text: "  Adapter:     realAgentAdapter" },
     { text: "  Checks:      yes" },
     { text: "  Path:        real-agent/documents/document-qa" },
@@ -54,13 +56,14 @@ With a backend project, the task comes from the synced inventory and includes th
   ]}
 />
 
-`Checks` is a `yes`/`no` flag. The `Latest run:` line (when one exists) gives the run id and its status. The `Notes:` line is the command that lists what the project has [noted](/cli/notes/) about the task.
+The `Description:` line appears only when the task's eval declares one. `Checks` is a `yes`/`no` flag. The `Latest run:` line (when one exists) gives the run id and its status. The `Notes:` line is the command that lists what the project has [noted](/cli/notes/) about the task.
 
 Without a backend project, the task is read from the local filesystem, it shows `Deliverables:` (comma-joined) and a `Files:` list instead, and no latest run:
 
 <TerminalOutput
   lines={[
     { text: "Task: extract-parties" },
+    { text: "  Description:  Extract named parties from a legal document." },
     { text: "  Adapter:      realAgentAdapter" },
     { text: "  Checks:       yes" },
     { text: "  Path:         extract-parties/extract-parties.eval.ts" },

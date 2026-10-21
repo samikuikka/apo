@@ -90,12 +90,16 @@ export type TaskCatalog = {
 /**
  * Map discovered TaskMeta to the publication allowlist.
  * Strips all source-derived data (absolute paths, files, deliverables, etc.).
+ * The description rides along for every caller: `apo connect` computes the
+ * digest from an explicit key allowlist, so its presence cannot move the
+ * digest claims gate on.
  */
 export function toPublishedTask(meta: {
   id: string;
   folderPath: string;
   adapter: string;
   hasChecks: boolean;
+  description?: string | null;
 }): PublishedTask {
   const segments = meta.id.split("/");
   const displayName = segments[segments.length - 1];
@@ -107,5 +111,6 @@ export function toPublishedTask(meta: {
     adapter_name: meta.adapter,
     has_checks: meta.hasChecks,
     tags: [],
+    ...(meta.description ? { description: meta.description } : {}),
   };
 }

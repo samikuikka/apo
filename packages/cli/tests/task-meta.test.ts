@@ -164,6 +164,20 @@ describe("discoverTaskMeta", () => {
     expect(tasks[0].description).toBeNull();
   });
 
+  it("keeps a long description whole — publication sends it untruncated", () => {
+    const long =
+      "Extract structured data from an invoice and reconcile every line item against the purchase order.".repeat(2);
+    writeTaskFile(join(testDir, "verbose"), `
+      task("verbose", {
+        adapter: a,
+        description: "${long}",
+      });
+    `);
+
+    const tasks = discoverTaskMeta(testDir);
+    expect(tasks[0].description).toBe(long);
+  });
+
   it("counts line-start check/test calls as checkCount (approximate by design)", () => {
     // The count is anchored to line start, so an indented check inside a
     // callback counts too — an acceptable approximation for a static scan

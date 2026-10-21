@@ -47,7 +47,6 @@ export async function run(argv: string[]): Promise<number> {
       const task = toPublishedTask(meta);
       const prepared = prepareTaskDefinition(meta);
       task.definition = prepared.document;
-      if (meta.description) task.description = meta.description;
       // Who added this task, best-effort: absent without git history, and
       // the server falls back to first-published (issue #444).
       const provenance = firstCommitForFile(join(meta.path, meta.evalFileName));
