@@ -15,7 +15,7 @@ apo runs deliverable <run-id> [name] [--output <path>]
 
 ## Description
 
-The first argument is a **run id**, a unique prefix, or `last` (the most recent run). The optional second argument is a **deliverable name**.
+The first argument is a **run id**, a unique prefix, or `last` (the most recent run that started — same resolution as [`apo runs show`](/cli/runs-show/)). The optional second argument is a **deliverable name**.
 
 - **No name**: print a manifest of every deliverable: its name, kind (`json` or `artifact`), and size in bytes. Nothing large is dumped.
 - **With a name**: fetch that deliverable's content. JSON deliverables print as pretty JSON; binary **artifacts** stream to a file via `--output` (dumping binary bytes to an interactive TTY is refused).

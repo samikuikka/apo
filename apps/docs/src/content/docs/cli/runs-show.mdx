@@ -26,6 +26,7 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
     { text: "  Started:  7/16/2026, 9:42 AM" },
     { text: "  Completed: 7/16/2026, 9:43 AM" },
     { text: "  Source:   cli · sami · apo task run" },
+    { text: "  Requested by: sami@company.test" },
     { text: "  Cost:     $0.003400" },
     { text: "  Tokens:   1,247" },
     { text: "  Reasoning: 612 tok · max 540 in one call (observation 2e1e24fa23cfff6c)" },
@@ -53,7 +54,7 @@ apo runs show [run-id] [--task <id>] [--verbose] [--exit-status]
 
 ## Description
 
-Shows a run's details. The argument is a **run id** (the output of `apo task run`), a unique prefix of one, or the literal `last` (the default) for the most recent run.
+Shows a run's details. The argument is a **run id** (the output of `apo task run`), a unique prefix of one, or the literal `last` (the default) for the most recent run that started — runs that never started (queued, or expired before an executor claimed them) are skipped, so `last` never resolves to a run with nothing to show.
 
 Large per-check values (typically the deliverable re-sent inside every judged criterion's `received`) are shown as a one-line manifest (e.g. `+ Received: ⟨20,000 chars, apo runs deliverable⟩`) instead of dumped in full. This keeps a failed run readable: the `reasoning` explains the failure, not a wall of deliverable text, and it stops the same deliverable being re-billed per criterion. Read the full content with [`apo runs deliverable`](/cli/runs-deliverable/): it fetches a deliverable **once**, not per check.
 
@@ -61,14 +62,14 @@ Large per-check values (typically the deliverable re-sent inside every judged cr
 
 | Option | Default | Purpose |
 |---|---|---|
-| `[run-id]` | `last` | Run id, unique prefix, or `last`. With no arg, resolves the latest run. |
+| `[run-id]` | `last` | Run id, unique prefix, or `last`. With no arg, resolves the latest run that started. |
 | `--verbose` | off | Show passing checks too (not just failures) and LLM-judge transcripts. |
 | `--exit-status` | off | Exit `0` when the run's verdict is PASS, `1` for FAIL (or a run still in progress), `2` for a run with no verdict (status `error`: the judge gave none, or the execution failed). |
 | `--task <id>` | - | When using `last`, scope to the latest run of this task. |
 
 ## Output
 
-Every field of the run record: identity (`Run`, `Task`, `Path`, `Batch`, `Adapter`), the adapter-reported configuration (`Model`, `Effort`), the observed serving route (`Hosts`, `Speed`), the outcome (`Status`, `Result`, `Checks`), timing, cost, tokens, reasoning, and the trace id.
+Every field of the run record: identity (`Run`, `Task`, `Path`, `Batch`, `Adapter`), the adapter-reported configuration (`Model`, `Effort`), the observed serving route (`Hosts`, `Speed`), the outcome (`Status`, `Result`, `Checks`), timing, who requested it (`Requested by`), cost, tokens, reasoning, and the trace id.
 
 <TerminalOutput
   lines={[
@@ -89,6 +90,8 @@ Every field of the run record: identity (`Run`, `Task`, `Path`, `Batch`, `Adapte
 />
 
 The second sample is a run with **no verdict**: most of its generations ended in error, so apo refused to turn the checks into a PASS/FAIL signal (see [Verdict validity](/concepts/tests/#verdict-validity)). The `Generations` row only appears when generations errored; `Result` shows `-` because there is no verdict to show. A run whose only non-passing checks got no verdict from the judge shows `Result: NO VERDICT` instead, with an `Error:` line naming the cause. Cost and token totals are marked `partial`, errored generations are excluded from both, and unpriced calls are excluded from cost.
+
+`Source` is the trigger the caller reported. `Requested by`, when present, is who actually asked for the batch the run belongs to — resolved server-side from the credential (the signed-in user, or the user an API key belongs to), never client-supplied. It is left out on runtime credentials and older batches.
 
 `Hosts` lists the serving provider or route each observed model actually ran through (e.g. `openrouter:nitro ×3`); the row is left out when the tracer did not report one. `Speed` is the median decode throughput of the run's generations — output tokens over the time from first token to completion — with the number of calls that were measured. A route change (a faster provider, a nitro variant) shows here as a number.
 

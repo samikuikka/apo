@@ -95,7 +95,7 @@ The `apo` CLI reads these. Precedence: flag > env > stored credentials (`~/.apo/
 | `APO_TASK_ROOT` | Directory to scan for tasks (default `./e2e`). |
 | `APO_BACKEND_URL` | Backend URL (default `http://localhost:8000`). |
 | `APO_PROJECT_ID` | Active project id. |
-| `APO_ACTOR` | Actor name for runs (who triggered them). |
+| `APO_ACTOR` | Label written on the runs you start (the trigger's `actor`). Who actually requested them is recorded server-side from your credential and shown as `Requested by` in `apo runs show` / `apo batch show`. |
 | `APO_API_KEY` | API key for backend auth. |
 | `APO_COLLECTOR` | `1`/`true` or `0` forces the [local collector sidecar](/cli/task-run/#trace-durability-on-remote-backends) on or off for `apo task run` / `apo connect`. Unset, the sidecar runs only when the backend is remote — a loopback backend is the same reliability class as local disk, so the sidecar would only add a process. |
 | `APO_COLLECTOR_BIN`, `APO_COLLECTOR_DATA_DIR`, `APO_COLLECTOR_PORT`, `APO_COLLECTOR_HEALTH_PORT`, `APO_COLLECTOR_METRICS_PORT`, `APO_COLLECTOR_MAX_QUEUE_BYTES` | Override seams for the sidecar: where the `otelcol` binary lives (default: downloaded and pinned by the CLI), where its root directory sits, and its ports and queue cap (default 512 MiB). For debugging and constrained machines, not day-to-day configuration. |

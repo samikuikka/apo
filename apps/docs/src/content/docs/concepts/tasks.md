@@ -58,6 +58,10 @@ The `test` function comes from the task because its types do too. The adapter de
 
 The task name is the folder name. Discovery scans for `.eval.ts` files: drop the folder into your task source and it's registered. No manifest.
 
+## Who added a task
+
+[`apo task publish`](/cli/task-publish/) also records where each task came from. A task's card shows its `description` and an **Added … by …** line — the author and date of the first commit that added the `.eval.ts` when you publish from a git repo, otherwise the first user who published the task. The task's page spells both out (*Written by … (sha) · First published … by …*). It's best-effort context from git for whoever reads the suite — nothing to configure.
+
 ## Removing a task
 
 A task leaves the suite the same way it arrived: through your repo. Delete the task folder and run [`apo task publish`](/cli/task-publish/) — nothing else.

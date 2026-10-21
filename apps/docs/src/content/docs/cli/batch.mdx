@@ -20,6 +20,7 @@ A batch run executes multiple tasks in one operation and reports the aggregate r
     { text: "  Cost:     $0.015300" },
     { text: "  Created:  7/4/2026, 5:30 PM" },
     { text: "  Source:   cli · sami" },
+    { text: "  Requested by: sami@company.test" },
     { text: "  Started:  7/4/2026, 5:30 PM" },
     { text: "  Completed: 7/4/2026, 5:31 PM" },
     { text: "" },
@@ -77,6 +78,8 @@ apo batch show <batch-id> [--watch]
     { text: "        trace: a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2", tone: "default" },
   ]}
 />
+
+`Requested by`, when present, is who asked for the batch — resolved server-side from the credential (the signed-in user, or the user an API key belongs to), never client-supplied. It is left out on runtime credentials and older batches.
 
 With `--watch`, the screen clears and re-renders every 3 seconds until the batch settles.
 

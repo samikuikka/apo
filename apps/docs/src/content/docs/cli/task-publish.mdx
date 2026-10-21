@@ -22,6 +22,8 @@ The dashboard's Tasks page, Schedules, and `apo connect` all need to know which 
 - Adapter names
 - Whether each Task has checks
 - Tags
+- Each Task's `description` (from its `task()` options), shown on its dashboard card
+- Git provenance, best-effort: for each Task, the author and date of the first commit that added its `.eval.ts`; plus the repo's HEAD commit, recorded on removal tombstones so a removal points into your history. Outside a git repo (or on a shallow clone) it is simply absent — the dashboard then falls back to the first user who published the Task.
 - The canonical Task Definition, the normalized `*.eval.ts` text (capped at 1 MB), so the dashboard can show the exact source that produced stored evidence
 
 No fixtures (`files/`), application source, repository credentials, or environment values are sent.

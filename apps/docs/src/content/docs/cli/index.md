@@ -99,7 +99,7 @@ These apply to every command — the one exception is [`apo run`](/cli/run/), wh
 | `--dir <path>` | `APO_TASK_ROOT` | Task root directory (default `./e2e`; after `apo login`, the task root stored in credentials). Run [`apo status`](/cli/status/) to see the effective value. |
 | `--backend <url>` | `APO_BACKEND_URL` | Backend URL. |
 | `--project <id>` | `APO_PROJECT_ID` | Project id. |
-| `--actor <name>` | `APO_ACTOR` | Actor name for runs. |
+| `--actor <name>` | `APO_ACTOR` | Label written on the runs you start; who requested them is recorded server-side from your credential. |
 | `--api-key <key>` | `APO_API_KEY` | API key for auth. |
 | `--json` | - | Machine-readable output. |
 | `--help` / `-h` | - | Show help. |
