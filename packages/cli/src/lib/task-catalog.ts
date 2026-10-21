@@ -69,6 +69,16 @@ export type PublishDiff = {
   possible_renames: PossibleRename[];
 };
 
+/**
+ * Removals that cost something, the shared predicate behind
+ * `--strict-removal`. A removal blocking the gate either discards history
+ * (retained runs) or breaks an automation (a schedule that selected the
+ * task). Everything else leaves silently and by design.
+ */
+export function blockingRemovals(removed: RemovedTaskDiffEntry[]): RemovedTaskDiffEntry[] {
+  return removed.filter((entry) => entry.run_count > 0 || entry.schedules.length > 0);
+}
+
 export type TaskCatalog = {
   project: string;
   schema_version: 1 | 2;

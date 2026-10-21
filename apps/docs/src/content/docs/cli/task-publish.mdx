@@ -10,7 +10,7 @@ Publish a Task catalog from your local workspace. The catalog tells the server w
 ## Synopsis
 
 ```bash
-apo task publish [--dir <path>] [--project <id>] [--dry-run] [--allow-empty] [--json]
+apo task publish [--dir <path>] [--project <id>] [--dry-run] [--strict-removal] [--allow-empty] [--json]
 ```
 
 ## Why publish
@@ -62,9 +62,19 @@ When a publish changes which Tasks exist, the command reports the diff after the
   moved?     (root)/t-jev-split → (root)/t-jev-cascade (identical definition 7c1e55…)
 ```
 
-The report is warning-only and the command still exits `0` — the catalog must converge with your repo either way, including in CI. Nothing is destroyed by a removal: every run, check, and trace is kept, and the removed Task stays findable in the dashboard under **Status → Archived** with its folders and run history (see [Tasks: removing a task](/concepts/tasks/)).
+The report is warning-only and the command still exits `0` — the catalog must converge with your repo either way, including in CI. `--strict-removal` is the one exception, below. Nothing is destroyed by a removal: every run, check, and trace is kept, and the removed Task stays findable in the dashboard under **Status → Archived** with its folders and run history (see [Tasks: removing a task](/concepts/tasks/)).
 
 `moved?` appears when a removed and an added Task pin byte-identical definition content in the same publish — near-certainly a rename or move. History is never rewritten automatically; the report just tells you the split happened.
+
+## The strict gate
+
+`--strict-removal` turns costly removals into a non-zero exit. A removal is costly when it retains runs or when a schedule selected the Task. This is the CI tripwire:
+
+```bash
+apo task publish --dry-run --strict-removal
+```
+
+The dry-run form decides **before** anything is published, from a read-only catalog fetch. Its delta names the runs a removal would archive; schedule references are server-side knowledge, reported by the real publish. Bare `apo task publish --strict-removal` runs the gate after the publish converges your catalog with git — useful as an alarm, not as a blocker. Silent removals (no runs, no schedules) always pass, and an unreadable catalog never fails the gate.
 
 ## When to re-publish
 
@@ -86,7 +96,8 @@ The server computes a canonical SHA-256 digest over the normalized catalog (sort
 |------|---------|-------------|
 | `--dir <path>` | `./e2e` (from config) | Task workspace root |
 | `--project <id>` | Configured project | Override the target project. |
-| `--dry-run` | off | Print the catalog that would be published without sending it. |
+| `--dry-run` | off | Print what would change versus the current catalog, without publishing. Performs one read-only catalog fetch; `--json` stays a pure local print. |
+| `--strict-removal` | off | Exit `1` when a removal would take runs or schedules with it. |
 | `--allow-empty` | off | Allow publishing a catalog with zero discovered Tasks. |
 | `--json` | off | Emit machine-readable JSON. |
 

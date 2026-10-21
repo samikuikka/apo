@@ -177,13 +177,15 @@ const commands: Record<string, CommandEntry> = {
     options: [
       ["--dir <path>", "Task root directory (default: from config)"],
       ["--project <id>", "Project to publish to (default: active project)"],
-      ["--dry-run", "Print the publication document without sending"],
+      ["--dry-run", "Print what would change vs the current catalog (one read-only fetch); --json stays a pure local print"],
+      ["--strict-removal", "Exit 1 when a removal takes runs or schedules with it (pair with --dry-run for a CI gate)"],
       ["--allow-empty", "Required to publish zero tasks (clears catalog)"],
       ["--json", "Machine-readable output"],
     ],
     examples: [
       "apo task publish",
       "apo task publish --dry-run --json",
+      "apo task publish --dry-run --strict-removal",
       "apo task publish --dir ./tasks --project acme",
     ],
     note: "Scans local tasks and publishes bounded metadata only — no source files, prompts, or credentials leave your machine. Reports removals (retained runs, affected schedules), additions, and probable moves; removed tasks stay findable in the dashboard under Status \u25b8 Archived.",
