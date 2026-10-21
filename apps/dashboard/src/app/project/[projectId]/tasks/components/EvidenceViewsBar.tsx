@@ -6,7 +6,9 @@ import type { RunConfigModelFacet } from "@/lib/agent-task-view-api";
 import { cn } from "@/lib/utils";
 import { FilterBar, type ArchivedStatusControl } from "@/components/filter-bar";
 import { TASK_STATUS_FILTERS } from "@/lib/filter-status";
+import { sinceLabel } from "@/lib/since-window";
 
+import { ActiveFiltersRow, type ActiveFilterChip } from "./ActiveFiltersRow";
 import { MAIN_VIEW_ID, type ViewTab } from "./task-list-shared";
 
 const ALL_MODELS_VALUE = "__all__";
@@ -100,6 +102,71 @@ export function EvidenceViewsBar({
     const keepsEffort = facet ? facet.efforts.some((e) => e.effort === active.effort) : false;
     onChange({ model, effort: keepsEffort ? active.effort : null });
   }
+
+  // One chip per filter value narrowing the list, in the bar's control order.
+  // Status mirrors the page's semantics: an empty or complete selection is
+  // "all", so only a partial set produces chips. Values missing from the
+  // vocabularies (a hand-edited URL, a since-archived model) still chip — a
+  // shared link must never apply an invisible, unclearable filter. Cohort
+  // chips follow the same gate as the cohort controls: demo projects have no
+  // views, so only search and status chip there.
+  const statusChips: ActiveFilterChip[] =
+    status.size > 0 && status.size < TASK_STATUS_FILTERS.length
+      ? [...status].map((value) => {
+          const vocab = TASK_STATUS_FILTERS.find((s) => s.value === value);
+          return {
+            key: `status:${value}`,
+            label: vocab?.label ?? value,
+            dot: vocab?.dot,
+            onRemove: () => {
+              const next = new Set(status);
+              next.delete(value);
+              onStatusChange(next);
+            },
+          };
+        })
+      : [];
+  const chips: ActiveFilterChip[] = [
+    ...(query
+      ? [{ key: "q", label: `"${query}"`, onRemove: () => onQueryChange("") }]
+      : []),
+    ...statusChips,
+    ...(viewsActive && active.model
+      ? [{
+          key: "model",
+          label: active.model,
+          mono: true,
+          onRemove: () => changeModel(ALL_MODELS_VALUE),
+        }]
+      : []),
+    ...(viewsActive && active.provider
+      ? [{
+          key: "provider",
+          label: active.provider,
+          mono: true,
+          onRemove: () => onChange({ provider: null }),
+        }]
+      : []),
+    ...(viewsActive && active.effort
+      ? [{ key: "effort", label: active.effort, onRemove: () => onChange({ effort: null }) }]
+      : []),
+    ...(viewsActive && active.since
+      ? [{
+          key: "since",
+          label: sinceLabel(active.since),
+          onRemove: () => onChange({ since: null }),
+        }]
+      : []),
+  ];
+  // Every removal is idempotent, so Clear all can fire the whole sweep
+  // unconditionally: already-clear dimensions stay clear.
+  const clearAllFilters = () => {
+    onQueryChange("");
+    onStatusChange(new Set());
+    if (viewsActive) {
+      onChange({ model: null, effort: null, since: null, provider: null });
+    }
+  };
 
   const trailingNode = (
     <div className="ml-auto flex items-center gap-3 text-[12px] text-muted-foreground">
@@ -236,6 +303,10 @@ export function EvidenceViewsBar({
           trailing={trailingNode}
         />
       </div>
+
+      {/* Active-filter chips: the one-glance answer to "what is narrowing
+          this list", each removable on its own, with Clear all alongside. */}
+      <ActiveFiltersRow chips={chips} onClearAll={clearAllFilters} />
     </div>
   );
 }
