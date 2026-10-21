@@ -1,8 +1,10 @@
 /**
- * Real-page scene: the registered Tasks server page itself — not
- * just the isolated component — shows the exact hosted login command for a
- * virgin onboarding Project and replaces it with normal product once a Run
- * or published Task exists.
+ * Real-page scene: the registered Tasks server page itself — not just the
+ * isolated component — carries the agent-first onboarding panel for a
+ * Project with no recorded runs, embeds the exact hosted login command in
+ * the handoff prompt, keeps the panel after Tasks are published (a
+ * half-finished setup keeps its map), and replaces it with normal product
+ * once a Run is recorded.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -78,7 +80,7 @@ describe("Tasks page first-run", () => {
     vi.mocked(listProjectAgentTasks).mockResolvedValue([]);
   });
 
-  it("renders the exact hosted command for a virgin invited Project", async () => {
+  it("renders the agent handoff with the exact hosted command for a virgin invited Project", async () => {
     vi.mocked(getProjectOnboardingStatus).mockResolvedValue({
       published_task_count: 0,
       recorded_run_count: 0,
@@ -87,13 +89,15 @@ describe("Tasks page first-run", () => {
 
     await renderPage();
 
+    expect(screen.getByText(/get to your first verdict/i)).toBeDefined();
     expect(
-      screen.getByText(
-        "apo login --backend https://test-apo.online --project abc123def456",
-      ),
+      screen.getByRole("button", { name: /copy prompt for your agent/i }),
     ).toBeDefined();
-    expect(screen.getByText(/get your first recorded run/i)).toBeDefined();
-    expect(screen.getByText(/maintained example/i)).toBeDefined();
+    expect(
+      screen.getAllByText(
+        "apo login --backend https://test-apo.online --project abc123def456",
+      ).length,
+    ).toBeGreaterThan(0);
   });
 
   it("replaces onboarding with normal product after a recorded Run", async () => {
@@ -109,7 +113,7 @@ describe("Tasks page first-run", () => {
     expect(screen.queryByText(/apo login/)).toBeNull();
   });
 
-  it("replaces onboarding after Tasks are published", async () => {
+  it("keeps the onboarding panel after Tasks are published, until a run is recorded", async () => {
     vi.mocked(getProjectOnboardingStatus).mockResolvedValue({
       published_task_count: 3,
       recorded_run_count: 0,
@@ -118,7 +122,7 @@ describe("Tasks page first-run", () => {
 
     await renderPage();
 
-    expect(screen.queryByText(/get your first recorded run/i)).toBeNull();
+    expect(screen.getByText(/get to your first verdict/i)).toBeDefined();
   });
 
   it("never falls back to localhost when the origin is invalid", async () => {
@@ -130,7 +134,7 @@ describe("Tasks page first-run", () => {
 
     await renderPage();
 
-    expect(screen.getByText(/installation is misconfigured/i)).toBeDefined();
+    expect(screen.getByText(/no public url configured/i)).toBeDefined();
     expect(screen.queryByText(/apo login/)).toBeNull();
   });
 });

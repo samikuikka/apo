@@ -14,11 +14,11 @@ import { useProjectId, useIsDemo } from "@/lib/project-router";
 import { usePublishRunCohort } from "@/lib/run-cohort-context";
 import { setSearchParamShallow } from "@/lib/shallow-search-params";
 import type { ProjectTaskSource } from "@/lib/projects-api";
-import type { ProjectFirstRunSetup } from "@/lib/first-run";
 
 import { EvidenceViewsBar } from "./components/EvidenceViewsBar";
 import { FolderList } from "./components/FolderList";
-import { ProjectFirstRun } from "./components/ProjectFirstRun";
+import { OnboardingPanel } from "./components/OnboardingPanel";
+import type { OnboardingSignals } from "./components/onboarding-steps";
 import { SelectionActionBar } from "./components/SelectionActionBar";
 import { TasksToolbar } from "./components/TasksToolbar";
 import { useEvidenceViews } from "./components/use-evidence-views";
@@ -40,7 +40,8 @@ interface AgentTasksClientProps {
   isDemo: boolean;
   /** Write affordances render only when the permission summary allows. */
   canRunTasks?: boolean;
-  firstRunSetup?: ProjectFirstRunSetup | null;
+  /** Server-derived onboarding signals; null once a run is recorded. */
+  onboardingSignals?: OnboardingSignals | null;
   /** `?view=` from the URL: re-select that saved tab on arrival. */
   initialViewId?: string | null;
 }
@@ -51,7 +52,7 @@ export function AgentTasksClient({
   taskSource,
   isDemo,
   canRunTasks = true,
-  firstRunSetup = null,
+  onboardingSignals = null,
   initialViewId = null,
 }: AgentTasksClientProps) {
   const projectId = useProjectId();
@@ -294,34 +295,17 @@ export function AgentTasksClient({
     setCollapsed(next);
   };
 
-  // Non-demo projects only replace the task list with setup UI when
-  // there is no configured source or the persisted inventory belongs
-  // to an older source root/ref/subpath. Other source states keep the
-  // task list visible so routine resyncs do not hide valid tasks.
-  const sourceNeedsAttention =
-    taskSource?.inventory_stale === true;
-  // A virgin Project gets the full first-run journey instead
-  // of the one-line publish hint; it disappears on durable progress.
-  const showFirstRun = firstRunSetup !== null;
-  const showSetupCard =
-    !isDemoProject &&
-    !error &&
-    !showFirstRun &&
-    (taskSource === null || sourceNeedsAttention);
+  // The onboarding panel owns the page only while there is nothing to
+  // show beneath it; once tasks exist it rides above the real list until
+  // the first run is recorded.
+  const showOnboarding = onboardingSignals !== null;
 
   return (
     <div className="flex flex-col">
-      {showFirstRun ? (
-        <ProjectFirstRun setup={firstRunSetup} />
-      ) : showSetupCard ? (
-        <div className="px-6 py-10">
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-6 text-center">
-            <p className="text-sm text-neutral-400">
-              Run <code className="text-neutral-200">apo task publish</code> to publish your task catalog.
-            </p>
-          </div>
-        </div>
-      ) : (
+      {showOnboarding && (
+        <OnboardingPanel signals={onboardingSignals} />
+      )}
+      {(!showOnboarding || tasks.length > 0) && (
         <>
           <TasksToolbar
             taskSource={taskSource}

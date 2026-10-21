@@ -3,14 +3,9 @@ import { listAgentTaskBatchRuns, listProjectAgentTasks } from "@/lib/agent-task-
 import { getProject } from "@/lib/projects-api";
 import { getProjectOnboardingStatus } from "@/lib/projects-api";
 import { StartHereRail } from "@/components/start-here-rail";
-import {
-  buildCliLoginCommand,
-  EXAMPLE_URL,
-  HOSTED_DOCS_URL,
-  isValidPublicOrigin,
-  type ProjectFirstRunSetup,
-} from "@/lib/first-run";
+import { isValidPublicOrigin } from "@/lib/first-run";
 import { DEMO_PROJECT } from "@/lib/project-ids";
+import type { OnboardingSignals } from "./components/onboarding-steps";
 import { AgentTasksClient } from "./tasks-client";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +30,7 @@ export default async function AgentTasksPage({
   let tasks: Awaited<ReturnType<typeof listProjectAgentTasks>> = [];
   let error: string | null = null;
   let taskSource = null;
-  // First-run panel inputs — parallel-safe, best-effort. A
+  // Onboarding panel inputs — parallel-safe, best-effort. A
   // missing status never breaks the page; it only suppresses onboarding.
   let onboarding: Awaited<ReturnType<typeof getProjectOnboardingStatus>> | null =
     null;
@@ -71,26 +66,22 @@ export default async function AgentTasksPage({
     }
   }
 
-  // The full first-run journey shows only for a genuinely virgin,
-  // non-demo Project: nothing published, nothing recorded, no load error.
-  // Durable emptiness (no recorded runs yet) is the real gate.
-  let firstRunSetup: ProjectFirstRunSetup | null = null;
-  if (
-    !isDemo &&
-    !error &&
-    onboarding !== null &&
-    onboarding.published_task_count === 0 &&
-    onboarding.recorded_run_count === 0
-  ) {
-    const publicUrl = isValidPublicOrigin(onboarding.public_url)
-      ? onboarding.public_url
-      : "";
-    firstRunSetup = {
-      publicUrl,
+  // The onboarding journey ("get to your first verdict") shows for any
+  // non-demo Project with no recorded runs yet — including one that already
+  // published tasks, so a half-finished setup keeps its map. Every signal
+  // is derived from real rows by the backend; once a run is recorded the
+  // panel is gone for good.
+  let onboardingSignals: OnboardingSignals | null = null;
+  if (!isDemo && !error && onboarding !== null && onboarding.recorded_run_count === 0) {
+    onboardingSignals = {
       projectId,
-      cliLoginCommand: publicUrl ? buildCliLoginCommand(publicUrl, projectId) : "",
-      docsUrl: HOSTED_DOCS_URL,
-      exampleUrl: EXAMPLE_URL,
+      publicUrl: isValidPublicOrigin(onboarding.public_url) ? onboarding.public_url : "",
+      hasTraces: onboarding.has_traces ?? false,
+      traceService: onboarding.latest_trace_service ?? null,
+      traceCount: onboarding.trace_count ?? 0,
+      cliConnected: onboarding.has_cli_key ?? false,
+      publishedTasks: onboarding.published_task_count,
+      recordedRuns: onboarding.recorded_run_count,
     };
   }
 
@@ -128,7 +119,7 @@ export default async function AgentTasksPage({
             taskSource={taskSource}
             isDemo={isDemo}
             canRunTasks={canRunTasks}
-            firstRunSetup={firstRunSetup}
+            onboardingSignals={onboardingSignals}
             initialViewId={initialViewId}
           />
         </Suspense>
