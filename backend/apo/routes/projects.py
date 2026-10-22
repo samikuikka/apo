@@ -672,9 +672,8 @@ async def get_project_onboarding_status(
     # A scope="full" key is what `apo login` mints, so its existence is
     # the detectable "CLI connected" signal for the onboarding timeline.
     # Completion is derived from real rows, never a stored checklist flag
-    # that can drift (Sentry's organizationonboardingtasks drift bugs are
-    # the cautionary tale). One projection renders the whole onboarding
-    # surface, so ordinary members never need key-enumeration rights.
+    # that can drift. One projection renders the whole onboarding surface,
+    # so ordinary members never need key-enumeration rights.
     has_cli_key = (
         session.exec(
             select(func.count())

@@ -210,9 +210,23 @@ describe("Tasks page — archived (task removal)", () => {
       <AgentTasksClient tasks={[]} error={null} taskSource={taskSource} isDemo={false} />,
     );
 
-    expect(await screen.findByText(/1 removed task still holds retained runs/)).toBeInTheDocument();
+    expect(await screen.findByText(/1 removed task still holds 43 retained runs/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Show the archived view/ }));
     expect(await screen.findByText(/1 task not in the active suite/)).toBeInTheDocument();
     expect(screen.getByText("serving-integrity")).toBeInTheDocument();
+  });
+
+  it("does not claim retained runs for a tombstone that has none", async () => {
+    // A task removed before its first run has a tombstone with zero runs —
+    // the empty state must not claim runs it does not hold.
+    vi.mocked(listArchivedAgentTasks).mockResolvedValue([
+      archivedEntry({ run_count: 0, run_stats: null }),
+    ]);
+    render(
+      <AgentTasksClient tasks={[]} error={null} taskSource={taskSource} isDemo={false} />,
+    );
+
+    expect(await screen.findByText(/1 removed task not in the active suite/)).toBeInTheDocument();
+    expect(screen.queryByText(/retained runs/)).not.toBeInTheDocument();
   });
 });

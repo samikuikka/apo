@@ -26,7 +26,7 @@ function viewConfigLabel(view: ViewTab): string {
   const parts: string[] = [view.model ?? "all models"];
   if (view.effort) parts.push(view.effort);
   if (view.since) parts.push(view.since);
-    if (view.provider) parts.push(view.provider);
+  if (view.provider) parts.push(view.provider);
   return parts.join(" · ");
 }
 
@@ -103,13 +103,13 @@ export function EvidenceViewsBar({
     onChange({ model, effort: keepsEffort ? active.effort : null });
   }
 
-  // One chip per filter value narrowing the list, in the bar's control order.
-  // Status mirrors the page's semantics: an empty or complete selection is
-  // "all", so only a partial set produces chips. Values missing from the
-  // vocabularies (a hand-edited URL, a since-archived model) still chip — a
-  // shared link must never apply an invisible, unclearable filter. Cohort
-  // chips follow the same gate as the cohort controls: demo projects have no
-  // views, so only search and status chip there.
+  // One chip per filter value narrowing the list, in the bar's control
+  // order. Status mirrors the page's semantics: an empty or complete
+  // selection means "all", so only a partial set produces chips. Values
+  // missing from the vocabularies (a hand-edited URL, a since-archived
+  // model) still chip — a shared link must never apply an invisible,
+  // unclearable filter. Demo projects have no views, so only search and
+  // status chip there.
   const statusChips: ActiveFilterChip[] =
     status.size > 0 && status.size < TASK_STATUS_FILTERS.length
       ? [...status].map((value) => {
@@ -304,8 +304,6 @@ export function EvidenceViewsBar({
         />
       </div>
 
-      {/* Active-filter chips: the one-glance answer to "what is narrowing
-          this list", each removable on its own, with Clear all alongside. */}
       <ActiveFiltersRow chips={chips} onClearAll={clearAllFilters} />
     </div>
   );

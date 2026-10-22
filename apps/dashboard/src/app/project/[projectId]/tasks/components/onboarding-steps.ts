@@ -1,10 +1,9 @@
 import { buildCliLoginCommand, HOSTED_DOCS_URL } from "@/lib/first-run";
 
 /**
- * The onboarding journey's complete signal set. Every field is derived by
- * the backend from real rows (`onboarding-status`) — nothing about progress
- * is ever stored client-side, so the panel cannot drift from the project's
- * actual state.
+ * The onboarding journey's signal set. The backend derives every field
+ * from real rows (`onboarding-status`); progress is never stored
+ * client-side, so the panel cannot drift from the project's state.
  */
 export interface OnboardingSignals {
   projectId: string;

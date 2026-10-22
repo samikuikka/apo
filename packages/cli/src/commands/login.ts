@@ -14,35 +14,6 @@ import {
 } from "../lib/api.ts";
 import { pickOption } from "../lib/picker.ts";
 import { resolveProject } from "../lib/projects.ts";
-
-/**
- * Does this saved key grant access to the project the user asked for?
- * A remembered key is bound to ONE project — `apo login --project X` used
- * to silently accept a valid key bound to a DIFFERENT project (agents
- * following the dashboard handoff prompt hit this: login "succeeded", every
- * later command 403'd). The fast paths must only fire when the requested
- * project is actually visible to the key; otherwise fall through to the
- * password flow, which resolves the flag against the full account list and
- * mints the right key. Failures here never block: on a fetch error the fast
- * path keeps its existing behavior.
- */
-async function keyCanSeeProject(
-  backendUrl: string,
-  apiKey: string,
-  projectFlag: string,
-): Promise<boolean> {
-  try {
-    const res = await fetch(resolveApiUrl(backendUrl, "/v1/projects").toString(), {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!res.ok) return true; // cannot tell — keep the fast path
-    const projects = (await res.json()) as { id: string; name: string }[];
-    return resolveProject(projects, projectFlag).status === "unique";
-  } catch {
-    return true;
-  }
-}
 import {
   backendKey,
   readCredentials,
@@ -101,6 +72,34 @@ async function promptPassword(rl: any, question: string): Promise<string> {
     };
     process.stdin.on("data", onData);
   });
+}
+
+/**
+ * Does this saved key grant access to the project the user asked for?
+ * A key is bound to one project, and `apo login --project X` used to
+ * silently accept a valid key bound to a different project — login
+ * "succeeded", every later command 403'd. The login fast paths only
+ * fire when the key can see the requested project; otherwise the
+ * password flow mints the right key. On a fetch error or non-OK
+ * response the check cannot tell, so the fast path keeps its old
+ * behavior instead of blocking.
+ */
+async function keyCanSeeProject(
+  backendUrl: string,
+  apiKey: string,
+  projectFlag: string,
+): Promise<boolean> {
+  try {
+    const res = await fetch(resolveApiUrl(backendUrl, "/v1/projects").toString(), {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) return true;
+    const projects = (await res.json()) as { id: string; name: string }[];
+    return resolveProject(projects, projectFlag).status === "unique";
+  } catch {
+    return true;
+  }
 }
 
 export async function run(argv: string[]): Promise<number> {

@@ -375,8 +375,7 @@ export function AgentTasksClient({
           in the project to verify discovery.
           {archived.length > 0 && (
             <div className="mt-2">
-              {archived.length} removed task{archived.length === 1 ? "" : "s"} still
-              hold{archived.length === 1 ? "s" : ""} retained runs.{" "}
+              {removedTasksHint(archived)}{" "}
               <button
                 type="button"
                 onClick={() => setArchivedActive(true)}
@@ -471,4 +470,13 @@ export function AgentTasksClient({
       )}
     </div>
   );
+}
+
+/** The empty state's pointer at the archived view. Names the retained runs
+ *  only when there are any — a tombstone can exist before the first run. */
+function removedTasksHint(archived: ArchivedAgentTask[]): string {
+  const runs = archived.reduce((total, task) => total + task.run_count, 0);
+  const count = `${archived.length} removed task${archived.length === 1 ? "" : "s"}`;
+  if (runs === 0) return `${count} not in the active suite.`;
+  return `${count} still ${archived.length === 1 ? "holds" : "hold"} ${runs} retained run${runs === 1 ? "" : "s"}.`;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,22 +13,23 @@ import {
   type OnboardingStep,
 } from "./onboarding-steps";
 
+const HOSTED_DOCS_SETUP_URL = new URL("/quickstart/", HOSTED_DOCS_URL).href;
+
 /**
- * The agent-first first-run surface for a Project with no recorded runs
- * yet. One primary action — copy the handoff prompt for the user's coding
- * agent (the docs' copy-prompt pattern, but project-aware) — above a
- * checklist derived entirely from real backend signals. The user watches
- * their agent work in the terminal and returns here; the panel re-reads
- * state on tab focus (router.refresh refetches the server projection —
- * no polling, no stream) and disappears for good once a run is recorded.
+ * The first-run surface for a Project with no recorded runs yet: one
+ * primary action (copy the project-aware handoff prompt for the user's
+ * coding agent) above a checklist derived from real backend signals.
+ * The user watches their agent in the terminal and comes back, so the
+ * panel re-reads state on tab focus instead of polling, and disappears
+ * for good once a run is recorded.
  */
 export function OnboardingPanel({ signals }: { signals: OnboardingSignals }) {
   const router = useRouter();
   const steps = buildOnboardingSteps(signals);
   const prompt = signals.publicUrl ? buildAgentHandoffPrompt(signals) : null;
 
-  // Correct on arrival: the user pastes the prompt, watches the agent in
-  // the terminal, and comes back — refetch exactly then, never on a timer.
+  // The user pastes the prompt, watches the agent in the terminal, and
+  // comes back — refetch exactly then, never on a timer.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === "visible") router.refresh();
@@ -137,8 +138,6 @@ function StepGlyph({ state }: { state: OnboardingStep["state"] }) {
   );
 }
 
-const HOSTED_DOCS_SETUP_URL = new URL("/quickstart/", HOSTED_DOCS_URL).href;
-
 function StepCommands({
   step,
   signals,
@@ -196,29 +195,35 @@ function StepCommands({
 }
 
 /**
- * The docs hero's copy-prompt interaction: a compact button; the prompt
- * shows only as a hover/focus tooltip below it (the text is agent-speak —
- * humans get the collapsed manual commands instead); clicking copies and
- * morphs to the confirmation.
+ * Copy button with the prompt previewed as a hover/focus tooltip — the
+ * text is agent-speak; humans get the collapsed manual commands instead.
  */
 function CopyPromptButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
+  // The confirmation reverts after 3s; the timer dies with the panel.
+  const revertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (revertTimer.current) clearTimeout(revertTimer.current);
+    };
+  }, []);
 
-  const copy = () => {
+  const copy = async () => {
     const clipboard = navigator.clipboard;
     if (!clipboard?.writeText) {
       setFailed(true);
       return;
     }
-    clipboard
-      .writeText(text)
-      .then(() => {
-        setCopied(true);
-        setFailed(false);
-        setTimeout(() => setCopied(false), 3000);
-      })
-      .catch(() => setFailed(true));
+    try {
+      await clipboard.writeText(text);
+      setCopied(true);
+      setFailed(false);
+      if (revertTimer.current) clearTimeout(revertTimer.current);
+      revertTimer.current = setTimeout(() => setCopied(false), 3000);
+    } catch {
+      setFailed(true);
+    }
   };
 
   return (
