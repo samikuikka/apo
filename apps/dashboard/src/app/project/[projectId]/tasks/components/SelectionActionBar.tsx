@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlertTriangle, ChevronDown, GitCompare, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -38,13 +38,7 @@ export function SelectionActionBar({
   onRun: () => void;
   onCompare: (bModel: string | null) => void;
 }) {
-  const [whyOpen, setWhyOpen] = useState(false);
   const showWarning = canRunTasks && !isDemoProject && runWarning !== null;
-  // An open disclosure belongs to the warning it explained; a changed or
-  // cleared warning starts closed.
-  useEffect(() => {
-    setWhyOpen(false);
-  }, [runWarning?.label]);
 
   return (
     <div className="sticky bottom-4 z-20 mx-auto mb-4 w-fit max-w-[calc(100%-1rem)]">
@@ -59,28 +53,7 @@ export function SelectionActionBar({
           separate floating card over the task list. */}
       <div className="border border-border bg-card shadow-2xl shadow-black/60">
         {showWarning && runWarning && (
-          <div data-testid="executor-run-warning">
-            <div className="flex items-center gap-2 px-3 pt-2 text-[12px]">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" />
-              <p className="min-w-0 truncate font-medium text-foreground">
-                {runWarning.label}
-                <span className="font-normal text-muted-foreground"> — {runWarning.fix}</span>
-              </p>
-              <button
-                type="button"
-                aria-expanded={whyOpen}
-                onClick={() => setWhyOpen((open) => !open)}
-                className="ml-auto shrink-0 text-[12px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
-              >
-                Why?
-              </button>
-            </div>
-            {whyOpen && (
-              <p className="px-3 pb-2 pl-[34px] text-[12px] leading-relaxed text-muted-foreground">
-                {runWarning.detail}
-              </p>
-            )}
-          </div>
+          <WarningStrip key={runWarning.label} warning={runWarning} />
         )}
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 px-3 py-2">
         <div className="flex items-center gap-2 text-[12px]">
@@ -131,6 +104,40 @@ export function SelectionActionBar({
         </DropdownMenu>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The warning as the bar's top edge: one phrase per state, the full sentences
+ * behind the Why? disclosure. Keyed by label at the call site, so a changed
+ * warning state remounts this and the disclosure starts closed — the open
+ * state belongs to the warning it explained.
+ */
+function WarningStrip({ warning }: { warning: ExecutorRunWarning }) {
+  const [whyOpen, setWhyOpen] = useState(false);
+  return (
+    <div data-testid="executor-run-warning">
+      <div className="flex items-center gap-2 px-3 pt-2 text-[12px]">
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" />
+        <p className="min-w-0 truncate font-medium text-foreground">
+          {warning.label}
+          <span className="font-normal text-muted-foreground"> — {warning.fix}</span>
+        </p>
+        <button
+          type="button"
+          aria-expanded={whyOpen}
+          onClick={() => setWhyOpen((open) => !open)}
+          className="ml-auto shrink-0 text-[12px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
+          Why?
+        </button>
+      </div>
+      {whyOpen && (
+        <p className="px-3 pb-2 pl-[34px] text-[12px] leading-relaxed text-muted-foreground">
+          {warning.detail}
+        </p>
+      )}
     </div>
   );
 }
