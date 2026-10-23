@@ -88,7 +88,7 @@ export function EvidenceViewsBar({
   const active = views.find((v) => v.id === activeViewId) ?? views[0]!;
   const activeModelFacet = facets.find((f) => f.model === active.model);
   // Effort is model-aware: only reveal the control for a specific model that
-  // has 2+ distinct effort tiers in the data (option B).
+  // has 2+ distinct effort tiers in the data.
   const effortOptions =
     active.model !== null && activeModelFacet && activeModelFacet.efforts.length > 1
       ? activeModelFacet.efforts
@@ -109,7 +109,9 @@ export function EvidenceViewsBar({
   // missing from the vocabularies (a hand-edited URL, a since-archived
   // model) still chip — a shared link must never apply an invisible,
   // unclearable filter. Demo projects have no views, so only search and
-  // status chip there.
+  // status chip there. While the archived view holds the list, the cohort
+  // narrows nothing — its dimensions do not chip.
+  const cohortChipsOn = viewsActive && !archivedStatus?.active;
   const statusChips: ActiveFilterChip[] =
     status.size > 0 && status.size < TASK_STATUS_FILTERS.length
       ? [...status].map((value) => {
@@ -131,7 +133,7 @@ export function EvidenceViewsBar({
       ? [{ key: "q", label: `"${query}"`, onRemove: () => onQueryChange("") }]
       : []),
     ...statusChips,
-    ...(viewsActive && active.model
+    ...(cohortChipsOn && active.model
       ? [{
           key: "model",
           label: active.model,
@@ -139,7 +141,7 @@ export function EvidenceViewsBar({
           onRemove: () => changeModel(ALL_MODELS_VALUE),
         }]
       : []),
-    ...(viewsActive && active.provider
+    ...(cohortChipsOn && active.provider
       ? [{
           key: "provider",
           label: active.provider,
@@ -147,10 +149,10 @@ export function EvidenceViewsBar({
           onRemove: () => onChange({ provider: null }),
         }]
       : []),
-    ...(viewsActive && active.effort
+    ...(cohortChipsOn && active.effort
       ? [{ key: "effort", label: active.effort, onRemove: () => onChange({ effort: null }) }]
       : []),
-    ...(viewsActive && active.since
+    ...(cohortChipsOn && active.since
       ? [{
           key: "since",
           label: sinceLabel(active.since),

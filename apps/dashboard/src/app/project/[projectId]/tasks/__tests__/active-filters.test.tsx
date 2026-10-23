@@ -3,14 +3,21 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AgentTasksClient } from "@/app/project/[projectId]/tasks/tasks-client";
-import { type AgentTaskSummary } from "@/lib/agent-task-api";
+import {
+  listArchivedAgentTasks,
+  type AgentTaskSummary,
+} from "@/lib/agent-task-api";
 import type { ProjectTaskSource } from "@/lib/projects-api";
 
 vi.mock("@/lib/agent-task-api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/agent-task-api")>(
     "@/lib/agent-task-api",
   );
-  return { ...actual, createAgentTaskBatchRun: vi.fn() };
+  return {
+    ...actual,
+    createAgentTaskBatchRun: vi.fn(),
+    listArchivedAgentTasks: vi.fn().mockResolvedValue([]),
+  };
 });
 
 // Evidence-view endpoints: the client fetches the model/effort palette on
@@ -193,5 +200,37 @@ describe("AgentTasksClient — active filter chips", () => {
     // Host and date are independent dimensions and stay.
     expect(screen.getByRole("button", { name: "Remove openrouter/flex filter" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove 7 days filter" })).toBeInTheDocument();
+  });
+
+  it("drops the cohort chips while the archived view holds the list", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listArchivedAgentTasks).mockResolvedValue([
+      {
+        task_id: "support/gone",
+        display_name: "gone",
+        folder_path: "support",
+        task_path: "tasks/support/gone",
+        removed_at: "2026-10-20T12:00:00Z",
+        source_commit_sha: null,
+        run_count: 2,
+        run_stats: null,
+      },
+    ]);
+    await activateCohortView(user);
+    await user.click(screen.getByRole("button", { name: "Status filter" }));
+    await user.click(screen.getByRole("menuitemcheckbox", { name: /Archived/ }));
+    // The cohort narrows nothing while the archived membership holds the
+    // list, so its chips must not claim to.
+    expect(
+      screen.queryByRole("button", { name: "Remove deepseek/deepseek-v4.1-flash filter" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove openrouter/flex filter" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove high filter" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove 7 days filter" })).not.toBeInTheDocument();
+    // Back to the active suite: the cohort survived the detour and chips again.
+    await user.click(screen.getByRole("button", { name: /back to the active suite/ }));
+    expect(
+      await screen.findByRole("button", { name: "Remove deepseek/deepseek-v4.1-flash filter" }),
+    ).toBeInTheDocument();
   });
 });
