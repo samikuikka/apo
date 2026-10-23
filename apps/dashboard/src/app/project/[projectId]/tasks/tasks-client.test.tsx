@@ -156,6 +156,7 @@ describe("AgentTasksClient — connected executor warning", () => {
       />,
     );
     await user.click(screen.getAllByRole("checkbox")[0]);
+    return user;
   };
 
   it("warns, without disabling Run, when no executor is connected", async () => {
@@ -163,19 +164,35 @@ describe("AgentTasksClient — connected executor warning", () => {
     await renderAndSelect();
 
     const warning = await screen.findByTestId("executor-run-warning");
-    expect(warning).toHaveTextContent("No connected environment");
+    // The strip carries only the state and the fix.
+    expect(warning).toHaveTextContent("Not connected");
     expect(warning).toHaveTextContent("apo connect");
-    expect(warning).toHaveTextContent("expire after 24 hours");
+    expect(warning).not.toHaveTextContent("expire after 24 hours");
     expect(getConnectedExecutorStatus).toHaveBeenCalledWith("acme-evals", expect.any(AbortSignal));
     const runButtons = screen.getAllByRole("button", { name: /Run/i });
     expect(runButtons.every((b) => !(b as HTMLButtonElement).disabled)).toBe(true);
   });
 
+  it("expands the queue-expiry sentences inside the bar on Why?", async () => {
+    vi.mocked(getConnectedExecutorStatus).mockResolvedValue({ state: "not_connected" });
+    const user = await renderAndSelect();
+
+    await screen.findByTestId("executor-run-warning");
+    const why = screen.getByRole("button", { name: "Why?" });
+    expect(why).toHaveAttribute("aria-expanded", "false");
+    await user.click(why);
+    expect(screen.getByTestId("executor-run-warning")).toHaveTextContent("expire after 24 hours");
+    expect(why).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("points at apo task publish when the catalog is out of date", async () => {
     vi.mocked(getConnectedExecutorStatus).mockResolvedValue({ state: "catalog_mismatch" });
-    await renderAndSelect();
+    const user = await renderAndSelect();
 
-    expect(await screen.findByTestId("executor-run-warning")).toHaveTextContent(
+    const warning = await screen.findByTestId("executor-run-warning");
+    expect(warning).toHaveTextContent("Catalog mismatch");
+    await user.click(screen.getByRole("button", { name: "Why?" }));
+    expect(screen.getByTestId("executor-run-warning")).toHaveTextContent(
       "apo task publish",
     );
   });

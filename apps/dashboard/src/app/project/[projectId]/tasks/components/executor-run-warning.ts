@@ -12,14 +12,20 @@ const POLL_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 export interface ExecutorRunWarning {
-  title: string;
+  /** The strip's short state, e.g. "Not connected". */
+  label: string;
+  /** The inline fix shown after the state, e.g. "run apo connect". */
+  fix: string;
+  /** The Why? disclosure: full sentences, including the queue expiry. */
   detail: string;
 }
 
 /**
  * Why a dashboard run would sit in the queue, or null when an Executor will
  * claim it. Dashboard Batches target the member's own Connected Executors, so
- * a teammate's `apo connect` does not help; the copy says "your".
+ * a teammate's `apo connect` does not help; the copy says "your". The strip
+ * carries only the state and the fix — the queue-expiry sentence is one-time
+ * education and lives behind the Why? disclosure.
  */
 export function executorRunWarning(
   state: ConnectedEnvironmentState | null,
@@ -29,24 +35,28 @@ export function executorRunWarning(
   switch (state) {
     case "not_connected":
       return {
-        title: "No connected environment",
+        label: "Not connected",
+        fix: "run apo connect",
         detail: `Run apo connect in this Task workspace to execute dashboard runs. ${expiry}`,
       };
     case "offline":
       return {
-        title: "Your connected environment is offline",
+        label: "Offline",
+        fix: "restart apo connect",
         detail: `Start apo connect again in this Task workspace. ${expiry}`,
       };
     case "incompatible":
       return {
-        title: "Your connected environment is incompatible",
-        detail: `Update the Apo CLI, then restart apo connect. ${expiry}`,
+        label: "CLI outdated",
+        fix: "update, then reconnect",
+        detail: `Update the Apo CLI, then restart apo connect. Queued work starts when compatible; ${expiry.toLowerCase()}`,
       };
     case "catalog_mismatch":
       // The tasks page only renders with a published catalog, so a mismatch
       // means the two differ; either side may be the newer one.
       return {
-        title: "Your local catalog doesn’t match the published one",
+        label: "Catalog mismatch",
+        fix: "publish or pull your tasks",
         detail: `Pull the latest tasks, or run apo task publish if your copy is newer; apo connect resumes automatically. ${expiry}`,
       };
     default:

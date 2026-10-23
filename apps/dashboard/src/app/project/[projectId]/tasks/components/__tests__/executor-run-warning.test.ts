@@ -20,14 +20,18 @@ describe("executorRunWarning", () => {
   });
 
   it.each([
-    ["not_connected", "apo connect"],
-    ["offline", "apo connect"],
-    ["incompatible", "Update the Apo CLI"],
-    ["catalog_mismatch", "Pull the latest tasks"],
-  ] as const)("warns for %s and names the fix", (state, fix) => {
+    ["not_connected", "Not connected", "run apo connect"],
+    ["offline", "Offline", "restart apo connect"],
+    ["incompatible", "CLI outdated", "update, then reconnect"],
+    ["catalog_mismatch", "Catalog mismatch", "publish or pull your tasks"],
+  ] as const)("warns for %s with a one-phrase strip and the fix", (state, label, fix) => {
     const warning = executorRunWarning(state);
-    expect(warning?.detail).toContain(fix);
+    expect(warning?.label).toBe(label);
+    expect(warning?.fix).toBe(fix);
+    // The queue-expiry sentence is disclosure material, never strip material.
     expect(warning?.detail).toContain("expire after 24 hours");
+    expect(warning?.label).not.toContain("24 hours");
+    expect(warning?.fix).not.toContain("24 hours");
   });
 
   it("does not tell a member with a stale checkout to publish over a newer catalog", () => {
