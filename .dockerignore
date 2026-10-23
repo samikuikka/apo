@@ -4,16 +4,31 @@
 # shadows the image's own pnpm links with host-local ones.
 node_modules/
 **/node_modules/
+# jj workspaces (.worktrees/) are full checkouts with their own build
+# output, caches, and databases — tens of GB on an active machine. No
+# image references them, and the depth-specific patterns elsewhere in
+# this file never reach inside them, so they need their own line.
+.worktrees/
+# Same root-anchoring gap for build output and caches: a host-built
+# apps/dashboard/.next would ride `COPY apps/dashboard/` into the
+# builder as stale state, and interpreter caches follow source trees
+# wherever they sit.
 .next/
+**/.next/
 __pycache__/
+**/__pycache__/
 .uv-cache/
+**/.uv-cache/
 *.pyc
+**/*.pyc
 # Match .env at any depth. A bare `.env` only excludes the repo-root file,
 # so a local `backend/.env` slips into the image via `COPY backend/` as
 # root-owned `/app/.env` and crashes the appuser-owned uvicorn with
-# PermissionError on load_dotenv(). `**/.env` covers every nested copy.
+# PermissionError on load_dotenv(). `**/.env` covers every nested copy;
+# `**/.env.*` covers the variants Next.js reads (apps/dashboard/.env.local).
 .env
 **/.env
 .env.*
+**/.env.*
 data/
 backend/data/
