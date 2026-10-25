@@ -17,7 +17,8 @@ export function generateMetadata(): Metadata {
     // adds no value in a browser tab. The root/landing page falls back to
     // "apo" below — it IS the app, so the bare name belongs there.
     title: { default: "apo", template: "%s" },
-    description: "Observability and evaluation for agent tasks.",
+    description:
+      "Capability testing for agent harnesses: define what the agent must be capable of, run the real system, get pass or fail with evidence.",
     applicationName: "apo",
     icons: {
       icon: [

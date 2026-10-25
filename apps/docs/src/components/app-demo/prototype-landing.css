@@ -1174,7 +1174,7 @@
 	.pl-native .text-\[13px\] { font-size: 13px; }
 		.pl-native .lg\:justify-between { justify-content: space-between; }
 	.pl-native .max-h-80 { max-height: 20rem; }
-		.pl-appwin main .lg\\:justify-between {
+		.pl-appwin main .lg\:justify-between {
 			justify-content: flex-start;
 		}
 		.pl-appwin main .overflow-x-auto {

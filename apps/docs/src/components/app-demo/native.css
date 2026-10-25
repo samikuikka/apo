@@ -537,7 +537,7 @@
 .pl-native .bg-amber-400\/10 { background-color: rgb(251 191 36 / 10%); }
 .pl-native .bg-amber-400\/40 { background-color: rgb(251 191 36 / 40%); }
 .pl-native .duration-200 { transition-duration: 200ms; }
-.pl-native .max-w-\\[120px\\] { max-width: 120px; }
+.pl-native .max-w-\[120px\] { max-width: 120px; }
 .pl-native .space-y-2 > * + * { margin-top: 0.5rem; }
 .pl-native .items-start { align-items: flex-start; }
 .pl-native .w-40 { width: 10rem; }
@@ -636,15 +636,15 @@
 
 /* Conversation transcript port utilities. */
 .pl-native .rounded { border-radius: 0.25rem !important; }
-.pl-native .min-h-\\[52px\\] { min-height: 52px; }
+.pl-native .min-h-\[52px\] { min-height: 52px; }
 .pl-native .min-w-16 { min-width: 4rem; }
-.pl-native .max-h-\\[calc(100vh-400px\\)\\] { max-height: calc(100vh - 400px); }
-.pl-native .min-h-\\[200px\\] { min-height: 200px; }
-.pl-native .border-border\\/40 { border-color: color-mix(in oklab, var(--border) 40%, transparent); }
-.pl-native .bg-background\\/30 { background-color: color-mix(in oklab, var(--background) 30%, transparent); }
-.pl-native .bg-card\\/70 { background-color: color-mix(in oklab, var(--card) 70%, transparent); }
+.pl-native .max-h-\[calc\(100vh-400px\)\] { max-height: calc(100vh - 400px); }
+.pl-native .min-h-\[200px\] { min-height: 200px; }
+.pl-native .border-border\/40 { border-color: color-mix(in oklab, var(--border) 40%, transparent); }
+.pl-native .bg-background\/30 { background-color: color-mix(in oklab, var(--background) 30%, transparent); }
+.pl-native .bg-card\/70 { background-color: color-mix(in oklab, var(--card) 70%, transparent); }
 .pl-native .ml-16 { margin-left: 4rem; }
-.pl-native .py-2\\.5 { padding-block: 0.625rem; }
+.pl-native .py-2\.5 { padding-block: 0.625rem; }
 .pl-native .transition-none { transition: none; }
 
 /* ── Mobile shell (< 56.25rem): reflow, don't shrink ───────────────────
@@ -684,12 +684,12 @@
 	}
 
 	/* Run header: stack breadcrumb above title, meta wraps */
-	.pl-appwin main .lg\\:flex-row {
+	.pl-appwin main .lg\:flex-row {
 		flex-direction: column;
 		gap: 0.5rem;
 	}
 
-	.pl-appwin main .lg\\:items-start {
+	.pl-appwin main .lg\:items-start {
 		align-items: stretch;
 	}
 
@@ -700,16 +700,16 @@
 	}
 
 	/* OutcomeSummary: rate row above the bar on phones */
-	.pl-appwin main .sm\\:flex-row {
+	.pl-appwin main .sm\:flex-row {
 		flex-direction: column;
 		gap: 0.75rem;
 	}
 
-	.pl-appwin main .sm\\:items-center {
+	.pl-appwin main .sm\:items-center {
 		align-items: flex-start;
 	}
 
-	.pl-appwin main .sm\\:flex-col {
+	.pl-appwin main .sm\:flex-col {
 		flex-direction: row;
 		align-items: baseline;
 		gap: 0.5rem;
