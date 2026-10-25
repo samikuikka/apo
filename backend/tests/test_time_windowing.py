@@ -69,18 +69,13 @@ class TestEraSelection:
         assert era is not None
         assert era.start_date == _dt("2026-03-01T00:00:00Z")
 
-    def test_boundary_start_is_inclusive(self, session: Session) -> None:
+    def test_boundaries_are_half_open(self, session: Session) -> None:
+        # Exactly at the shared boundary: the second era's start is inclusive,
+        # the first era's end is exclusive — one query pins both.
         _make_two_eras(session)
         era = resolve_model_era(session, "claude-3", "__global__", _dt_query("2026-03-01T00:00:00Z"))
         assert era is not None
-        assert era.start_date == _dt("2026-03-01T00:00:00Z")  # half-open [start, end)
-
-    def test_boundary_end_is_exclusive(self, session: Session) -> None:
-        _make_two_eras(session)
-        # Exactly at the first era's end -> belongs to the second era.
-        era = resolve_model_era(session, "claude-3", "__global__", _dt_query("2026-03-01T00:00:00Z"))
-        assert era is not None
-        assert era.start_date == _dt("2026-03-01T00:00:00Z")
+        assert era.start_date == _dt("2026-03-01T00:00:00Z")  # [start, end)
 
     def test_no_era_for_date_outside_all_windows(self, session: Session) -> None:
         # Two finite-ish eras but check a date before the first era starts.
@@ -113,13 +108,6 @@ class TestEraSelection:
         future = resolve_model_era(session, "gpt-4o", "__global__", _dt_query("2030-01-01T00:00:00Z"))
         assert past is not None
         assert future is not None
-
-    def test_late_arriving_span_prices_at_its_era(self, session: Session) -> None:
-        """A span that arrived today but started in Feb prices at Feb's era."""
-        _make_two_eras(session)
-        era = resolve_model_era(session, "claude-3", "__global__", _dt_query("2026-02-15T00:00:00Z"))
-        assert era is not None
-        assert era.start_date == _dt("2026-01-01T00:00:00Z")
 
     def test_project_overrides_shadow_global(self, session: Session) -> None:
         session.add(

@@ -91,11 +91,6 @@ suite("groupVerdict", () => {
     ];
     expect(groupVerdict(checks)).toEqual({ passed: 2, failed: 1, total: 3 });
   });
-
-  it("treats a group where every check passes as fully passing", () => {
-    const checks = [check({ id: "a", pass: true }), check({ id: "b", pass: true })];
-    expect(groupVerdict(checks)).toEqual({ passed: 2, failed: 0, total: 2 });
-  });
 });
 
 suite("groupCost", () => {

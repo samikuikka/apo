@@ -93,7 +93,9 @@ describe("ToolDefinitionsSection", () => {
       { function: { name: "extra", description: "Extra tool" } },
     ];
     render(<ToolDefinitionsSection tools={fourTools} />);
+    // Collapsed means the tool names are hidden, not just the header present.
     expect(screen.getByText("Tool Definitions")).toBeInTheDocument();
+    expect(screen.queryByText("search")).not.toBeInTheDocument();
   });
 
   it("expands parameters on click", async () => {
@@ -139,12 +141,6 @@ describe("ThinkingBlock", () => {
     await user.click(toggleBtn);
 
     expect(screen.getByText("A".repeat(100) + "...")).toBeInTheDocument();
-  });
-
-  it("shows full content when expanded", () => {
-    const thinking = "Short reasoning";
-    render(<ThinkingBlock thinking={thinking} />);
-    expect(screen.getByText("Short reasoning")).toBeInTheDocument();
   });
 
   it("collapses long content by default", () => {

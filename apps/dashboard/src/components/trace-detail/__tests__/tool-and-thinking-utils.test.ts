@@ -74,7 +74,7 @@ describe("extractTools", () => {
     expect(extractTools("not json")).toEqual([]);
   });
 
-  it("extracts tools from metadata.tools", () => {
+  it("ignores metadata.tools — not an extraction source", () => {
     const data = {
       metadata: {
         tools: [{ function: { name: "metadata_tool" } }],

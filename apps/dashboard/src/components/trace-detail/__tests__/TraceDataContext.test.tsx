@@ -3,9 +3,6 @@ import { render, screen, act } from "@testing-library/react";
 import {
   TraceDataProvider,
   useTraceData,
-  LARGE_TRACE_THRESHOLD,
-  GRAPH_DISABLED_THRESHOLD,
-  SIMPLIFIED_TREE_THRESHOLD,
 } from "../contexts";
 import type { TraceDetail, LoggedCall } from "../contexts";
 
@@ -83,12 +80,6 @@ function renderWithProvider(ui: React.ReactElement, run: TraceDetail | null) {
 }
 
 describe("TraceDataContext - performance thresholds", () => {
-  it("exports correct threshold constants", () => {
-    expect(LARGE_TRACE_THRESHOLD).toBe(100);
-    expect(GRAPH_DISABLED_THRESHOLD).toBe(500);
-    expect(SIMPLIFIED_TREE_THRESHOLD).toBe(1000);
-  });
-
   it("reports normal trace for <= 100 calls", () => {
     const run = makeTraceDetail(100);
     renderWithProvider(<Consumer />, run);

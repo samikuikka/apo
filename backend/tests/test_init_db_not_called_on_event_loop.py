@@ -62,5 +62,18 @@ def test_init_db_is_never_called_inline_from_async_code() -> None:
 
 def test_lifespan_hands_init_db_to_a_worker_thread() -> None:
     """The startup path keeps the hand-off, so the guard above stays meaningful."""
-    source = (_BACKEND / "api.py").read_text(encoding="utf-8")
-    assert "asyncio.to_thread(init_db)" in source
+    tree = ast.parse((_BACKEND / "api.py").read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "to_thread"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "asyncio"
+            and any(isinstance(arg, ast.Name) and arg.id == "init_db" for arg in node.args)
+        ):
+            return
+    raise AssertionError(
+        "api.py no longer hands init_db to a worker thread"
+        " (expected a call `asyncio.to_thread(init_db, ...)`)"
+    )

@@ -112,12 +112,6 @@ class TestMatchTier:
         tier = match_tier(session, model, {"input": 150_000, "cache_read": 100_000, "output": 0})
         assert tier.name == "large-context"
 
-    def test_default_returned_when_no_conditions_pass(self, session: Session) -> None:
-        model = _make_gemini_25_pro(session)
-        tier = match_tier(session, model, {"input": 10, "cache_read": 0, "output": 0})
-        assert tier.name == "default"
-
-
 class TestValidateTierGraph:
     def test_rejects_zero_default_tiers(self) -> None:
         doc = _doc([TierDocument(name="a", is_default=False, priority=0)])

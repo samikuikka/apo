@@ -174,8 +174,12 @@ describe("CompareViewsClient single-task expansion", () => {
       />,
     );
 
-    // beta is pass/pass (equal) but must still be visible and expandable
-    expect(screen.getByTestId("toggle-evals/beta")).toBeInTheDocument();
+    // beta is pass/pass (equal) but must still be visible and expandable:
+    // it renders as a real row, starts collapsed, and its toggle activates it.
+    const betaRow = screen.getByRole("button", { name: "evals/beta" });
+    expect(betaRow).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(betaRow);
+    expect(setActiveTaskId).toHaveBeenCalledWith("evals/beta");
   });
 });
 

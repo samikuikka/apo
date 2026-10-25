@@ -56,18 +56,19 @@ export function listTaskCandidateDirs(options: ScanOptions): string[] {
       return;
     }
 
-    const hasEval = existsSync(currentDir) &&
-      readdirSync(currentDir).some((f) => f.endsWith(".eval.ts"));
-    if (hasEval) {
-      results.push(currentDir);
-      return;
-    }
-
+    // One guarded readdir serves both the eval-file check and the walk —
+    // an unreadable directory reports through onError instead of throwing
+    // out of the scan.
     let entries: string[];
     try {
       entries = readdirSync(currentDir);
     } catch (error) {
       options.onError?.(currentDir, error);
+      return;
+    }
+
+    if (entries.some((f) => f.endsWith(".eval.ts"))) {
+      results.push(currentDir);
       return;
     }
 

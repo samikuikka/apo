@@ -2,16 +2,11 @@
 
 from starlette.requests import Request
 
-from apo.auth.middleware import _COOKIE_NAMES, _get_session_cookie
+from apo.auth.middleware import _get_session_cookie
 
 
 class TestCookieNameAlignment:
     """Tests that backend middleware checks the same cookie names NextAuth sets."""
-
-    def test_both_cookie_names_are_checked(self) -> None:
-        """_COOKIE_NAMES must include both HTTP and HTTPS variants."""
-        assert "authjs.session-token" in _COOKIE_NAMES
-        assert "__Secure-authjs.session-token" in _COOKIE_NAMES
 
     def test_get_session_cookie_finds_http_cookie(self) -> None:
         """The plain (HTTP) session cookie name should be recognized."""

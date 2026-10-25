@@ -30,14 +30,10 @@ def _setup_admin_user(client: TestClient, session: Session) -> str:
 
 class TestRuntimeConfig:
     def test_get_runtime_config_returns_supported_topology(self) -> None:
-        from apo.services.runtime_config import (
-            SUPPORTED_TOPOLOGY,
-            get_runtime_config,
-        )
+        from apo.services.runtime_config import get_runtime_config
 
         config = get_runtime_config()
 
-        assert config.supported_topology == SUPPORTED_TOPOLOGY
         assert config.supported_topology == "single-node"
         assert config.task_execution_mode == "executor_pools"
         assert isinstance(config.scheduler_enabled, bool)

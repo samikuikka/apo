@@ -132,8 +132,6 @@ describe("Runs page live refresh", () => {
         canDeleteRuns={false}
       />,
     );
-    expect(autoRefreshProps).toHaveBeenCalledWith(expect.objectContaining({ batchRuns: listed }));
-
     // Task starts reported by the live refresh reach the row as a tick.
     expect(rowProps).toHaveBeenLastCalledWith(expect.objectContaining({ taskStartTick: 0 }));
     const { onTasksStarted } = autoRefreshProps.mock.calls.at(-1)![0] as {

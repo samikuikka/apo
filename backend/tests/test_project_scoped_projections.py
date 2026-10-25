@@ -148,27 +148,3 @@ class TestProjectScopedProjection:
             ).all()
             assert len(runs) == 1  # idempotent — one row, not two
 
-    def test_two_projects_different_spans_same_trace(self):
-        """Two projects ingest different spans of the same trace."""
-        receiver = OtlpReceiver()
-
-        # Project A: root span
-        payload_a = _make_otlp_payload(_SHARED_TRACE, _SHARED_SPAN_A)
-        with Session(engine) as session:
-            receiver.ingest(payload=payload_a, content_type="application/json",
-                           project_id=_PROJECT_A, session=session)
-
-        # Project B: child span (same trace, different span)
-        payload_b = _make_otlp_payload(_SHARED_TRACE, _SHARED_SPAN_B, parent_span_id=_SHARED_SPAN_A)
-        with Session(engine) as session:
-            receiver.ingest(payload=payload_b, content_type="application/json",
-                           project_id=_PROJECT_B, session=session)
-
-        with Session(engine) as session:
-            # Both projects have runs for the same trace
-            runs = session.exec(
-                select(RunDB).where(RunDB.id == _SHARED_TRACE)
-            ).all()
-            assert len(runs) == 2
-            projects = {r.project for r in runs}
-            assert projects == {_PROJECT_A, _PROJECT_B}

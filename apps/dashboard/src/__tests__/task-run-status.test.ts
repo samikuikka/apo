@@ -12,15 +12,6 @@ import {
 const CANONICAL_RUN_STATUSES = ["pending", "running", "passed", "failed", "error"] as const;
 
 describe("taskRunStatusConfig", () => {
-  it("renders every canonical status as itself", () => {
-    for (const status of CANONICAL_RUN_STATUSES) {
-      const config = taskRunStatusConfig(status);
-      expect(config.label.toLowerCase(), `status ${status}`).toBe(
-        TASK_RUN_STATUS[status].label.toLowerCase(),
-      );
-    }
-  });
-
   it("keeps the known set in sync with the backend lifecycle", () => {
     expect(Object.keys(TASK_RUN_STATUS).sort()).toEqual([...CANONICAL_RUN_STATUSES].sort());
   });

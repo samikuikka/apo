@@ -34,9 +34,11 @@ describe(".github/workflows/publish-cli.yml contract", () => {
     expect(yaml).toMatch(/runs-on:\s*ubuntu-latest/);
   });
 
-  it("uses pnpm 11.3.0 and Node 24", () => {
-    expect(yaml).toMatch(/version:\s*11\.3\.0/);
-    expect(yaml).toMatch(/node-version:\s*24/);
+  it("sets up pinned pnpm and Node versions", () => {
+    // Exact digits churn with routine tool bumps; the invariant is that the
+    // workflow pins both toolchains rather than trusting runner defaults.
+    expect(yaml).toMatch(/version:\s*\d+\.\d+\.\d+/);
+    expect(yaml).toMatch(/node-version:\s*\d+/);
   });
 
   it("installs with a frozen lockfile", () => {

@@ -288,7 +288,8 @@ class TestCacheKeyDerivation:
         )
 
     def test_legacy_cache_key_uses_token_hash(self) -> None:
-        assert cache_key_for_legacy("abc123") == "legacy:abc123"
+        # Keyed on the token itself — different tokens must not share a slot.
+        assert cache_key_for_legacy("abc123") != cache_key_for_legacy("abc124")
 
 
 class TestValidationCachingBasicExpiry:
@@ -326,20 +327,9 @@ class TestValidationCachingBasicExpiry:
             assert spy.call_count == 2
 
 
-class TestValidationCachingBearerPublic:
-    """Removed the ``validate_bearer_public_key`` path. These tests
-    pin the removal: a public identifier alone must not consult the cache,
-    must not populate the cache, and must not return a cached credential."""
-
-    def test_validate_bearer_public_key_is_removed(self) -> None:
-        import apo.auth.api_key_auth as auth_module
-
-        assert not hasattr(auth_module, "validate_bearer_public_key")
-
-    def test_cache_key_for_bearer_public_is_removed(self) -> None:
-        import apo.auth.api_key_cache as cache_module
-
-        assert not hasattr(cache_module, "cache_key_for_bearer_public")
+# The public-key-only Bearer path removal (validate_bearer_public_key /
+# cache_key_for_bearer_public) is pinned once, with behavioral 401 coverage,
+# in test_two_key_auth.py.
 
 
 class TestValidationCachingLegacy:

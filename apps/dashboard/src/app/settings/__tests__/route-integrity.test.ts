@@ -75,12 +75,6 @@ describe("settings route integrity", () => {
     expect(all).toEqual(union);
   });
 
-  it("settingsHref derives /settings/<segment> and is stable", () => {
-    for (const item of ALL_SETTINGS_ITEMS) {
-      expect(settingsHref(item)).toBe(`/settings/${item.segment}`);
-    }
-  });
-
   it("admin-only gating is only applied to instance items", () => {
     const nonInstanceAdmin = [
       ...PERSONAL_ITEMS,

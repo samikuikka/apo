@@ -24,7 +24,7 @@ import pytest
 from apo.models.db import AgentTaskBatchRunDB, ProjectDB, ProjectTaskSourceDB, TaskRevisionDB
 from apo.services.artifact_stores.local import LocalArtifactStore
 from apo.services.project_deletion import delete_project_data
-from apo.services.retention import _delete_old_batch_runs, RETENTION_DAYS
+from apo.services.retention import _delete_old_batch_runs
 from apo.services.task_revisions import (
     create_attested_task_revision,
     delete_task_revision_bundles_for_batches,
@@ -148,11 +148,6 @@ def test_delete_old_batch_runs_removes_revision_and_batch_rows_after_objects(
     assert deleted >= 1
     assert session.get(TaskRevisionDB, rev_id) is None
     assert session.get(AgentTaskBatchRunDB, "batch-old") is None
-
-
-def test_retention_days_guard_is_respected() -> None:
-    # Sanity: the constant exists and is an integer (cleanup is a no-op at <=0).
-    assert isinstance(RETENTION_DAYS, int)
 
 
 # ── project deletion wiring (sync: delete_project_data uses asyncio.run) ──

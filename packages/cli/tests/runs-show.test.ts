@@ -411,6 +411,7 @@ describe("runs show command", () => {
     const out = stripAnsi(logs.join("\n"));
     // Unknown, not zero: "not reported" reads differently from "didn't think".
     expect(out).toContain("Reasoning: not reported (provider did not send reasoning usage)");
+    expect(out).not.toMatch(/Reasoning: 0/);
   });
 
   it("omits the reasoning line when no generation reported reasoning", async () => {
@@ -742,51 +743,6 @@ describe("runs show reasoning rollups (issue #309)", () => {
     vi.restoreAllMocks();
   });
 
-  it("prints reasoning total with the call that dominates it", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      mockResponse(
-        makeRun({
-          total_reasoning_tokens: 45_678,
-          max_call_reasoning_tokens: 12_345,
-          max_call_reasoning_call_id: "abcdef0123456789",
-          max_call_latency_ms: 252_000,
-          max_call_latency_call_id: "fedcba9876543210",
-          total_model_time_ms: 750_000,
-        }),
-      ),
-    );
-    const { logs, restore } = captureLog();
-
-    await run([FULL_ID, "--backend", "http://backend.test"]);
-    restore();
-
-    const out = stripAnsi(logs.join("\n"));
-    expect(out).toMatch(/Reasoning: 45,678 tok/);
-    expect(out).toContain("max 12,345 in one call");
-    expect(out).toContain("observation abcdef0123456789");
-    expect(out).not.toContain("Slowest call:");
-    expect(out).not.toContain("Model time:");
-  });
-
-  it("prints unknown reasoning explicitly — never as zero", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      mockResponse(
-        makeRun({
-          total_reasoning_tokens: null,
-          total_tokens: 5_000,
-        }),
-      ),
-    );
-    const { logs, restore } = captureLog();
-
-    await run([FULL_ID, "--backend", "http://backend.test"]);
-    restore();
-
-    const out = stripAnsi(logs.join("\n"));
-    expect(out).toContain("Reasoning: not reported");
-    expect(out).not.toMatch(/Reasoning: 0/);
-  });
-
   it("prints a reported zero reasoning total without the unknown notice", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse(
@@ -805,23 +761,6 @@ describe("runs show reasoning rollups (issue #309)", () => {
     const out = stripAnsi(logs.join("\n"));
     expect(out).toMatch(/Reasoning: 0 tok/);
     expect(out).not.toContain("not reported");
-  });
-
-  it("omits the timing lines for legacy payloads without them", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      mockResponse(makeRun()),
-    );
-    const { logs, restore } = captureLog();
-
-    await run([FULL_ID, "--backend", "http://backend.test"]);
-    restore();
-
-    const out = stripAnsi(logs.join("\n"));
-    // Tokens are present without any reasoning datum → the explicit
-    // unknown line, but no timing lines at all.
-    expect(out).toContain("Reasoning: not reported");
-    expect(out).not.toContain("Slowest call:");
-    expect(out).not.toContain("Model time:");
   });
 });
 

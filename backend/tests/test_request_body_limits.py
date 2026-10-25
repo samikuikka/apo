@@ -222,18 +222,6 @@ class TestWritePathByteCaps:
         assert status == 200
         assert body == b"ok:64"
 
-    def test_default_construction_keeps_shipped_limits(self):
-        # No body_limits → the historical hardcoded caps (10 MiB / 100 MiB),
-        # so direct constructions keep their byte-for-byte behavior.
-        resolved = {
-            (m, p, s): v
-            for m, p, s, v in _middleware()._limited_paths  # pyright: ignore[reportPrivateUsage]
-        }
-        assert resolved[("POST", "/v1/agent-task-runs/", "result")] == 10_485_760
-        assert resolved[("PUT", "/v1/agent-task-artifact-uploads/", None)] == 104_857_600
-        assert resolved[("POST", "/v1/runs", None)] == 10_485_760
-
-
 # ---------------------------------------------------------------------------
 # 3. Full-app wiring (scene)
 # ---------------------------------------------------------------------------

@@ -11,7 +11,6 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from apo.models.pricing import (
     MatchResponse,
-    ModelDocument,
     ModelDocumentCreate,
     ModelRowDB,
     PriceDB,
@@ -59,19 +58,15 @@ class TestTableShape:
         rows = list(session.exec(select(PriceDB)).all())
         assert len(rows) == 1
 
-    def test_price_usage_key_indexed(self) -> None:
-        # Smoke: the model declares index=True (table build succeeds).
-        assert PriceDB.model_fields["usage_key"] is not None
-
-
 # --- Tier condition validation --------------------------------------------
 
 
 class TestTierCondition:
     def test_valid_operators_accepted(self) -> None:
         for op in ("gt", "lt", "gte", "lte"):
-            cond = TierCondition(keys=[UsageKey.INPUT], operator=op, threshold=200_000)
-            assert cond.operator == op
+            # Constructor accepts the operator (assignment identity carries no
+            # information — the rejected-operator test next to it is the check).
+            TierCondition(keys=[UsageKey.INPUT], operator=op, threshold=200_000)
 
     def test_invalid_operator_rejected(self) -> None:
         with pytest.raises(ValueError):
@@ -122,21 +117,6 @@ class TestModelDocumentCreate:
     def test_default_project_is_global(self) -> None:
         doc = ModelDocumentCreate(match_pattern="^x$", provider="openai", pricing_tiers=[])
         assert doc.project == "__global__"
-
-
-class TestModelDocument:
-    def test_round_trips_with_db_ids(self) -> None:
-        doc = ModelDocument(
-            id=1,
-            project="__global__",
-            match_pattern="^gpt-4o$",
-            provider="openai",
-            display_name="GPT-4o",
-            start_date=None,
-            end_date=None,
-            pricing_tiers=[],
-        )
-        assert doc.id == 1
 
 
 class TestMatchResponse:

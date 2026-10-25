@@ -99,18 +99,6 @@ class TestPublicUrl:
 
 
 # ---------------------------------------------------------------------------
-# Supported topology (renamed for v1)
-# ---------------------------------------------------------------------------
-
-
-class TestSupportedTopology:
-    def test_topology_is_v1_single_node(self) -> None:
-        config = get_runtime_config()
-
-        assert config.supported_topology == "single-node"
-
-
-# ---------------------------------------------------------------------------
 # Max concurrent batches
 # ---------------------------------------------------------------------------
 
@@ -162,17 +150,6 @@ class TestMaxConcurrentBatches:
 
 
 # ---------------------------------------------------------------------------
-# Trusted task sources
-# ---------------------------------------------------------------------------
-
-
-class TestTrustedTaskSourcesOnly:
-    def test_always_true_in_v1(self) -> None:
-        config = get_runtime_config()
-
-        assert config.trusted_task_sources_only is True
-
-
 # ---------------------------------------------------------------------------
 # Serialization safety: no secrets leak through new fields
 # ---------------------------------------------------------------------------

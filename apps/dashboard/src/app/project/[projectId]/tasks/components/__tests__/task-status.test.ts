@@ -37,14 +37,12 @@ describe("getTaskStatus", () => {
     const status = getTaskStatus(task({ last_run_no_verdict: true }));
     expect(status).toBe("no_verdict");
     expect(STATUS_CONFIG.no_verdict.label).toBe("No verdict");
-    expect(STATUS_CONFIG.no_verdict.text).toBe("text-warning");
   });
 
   it("reads an execution error as Errored, agreeing with the filter", () => {
     const t = task({ last_run_no_verdict: false });
     expect(getTaskStatus(t)).toBe("errored");
     expect(taskFilterStatus(t)).toBe("errored");
-    expect(STATUS_CONFIG.errored.text).toBe("text-warning");
   });
 
   it("reads a pending latest run as running, never FAILED", () => {

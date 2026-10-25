@@ -1,5 +1,6 @@
 # pyright: reportAny=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import cast
 
@@ -142,6 +143,7 @@ def test_calls_subquery_is_project_scoped_in_the_query_plan(session: Session):
     assert "SCAN logged_calls" not in plan_text, (
         f"logged_calls subquery is not project-scoped — full scan per view: {plan_text}"
     )
-    # The subquery must actually filter by project inside, not outside
-    # (placeholder style is dialect-compiled — assert the bare predicate).
-    assert "logged_calls l WHERE l.project" in statement
+    # The subquery must actually filter by project inside, not outside.
+    # Alias-agnostic: whatever the ORM names the table, the predicate must
+    # sit inside the subquery (placeholder style is dialect-compiled).
+    assert re.search(r"logged_calls \w+ WHERE \w+\.project", statement)

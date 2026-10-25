@@ -41,17 +41,24 @@ describe("CallCostBreakdownTooltip", () => {
 
     await user.hover(screen.getByText("$8.50"));
 
-    // Model header + total above the rule.
+    // Model header and total render.
     expect(screen.getAllByText("gpt-4o").length).toBeGreaterThan(0);
-    // Total in USD (8_500_000 micro -> $8.5000).
     expect(screen.getAllByText(/Total/).length).toBeGreaterThan(0);
-    // Family group labels (uppercase headers).
-    expect(screen.getAllByText("Input").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Output").length).toBeGreaterThan(0);
-    // Dimensions present.
-    expect(screen.getAllByText(/Input/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Output/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Reasoning/).length).toBeGreaterThan(0);
+
+    // Grouped by family (Input, then Output), rows sorted by descending
+    // cost inside each family: input(1M) > cache read(0.5M) and
+    // output(5M) > reasoning(2M). DOM order pins grouping AND sorting.
+    const rowOrder = screen
+      .getAllByText(/^(Input|Cache read|Output|Reasoning)$/)
+      .map((el) => el.textContent);
+    expect(rowOrder).toEqual([
+      "Input", // group header
+      "Input", // 1M row
+      "Cache read", // 0.5M row
+      "Output", // group header
+      "Output", // 5M row
+      "Reasoning", // 2M row
+    ]);
   });
 
   it("hides zero-cost dimensions", async () => {

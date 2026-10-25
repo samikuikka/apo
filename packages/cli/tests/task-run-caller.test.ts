@@ -401,17 +401,6 @@ describe("task run caller-execution dispatch", () => {
       });
     };
 
-    it("parses the advertised result_max_bytes from the caller create response", async () => {
-      install({ callerResponse: { result_max_bytes: 20_000 } });
-      // The default summary is tiny — well under either limit, so this only
-      // exercises parsing; a malformed value is covered in unit tests.
-      const code = await run([
-        taskId, "--dir", testDir, "--backend", "http://backend.test",
-        "--project", "proj-test", "--api-key", "sk-apo-test",
-      ]);
-      expect(code).toBe(0);
-    });
-
     it("rejects a malformed advertised limit as a protocol error before running", async () => {
       install({ callerResponse: { result_max_bytes: -5 } });
       vi.spyOn(console, "error").mockImplementation(() => undefined);

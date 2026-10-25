@@ -64,21 +64,12 @@ class TestPasswordResetTemplate:
         _, text = render_password_reset_email("http://app/reset?token=x", "Alice")
         assert "Alice" in text
 
-    def test_generic_greeting_when_name_is_none(self) -> None:
-        html, text = render_password_reset_email("http://app/reset?token=x", None)
-        assert "Hello," in html
-        assert "Hello," in text
-
-    def test_generic_greeting_when_name_is_empty(self) -> None:
-        html, text = render_password_reset_email("http://app/reset?token=x", "")
-        assert "Hello," in html
-        assert "Hello," in text
-
-    def test_returns_tuple_of_two_strings(self) -> None:
-        result = render_password_reset_email("http://app/reset?token=x", "Bob")
-        assert isinstance(result, tuple)
-        assert len(result) == 2
-        assert all(isinstance(part, str) for part in result)
+    def test_generic_greeting_when_name_is_falsy(self) -> None:
+        # None and "" both fall back to the generic greeting.
+        for name in (None, ""):
+            html, text = render_password_reset_email("http://app/reset?token=x", name)
+            assert "Hello," in html
+            assert "Hello," in text
 
 
 class TestInvitationTemplate:
@@ -346,7 +337,8 @@ class TestInitEmailService:
         svc = get_email_service()
         assert isinstance(svc, LogOnlyEmailService)
 
-    def test_smtp_port_465_uses_implicit_tls(
+    @pytest.mark.asyncio
+    async def test_smtp_port_465_uses_implicit_tls(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv(
@@ -356,10 +348,13 @@ class TestInitEmailService:
         init_email_service()
         svc = get_email_service()
         assert isinstance(svc, SMTPEmailService)
-        assert svc._use_tls is True
-        assert svc._start_tls is False
+        with patch("aiosmtplib.send", new_callable=AsyncMock) as mock_send:
+            await svc.send(to="u@x.com", subject="s", html="<p>x</p>")
+            assert mock_send.call_args.kwargs["use_tls"] is True
+            assert mock_send.call_args.kwargs["start_tls"] is False
 
-    def test_smtp_port_587_uses_starttls(
+    @pytest.mark.asyncio
+    async def test_smtp_port_587_uses_starttls(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv(
@@ -369,10 +364,13 @@ class TestInitEmailService:
         init_email_service()
         svc = get_email_service()
         assert isinstance(svc, SMTPEmailService)
-        assert svc._use_tls is False
-        assert svc._start_tls is True
+        with patch("aiosmtplib.send", new_callable=AsyncMock) as mock_send:
+            await svc.send(to="u@x.com", subject="s", html="<p>x</p>")
+            assert mock_send.call_args.kwargs["use_tls"] is False
+            assert mock_send.call_args.kwargs["start_tls"] is True
 
-    def test_smtp_tls_false_disables_tls(
+    @pytest.mark.asyncio
+    async def test_smtp_tls_false_disables_tls(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv(
@@ -383,10 +381,13 @@ class TestInitEmailService:
         init_email_service()
         svc = get_email_service()
         assert isinstance(svc, SMTPEmailService)
-        assert svc._use_tls is False
-        assert svc._start_tls is False
+        with patch("aiosmtplib.send", new_callable=AsyncMock) as mock_send:
+            await svc.send(to="u@x.com", subject="s", html="<p>x</p>")
+            assert mock_send.call_args.kwargs["use_tls"] is False
+            assert mock_send.call_args.kwargs["start_tls"] is False
 
-    def test_from_name_defaults_to_apo(
+    @pytest.mark.asyncio
+    async def test_from_name_defaults_to_apo(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv(
@@ -397,7 +398,9 @@ class TestInitEmailService:
         init_email_service()
         svc = get_email_service()
         assert isinstance(svc, SMTPEmailService)
-        assert svc._from_name == "apo"
+        with patch("aiosmtplib.send", new_callable=AsyncMock) as mock_send:
+            await svc.send(to="u@x.com", subject="s", html="<p>x</p>")
+            assert str(mock_send.call_args.args[0]["From"]) == "apo <noreply@example.com>"
 
 
 # ---- Integration: forgot-password with email ----

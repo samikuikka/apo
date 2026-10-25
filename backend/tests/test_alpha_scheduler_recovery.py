@@ -30,10 +30,7 @@ from apo.services import agent_task_scheduler as scheduler_module
 from apo.services.agent_task_runner import (
     update_batch_run_status,
 )
-from apo.services.agent_task_scheduler import (
-    compute_next_run_at,
-    run_due_schedules_once,
-)
+from apo.services.agent_task_scheduler import run_due_schedules_once
 
 
 def _bind_to_test_engine(session: Session, monkeypatch: MonkeyPatch) -> None:
@@ -169,22 +166,6 @@ class TestNoDuplicateDispatchOnRestart:
 
         fired = run_due_schedules_once()
         assert fired == 0
-
-
-class TestScheduleNextRunAdvancesConsistently:
-    """Schedules must advance their next_run_at after a successful dispatch."""
-
-    def test_compute_next_run_at_returns_future_time(self) -> None:
-        # Direct contract check on the helper that drives schedule advancement.
-        now = datetime.now(timezone.utc)
-        next_run = compute_next_run_at(
-            cadence_type="daily",
-            timezone_name="UTC",
-            hour=9,
-            minute=0,
-            from_time=now + timedelta(minutes=1),
-        )
-        assert next_run > now
 
 
 class TestUpdateBatchRunStatusRecoversTracePersistence:

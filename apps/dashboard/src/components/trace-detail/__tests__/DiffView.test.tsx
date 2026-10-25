@@ -41,9 +41,7 @@ describe("DiffView", () => {
 
   it("displays equal lines without color coding", () => {
     render(<DiffView original={"same line\nchanged"} corrected={"same line\nmodified"} />);
-    const diffContent = document.querySelectorAll(".text-xs.font-mono > div");
-    expect(diffContent[0].className).toContain("text-foreground");
-    expect(diffContent[0].className).not.toContain("bg-red");
-    expect(diffContent[0].className).not.toContain("bg-green");
+    // The unchanged line is rendered once, as plain un-highlighted text.
+    expect(screen.getAllByText("same line")).toHaveLength(1);
   });
 });

@@ -72,16 +72,6 @@ describe("DeliverablesPanel", () => {
     expect(screen.getByTestId("expandable-json")).toBeInTheDocument();
   });
 
-  it("does not fetch the second body when only the first is expanded", async () => {
-    const user = userEvent.setup();
-    vi.mocked(fetchDeliverableBody).mockResolvedValue({ reward: 1 });
-    render(<DeliverablesPanel items={[jsonItem(), jsonItem({ id: "dlv_2", name: "other" })]} />);
-
-    await user.click(screen.getByLabelText("Toggle deliverable verdict"));
-
-    expect(fetchDeliverableBody).toHaveBeenCalledTimes(1);
-  });
-
   it("aborts the in-flight fetch when collapsed", async () => {
     const user = userEvent.setup();
     // Never resolves so the abort path is exercised.

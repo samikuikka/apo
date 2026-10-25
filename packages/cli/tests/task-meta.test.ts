@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { lstatSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { chmodSync, lstatSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { basename, join } from "path";
 import { tmpdir } from "os";
 import {
@@ -281,13 +281,29 @@ describe("discoverTaskMeta", () => {
     const unreadable = join(testDir, "unreadable");
     mkdirSync(unreadable, { recursive: true });
     writeTaskFile(join(testDir, "ok"), `const t = { id: "ok", adapter: "x" };`);
+    chmodSync(unreadable, 0o000);
+    try {
+      // Root and permission-less filesystems bypass the mode bits — the error
+      // path cannot be exercised there, so probe before asserting.
+      let stillReadable = true;
+      try {
+        readdirSync(unreadable);
+      } catch {
+        stillReadable = false;
+      }
+      if (stillReadable) return;
 
-    const errors: Array<{ path: string; error: unknown }> = [];
-    discoverTaskMeta(testDir, {
-      onError: (path, error) => errors.push({ path, error }),
-    });
+      const errors: Array<{ path: string; error: unknown }> = [];
+      discoverTaskMeta(testDir, {
+        onError: (path, error) => errors.push({ path, error }),
+      });
 
-    expect(errors).toHaveLength(0);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.path).toContain("unreadable");
+    } finally {
+      // The suite's rmSync teardown must be able to read the dir again.
+      chmodSync(unreadable, 0o755);
+    }
   });
 });
 

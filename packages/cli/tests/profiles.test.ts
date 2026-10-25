@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { join } from "path";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync, chmodSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, existsSync, statSync } from "fs";
 import { tmpdir } from "os";
 import * as credentials from "../src/lib/credentials.ts";
 import {
@@ -68,8 +68,8 @@ describe("profiles lib", () => {
     expect(back).toEqual(PROD);
     const path = join(home, ".apo", "profiles", "prod.json");
     expect(existsSync(path)).toBe(true);
-    const mode = (chmodSync(path, 0o600), (readFileSync(path) as unknown)); // touch read
-    expect(mode).toBeTruthy();
+    // The credential file must be owner-only, matching logins.test.ts.
+    expect(statSync(path).mode & 0o777).toBe(0o600);
     expect((readFileSync(path, "utf8") as string).length).toBeGreaterThan(0);
   });
 

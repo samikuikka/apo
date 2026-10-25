@@ -88,7 +88,10 @@ def test_every_read_path_tolerates_nondict_json(client: TestClient, session: Ses
     # Run-level non-dict values survive the round trip.
     assert run_data["input"] == "a plain string run input"
     assert run_data["output"] == 42
-    assert run_data["run_metadata"] == [1, 2, 3] if "run_metadata" in run_data else True
+    # The fixture stored a non-dict run_metadata; the read path must return
+    # it rather than crash or silently drop it (the old conditional form of
+    # this assert passed vacuously when the key was absent).
+    assert run_data["run_metadata"] == [1, 2, 3]
     calls = {c["id"]: c for c in data["calls"]}
     assert calls["call-tool"]["tool_result"] == "Before using DOCX tools, ..."
     assert calls["call-tool"]["output"] == 7

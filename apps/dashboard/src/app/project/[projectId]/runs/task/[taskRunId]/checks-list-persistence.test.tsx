@@ -115,13 +115,7 @@ describe("ChecksList group persistence", () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
-  it("reopens groups found in the stored set on mount", () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(["group-alpha"]));
-    renderList();
-    expect(screen.getByText("alpha-1")).toBeInTheDocument();
-  });
-
-  it("keeps groups absent from the stored set collapsed (new tests arrive quiet)", () => {
+  it("reopens stored groups and keeps the others collapsed (new tests arrive quiet)", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(["group-alpha"]));
     renderList();
     expect(screen.getByText("alpha-1")).toBeInTheDocument();

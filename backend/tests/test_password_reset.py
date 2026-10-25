@@ -75,7 +75,6 @@ class TestForgotPassword:
         _setup_user(client)
         with patch("apo.routes.auth.logger") as mock_logger:
             client.post("/auth/forgot-password", json={"email": "admin@test.com"})
-            mock_logger.info.assert_called()
             log_calls = [str(call) for call in mock_logger.info.call_args_list]
             assert any("Reset URL" in c for c in log_calls)
 

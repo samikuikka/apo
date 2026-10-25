@@ -19,7 +19,7 @@ describe("git-provenance", () => {
     expect(sanitizeGitUrl("https://github.com/acme/service.git?token=secret"))
       .toBe("https://github.com/acme/service.git");
     expect(sanitizeGitUrl("ssh://git@github.com/acme/service.git"))
-      .toBe("https://github.com/acme/service.git".replace("https://github.com/acme/service.git", "ssh://github.com/acme/service.git"));
+      .toBe("ssh://github.com/acme/service.git");
     expect(sanitizeGitUrl(null)).toBeNull();
   });
 

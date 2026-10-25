@@ -47,24 +47,20 @@ def test_match_returns_breakdown_for_known_model(client) -> None:
 
 
 def test_match_anchored_fullmatch_excludes_suffix(client) -> None:
-    # gpt-4o matches ^gpt-4o$; gpt-4o-mini must NOT (anchored fullmatch).
-    resp = client.get(
-        "/api/v1/models/match",
-        params={"model": "gpt-4o-mini", "usage": json.dumps({"input": 100, "output": 100})},
-    )
-    # gpt-4o-mini IS seeded, so it matches its own pattern. Verify gpt-4o does not
-    # match a name the mini pattern should catch:
-    resp_mini = client.get(
-        "/api/v1/models/match",
-        params={"model": "gpt-4o", "usage": json.dumps({"input": 100, "output": 100})},
-    )
-    assert resp_mini.json()["matched"] is True
-    # An unseeded name returns matched=False.
-    resp_none = client.get(
-        "/api/v1/models/match",
-        params={"model": "totally-unknown-model", "usage": json.dumps({"input": 100})},
-    )
-    assert resp_none.json()["matched"] is False
+    """Seeded patterns are anchored: a near-suffix of a seeded name matches
+    nothing, so ``^gpt-4o$`` can never swallow ``gpt-4o-…`` longer names."""
+    for model, matched in (
+        ("gpt-4o", True),          # own seeded pattern ^gpt-4o$
+        ("gpt-4o-mini", True),     # own seeded pattern ^gpt-4o-mini$
+        ("gpt-4o-min", False),     # suffix of a seeded name — anchored, no match
+        ("gpt-4o-m", False),       # ditto
+        ("totally-unknown-model", False),
+    ):
+        resp = client.get(
+            "/api/v1/models/match",
+            params={"model": model, "usage": json.dumps({"input": 100, "output": 100})},
+        )
+        assert resp.json()["matched"] is matched, model
 
 
 def test_match_case_insensitive(client) -> None:

@@ -249,6 +249,16 @@ def test_load_check_report_normalizes_historical_oversized_row(
     assert row.value_json[0]["received"] == _LARGE_RECEIVED  # pyright: ignore[reportOptionalSubscript]
 
 
+def test_unknown_fields_preserved() -> None:
+    """Fields the normalizer does not know about pass through untouched."""
+    checks: list[dict[str, object]] = [
+        {"id": "c1", "pass": True, "custom_field": "value", "nested": {"a": 1}},
+    ]
+    result = normalize_check_report(checks)
+    assert result[0]["custom_field"] == "value"
+    assert result[0]["nested"] == {"a": 1}
+
+
 if __name__ == "__main__":
     import sys
 

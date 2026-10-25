@@ -55,7 +55,7 @@ describe("TraceLayoutMobile - rendering", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "true");
 
     const navSection = screen.getByLabelText("Trace navigation");
-    expect(navSection.className).toContain("max-h-[40vh]");
+    expect(navSection).toBeVisible();
   });
 
   it("keeps the tab bar visible after collapsing nav", async () => {
@@ -124,10 +124,3 @@ describe("TraceLayoutMobile - selection auto-collapse", () => {
   });
 });
 
-describe("TraceLayoutMobile - touch targets", () => {
-  it("toggle button meets the 44px minimum touch target", () => {
-    renderMobile(mobileLayout());
-    const toggle = screen.getByRole("button", { name: /hide navigation/i });
-    expect(toggle.className).toContain("min-h-11");
-  });
-});

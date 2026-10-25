@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, text
 
 from apo.db import engine, init_db
-from apo.models.db import RunDB, LoggedCallDB, RunMetricDB, CallMetricDB
+from apo.models.db import RunDB
 
 _NOW = datetime.now(timezone.utc)
 
@@ -54,58 +54,13 @@ def clean_db():
 
 
 class TestTraceScoreAPI:
-    """POST /api/v1/traces/{trace_id}/scores — creates a trace-level score."""
+    """POST /api/v1/traces/{trace_id}/scores.
 
-    def test_create_trace_score(self, app_client: TestClient):
-        """A trace-level score creates a RunMetricDB row."""
-        # First create a run
-        with Session(engine) as s:
-            s.add(RunDB(id="score-test-trace", project="default", environment="default", created_at=_NOW))
-            s.commit()
+    NUMERIC and CATEGORICAL variants (response shape, validation) are
+    covered in test_scores.py; the BOOLEAN variant is pinned here with a
+    persistence check."""
 
-        response = app_client.post(
-            "/api/v1/traces/score-test-trace/scores",
-            json={
-                "name": "helpfulness",
-                "value": 0.85,
-                "data_type": "NUMERIC",
-                "source": "EVAL",
-                "comment": "agent was helpful",
-            },
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["name"] == "helpfulness"
-
-        with Session(engine) as s:
-            metrics = list(
-                s.exec(  # pyright: ignore[reportCallIssue]
-                    text("SELECT * FROM run_metrics WHERE run_id = 'score-test-trace' AND metric_name = 'helpfulness'")  # pyright: ignore[reportArgumentType]
-                )
-            )
-            assert len(metrics) == 1
-
-    def test_create_categorical_score(self, app_client: TestClient):
-        """A categorical score stores the string value."""
-        with Session(engine) as s:
-            s.add(RunDB(id="cat-test-trace", project="default", environment="default", created_at=_NOW))
-            s.commit()
-
-        response = app_client.post(
-            "/api/v1/traces/cat-test-trace/scores",
-            json={
-                "name": "verdict",
-                "value": "pass",
-                "data_type": "CATEGORICAL",
-                "source": "EVAL",
-            },
-        )
-
-        assert response.status_code == 200
-
-    def test_create_boolean_score(self, app_client: TestClient):
-        """A boolean score stores the value."""
+    def test_create_boolean_score_persists(self, app_client: TestClient):
         with Session(engine) as s:
             s.add(RunDB(id="bool-test-trace", project="default", environment="default", created_at=_NOW))
             s.commit()
@@ -121,36 +76,12 @@ class TestTraceScoreAPI:
         )
 
         assert response.status_code == 200
-
-
-class TestObservationScoreAPI:
-    """POST /api/v1/observations/{span_id}/scores — creates a span-level score."""
-
-    def test_create_observation_score(self, app_client: TestClient):
-        """An observation-level score creates a CallMetricDB row."""
-        # Create a run + call first
+        # The API normalizes BOOLEAN to its numeric JSON form.
+        assert response.json()["value"] == 1
         with Session(engine) as s:
-            s.add(RunDB(id="obs-test-trace", project="default", environment="default", created_at=_NOW))
-            s.add(LoggedCallDB(  # pyright: ignore[reportCallIssue]
-                id="obs-test-call",
-                run_id="obs-test-trace",
-                project="default",
-                task_id="",
-                model="gpt-4o",
-                created_at=_NOW,
-                observation_type="GENERATION",
-                messages=[],
-            ))
-            s.commit()
-
-        response = app_client.post(
-            "/api/v1/observations/obs-test-call/scores",
-            json={
-                "name": "accuracy",
-                "value": 1.0,
-                "data_type": "NUMERIC",
-                "source": "EVAL",
-            },
-        )
-
-        assert response.status_code == 200
+            rows = list(
+                s.exec(  # pyright: ignore[reportCallIssue]
+                    text("SELECT score, data_type FROM run_metrics WHERE run_id = 'bool-test-trace' AND metric_name = 'passed'")  # pyright: ignore[reportArgumentType]
+                )
+            )
+            assert rows == [(1.0, "BOOLEAN")]
