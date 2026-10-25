@@ -63,8 +63,6 @@ const CANONICAL = new URL("/", Astro.site).href;
 		<meta name="twitter:title" content={PAGE_TITLE} />
 		<meta name="twitter:description" content={PAGE_DESCRIPTION} />
 		<meta name="twitter:image" content={OG_IMAGE} />
-		{/* Structured data for search engines, what the product is and where
-		    it lives (repo, npm packages, docs). */}
 		<script
 			type="application/ld+json"
 			set:html={JSON.stringify({
@@ -135,7 +133,6 @@ const CANONICAL = new URL("/", Astro.site).href;
 		</nav>
 
 		<main>
-			<!-- Hero, title + animated sphere side by side. -->
 			<section class="landing-section landing-section--hero">
 				<div class="landing-container landing-hero">
 					<div class="landing-hero__text">
@@ -177,7 +174,6 @@ const CANONICAL = new URL("/", Astro.site).href;
 				</div>
 			</section>
 
-			<!-- Where apo fits, three categories, three different questions. -->
 			<section class="landing-section landing-section--bordered" data-landing-cats>
 				<div class="landing-container">
 					<h2 class="landing-section__heading">Where apo fits</h2>
@@ -279,7 +275,6 @@ const CANONICAL = new URL("/", Astro.site).href;
 		white-space: nowrap;
 	}
 
-	/* Category cards, three terse cards, one question each. */
 	.landing-cats {
 		display: grid;
 		gap: 1rem;
@@ -544,16 +539,13 @@ const CANONICAL = new URL("/", Astro.site).href;
 
 	/* Border-box reset. The standalone page does NOT load Starlight's bundled
 	   CSS (which ships this reset), so without it .landing-container's
-	   `width: 100%` + padding overflows the parent by exactly the padding —
-	   that was the whole-page overflow. */
+	   `width: 100%` + padding overflows the parent by exactly the padding. */
 	*,
 	*::before,
 	*::after {
 		box-sizing: border-box;
 	}
 
-	/* Long unbreakable strings (URLs, code, long words) wrap rather than
-	   overflow their container. */
 	.landing-hero__sub,
 	.landing-section__sub,
 	.cpb__preview-prompt {

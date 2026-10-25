@@ -2,15 +2,11 @@
  * Projection tee — wraps a real {@link AgentTaskTraceContext} and records the
  * span lifecycle into a {@link TraceProjectionSnapshot}.
  *
- * This is the FlowTee replacement. FlowTee recorded legacy `FlowEvent`s which
- * `snapshotFromFlow` converted to a snapshot. This tee records
- * `TraceProjectionObservation`s directly — same source-of-truth, no Flow
- * intermediate. It delegates every call to the wrapped context (the real OTel
- * client), so real OTel spans still export via OTLP. The snapshot is only the
- * local, in-process assertion surface.
- *
- * The recording logic mirrors `local-recorder.ts` but as a delegating wrapper
- * rather than a standalone context.
+ * It delegates every call to the wrapped context (the real OTel client), so
+ * real OTel spans still export via OTLP; the snapshot is only the local,
+ * in-process assertion surface. The recording logic mirrors
+ * `local-recorder.ts` but as a delegating wrapper rather than a standalone
+ * context.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -137,7 +133,7 @@ export interface ProjectionTee {
 /**
  * Wrap a real {@link AgentTaskTraceContext} so every span/step call is
  * delegated to it (real OTel export) while also recording observations for a
- * local projection snapshot. This replaces FlowTee + snapshotFromFlow.
+ * local projection snapshot.
  */
 export function createProjectionTee(
   real: AgentTaskTraceContext,
@@ -243,14 +239,11 @@ export function createProjectionTee(
     return spanId;
   }
 
-  // Delegate every method to `real`, recording observations alongside.
   const trace: AgentTaskTraceContext = {
     runId: real.runId,
     rootSpanId: real.rootSpanId,
 
     async step(opts, fn) {
-      // Delegate to the real context so the OTel span is created. Record one
-      // observation around the whole step.
       const obsSpanId = recordStart(opts);
       const start = monotonicNowMs();
       try {
@@ -315,8 +308,8 @@ export function createProjectionTee(
       if (!isFromOtelProcessor) {
         try {
           const realId = real.createSpan(spanOptions);
-          // Remember the real id so endSpan can close the real span. Falls back
-          // to the tee id when the real context returns nothing (noop mode).
+          // Falls back to the tee id when the real context returns nothing
+          // (noop mode).
           realIdByTeeId.set(spanId, realId);
         } catch { /* best-effort */ }
       }

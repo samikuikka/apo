@@ -72,10 +72,6 @@ interface OTelSpanProcessorLifecycle {
   shutdown(): Promise<void>;
 }
 
-/**
- * Tracks an active span: the apo span ID, the OTel span name, and the
- * start timestamp for latency calculation.
- */
 interface TrackedSpan {
   apoSpanId: string;
   otelSpanName: string;
@@ -83,16 +79,12 @@ interface TrackedSpan {
 }
 
 /**
- * The model that served a call, as reported by the provider
- * (`ai.response.model` / `gen_ai.response.model`). The Vercel AI SDK sets it
- * only on per-step children (ai.generateText.doGenerate) while the parent is
- * the span apo translates — and doGenerate children are not load-bearing, so
- * without re-attaching their report the serving model never reaches an apo
- * span. It is remembered by parent span id and stamped onto the parent when
- * it ends; endSpan(served_model) then sets gen_ai.response.model on the
- * exported span, which the backend reads for pricing and model-drift
- * detection. Do not remove: it is the only serving-model source for
- * OTel-native (non-wrapper) traces.
+ * Do not remove the parent-stamping built on this helper: the Vercel AI
+ * SDK reports the serving model only on per-step doGenerate children,
+ * which are not load-bearing, so re-attaching their report to the parent
+ * is the only way the serving model reaches the exported span — the
+ * backend reads gen_ai.response.model for pricing and model-drift
+ * detection on OTel-native (non-wrapper) traces.
  */
 function servedModelFrom(
   attributes: Record<string, unknown>,
@@ -116,29 +108,25 @@ function servedModelFrom(
  */
 export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
   private spanMap = new Map<string, TrackedSpan>();
-  /** Served-model reports keyed by the PARENT otel span id (see servedModelFrom). */
   private servedModelByParent = new Map<string, string>();
 
   onStart(span: OTelSpan, _parentContext: OTelContext): void {
     const run = getActiveApoRun();
     if (!run) return;
 
-    // Quick check: is this span potentially load-bearing?
-    // At onStart, the AI SDK has already set the initial attributes
+    // At onStart the AI SDK has already set the initial attributes
     // (ai.toolCall.name, ai.toolCall.args for tool spans; ai.model.id
-    // for generation spans). So we CAN translate now.
+    // for generation spans), so translation can happen now.
     const translated = translateOtelSpan(span.name, {
       attributes: span.attributes ?? {},
       status: { code: 0 }, // no error at start
     });
     if (!translated) return; // not load-bearing — skip
 
-    // Resolve parent: check if the parent OTel span has an apo mapping
     const parentOtelId = span.parentSpanContext?.spanId;
     const parentTracked = parentOtelId ? this.spanMap.get(parentOtelId) : undefined;
     const parentApoId = parentTracked?.apoSpanId || run.parentSpanId || run.trace.rootSpanId;
 
-    // Create the apo span eagerly (at start time)
     const apoSpanId = run.trace.createSpan({
       task_id: run.taskId ?? "otel-trace",
       parent_call_id: parentApoId,
@@ -186,8 +174,7 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
 
     const latency = round3(monotonicNowMs() - tracked.startedAt);
 
-    // End the apo span with the final data. The served model prefers this
-    // span's own report, falling back to what a child reported for it.
+    // Own report first, then what a child reported for this span.
     const servedForThis = served ?? this.servedModelByParent.get(otelId);
     this.servedModelByParent.delete(otelId);
     run.trace.endSpan(tracked.apoSpanId, {
@@ -213,10 +200,6 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
   }
 }
 
-/**
- * Build the `endSpan` params from the translated span.
- * Handles observation-type-specific output shapes.
- */
 function buildEndParams(t: TranslatedSpan | null): Record<string, unknown> {
   if (!t) return {};
 

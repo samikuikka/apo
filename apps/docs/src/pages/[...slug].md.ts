@@ -40,7 +40,6 @@ export const getStaticPaths = (async () => {
 		// with root route and the standalone index.astro landing page).
 		if (entry.data.draft === true || entry.id === 'index') return [];
 		const slug = entry.id.replace(/\.(md|mdx)$/, '').replace(/\/index$/, '');
-		// Strip import lines (MDX build noise), prepend title.
 		const body = (entry.body ?? '')
 			.split('\n')
 			.filter((line) => !/^import\s.+from\s/.test(line.trim()))
