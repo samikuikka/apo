@@ -452,9 +452,9 @@ function CallDetail({
 					<span>Back</span>
 				</button>
 				<div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-					<span className="max-w-[120px] truncate">{runId}</span>
+					<span className="pl-max-w-120 truncate">{runId}</span>
 					<Icon name="chevron-right" className="h-2.5 w-2.5 shrink-0" />
-					<span className="max-w-[120px] truncate font-medium text-foreground">{span.name}</span>
+					<span className="pl-max-w-120 truncate font-medium text-foreground">{span.name}</span>
 				</div>
 				<div className="flex items-center gap-1.5">
 					<span className="inline-flex items-center border border-border/70 bg-muted/10 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">

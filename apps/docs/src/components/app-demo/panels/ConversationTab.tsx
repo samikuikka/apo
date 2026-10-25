@@ -177,12 +177,12 @@ export function ConversationTab({ sim }: { sim: CapabilitySim }) {
 
 	return (
 		<div className="overflow-hidden rounded-lg border border-border/60 bg-card/70">
-			<div className="flex min-h-[52px] shrink-0 items-center border-b border-border/40 px-4 py-2">
+			<div className="flex pl-min-h-52 shrink-0 items-center border-b border-border/40 px-4 py-2">
 				<h2 className="text-sm font-medium text-foreground">Conversation History</h2>
 				<span className="ml-2 text-xs text-muted-foreground">{conversation.length} messages</span>
 			</div>
 
-			<div className="max-h-[calc(100vh-400px)] min-h-[200px] overflow-y-auto">
+			<div className="pl-max-h-scroll pl-min-h-200 overflow-y-auto">
 				{conversation.map((message, idx) => {
 					const open = openIdx.has(idx);
 					return (
