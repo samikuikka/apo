@@ -55,11 +55,11 @@
 	font-family: var(--sl-font-mono);
 	font-size: 0.625rem;
 	font-weight: 500;
-	color: var(--sl-color-gray-4);
+	color: var(--sl-color-gray-3);
 }
 
 .pl-tab--active .pl-tab__num {
-	color: var(--sl-color-accent);
+	color: var(--sl-color-accent-high);
 }
 
 .pl-tab__label {

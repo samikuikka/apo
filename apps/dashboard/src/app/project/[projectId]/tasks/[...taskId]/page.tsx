@@ -54,7 +54,6 @@ function parseScope(query: Record<string, string | string[] | undefined>): {
   };
 }
 
-// Tab title: "Task: <display_name>". Falls back to "Task" on any failure.
 export async function generateMetadata({
   params,
 }: {
@@ -74,9 +73,8 @@ const EMPTY_TASK_RUNS: Awaited<ReturnType<typeof listTaskRuns>> = [];
 
 // Page-aligned fetch bound: TaskRunHistory paginates 20 rows per page
 // client-side, so 200 rows = 10 pages of the newest runs — enough for the
-// drill-down without the default 1,000-row scan per task-page view (one
-// bounded list call serves the page; the unfiltered "N of M" twin fetch is
-// gone). API consumers can still ask for up to 5,000 explicitly.
+// drill-down without the default 1,000-row scan per task-page view. API
+// consumers can still ask for up to 5,000 explicitly.
 const TASK_RUN_HISTORY_LIMIT = 200;
 
 /** Serving-host facet over this task's runs (issue #307): route-wins labels
@@ -157,7 +155,6 @@ export default async function TaskDetailPage({
     );
   }
 
-  // Off-catalog task with no recorded runs — a genuine dead end.
   if (!task && taskRuns.length === 0) {
     return (
       <div className="mx-auto w-full max-w-6xl flex flex-col">
@@ -177,14 +174,12 @@ export default async function TaskDetailPage({
     );
   }
 
-  // Off-catalog task that still has run history — show the evidence.
   const inCatalog = task !== null;
   const displayName = task ? task.display_name : taskId;
   const fileCount = task ? (task.has_checks ? 1 : 0) + 1 : 0;
 
   return (
     <div className="mx-auto w-full max-w-6xl flex flex-col">
-      {/* Page header */}
       <div className="border-b border-border px-6 py-5">
         <Link
           href={withViewId(`/project/${projectId}/tasks`, viewId)}

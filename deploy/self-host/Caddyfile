@@ -23,7 +23,7 @@
 	}
 }
 
-{$APO_DOCS_HOST} {
+http://{$APO_DOCS_HOST}:8080 {
 	# Public docs host — terminal, unauthenticated, static only.
 	# Every path on this host proxies to the docs container and never
 	# reaches the backend, OTLP handler, or readiness probe.

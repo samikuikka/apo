@@ -46,8 +46,16 @@ const CANONICAL = new URL("/", Astro.site).href;
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
 			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans:wght@400;500;600;700&display=swap"
-			rel="stylesheet"
+			rel="preload"
+			as="style"
+			onload="this.rel='stylesheet'"
 		/>
+		<noscript>
+			<link
+				href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans:wght@400;500;600;700&display=swap"
+				rel="stylesheet"
+			/>
+		</noscript>
 		{/* Open Graph, what Facebook, LinkedIn, Slack, etc. render. */}
 		<meta property="og:type" content="website" />
 		<meta property="og:site_name" content="apo" />
@@ -170,7 +178,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 		<!-- The product, live: the real interface on a scripted fixture. -->
 			<section class="landing-section landing-section--bordered">
 				<div class="landing-container landing-container--wide">
-					<CapabilityShowcase client:load />
+					<CapabilityShowcase client:visible />
 				</div>
 			</section>
 

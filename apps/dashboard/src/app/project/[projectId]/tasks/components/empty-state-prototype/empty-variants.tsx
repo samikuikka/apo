@@ -12,7 +12,6 @@ import { buildCliLoginCommand, EXAMPLE_URL, HOSTED_DOCS_URL } from "@/lib/first-
 import { CopyCommand } from "../CopyCommand";
 import { PassBar } from "../PassBar";
 
-// --- the live signal model --------------------------------------------------
 
 /** Everything the checklist derives from — all genuinely detectable. */
 export interface LiveSignals {
@@ -68,11 +67,7 @@ export interface JourneyStep {
 }
 
 /** The respan-inspired shape: tight core loop + conditional pre-step. */
-export function buildJourney(
-  signals: LiveSignals,
-  scene: { projectId: string; publicUrl: string | null },
-): JourneyStep[] {
-  void scene; // commands are built by StepHow from the variant props
+export function buildJourney(signals: LiveSignals): JourneyStep[] {
   const steps: JourneyStep[] = [];
   if (signals.hasTraces) {
     steps.push({
@@ -276,7 +271,6 @@ export function AgentSetupRow({
   );
 }
 
-// --- shared fragments -------------------------------------------------------
 
 function Glyph({ state }: { state: StepState }) {
   return (
@@ -481,7 +475,7 @@ export function VariantA1Timeline({
   signals,
   density = "page",
 }: VariantProps) {
-  const journey = buildJourney(signals, { projectId, publicUrl });
+  const journey = buildJourney(signals);
   const coreSteps = journey.filter((s) => s.key !== "traces");
   const stepNumber = (key: string) =>
     coreSteps.findIndex((s) => s.key === key) + 1;
@@ -597,7 +591,7 @@ export function VariantA2Compact({
   publicUrl,
   signals,
 }: VariantProps) {
-  const journey = buildJourney(signals, { projectId, publicUrl });
+  const journey = buildJourney(signals);
   const activeStep = journey.find((s) => s.state === "active") ?? null;
 
   return (
@@ -746,7 +740,7 @@ export function VariantA3Split({
   signals,
   publishedTaskNames,
 }: VariantProps) {
-  const journey = buildJourney(signals, { projectId, publicUrl });
+  const journey = buildJourney(signals);
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-12">

@@ -18,7 +18,6 @@ import { ProjectFirstRun } from "./components/ProjectFirstRun";
 import { SelectionActionBar } from "./components/SelectionActionBar";
 import { TasksToolbar } from "./components/TasksToolbar";
 import { useEvidenceViews } from "./components/use-evidence-views";
-import { ViewsPrototype } from "./components/views-prototype/views-prototype";
 import { fetchTaskHostFacets } from "@/lib/agent-task-view-api";
 import { useTaskSelection } from "./components/use-task-selection";
 import { useTaskRunActions } from "./components/use-task-run-actions";
@@ -242,14 +241,6 @@ export function AgentTasksClient({
   const showEmptyPrototype = protoAllowed && tasks.length === 0;
   const showEmptyBanner = protoAllowed && tasks.length > 0;
 
-  // PROTOTYPE (throwaway): ?vproto= swaps the views chrome (evidence-views
-  // tabs + filter row) and the task list for the views-prototype variants.
-  // Real data in, read-only out — variants manage view state locally and
-  // never write a saved view. Goes away with components/views-prototype/.
-  const viewsProtoParam = searchParams.get("vproto");
-  const showViewsProto =
-    viewsProtoParam !== null && !error && !isDemoProject && tasks.length > 0;
-
   return (
     <div className="flex flex-col">
       {showEmptyPrototype ? (
@@ -303,27 +294,6 @@ export function AgentTasksClient({
             onSync={handleSync}
             onRun={handleRun}
           />
-          {showViewsProto ? (
-            <ViewsPrototype
-              variantKey={viewsProtoParam ?? "cur"}
-              projectId={projectId}
-              tasks={tasks}
-              facets={facets}
-              seedViews={views
-                .filter((v) => v.id !== MAIN_VIEW_ID)
-                .map((v) => ({
-                  id: v.id,
-                  label: v.label,
-                  cohort: {
-                    model: v.model,
-                    effort: v.effort,
-                    since: v.since,
-                    provider: v.provider,
-                  },
-                }))}
-            />
-          ) : (
-            <>
           {tasks.length > 0 && (
             <EvidenceViewsBar
               hostFacets={hostFacets}
@@ -406,8 +376,6 @@ export function AgentTasksClient({
           onCompare={handleCompare}
         />
       )}
-            </>
-          )}
         </>
       )}
     </div>

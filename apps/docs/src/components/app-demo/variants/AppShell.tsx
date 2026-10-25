@@ -115,7 +115,7 @@ export function AppShell({
 					{/* Top nav (top-nav.tsx): brand mark */}
 					<nav className="flex h-12 w-full shrink-0 items-center justify-between border-b border-border bg-background px-4 md:px-6">
 						<div className="flex items-center gap-4">
-							<a className="pl-brandmark" href="/" aria-label="Home">
+							<a className="pl-brandmark" href="/" aria-label="apo home">
 								<img src="/brand/signal-sphere-small.svg" alt="" aria-hidden="true" />
 								<span className="text-sm font-semibold tracking-tight">apo</span>
 							</a>
