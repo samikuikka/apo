@@ -16,7 +16,6 @@ export const TEST_METHOD_NAMES = [
   "usedNoTools",
   "maxToolCalls",
   "noFailedActions",
-  "noModelDrift",
   "loadedSkill",
   "calledSubagent",
   "messageIncludes",

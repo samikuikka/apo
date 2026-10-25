@@ -274,55 +274,6 @@ export class TraceView {
     return this.toolCalls.map((c) => c.name);
   }
 
-  /**
-   * Agent generations where the model that served diverged from the model
-   * requested — gateway-fallback evidence. Judge generations are excluded
-   * (the judge is expected to run on its own model). A generation that
-   * reported no served model is not drift: unknown is not divergence.
-   */
-  get modelDrift(): readonly {
-    spanId: string;
-    name: string;
-    requestedModel: string;
-    servedModel: string;
-  }[] {
-    return this.sortedObservations
-      .filter(
-        (o): o is TraceProjectionObservation & {
-          type: "GENERATION";
-          model: string;
-          servedModel: string;
-        } =>
-          o.type === "GENERATION" &&
-          o.model !== undefined &&
-          o.servedModel !== undefined &&
-          o.servedModel !== "" &&
-          o.servedModel !== o.model &&
-          !o.name.startsWith("judge:"),
-      )
-      .map((o) => ({
-        spanId: o.spanId,
-        name: o.name,
-        requestedModel: o.model,
-        servedModel: o.servedModel,
-      }));
-  }
-
-  /**
-   * Agent generations that reported which model served them. The denominator
-   * for serving-integrity assertions — a strict claim is only verifiable
-   * over reported generations.
-   */
-  get servedModelGenerations(): readonly TraceProjectionObservation[] {
-    return this.sortedObservations.filter(
-      (o) =>
-        o.type === "GENERATION" &&
-        o.servedModel !== undefined &&
-        o.servedModel !== "" &&
-        !o.name.startsWith("judge:"),
-    );
-  }
-
   /** Skill loads derived from `SKILL` observations, in invocation order. */
   get skillLoads(): readonly TraceSkillLoad[] {
     return this.sortedObservations

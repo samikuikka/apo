@@ -86,8 +86,13 @@ interface TrackedSpan {
  * The model that served a call, as reported by the provider
  * (`ai.response.model` / `gen_ai.response.model`). The Vercel AI SDK sets it
  * only on per-step children (ai.generateText.doGenerate) while the parent is
- * the span apo translates — so children's reports are remembered by parent
- * span id and stamped onto the parent when it ends.
+ * the span apo translates — and doGenerate children are not load-bearing, so
+ * without re-attaching their report the serving model never reaches an apo
+ * span. It is remembered by parent span id and stamped onto the parent when
+ * it ends; endSpan(served_model) then sets gen_ai.response.model on the
+ * exported span, which the backend reads for pricing and model-drift
+ * detection. Do not remove: it is the only serving-model source for
+ * OTel-native (non-wrapper) traces.
  */
 function servedModelFrom(
   attributes: Record<string, unknown>,
