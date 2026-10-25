@@ -25,7 +25,7 @@ const COPY_PROMPT_TEXT =
 // Open Graph / Twitter card metadata. The preview image is generated at build
 // time by src/pages/og-landing.png.ts, see that file for the design. Keep these
 // in sync with the <title>/<meta description> below (single source via consts).
-const PAGE_TITLE = "apo, Executable specifications for harness engineering";
+const PAGE_TITLE = "apo: capability testing for agent harnesses";
 const PAGE_DESCRIPTION =
 	"Turn expert knowledge into executable capability specifications. Run the real harness, return pass or fail with evidence, and give coding agents the feedback to improve it.";
 const OG_IMAGE = new URL("/og-landing.png", Astro.site).href;
@@ -56,7 +56,7 @@ const CANONICAL = new URL("/", Astro.site).href;
 		<meta property="og:image" content={OG_IMAGE} />
 		<meta property="og:image:width" content="1200" />
 		<meta property="og:image:height" content="630" />
-		<meta property="og:image:alt" content="apo, executable specifications for harness engineering" />
+		<meta property="og:image:alt" content="apo: executable specifications and a harness-engineering loop" />
 		{/* Twitter / X, summary_large_image gives the big banner card. */}
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:title" content={PAGE_TITLE} />
