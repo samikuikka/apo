@@ -72,14 +72,28 @@ interface OTelSpanProcessorLifecycle {
   shutdown(): Promise<void>;
 }
 
-/**
- * Tracks an active span: the apo span ID, the OTel span name, and the
- * start timestamp for latency calculation.
- */
 interface TrackedSpan {
   apoSpanId: string;
   otelSpanName: string;
   startedAt: number;
+}
+
+/**
+ * Do not remove the parent-stamping built on this helper: the Vercel AI
+ * SDK reports the serving model only on per-step doGenerate children,
+ * which are not load-bearing, so re-attaching their report to the parent
+ * is the only way the serving model reaches the exported span — the
+ * backend reads gen_ai.response.model for pricing and model-drift
+ * detection on OTel-native (non-wrapper) traces.
+ */
+function servedModelFrom(
+  attributes: Record<string, unknown>,
+): string | undefined {
+  for (const key of ["ai.response.model", "gen_ai.response.model"]) {
+    const value = attributes[key];
+    if (typeof value === "string" && value) return value;
+  }
+  return undefined;
 }
 
 /**
@@ -94,27 +108,25 @@ interface TrackedSpan {
  */
 export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
   private spanMap = new Map<string, TrackedSpan>();
+  private servedModelByParent = new Map<string, string>();
 
   onStart(span: OTelSpan, _parentContext: OTelContext): void {
     const run = getActiveApoRun();
     if (!run) return;
 
-    // Quick check: is this span potentially load-bearing?
-    // At onStart, the AI SDK has already set the initial attributes
+    // At onStart the AI SDK has already set the initial attributes
     // (ai.toolCall.name, ai.toolCall.args for tool spans; ai.model.id
-    // for generation spans). So we CAN translate now.
+    // for generation spans), so translation can happen now.
     const translated = translateOtelSpan(span.name, {
       attributes: span.attributes ?? {},
       status: { code: 0 }, // no error at start
     });
     if (!translated) return; // not load-bearing — skip
 
-    // Resolve parent: check if the parent OTel span has an apo mapping
     const parentOtelId = span.parentSpanContext?.spanId;
     const parentTracked = parentOtelId ? this.spanMap.get(parentOtelId) : undefined;
     const parentApoId = parentTracked?.apoSpanId || run.parentSpanId || run.trace.rootSpanId;
 
-    // Create the apo span eagerly (at start time)
     const apoSpanId = run.trace.createSpan({
       task_id: run.taskId ?? "otel-trace",
       parent_call_id: parentApoId,
@@ -138,6 +150,15 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
 
   onEnd(span: OTelReadableSpan): void {
     const otelId = span.spanContext().spanId;
+
+    // A per-step child reporting its serving model is the parent
+    // generation's served model — remember it for the parent's end.
+    const parentOtelId = span.parentSpanContext?.spanId;
+    const served = servedModelFrom(span.attributes ?? {});
+    if (parentOtelId && served) {
+      this.servedModelByParent.set(parentOtelId, served);
+    }
+
     const tracked = this.spanMap.get(otelId);
     if (!tracked) return; // wasn't tracked (not load-bearing or outside run)
     this.spanMap.delete(otelId);
@@ -153,10 +174,13 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
 
     const latency = round3(monotonicNowMs() - tracked.startedAt);
 
-    // End the apo span with the final data
+    // Own report first, then what a child reported for this span.
+    const servedForThis = served ?? this.servedModelByParent.get(otelId);
+    this.servedModelByParent.delete(otelId);
     run.trace.endSpan(tracked.apoSpanId, {
       latency_ms: latency,
       ...buildEndParams(translated),
+      ...(servedForThis ? { served_model: servedForThis } : {}),
     });
   }
 
@@ -172,13 +196,10 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
   /** Clear all state — for testing. */
   reset(): void {
     this.spanMap.clear();
+    this.servedModelByParent.clear();
   }
 }
 
-/**
- * Build the `endSpan` params from the translated span.
- * Handles observation-type-specific output shapes.
- */
 function buildEndParams(t: TranslatedSpan | null): Record<string, unknown> {
   if (!t) return {};
 

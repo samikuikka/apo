@@ -264,4 +264,71 @@ describe("ApoSpanProcessor", () => {
       completion_tokens: 50,
     });
   });
+
+  it("stamps a doGenerate child's served model onto the parent generation", async () => {
+    // The Vercel AI SDK reports the serving model only on per-step
+    // doGenerate children, which are not load-bearing. The processor must
+    // re-attach the report to the parent so endSpan carries served_model —
+    // without it the exported span never gets gen_ai.response.model and
+    // the backend loses pricing and drift detection for OTel-native runs.
+    const endSpanCalls: Array<{ spanId: string; params?: Record<string, unknown> }> = [];
+    const captureTee = makeTee();
+    const captureCtx: AgentTaskTraceContext = {
+      ...captureTee.trace,
+      endSpan(spanId: string, params?: Record<string, unknown>) {
+        endSpanCalls.push({ spanId, params });
+      },
+    };
+
+    // Explicit context parenting: startActiveSpan alone does not nest
+    // spans here (the test harness registers no OTel context manager), and
+    // the child must end before the parent for the stamping to be observed.
+    await withApoRun({ trace: captureCtx, parentSpanId: "root" }, async () => {
+      const parent = tracer.startSpan("ai.generateText", {
+        attributes: { "ai.model.id": "deepseek/deepseek-v4.1-flash" },
+      });
+      const child = tracer.startSpan(
+        "ai.generateText.doGenerate",
+        {},
+        trace.setSpan(context.active(), parent),
+      );
+      child.setAttribute("gen_ai.response.model", "deepseek/deepseek-v4.1-real");
+      child.end();
+      parent.end();
+    });
+
+    expect(endSpanCalls.length).toBeGreaterThanOrEqual(1);
+    const genCall = endSpanCalls.find((c) => c.params?.served_model !== undefined);
+    expect(genCall).toBeDefined();
+    expect(genCall?.params?.served_model).toBe("deepseek/deepseek-v4.1-real");
+  });
+
+  it("keeps the parent's own served-model report over a child's", async () => {
+    const endSpanCalls: Array<{ spanId: string; params?: Record<string, unknown> }> = [];
+    const captureTee = makeTee();
+    const captureCtx: AgentTaskTraceContext = {
+      ...captureTee.trace,
+      endSpan(spanId: string, params?: Record<string, unknown>) {
+        endSpanCalls.push({ spanId, params });
+      },
+    };
+
+    await withApoRun({ trace: captureCtx, parentSpanId: "root" }, async () => {
+      const parent = tracer.startSpan("ai.generateText", {
+        attributes: { "ai.model.id": "gpt-4o" },
+      });
+      parent.setAttribute("ai.response.model", "gpt-4o-2024-11-20");
+      const child = tracer.startSpan(
+        "ai.generateText.doGenerate",
+        {},
+        trace.setSpan(context.active(), parent),
+      );
+      child.setAttribute("gen_ai.response.model", "gpt-4o-mini");
+      child.end();
+      parent.end();
+    });
+
+    const genCall = endSpanCalls.find((c) => c.params?.served_model !== undefined);
+    expect(genCall?.params?.served_model).toBe("gpt-4o-2024-11-20");
+  });
 });
