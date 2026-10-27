@@ -28,5 +28,6 @@ export const TEST_METHOD_NAMES = [
   "assert",
   "check",
   "judge",
+  "semantic",
   "agent",
 ] as const;

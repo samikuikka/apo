@@ -21,7 +21,7 @@ export interface CodeDiagnostic {
   expected?: string;
   received?: string;
   reasoning?: string;
-  evaluator_type?: "llm" | "code" | "agent";
+  evaluator_type?: "llm" | "code" | "agent" | "embedding";
 }
 
 // Stable empty array so a missing `diagnostics` prop doesn't break memoization.

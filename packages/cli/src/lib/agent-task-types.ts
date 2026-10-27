@@ -148,7 +148,7 @@ export type CheckAssertionResult = {
   /** Serialized scalar for code assertions; raw value for LLM judges. */
   received?: unknown;
   location?: CheckLocation;
-  evaluator_type?: "llm" | "code" | "agent";
+  evaluator_type?: "llm" | "code" | "agent" | "embedding";
   judge?: CheckJudgeMetadata;
 };
 
@@ -169,7 +169,7 @@ export type CheckResult = {
   outcome?: CheckOutcome;
   instruction?: string;
   deliverable?: string;
-  evaluator_type?: "llm" | "code" | "agent" | "regex" | "mixed";
+  evaluator_type?: "llm" | "code" | "agent" | "regex" | "embedding" | "mixed";
   judge?: CheckJudgeMetadata;
   location?: CheckLocation;
   source_file?: string;
