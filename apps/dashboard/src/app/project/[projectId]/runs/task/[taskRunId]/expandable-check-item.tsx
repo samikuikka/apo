@@ -14,7 +14,6 @@ import { cn } from "@/lib/utils";
 import { AssertionDrawer } from "./assertion-drawer";
 import { JudgeStrip } from "./judge-strip";
 import { EmbeddingStrip } from "./embedding-strip";
-import { TestNotes } from "./task-notes";
 import { TestResultCorrectionDialog } from "./test-result-correction-dialog";
 
 // CodeMirror is heavy — load it only when a code check is expanded.

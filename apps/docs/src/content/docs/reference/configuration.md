@@ -37,6 +37,20 @@ credentials are read from the local environment:
 | `ANTHROPIC_AUTH_TOKEN` | - | Anthropic bearer token (OAuth/plan-credit style, sent as `Authorization: Bearer`). Alternative to `ANTHROPIC_API_KEY`. |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Anthropic base URL override (an Anthropic-protocol gateway). Read only on the Anthropic wire. |
 
+### Embeddings (`t.semantic`)
+
+Embedding-similarity checks call any OpenAI-compatible `/embeddings` endpoint. Deliberately unlike the judge chain: `OPENROUTER_MODEL` names a chat model and is never consulted — an existing API key is reused with an embedding-appropriate default model instead. Anthropic and Groq offer no embeddings API, so they are not in the fallback chain.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `APO_EMBEDDING_MODEL` | - | Embedding model id for `t.semantic`, in the provider's namespace (`openai/text-embedding-3-small` on OpenRouter, `text-embedding-3-small` on OpenAI direct, local model names on Ollama/vLLM). Wins over the key-reuse defaults below. |
+| `APO_EMBEDDING_API_KEY` | - | API key for the embeddings endpoint. |
+| `APO_EMBEDDING_BASE_URL` | - | Base URL for a local/self-hosted embeddings server (Ollama `http://localhost:11434/v1`, vLLM, LM Studio). |
+| `APO_EMBEDDING_DIMENSIONS` | - | Best-effort dimension truncation (models that support it; a fixed-dimensionality model's rejection is retried once without it). |
+| *(key reuse)* | `openai/text-embedding-3-small` via OpenRouter | With `APO_EMBEDDING_MODEL` unset: an existing `OPENROUTER_API_KEY` grades via OpenRouter's embeddings endpoint, else `OPENAI_API_KEY` grades direct (model `text-embedding-3-small` on `api.openai.com/v1`). Unconfigured, a `t.semantic` call records a setup error with this guidance, never a vacuous pass. |
+
+Config can also be set in code — `runTask({ embedding })`, a task-level `embedding` layer, or per call — including a custom `embed` function for providers that don't speak the OpenAI embeddings wire (Cohere, Voyage). See [Assertions API → `t.semantic`](/reference/assertions/#t-semanticvalue-reference-opts-async).
+
 ### Scheduler
 
 | Variable | Default | Purpose |
