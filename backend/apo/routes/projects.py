@@ -48,6 +48,7 @@ from ..models.schemas import (
     ProjectDetail,
     ProjectSummary,
     RunConfigModelFacet,
+    RunLabelFacets,
     UpdateProjectRequest,
 )
 from ..auth.client_ip import get_client_ip
@@ -60,6 +61,7 @@ from ..services.agent_task_stats import (
     compute_run_host_facets,
 )
 from ..services.project_deletion import delete_project_data
+from ..services.run_labels import compute_run_label_facets
 from ..services.project_memberships import (
     DEMO_PROJECT_ID,
     ProjectRole,
@@ -613,6 +615,26 @@ async def list_project_agent_task_run_host_facets(
     """
     _project, _role = _load_project_for_request(session, project_id, request)
     return compute_run_host_facets(session, project_id, model)
+
+
+@router.get(
+    "/{project_id}/agent-task-run-label-facets",
+    response_model=RunLabelFacets,
+)
+async def list_project_agent_task_run_label_facets(
+    project_id: str,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    """Environments and ``run_metadata.labels`` recorded on the project's Batches.
+
+    Populates the environment and per-label-key filters of the Runs list and
+    a task's run history: per key, every label id with the name its most
+    recent Batch recorded (filters take the id; the name is display only),
+    and every environment, each with its Batch count.
+    """
+    _project, _role = _load_project_for_request(session, project_id, request)
+    return compute_run_label_facets(session, project_id)
 
 
 @router.get("/{project_id}/onboarding-status")

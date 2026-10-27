@@ -1,9 +1,11 @@
 # pyright: reportUnannotatedClassAttribute=false
 
+import re
 from datetime import datetime
-from typing import Literal, cast, get_args
+from typing import Annotated, Literal, cast, get_args
 
 from sqlalchemy import Column
+from pydantic import AfterValidator, ValidationError, field_validator
 from pydantic import Field as PDField
 from sqlmodel import JSON, Field, SQLModel
 from sqlmodel._compat import SQLModelConfig
@@ -615,6 +617,115 @@ class AgentTaskRunTrigger(SQLModel):
     schedule_name: str | None = None
 
 
+# ============================================================================
+# Run labels (``run_metadata.labels``)
+# ============================================================================
+
+# A label key names a dimension the caller labels its runs by ("team",
+# "customer", ...). apo neither knows nor cares which keys exist. Keys are
+# restricted so they are safe as JSON-path segments and as the part before
+# the ``:`` in a ``label=<key>:<id>`` filter.
+RUN_LABEL_KEY_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
+RUN_LABEL_MAX_KEYS = 32
+RUN_LABEL_MAX_LENGTH = 256
+
+
+class RunLabel(SQLModel):
+    """One caller-defined label on a Batch Run: ``run_metadata.labels[key]``.
+
+    ``id`` is the stable identity every filter matches on; ``name`` is
+    display only, so renaming the labelled thing never splits its history.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    id: str = Field(min_length=1, max_length=RUN_LABEL_MAX_LENGTH)
+    name: str = Field(min_length=1, max_length=RUN_LABEL_MAX_LENGTH)
+
+    @field_validator("id", "name")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value
+
+
+def validate_run_metadata(value: dict[str, object] | None) -> dict[str, object] | None:
+    """Validate the one structured part of free-form ``run_metadata``.
+
+    ``labels``, when present, must be ``{"<key>": {"id": str, "name": str}}``
+    with keys matching ``RUN_LABEL_KEY_RE``. Every other key stays free-form.
+    """
+    if value is None or "labels" not in value:
+        return value
+    labels = value["labels"]
+    if not isinstance(labels, dict):
+        raise ValueError('run_metadata.labels must be an object: {"<key>": {"id": ..., "name": ...}}')
+    entries = cast(dict[object, object], labels)
+    if len(entries) > RUN_LABEL_MAX_KEYS:
+        raise ValueError(f"run_metadata.labels holds at most {RUN_LABEL_MAX_KEYS} keys")
+    for key, raw in entries.items():
+        if not isinstance(key, str) or not RUN_LABEL_KEY_RE.fullmatch(key):
+            raise ValueError(
+                f"run_metadata.labels key {key!r} must be 1-64 characters of letters, digits, '_' or '-'"
+            )
+        try:
+            _ = RunLabel.model_validate(raw)
+        except ValidationError as exc:
+            raise ValueError(
+                f"run_metadata.labels.{key} must be {{\"id\": <non-empty string>, \"name\": <non-empty string>}}"
+            ) from exc
+    return value
+
+
+# ``run_metadata`` on every request that creates a Batch (directly or through a
+# Schedule): free-form, except ``labels``.
+type ValidatedRunMetadata = Annotated[
+    dict[str, object] | None, AfterValidator(validate_run_metadata)
+]
+
+
+def run_labels_from_metadata(run_metadata: dict[str, object] | None) -> dict[str, RunLabel]:
+    """Read ``run_metadata.labels`` leniently: malformed entries are skipped.
+
+    Writes are validated, but rows stored before validation existed (or by a
+    path that bypasses it) must still render rather than fail the read.
+    """
+    labels = run_metadata.get("labels") if run_metadata else None
+    if not isinstance(labels, dict):
+        return {}
+    result: dict[str, RunLabel] = {}
+    for key, raw in cast(dict[object, object], labels).items():
+        if not isinstance(key, str) or not RUN_LABEL_KEY_RE.fullmatch(key):
+            continue
+        try:
+            result[key] = RunLabel.model_validate(raw)
+        except ValidationError:
+            continue
+    return result
+
+
+class RunLabelFacetValue(SQLModel):
+    """One label id under a key, with its most recently recorded name."""
+
+    id: str
+    name: str
+    # Batch Runs carrying this label.
+    count: int
+
+
+class RunLabelKeyFacet(SQLModel):
+    key: str
+    values: list[RunLabelFacetValue] = []
+
+
+class RunLabelFacets(SQLModel):
+    """Filter options for the run lists' environment and label filters."""
+
+    environments: list[FacetBucket] = []
+    labels: list[RunLabelKeyFacet] = []
+
+
 class FailureBreakdownItem(SQLModel):
     """A single failure category's contribution to a batch's outcome."""
 
@@ -881,6 +992,10 @@ class AgentTaskRunSummary(SQLModel):
     # Why an ``error`` run has no verdict: judge | generations | executor.
     no_verdict_reason: NoVerdictReason | None = None
     trigger: AgentTaskRunTrigger | None = None
+    # The parent Batch's environment and ``run_metadata.labels``; absent when
+    # the projection was built without its Batch.
+    environment: str | None = None
+    labels: dict[str, RunLabel] = Field(default_factory=dict)
     error_category: str | None = None
     # adapter-reported model/effort for this Task Run. Absent when
     # the adapter does not report configuration. Distinct from the trace's
@@ -1157,6 +1272,8 @@ class AgentTaskBatchRunSummary(SQLModel):
     # ``model_providers_json`` rollup. Lets the list page fill the Hosts
     # column for collapsed rows without fetching child runs.
     providers: list[str] = Field(default_factory=list)
+    # ``run_metadata.labels``, read leniently (see run_labels_from_metadata).
+    labels: dict[str, RunLabel] = Field(default_factory=dict)
     # derived configuration summary. Projected from child Task
     # Runs on read — never stored on the batch row.
     configuration: AgentTaskBatchRunConfigurationSummary = Field(
@@ -1203,6 +1320,7 @@ class AgentTaskBatchRunDetail(SQLModel):
     # never client-supplied. Null for runtime credentials and older Batches.
     requested_by_user_id: str | None = None
     requested_by_label: str | None = None
+    labels: dict[str, RunLabel] = Field(default_factory=dict)
     task_runs: list[AgentTaskRunSummary] = Field(default_factory=list)
     failure_breakdown: list[FailureBreakdownItem] = Field(default_factory=list)
     task_revision: TaskRevisionSummary | None = None
@@ -1224,7 +1342,7 @@ class CreateAgentTaskBatchRunRequest(SQLModel):
     # Pool, path, root, grep, selection_type, or execution_target accepted.
     task_ids: list[str] = Field(default_factory=list)
     environment: str = "default"
-    run_metadata: dict[str, object] | None = None
+    run_metadata: ValidatedRunMetadata = None
 
 
 class ReportAgentTaskRunResultRequest(SQLModel):
@@ -1430,7 +1548,7 @@ class CreateAgentTaskScheduleRequest(SQLModel):
     min_interval_days: float = 1.0
     max_interval_days: float = 30.0
     enabled: bool = True
-    run_metadata: dict[str, object] | None = None
+    run_metadata: ValidatedRunMetadata = None
     executor_pool_id: str | None = None
     queue_ttl_seconds: int = 86_400
 
@@ -1459,7 +1577,7 @@ class UpdateAgentTaskScheduleRequest(SQLModel):
     min_interval_days: float | None = None
     max_interval_days: float | None = None
     enabled: bool | None = None
-    run_metadata: dict[str, object] | None = None
+    run_metadata: ValidatedRunMetadata = None
     executor_pool_id: str | None = None
     queue_ttl_seconds: int | None = None
 

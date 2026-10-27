@@ -34,6 +34,7 @@ from ..services.agent_task_projection import (
 from ..services.archived_models import load_archived_models
 from ..services.human_actor import user_labels
 from ..services.trace_backend import parse_model_providers, provider_labels
+from ..services.run_labels import batch_scope_conditions
 from ..services.view_runs import since_cutoff
 
 
@@ -83,6 +84,9 @@ class BatchRunListFilters:
     efforts: list[str] = field(default_factory=list)
     # Observed serving hosts (provider or route; issue #307).
     providers: list[str] = field(default_factory=list)
+    environments: list[str] = field(default_factory=list)
+    # ``run_metadata.labels`` ids per key: OR within a key, AND across keys.
+    labels: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -176,6 +180,9 @@ def _apply_base_filters(
         )
     if filters.statuses:
         base = base.where(col(AgentTaskBatchRunDB.status).in_(filters.statuses))
+    scope = batch_scope_conditions(filters.environments, filters.labels)
+    if scope:
+        base = base.where(*scope)
     # Same ``Nh``/``Nd`` vocabulary the evidence-view cohort uses, so a date
     # window carried over from the Tasks page filters here instead of being
     # silently dropped (a fixed preset table read "5d" as all-time).
