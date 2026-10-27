@@ -159,6 +159,13 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
       this.servedModelByParent.set(parentOtelId, served);
     }
 
+    // Own report first, then what a child reported for this span. A span
+    // ends once, so claim its slot here: the processor is a singleton that
+    // outlives runs, and an entry left for a span that ended untracked or
+    // outside its run's context would never be removed.
+    const servedForThis = served ?? this.servedModelByParent.get(otelId);
+    this.servedModelByParent.delete(otelId);
+
     const tracked = this.spanMap.get(otelId);
     if (!tracked) return; // wasn't tracked (not load-bearing or outside run)
     this.spanMap.delete(otelId);
@@ -174,9 +181,6 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
 
     const latency = round3(monotonicNowMs() - tracked.startedAt);
 
-    // Own report first, then what a child reported for this span.
-    const servedForThis = served ?? this.servedModelByParent.get(otelId);
-    this.servedModelByParent.delete(otelId);
     run.trace.endSpan(tracked.apoSpanId, {
       latency_ms: latency,
       ...buildEndParams(translated),
@@ -190,6 +194,7 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
 
   shutdown(): Promise<void> {
     this.spanMap.clear();
+    this.servedModelByParent.clear();
     return Promise.resolve();
   }
 
