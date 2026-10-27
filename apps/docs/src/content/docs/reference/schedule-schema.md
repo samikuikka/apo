@@ -32,7 +32,7 @@ Schedules are created and updated via the backend API (`POST` / `PATCH` `/v1/age
 | `enabled` | `boolean` | `true` | Whether the schedule dispatches. |
 | `executor_pool_id` | `string` | Project default | Exact Pool used by every future Batch from this schedule. Required after default resolution. |
 | `queue_ttl_seconds` | `number` | `86400` | How long an offline Pool may leave each Attempt queued before it fails as `executor_unavailable`. |
-| `run_metadata` | `object` | - | Free-form metadata attached to each run. |
+| `run_metadata` | `object` | - | Free-form metadata attached to each run. `labels` is reserved for filterable run labels: `{ "<key>": { "id": "...", "name": "..." } }`. |
 
 ## Update fields
 

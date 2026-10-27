@@ -117,6 +117,31 @@ Agent task batch runs persist caller-origin information inside `run_metadata.tri
 
 Backend routes should expose this information as first-class `trigger` fields on batch-run and task-run responses. Callers should send it when they create runs instead of forcing consumers to parse raw JSON ad hoc.
 
+Callers may also attach labels in `run_metadata.labels`, one per caller-defined
+dimension, so runs can be filtered by what they ran against:
+
+```json
+{ "run_metadata": { "labels": { "customer": { "id": "c-123", "name": "Acme" } } } }
+```
+
+- Keys match `[A-Za-z0-9_-]{1,64}`; at most 32 keys per run.
+- Each label is exactly `{ "id", "name" }`, both non-blank strings of at most
+  256 characters. `id` is stable and is what filters match; `name` is display
+  only and may change between runs.
+- A malformed `labels` is rejected with 422 wherever a batch is created (the
+  batch, caller and schedule endpoints). Other `run_metadata` keys stay free.
+
+Both `GET /v1/agent-task-batch-runs` and `GET /v1/agent-task-runs` filter on
+these and on the batch's `environment`; a task run matches through its batch.
+
+- `environment=prod,staging`: any of the listed environments.
+- `label=<key>:<id>`, repeatable: OR within a key, AND across keys. The id is
+  everything after the first `:`.
+
+`GET /v1/projects/{project_id}/agent-task-run-label-facets` returns the filter
+options: the project's distinct environments, and per label key the distinct
+ids with the name of their most recent batch and a batch count.
+
 ### Executor and Attempt Auth
 
 The Control Plane never launches Task subprocesses. Keep the three credential

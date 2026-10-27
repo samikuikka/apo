@@ -65,6 +65,9 @@ from ..services.agent_task_projection import (
 )
 from ..services.trace_backend import model_drift_summary, parse_model_providers
 from ..services.view_runs import in_since_window, not_started_run, since_cutoff
+from ..services.run_labels import batch_scope_conditions, parse_label_filters
+from ..services.filters import split_csv_param
+from ..models.schemas import ValidatedRunMetadata, run_labels_from_metadata
 from ..services.demo_workspace import require_project_not_demo
 from ..services.agent_task_runner import finalize_external_task_run
 from ..services.project_memberships import (
@@ -82,10 +85,10 @@ _TASK_RUN_LIGHT = (
 )
 
 
-def _load_batch_triggers(
+def _load_batches(
     session: Session,
     batch_run_ids: Sequence[str],
-) -> dict[str, AgentTaskRunTrigger | None]:
+) -> dict[str, AgentTaskBatchRunDB]:
     unique_ids = list(dict.fromkeys(batch_run_ids))
     if not unique_ids:
         return {}
@@ -95,7 +98,24 @@ def _load_batch_triggers(
             as_column(cast(object, AgentTaskBatchRunDB.id)).in_(unique_ids)
         )
     ).all()
-    return {batch.id: parse_trigger(batch.run_metadata) for batch in batches}
+    return {batch.id: batch for batch in batches}
+
+
+def _load_batch_triggers(
+    session: Session,
+    batch_run_ids: Sequence[str],
+) -> dict[str, AgentTaskRunTrigger | None]:
+    return {
+        batch_id: parse_trigger(batch.run_metadata)
+        for batch_id, batch in _load_batches(session, batch_run_ids).items()
+    }
+
+
+def _label_filters_or_422(label: list[str] | None) -> dict[str, list[str]]:
+    try:
+        return parse_label_filters(label or [])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _load_primary_models(
@@ -570,7 +590,8 @@ class CallerCreateRequest(BaseModel):
     project: str
     task: "CallerTaskDescriptorBody"
     environment: str = "default"
-    run_metadata: dict[str, object] | None = None
+    # Free-form, except ``labels`` (see ``validate_run_metadata``).
+    run_metadata: ValidatedRunMetadata = None
     source_attestation: "CallerSourceAttestationBody"
     caller_identity: "CallerIdentityBody"
     task_definition: dict[str, object]
@@ -736,6 +757,8 @@ def list_agent_task_batch_runs(
         description="Comma-separated serving host filter; matches the observed provider or route on a child run's trace (issue #307)",
     ),
     since: str | None = Query(default=None),
+    environment: str | None = Query(default=None),
+    label: list[str] | None = Query(default=None),
     page: int = Query(0, ge=0),
     page_size: int = Query(20, ge=1, le=100),
     session: Session = Depends(get_session),
@@ -749,7 +772,12 @@ def list_agent_task_batch_runs(
     The list is scoped to the caller's readable Projects. An
     explicit ``project`` is authorized before use; omitting it returns
     only the caller's membership Projects.
+
+    ``environment`` is comma-separated (values OR). ``label`` is repeatable
+    ``<key>:<id>`` over ``run_metadata.labels``: ids OR within a key, keys
+    AND. Labels match on id only, never on the display name.
     """
+    labels = _label_filters_or_422(label)
     if project:
         authorize_project_request(request, session, project)
         project_ids: list[str] | None = [project]
@@ -780,6 +808,8 @@ def list_agent_task_batch_runs(
                 if provider
                 else []
             ),
+            environments=split_csv_param(environment),
+            labels=labels,
         ),
         BatchRunListPagination(page=page, page_size=page_size),
     )
@@ -885,6 +915,8 @@ def list_agent_task_runs(
             "latest-run lookup); live queued runs stay"
         ),
     ),
+    environment: list[str] | None = Query(default=None),
+    label: list[str] | None = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=5000),
     session: Session = Depends(get_session),
 ):
@@ -918,7 +950,18 @@ def list_agent_task_runs(
     every current caller whole (the dashboard reads one task's history
     at a time); an explicit ``limit`` is there for API consumers with
     larger cohorts.
+
+    ``environment`` and ``label`` filter through the run's Batch, with the
+    Batch list's semantics: environments OR (repeated or comma-joined),
+    ``label=<key>:<id>`` ids OR within a key and AND across keys, matching
+    the label id only.
     """
+    labels = _label_filters_or_422(label)
+    environments = [
+        e.strip() for raw in environment or [] for e in raw.split(",") if e.strip()
+    ]
+    batch_scope = batch_scope_conditions(environments, labels)
+
     # Derive the Project scope.
     if project:
         authorize_project_request(request, session, project)
@@ -928,14 +971,14 @@ def list_agent_task_runs(
 
     query = select(AgentTaskRunDB).options(*_TASK_RUN_LIGHT)
 
+    if project_ids is not None or project or batch_scope:
+        query = query.join(AgentTaskBatchRunDB)
     if project_ids is not None:
-        query = query.join(AgentTaskBatchRunDB).where(
-            col(AgentTaskBatchRunDB.project).in_(project_ids)
-        )
+        query = query.where(col(AgentTaskBatchRunDB.project).in_(project_ids))
     elif project:
-        query = query.join(AgentTaskBatchRunDB).where(
-            AgentTaskBatchRunDB.project == project
-        )
+        query = query.where(AgentTaskBatchRunDB.project == project)
+    if batch_scope:
+        query = query.where(*batch_scope)
     if status:
         # Accept both encodings — repeated params (`?status=a&status=b`) and
         # the comma-joined form every other multi-value dimension uses — so
@@ -1011,8 +1054,22 @@ def list_agent_task_runs(
     )
     query = query.limit(limit)
     task_runs = session.exec(query).all()
-    triggers = _load_batch_triggers(session, [tr.batch_run_id for tr in task_runs])
-    return [to_task_run_summary(tr, triggers.get(tr.batch_run_id)) for tr in task_runs]
+    batches = _load_batches(session, [tr.batch_run_id for tr in task_runs])
+    summaries: list[AgentTaskRunSummary] = []
+    for tr in task_runs:
+        batch = batches.get(tr.batch_run_id)
+        if batch is None:
+            summaries.append(to_task_run_summary(tr))
+            continue
+        summaries.append(
+            to_task_run_summary(
+                tr,
+                parse_trigger(batch.run_metadata),
+                environment=batch.environment,
+                labels=run_labels_from_metadata(batch.run_metadata),
+            )
+        )
+    return summaries
 
 
 @router.get("/agent-task-runs/{task_run_id}", response_model=AgentTaskRunDetail)
