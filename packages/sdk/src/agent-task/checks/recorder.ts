@@ -5,6 +5,7 @@
  */
 
 import type { AssertionResult, CheckLocation } from "../run/types.ts";
+import type { EmbeddingMetadata } from "./embedding.ts";
 
 /**
  * Optional hook the runner installs when it knows how to map a stack to the
@@ -66,14 +67,15 @@ export class Recorder {
       location?: CheckLocation;
       expected?: string;
       received?: unknown;
-      evaluator_type?: "llm" | "code" | "agent";
+      evaluator_type?: "llm" | "code" | "agent" | "embedding";
       judge?: import("../run/types.ts").JudgeMetadata;
+      embedding?: EmbeddingMetadata;
       outcome?: import("../run/types.ts").AssertionOutcome;
     },
   ): void {
     const location =
       extra?.location
-      ?? (this.locate ? this.locate(new Error().stack ?? "") : undefined);
+        ?? (this.locate ? this.locate(new Error().stack ?? "") : undefined);
     this.records.push({
       id,
       pass,
@@ -83,6 +85,7 @@ export class Recorder {
       received: extra?.received,
       evaluator_type: extra?.evaluator_type,
       judge: extra?.judge,
+      embedding: extra?.embedding,
       outcome: extra?.outcome,
     });
   }

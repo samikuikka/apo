@@ -2,6 +2,7 @@ import type { FileEntry, TaskDefinition } from "../task/types.ts";
 import type { AgentTaskRunConfiguration } from "../adapter/types.ts";
 import type { SteerTrigger } from "../steer.ts";
 import type { SteerDeliveryBoundary } from "../adapter/types.ts";
+import type { EmbeddingMetadata } from "../checks/embedding.ts";
 
 /**
  * The outcome of a single assertion.
@@ -250,8 +251,14 @@ export type AssertionResult = {
    */
   received?: unknown;
   location?: CheckLocation;
-  evaluator_type?: "llm" | "code" | "agent";
+  evaluator_type?: "llm" | "code" | "agent" | "embedding";
   judge?: JudgeMetadata;
+  /**
+   * Details about the embedding-similarity call that graded this assertion
+   * (`t.semantic`): model, settings signature, similarity, threshold,
+   * latency. Absent for every other evaluator.
+   */
+  embedding?: EmbeddingMetadata;
 };
 
 /**
@@ -297,13 +304,18 @@ export type EvaluationItemResult = {
    * - ``"regex"`` — pattern matching
    * Older persisted results may still use ``"llm"`` at this level.
    */
-  evaluator_type?: "llm" | "code" | "agent" | "regex" | "mixed";
+  evaluator_type?: "llm" | "code" | "agent" | "regex" | "embedding" | "mixed";
   /**
    * If this check was judged by an LLM, details about the judge call
    * (model, prompt, response, tokens, cost, latency). Populated by the
    * evaluator author; absent for code-only evaluators.
    */
   judge?: JudgeMetadata;
+  /**
+   * If this check was graded by embedding similarity (`t.semantic`), the
+   * pinned settings + score details. Absent otherwise.
+   */
+  embedding?: EmbeddingMetadata;
   /**
    * For code checks: the source location of the failure (parsed from the
    * thrown error / failed assertion stack). Lets the dashboard highlight the

@@ -4,12 +4,14 @@ import type { AgentTaskRunConfiguration } from "./adapter/types.ts";
 import { loadTask } from "./task/loadTask.ts";
 import type { JudgeConfig } from "./checks/t.ts";
 import { resolveJudgeToolsFromEnv, type JudgeToolsConfig } from "./checks/mcp-tools.ts";
+import type { EmbeddingConfig, EmbeddingProvider } from "./checks/embedding.ts";
 import { createOtelAgentTaskTraceClient } from "./otel-trace-client.ts";
 import type { AgentTaskTraceOptions } from "./tracing.ts";
 
 export type AgentTaskRuntime = {
   judge?: JudgeConfig;
   judgeTools?: JudgeToolsConfig;
+  embedding?: EmbeddingProvider;
 };
 
 export type AgentTaskRunSummary = {
@@ -39,7 +41,52 @@ export async function loadTaskRuntime(
     // Env/file layer for MCP evidence servers (APO_JUDGE_MCP) — seeds the
     // run-level config, so explicit runTask({ judgeTools }) always wins.
     judgeTools: await resolveJudgeToolsFromEnv(),
+    embedding: resolveEmbeddingFromEnv(),
   };
+}
+
+/**
+ * Env fallback for `t.semantic`. Deliberately different from the judge's
+ * chain: the judge may reuse chat models, embeddings must not. The dedicated
+ * APO_EMBEDDING_* namespace wins; otherwise an existing OpenRouter or OpenAI
+ * key is reused with an embedding-appropriate default model — never
+ * OPENROUTER_MODEL, which names a chat model. No Anthropic or Groq fallback:
+ * neither offers an embeddings API.
+ */
+function resolveEmbeddingFromEnv(): EmbeddingProvider | undefined {
+  const model = process.env.APO_EMBEDDING_MODEL?.trim();
+  if (model) {
+    return {
+      model,
+      ...(process.env.APO_EMBEDDING_BASE_URL ? { baseURL: process.env.APO_EMBEDDING_BASE_URL } : {}),
+      ...(process.env.APO_EMBEDDING_API_KEY ? { apiKey: process.env.APO_EMBEDDING_API_KEY } : {}),
+      ...(process.env.APO_EMBEDDING_DIMENSIONS
+        ? { dimensions: parseDimensions(process.env.APO_EMBEDDING_DIMENSIONS) }
+        : {}),
+    } satisfies EmbeddingConfig;
+  }
+  if (process.env.OPENROUTER_API_KEY) {
+    return {
+      model: "openai/text-embedding-3-small",
+      // The endpoint is named here, never defaulted at request time — a
+      // host is only ever contacted because a layer resolved it.
+      baseURL: process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+      apiKey: process.env.OPENROUTER_API_KEY,
+    };
+  }
+  if (process.env.OPENAI_API_KEY) {
+    return {
+      model: "text-embedding-3-small",
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+    };
+  }
+  return undefined;
+}
+
+function parseDimensions(raw: string): number | undefined {
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function resolveJudgeFromEnv(): JudgeConfig | undefined {

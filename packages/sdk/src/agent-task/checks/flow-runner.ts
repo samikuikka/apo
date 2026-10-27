@@ -12,7 +12,9 @@ import type {
   CheckLocation,
   EvaluationItemResult,
 } from "../run/types.ts";
-import { createTraceTestContext, type TestContext, type JudgeConfig } from "./t.ts";
+import { createTraceTestContext, type EmbeddingRuntime, type TestContext, type JudgeConfig } from "./t.ts";
+import { createEmbeddingClient } from "./embedding.ts";
+import type { EmbeddingTracer } from "../tracing.ts";
 import type { JudgeToolsConfig } from "./mcp-tools.ts";
 import type { AgentHistoryPlane } from "./agent-history.ts";
 import type { JudgeTracer } from "../tracing.ts";
@@ -193,6 +195,8 @@ type RunTraceChecksArgs = {
   historyUnavailableReason?: string;
   moduleUrl?: string;
   displayFile?: string;
+  /** Embedding plane for `t.semantic`; absent disables the check with guidance. */
+  embedding?: EmbeddingRuntime;
 };
 
 /**
@@ -216,11 +220,28 @@ export async function runTraceChecks(args: RunTraceChecksArgs): Promise<Evaluati
   // `t.judge` call in this run can be briefed with.
   const taskMeta = readTaskMeta(args.task);
 
+  // One client for the whole run so the vector cache dedupes a reference
+  // reused across checks, even when no provider was configured upstream. The
+  // judge tracer object (the run's full trace context, structurally) carries
+  // `score` too — reuse it so embedding calls trace without a new param.
+  const embedding: EmbeddingRuntime = args.embedding
+    ? { ...args.embedding, ...(args.embedding.tracer ? {} : optionalTracer(args.judgeTracer)) }
+    : { client: createEmbeddingClient(), ...optionalTracer(args.judgeTracer) };
+
   const results = await Promise.all(
-    registry.map((check) => runOneCheck(check, args, view, taskMeta, locate)),
+    registry.map((check) => runOneCheck(check, args, embedding, view, taskMeta, locate)),
   );
 
   return results;
+}
+
+/** The judge tracer, when it structurally carries the embedding slices. */
+function optionalTracer(tracer: JudgeTracer | undefined): { tracer?: EmbeddingTracer } {
+  if (!tracer) return {};
+  const candidate = tracer as unknown as EmbeddingTracer;
+  return typeof candidate.step === "function" && typeof candidate.score === "function"
+    ? { tracer: candidate }
+    : {};
 }
 
 /**
@@ -236,6 +257,7 @@ export async function runTraceChecks(args: RunTraceChecksArgs): Promise<Evaluati
 async function runOneCheck(
   check: RegisteredCheck,
   args: RunTraceChecksArgs,
+  embedding: EmbeddingRuntime,
   view: TraceView,
   taskMeta: { id?: string; description?: string },
   locate: LocateFn | undefined,
@@ -264,6 +286,7 @@ async function runOneCheck(
       },
       args.judgeTracer,
       args.judgeTools,
+      embedding,
     );
     let thrownLocation: CheckLocation | undefined;
     try {
@@ -290,19 +313,25 @@ async function runOneCheck(
     const pass = failed.length === 0;
     const outcome = rollUpCheckOutcome(failed);
     const judged = rec.all.filter(isJudgedAssertion);
+    const semantic = rec.all.filter((r) => r.evaluator_type === "embedding");
     const reasoning =
       failed.length > 0
         ? failed.map((r) => r.reasoning || r.id).join("; ")
-        : judged.length > 0
-          // A passing check still carries the judge's explanation, not just
-          // "passed" — the summary is the only place a reader scanning the
-          // results list sees why it passed.
-          ? judged.map((r) => r.reasoning).filter(Boolean).join("; ") || "passed"
+        : judged.length > 0 || semantic.length > 0
+          // A passing check still carries the judge's explanation — and the
+          // semantic checks' score lines — not just "passed": the summary is
+          // the only place a reader scanning the results list sees why it
+          // passed.
+          ? [...judged, ...semantic]
+              .map((r) => r.reasoning)
+              .filter(Boolean)
+              .join("; ") || "passed"
           : rec.all.length > 0
             ? "passed"
             : "no assertions recorded";
     const location = failed.find((r) => r.location)?.location;
     const judge = rec.all.find((r) => r.judge)?.judge;
+    const embeddingMeta = rec.all.find((r) => r.embedding)?.embedding;
 
     return {
       id: check.id,
@@ -311,6 +340,7 @@ async function runOneCheck(
       evaluator_type: deriveEvaluatorType(rec.all),
       ...(outcome ? { outcome } : {}),
       ...(judge ? { judge } : {}),
+      ...(embeddingMeta ? { embedding: embeddingMeta } : {}),
       ...(location ? { location } : {}),
       ...(args.displayFile ? { source_file: args.displayFile } : {}),
       ...(rec.all.length > 0
@@ -357,27 +387,36 @@ function isJudgedAssertion(assertion: AssertionResult): boolean {
 /**
  * Derive the check-level evaluator type from the recorded assertions instead
  * of stamping every check "code": "llm" when every assertion judged,
- * "agent" for pure `t.agent` sessions, "mixed" when a check combines judged
- * and deterministic assertions, "code" otherwise.
+ * "agent" for pure `t.agent` sessions, "embedding" for pure `t.semantic`,
+ * "mixed" when a check combines evaluator kinds or mixes them with
+ * deterministic assertions, "code" otherwise.
  */
 function deriveEvaluatorType(
   assertions: readonly AssertionResult[],
 ): EvaluationItemResult["evaluator_type"] {
   let sawLlm = false;
   let sawAgent = false;
+  let sawEmbedding = false;
   let sawDeterministic = false;
   for (const assertion of assertions) {
     if (isJudgedAssertion(assertion)) {
       if (assertion.evaluator_type === "agent") sawAgent = true;
       else sawLlm = true;
+    } else if (assertion.evaluator_type === "embedding") {
+      sawEmbedding = true;
     } else {
       sawDeterministic = true;
     }
   }
-  if (!sawLlm && !sawAgent) return "code";
-  if (sawDeterministic) return "mixed";
-  if (sawAgent && !sawLlm) return "agent";
-  return "llm";
+  const evaluatorKinds = [sawLlm, sawAgent, sawEmbedding].filter(Boolean).length;
+  if (evaluatorKinds === 0 && !sawDeterministic) return "code";
+  if (evaluatorKinds === 1 && !sawDeterministic) {
+    if (sawAgent) return "agent";
+    if (sawEmbedding) return "embedding";
+    return "llm";
+  }
+  if (evaluatorKinds > 0) return "mixed";
+  return "code";
 }
 
 /**
@@ -453,6 +492,7 @@ export async function loadAndRunFlowChecks(
     judgeTools?: JudgeToolsConfig;
     judgeTracer?: JudgeTracer;
     historyPlane?: AgentHistoryPlane;
+    embedding?: EmbeddingRuntime;
   },
   brokenDeliverables: Record<string, string> = {},
 ): Promise<EvaluationItemResult[]> {
@@ -471,6 +511,7 @@ export async function loadAndRunFlowChecks(
     ...(args.judgeTools ? { judgeTools: args.judgeTools } : {}),
     ...(args.historyPlane ? { historyPlane: args.historyPlane } : {}),
     ...(args.judgeTracer ? { judgeTracer: args.judgeTracer } : {}),
+    ...(args.embedding ? { embedding: args.embedding } : {}),
     moduleUrl,
     displayFile: basename(checksPath),
   });

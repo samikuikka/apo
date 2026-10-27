@@ -30,8 +30,20 @@ import {
 } from "./judge-cascade.ts";
 import { createAgentMethod, type AgentEvidence, type AgentJudgeOptions } from "./agent-session.ts";
 import type { JudgeToolsConfig } from "./mcp-tools.ts";
-import type { JudgeTracer } from "../tracing.ts";
+import type { EmbeddingTracer, JudgeTracer } from "../tracing.ts";
 import { servingHostFromBaseURL } from "../integrations/span-helpers.ts";
+import {
+  cosineSimilarity,
+  createEmbeddingClient,
+  embeddingSettingsSignature,
+  resolveEmbeddingConfig,
+  vectorMagnitude,
+  type EmbeddingCallResult,
+  type EmbeddingClient,
+  type EmbeddingConfig,
+  type EmbeddingMetadata,
+  type ResolvedEmbeddingProvider,
+} from "./embedding.ts";
 
 import { isTraceableSpanId } from "../tracing.ts";
 
@@ -143,6 +155,18 @@ export function resolveJudgeConfig(
   };
 }
 
+/**
+ * The embedding plane threaded into check contexts: the layered provider
+ * config, a run-scoped client (one shared vector cache — a reference reused
+ * across checks is embedded once), and the tracer slice for the EMBEDDING
+ * observation + score record. Built once per run by the check runner.
+ */
+export type EmbeddingRuntime = {
+  provider?: ResolvedEmbeddingProvider;
+  client: EmbeddingClient;
+  tracer?: EmbeddingTracer;
+};
+
 export interface TestContext {
   // ── trace / "did it run well" ──────────────────────────────────────────
   /** Asserts a matching tool was called. Pass `{ count }` for an exact count. */
@@ -243,6 +267,38 @@ export interface TestContext {
   ): Promise<void>;
 
   /**
+   * Semantic similarity: embeds `value` and `reference` with the configured
+   * embedding model (any OpenAI-compatible `/embeddings` endpoint —
+   * OpenRouter, OpenAI, local Ollama/vLLM/LM Studio) and records one
+   * assertion that passes when their cosine similarity ≥ `threshold`. Async —
+   * the check function must `await` it. Deterministic under a pinned config
+   * and near-free — the CI-friendly grader between the matchers and
+   * `t.judge`. A non-string `value` is stringified like `t.check` matchers
+   * do; `reference` is the authored text to compare against.
+   *
+   * The threshold is required and has no default: cosine scales are
+   * model-bound (0.3 and 0.79 are both "paraphrase" on different models).
+   * Calibrate with a handful of labeled pass/fail pairs before committing to
+   * one. Every verdict records the raw score to 4 decimals and a settings
+   * signature (`model:1536d:cosine:apo-v1`) — similarity numbers from
+   * different signatures are not comparable.
+   *
+   * ``opts.embedding`` overrides the run's embedding config **for this call
+   * only**, merging field-by-field like ``t.judge``'s config override.
+   */
+  semantic(
+    value: unknown,
+    reference: string,
+    opts: {
+      /** Pass when cosine(value, reference) ≥ threshold. No default. */
+      threshold: number;
+      label?: string;
+      /** Per-call embedding config override, merged onto the threaded config. */
+      embedding?: Partial<EmbeddingConfig>;
+    },
+  ): Promise<void>;
+
+  /**
    * Agentic judge: a tool-using LLM session that investigates the run's own
    * evidence (deliverables via `read_deliverable`/`search_deliverable`, the
    * trace via `get_trace`) before verdicting with `finish_verdict`. Async —
@@ -294,6 +350,7 @@ export const TEST_METHOD_NAMES = [
   "assert",
   "check",
   "judge",
+  "semantic",
   "agent",
 ] as const satisfies readonly (keyof TestContext)[];
 
@@ -327,6 +384,7 @@ export function createTestContext(
   rec: Recorder,
   judgeConfig?: JudgeConfig,
   agentEvidence?: AgentEvidence,
+  embedding?: EmbeddingRuntime,
 ): TestContext {
   return {    calledTool(name, opts) {
       const count = view.toolCalls.filter((call) =>
@@ -494,11 +552,12 @@ export function createTestContext(
     ...createSteerAssertions(
       view,
       rec,
-      (window) => createTestContext(window, rec, judgeConfig, agentEvidence),
+      (window) => createTestContext(window, rec, judgeConfig, agentEvidence, embedding),
     ),
 
     judge: trackPending(rec, createJudgeMethod(rec, judgeConfig)),
     agent: trackPending(rec, createAgentMethod(rec, judgeConfig, undefined, agentEvidence ?? { deliverables: {}, view })),
+    semantic: trackPending(rec, createSemanticMethod(rec, embedding)),
   };
 }
 
@@ -893,6 +952,204 @@ function judgeScopeToContext(scope: JudgeScope | undefined): JudgeCallContext | 
   };
 }
 
+/** What `t.semantic` computes from one embeddings call, pre-recording. */
+type SemanticVerdict = {
+  similarity: number;
+  pass: boolean;
+  signature: string;
+  dimensions: number;
+  servedModel?: string;
+  tokens?: { input: number };
+  latencyMs?: number;
+  zeroMagnitude: boolean;
+};
+
+/**
+ * The `t.semantic` implementation, shared by both test contexts. Embeds the
+ * value and reference under the resolved provider (inside an EMBEDDING
+ * observation when traced), compares with cosine, and records one assertion
+ * carrying the raw score, the threshold, and the pinned settings signature.
+ * Unreachable endpoints and malformed responses record `outcome: "error"` —
+ * an unreachable grader is not a FAIL, same contract as `t.judge`.
+ */
+function createSemanticMethod(
+  rec: Recorder,
+  embedding?: EmbeddingRuntime,
+  judgeScope?: JudgeScope,
+): TestContext["semantic"] {
+  const client = embedding?.client ?? createEmbeddingClient();
+  const previewOf = (text: string): string =>
+    text.length > 120 ? `${text.slice(0, 117)}...` : text;
+
+  return async (value, reference, opts) => {
+    const label = opts?.label ?? "semantic";
+    // Capture the call site BEFORE any await — after resuming, V8 reports
+    // the caller's frame at an unreliable line (same pin as `t.judge`).
+    const location = rec.captureLocation();
+    const threshold = opts.threshold;
+    if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) {
+      rec.record(
+        label,
+        false,
+        `t.semantic: threshold must be a finite number in [0, 1], got ${threshold}`,
+        { evaluator_type: "embedding", location },
+      );
+      return;
+    }
+    const resolved = resolveEmbeddingConfig(embedding?.provider, opts.embedding);
+    if (!resolved) {
+      rec.record(
+        label,
+        false,
+        "No embedding model configured. Set one of:\n" +
+          "• APO_EMBEDDING_MODEL + APO_EMBEDDING_API_KEY (+ APO_EMBEDDING_BASE_URL for a local server)\n" +
+          "• OPENROUTER_API_KEY (defaults to openai/text-embedding-3-small via OpenRouter)\n" +
+          "• OPENAI_API_KEY (defaults to text-embedding-3-small)\n" +
+          "Or pass { embedding } to runTask() programmatically.",
+        { evaluator_type: "embedding", location, outcome: "error" },
+      );
+      return;
+    }
+
+    const valueText = typeof value === "string" ? value : describeValue(value);
+    const referenceText = reference;
+    const modelName = resolved.config?.model ?? "custom";
+    const tracer = embedding?.tracer;
+
+    const grade = (result: EmbeddingCallResult): SemanticVerdict => {
+      const [valueVector, referenceVector] = result.vectors;
+      const similarity = cosineSimilarity(valueVector, referenceVector);
+      if (!Number.isFinite(similarity)) {
+        // Length mismatch is rejected upstream, so a non-finite cosine means
+        // the provider returned non-finite vector components.
+        throw new Error("cosine similarity undefined — provider returned non-finite vector components");
+      }
+      // Compare (and record) the 4-decimal rounding so the displayed number
+      // and the verdict can never disagree.
+      const rounded = Math.round(similarity * 10000) / 10000;
+      return {
+        similarity: rounded,
+        pass: rounded >= threshold,
+        signature: embeddingSettingsSignature(modelName, result.dimensions),
+        dimensions: result.dimensions,
+        ...(result.servedModel ? { servedModel: result.servedModel } : {}),
+        ...(result.tokens ? { tokens: result.tokens } : {}),
+        ...(result.latencyMs !== undefined ? { latencyMs: result.latencyMs } : {}),
+        zeroMagnitude:
+          vectorMagnitude(valueVector) === 0 || vectorMagnitude(referenceVector) === 0,
+      };
+    };
+
+    let spanId: string | undefined;
+    const call = () => client.embed([valueText, referenceText], resolved);
+    try {
+      const verdict = await (tracer
+        ? tracer.step(
+            {
+              step_name: `embedding:${judgeScope?.checkName ?? label}`,
+              observation_type: "EMBEDDING",
+              model: modelName,
+              ...servingHostFromBaseURL(resolved.config?.baseURL),
+              input: { model: modelName, threshold },
+              summarize: (r) => {
+                const res = r as SemanticVerdict;
+                const text =
+                  `cosine ${res.similarity} vs threshold ${threshold}` +
+                  (res.pass ? " — pass" : " — fail");
+                return {
+                  text,
+                  verdict: {
+                    pass: res.pass,
+                    similarity: res.similarity,
+                    threshold,
+                    settings: res.signature,
+                  },
+                };
+              },
+              usage: (r) => {
+                const tokens = (r as SemanticVerdict).tokens;
+                return tokens?.input !== undefined ? { prompt_tokens: tokens.input } : undefined;
+              },
+            },
+            async (id: string) => {
+              spanId = id;
+              return grade(await call());
+            },
+          )
+        : grade(await call()));
+
+      const delta = verdict.similarity - threshold;
+      let reasoning = verdict.pass
+        ? `semantic similarity ${verdict.similarity.toFixed(4)} ≥ ${threshold.toFixed(4)} [${verdict.signature}]`
+        : `semantic similarity ${verdict.similarity.toFixed(4)} < ${threshold.toFixed(4)} (delta ${delta.toFixed(4)}) [${verdict.signature}]`;
+      // Marginal band: within 0.02 of the threshold the verdict is one model
+      // drift away from flipping — say so on every such verdict; no surveyed
+      // tool warns about this at all.
+      if (Math.abs(delta) < 0.02) {
+        reasoning += " — marginal: within 0.02 of the threshold; this verdict will flip on model drift";
+      }
+      if (verdict.zeroMagnitude) {
+        reasoning += " (zero-magnitude vector: the provider returned an empty direction)";
+      }
+
+      const metadata: EmbeddingMetadata = {
+        model: modelName,
+        ...(verdict.servedModel ? { served_model: verdict.servedModel } : {}),
+        dimensions: verdict.dimensions,
+        similarity: verdict.similarity,
+        threshold,
+        metric: "cosine",
+        settings_hash: verdict.signature,
+        ...(verdict.tokens ? { tokens: verdict.tokens } : {}),
+        ...(verdict.latencyMs !== undefined ? { latency_ms: verdict.latencyMs } : {}),
+        ...(isTraceableSpanId(spanId) ? { span_id: spanId } : {}),
+        value_preview: previewOf(valueText),
+        reference_preview: previewOf(referenceText),
+      };
+      rec.record(label, verdict.pass, reasoning, {
+        evaluator_type: "embedding",
+        expected: `cosine ≥ ${threshold.toFixed(4)} (${modelName}:${verdict.dimensions}d)`,
+        received: verdict.similarity,
+        location,
+        embedding: metadata,
+      });
+
+      if (tracer && isTraceableSpanId(spanId)) {
+        // The numeric score record makes similarity trends queryable per
+        // run. Its store is auxiliary — a score-write failure (rejected OR
+        // synchronously thrown by a custom tracer) must never fail the
+        // check it scored, which already recorded its verdict above.
+        try {
+          await tracer
+            .score({
+              name: "semantic_similarity",
+              value: verdict.similarity,
+              dataType: "NUMERIC",
+              source: "EVAL",
+              observationId: spanId,
+            })
+            .catch(() => undefined);
+        } catch {
+          // Swallow with the same rationale as the .catch above.
+        }
+      }
+    } catch (error) {
+      rec.record(
+        label,
+        false,
+        `embedding check failed: ${error instanceof Error ? error.message : String(error)}`,
+        {
+          evaluator_type: "embedding",
+          expected: `cosine ≥ ${threshold.toFixed(4)}`,
+          received: valueText,
+          location,
+          outcome: "error",
+        },
+      );
+    }
+  };
+}
+
 /**
  * Capability key → human description, for unsupported-outcome reasoning.
  */
@@ -923,6 +1180,7 @@ export function createTraceTestContext(
   agentEvidence?: AgentEvidence,
   judgeTracer?: JudgeTracer,
   judgeTools?: JudgeToolsConfig,
+  embedding?: EmbeddingRuntime,
 ): TestContext {
   const unsupported = (
     id: string,
@@ -1153,6 +1411,7 @@ export function createTraceTestContext(
           agentEvidence,
           judgeTracer,
           judgeTools,
+          embedding,
         ),
     ),
 
@@ -1170,6 +1429,9 @@ export function createTraceTestContext(
     // task/check frame for prompt builders (#161).
     judge: trackPending(rec, createJudgeMethod(rec, judgeConfig, judgeScope, judgeTracer)),
     agent: trackPending(rec, createAgentMethod(rec, judgeConfig, judgeScope, agentEvidence ?? { deliverables: {}, view }, judgeTracer, judgeTools)),
+    // Like t.judge: value-plane check, no capability gating — but traced, so
+    // the embeddings call shows up as an EMBEDDING observation.
+    semantic: trackPending(rec, createSemanticMethod(rec, embedding, judgeScope)),
   };
 }
 
