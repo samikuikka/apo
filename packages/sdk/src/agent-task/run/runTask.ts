@@ -212,7 +212,7 @@ export async function runTask(
       // backend, projection timeout) so evaluation still runs.
       const canonical = await readCanonicalSnapshot(
         trace,
-        phase1.replayObservationFloor,
+        phase1.snapshot.observations.length,
       );
       if (canonical) phase1.snapshot = canonical;
 
@@ -227,31 +227,33 @@ export async function runTask(
  * Read the canonical projection snapshot from the backend (Track C).
  *
  * Returns `null` when there's nothing to read (no taskRunId = offline/local
- * run) or when the read fails for any reason — the caller falls back to the
- * local tee snapshot in that case. Errors are logged but never thrown: a
+ * run), when the read fails for any reason, or when the projection cannot
+ * reach `minObservations` within the deadline — the caller falls back to the
+ * local tee snapshot in every case. Errors are logged but never thrown: a
  * projection read problem must not fail the task run.
  *
- * When the run replayed a transcript capture, `minObservations` is the local
- * observation count the canonical projection should eventually reach. The
- * replay batch was exported moments before this read, so a snapshot that
- * exists but is still missing those observations gets the same bounded
- * backoff as a not-yet-projected trace — otherwise tool-based checks would
- * evaluate against a projection silently missing the agent's activity.
+ * `minObservations` is the local snapshot's observation count: every span the
+ * tee recorded also exported, so a healthy backend projection must eventually
+ * reach that count (and pass it when the agent ran in a subprocess whose
+ * spans only exist remotely). The backend's "trace complete" flag alone is
+ * not enough: the root span ends inside Phase 1, so the projection can be
+ * flagged complete while later child spans are still ingesting, and checks
+ * evaluated against that snapshot would fail on tool calls the run itself
+ * made.
  */
-async function readCanonicalSnapshot(
+export async function readCanonicalSnapshot(
   trace: AgentTaskTraceOptions,
-  minObservations?: number,
-): Promise<CapturedExecution["snapshot"] | null> {
+  minObservations: number,
+  opts: { deadlineMs?: number } = {},
+): Promise<TraceProjectionSnapshot | null> {
   if (!trace.taskRunId) return null; // offline/local run — no backend read
-  // NOTE: deliberately still the trace endpoint, not APO_BACKEND_URL. In
-  // the caller path the root span (whose ingest-side claim this read waits
-  // for) only ends AFTER this read runs, so a reachable backend turns the
-  // instant 404 into a guaranteed 30s "not ready" wait — the local tee
-  // fallback is the effective design here either way.
+  // The trace endpoint + the run's trace token (the same credential the OTLP
+  // exporter uses), not APO_BACKEND_URL + an API key. Either way, a missing
+  // endpoint or token means the local tee snapshot is the effective design.
   const endpoint = process.env.AGENT_TASK_TRACE_ENDPOINT;
   const authToken = process.env.APO_AUTH_TOKEN;
   if (!endpoint || !authToken) return null;
-  const deadlineMs = 30_000;
+  const deadlineMs = opts.deadlineMs ?? 30_000;
   const start = Date.now();
   try {
     let snapshot = await readTaskRunProjection({
@@ -264,24 +266,17 @@ async function readCanonicalSnapshot(
       // the checks phase starts — a 409 "no trace yet" must wait for the
       // claim, not fall back to a local snapshot that cannot see the
       // subprocess's spans.
-      // Fresh-run readback: the run row was pre-created by the caller/executor
-      // flow, and the subprocess-exported trace may still be in flight when
-      // the checks phase starts — a 409 "no trace yet" must wait for the
-      // claim, not fall back to a local snapshot that cannot see the
-      // subprocess's spans.
       retryNoTrace: true,
     });
-    while (
-      minObservations !== undefined &&
-      snapshot.observations.length < minObservations
-    ) {
+    while (snapshot.observations.length < minObservations) {
       const remaining = deadlineMs - (Date.now() - start);
       if (remaining <= 0) {
         console.error(
-          `[AgentTask] Projection still missing replayed observations after ${deadlineMs}ms ` +
-            `(${snapshot.observations.length}/${minObservations}); continuing with the current snapshot`,
+          `[AgentTask] Projection stuck at ${snapshot.observations.length}/${minObservations} ` +
+            `observations after ${deadlineMs}ms (backend missing spans the run exported); ` +
+            `using the local snapshot`,
         );
-        break;
+        return null;
       }
       await new Promise((resolve) => setTimeout(resolve, 500));
       snapshot = await readTaskRunProjection({
@@ -310,12 +305,6 @@ interface CapturedExecution {
   runConfiguration: AgentTaskRunConfiguration | undefined;
   /** The frozen projection snapshot Phase 2 evaluates against. */
   snapshot: TraceProjectionSnapshot;
-  /**
-   * When a transcript capture was replayed: the observation count the
-   * canonical read-back should reach before Phase 2 uses it (see
-   * {@link readCanonicalSnapshot}).
-   */
-  replayObservationFloor?: number;
 }
 
 /** What the shared adapter lifecycle hands to the caller's continuation. */
@@ -675,11 +664,6 @@ async function captureExecution(
     runConfiguration: outcome.runConfiguration,
     // Freeze the snapshot before the root span ends — Phase 2 reads it.
     snapshot: outcome.getSnapshot(),
-    // The floor for the canonical read-back: everything the local snapshot
-    // holds (runner spans + replayed observations) should project remotely.
-    ...(outcome.replay
-      ? { replayObservationFloor: outcome.getSnapshot().observations.length }
-      : {}),
   }));
 }
 
