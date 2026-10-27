@@ -18,6 +18,7 @@ vi.mock("@/lib/agent-task-api", () => ({
   listTaskRuns: (...args: Parameters<typeof mocks.listTaskRuns>) =>
     mocks.listTaskRuns(...args),
   providerLabels: () => [],
+  fetchRunLabelFacets: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/agent-task-view-api", () => ({

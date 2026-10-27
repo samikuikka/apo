@@ -67,6 +67,7 @@ const summary = (
     total_cost: null,
     total_tokens: null,
     configuration: { state: "unknown", configurations: [], reported_task_runs: 0, total_task_runs: 2 },
+    labels: {},
     ...overrides,
   }) as unknown as AgentTaskBatchRunSummary;
 

@@ -4,8 +4,8 @@
  * The shared filter bar for the list pages (Tasks, a task's run history,
  * Runs).
  *
- * One row — search, Status, Model, Effort, Date — with the same controls and
- * the same density everywhere. The bar is fully controlled: each page keeps
+ * One row — search, Status, Model, Effort, any page-supplied facet
+ * dimensions, Date — with the same controls and the same density everywhere. The bar is fully controlled: each page keeps
  * owning its state (URL params or lifted state) and supplies its own status
  * vocabulary from `lib/filter-status`. The bar never fetches and never
  * mutates.
@@ -35,7 +35,21 @@ import { ALL_SINCE_VALUE, sinceOptionsFor } from "@/lib/since-window";
 import type { StatusFilterOption } from "@/lib/filter-status";
 import { cn } from "@/lib/utils";
 
-const ANY_EFFORT_VALUE = "__any__";
+const ANY_VALUE = "__any__";
+
+/**
+ * A single-select dimension beyond the fixed ones (e.g. a run's environment or
+ * one of its label keys). Option values are what the page filters on; labels
+ * are what the picker shows.
+ */
+export interface FilterBarFacet {
+  key: string;
+  label: string;
+  options: { value: string; label: string }[];
+  /** `null` = any. */
+  value: string | null;
+  onChange: (value: string | null) => void;
+}
 
 /** The "Not in the suite" entry in the status menu (see FilterBarProps). */
 export interface ArchivedStatusControl {
@@ -69,6 +83,8 @@ export interface FilterBarProps {
   effortOptions: { value: string; label: string }[];
   effort: string | null;
   onEffortChange: (effort: string | null) => void;
+  /** Extra single-select dimensions, rendered after Effort. */
+  facets?: FilterBarFacet[];
   /** Omit to hide the date control (e.g. demo projects have no cohort scoping). */
   since?: string | null;
   onSinceChange?: (since: string | null) => void;
@@ -144,11 +160,21 @@ export function FilterBar(props: FilterBarProps) {
       {props.effortOptions.length > 0 && (
         <FilterPicker
           label="Effort"
-          value={props.effort ?? ANY_EFFORT_VALUE}
-          options={[{ value: ANY_EFFORT_VALUE, label: "Any effort" }, ...props.effortOptions]}
-          onChange={(v) => props.onEffortChange(v === ANY_EFFORT_VALUE ? null : v)}
+          value={props.effort ?? ANY_VALUE}
+          options={[{ value: ANY_VALUE, label: "Any effort" }, ...props.effortOptions]}
+          onChange={(v) => props.onEffortChange(v === ANY_VALUE ? null : v)}
         />
       )}
+
+      {props.facets?.map((facet) => (
+        <FilterPicker
+          key={facet.key}
+          label={facet.label}
+          value={facet.value ?? ANY_VALUE}
+          options={[{ value: ANY_VALUE, label: "Any" }, ...facet.options]}
+          onChange={(v) => facet.onChange(v === ANY_VALUE ? null : v)}
+        />
+      ))}
 
       {props.since !== undefined && props.onSinceChange && (
         <FilterPicker
@@ -189,12 +215,14 @@ function statusSummary(options: StatusFilterOption[], status: Set<string>): stri
 function countActive(p: FilterBarProps): number {
   const filtered =
     p.status.size > 0 && p.status.size < p.statusOptions.length ? 1 : 0;
+  const facets = (p.facets ?? []).filter((facet) => facet.value !== null).length;
   return (
     filtered +
     (p.archivedStatus?.active ? 1 : 0) +
     (p.selectedModels.size > 0 ? 1 : 0) +
     ((p.selectedHosts?.size ?? 0) > 0 ? 1 : 0) +
     (p.effort ? 1 : 0) +
+    facets +
     (p.since ? 1 : 0)
   );
 }

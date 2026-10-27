@@ -11,7 +11,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { RunsClient } from "@/app/project/[projectId]/runs/runs-client";
-import type { ModelFacetOption } from "@/lib/agent-task-api";
+import type { ModelFacetOption, RunLabelFacets } from "@/lib/agent-task-api";
 
 const replace = vi.fn();
 let searchParams = new URLSearchParams();
@@ -64,7 +64,27 @@ const facets: ModelFacetOption[] = [
   },
 ];
 
-function renderRuns(query: string, modelFacets: ModelFacetOption[] = facets) {
+const labelFacets: RunLabelFacets = {
+  environments: [
+    { value: "prod", count: 4 },
+    { value: "staging", count: 1 },
+  ],
+  labels: [
+    {
+      key: "customer",
+      values: [
+        { id: "c-1", name: "Acme", count: 3 },
+        { id: "c-2", name: "Globex", count: 2 },
+      ],
+    },
+  ],
+};
+
+function renderRuns(
+  query: string,
+  modelFacets: ModelFacetOption[] = facets,
+  runLabelFacets: RunLabelFacets | null = labelFacets,
+) {
   searchParams = new URLSearchParams(query);
   return render(
     <RunsClient
@@ -77,6 +97,7 @@ function renderRuns(query: string, modelFacets: ModelFacetOption[] = facets) {
       totalPages={0}
       modelFacets={modelFacets}
       providerFacets={[]}
+      labelFacets={runLabelFacets}
       canDeleteRuns={false}
     />,
   );
@@ -129,6 +150,7 @@ describe("Runs page live refresh", () => {
         totalPages={1}
         modelFacets={facets}
         providerFacets={[]}
+        labelFacets={null}
         canDeleteRuns={false}
       />,
     );
@@ -158,6 +180,7 @@ describe("Runs page live refresh", () => {
         totalPages={3}
         modelFacets={facets}
         providerFacets={[]}
+        labelFacets={null}
         canDeleteRuns={false}
       />,
     );
@@ -223,5 +246,42 @@ describe("Runs page with filters carried in", () => {
   it("shows the effort control even when the facets know nothing of it", () => {
     renderRuns("model=claude-opus-5&effort=medium", []);
     expect(screen.getByRole("combobox", { name: "Effort filter" })).toHaveTextContent("medium");
+  });
+});
+
+describe("Runs page environment and label filters", () => {
+  beforeEach(() => {
+    replace.mockClear();
+  });
+
+  it("shows a carried label by its name while filtering by its id", () => {
+    renderRuns("label=customer:c-2&environment=prod");
+    expect(screen.getByRole("combobox", { name: "customer filter" })).toHaveTextContent("Globex");
+    expect(screen.getByRole("combobox", { name: "Environment filter" })).toHaveTextContent("prod");
+  });
+
+  it("keeps a carried filter visible when the facets could not be loaded", () => {
+    renderRuns("label=customer:c-9&environment=qa", facets, null);
+    expect(screen.getByRole("combobox", { name: "customer filter" })).toHaveTextContent("c-9");
+    expect(screen.getByRole("combobox", { name: "Environment filter" })).toHaveTextContent("qa");
+  });
+
+  it("shows several carried ids of one key as one clearable selection", () => {
+    renderRuns("label=customer:c-1&label=customer:c-2");
+    expect(screen.getByRole("combobox", { name: "customer filter" })).toHaveTextContent("2 selected");
+  });
+
+  it("offers no environment picker while a project has only one environment", () => {
+    renderRuns("", facets, { environments: [{ value: "prod", count: 2 }], labels: [] });
+    expect(screen.queryByRole("combobox", { name: "Environment filter" })).toBeNull();
+  });
+
+  it("clears environment and labels with the other filters", async () => {
+    const user = userEvent.setup();
+    renderRuns("environment=prod&label=customer:c-1");
+
+    await user.click(screen.getByTestId("runs-clear-filters"));
+
+    expect(replace).toHaveBeenCalledWith("/project/acme/runs", { scroll: false });
   });
 });
