@@ -294,6 +294,29 @@ Judgments elicited before the default flip carry `contract: "verdict-first"`. Wh
 
 The repo ships a probe task for this (`apps/example-service/e2e/agent-task-demo/tasks/judge-flip-probe`, a stub agent returning one fixed memo, ten calibrated criteria); on `google/gemini-2.5-flash-lite` it measured zero flips across 10 criteria × 3 samples per arm.
 
+### `t.semantic(value, reference, opts)`, async
+
+- **Signature:** `(value: unknown, reference: string, opts: { threshold: number; label?: string; embedding?: Partial<EmbeddingConfig> }) → Promise<void>`
+- **Asserts:** the cosine similarity between `value` and `reference`, under the configured embedding model, is ≥ `threshold`. **Must be awaited**: the check function must be `async`. Deterministic under a pinned config and near-free — the middle leg between the matchers and `t.judge`: exact matchers can't tolerate a paraphrase, a judge costs tokens and can flip between runs, embedding similarity is a number that lands the same way every time.
+
+```typescript title="my-task.eval.ts"
+test("answer-approximately-right", async (t, { deliverables }) => {
+  await t.semantic(
+    deliverables.answer,
+    "The refund policy allows returns within 30 days of purchase.",
+    { threshold: 0.75 },
+  );
+});
+```
+
+Every verdict records the raw score to 4 decimals — on passes too, so drift is visible before it becomes a failure — plus a settings signature like `openai/text-embedding-3-small:1536d:cosine:apo-v1`: everything that can move the number. Similarity numbers from different signatures are not comparable.
+
+**The threshold is required and has no default**, because cosine scales are model-bound: 0.3 is a staff-endorsed paraphrase bar for `text-embedding-3-large` while 0.79 played that role for the older `ada-002`. Calibrate with a handful of labeled pass/fail pairs: embed both sides, sort by score, and pick the separation point. A score within 0.02 of the threshold is flagged `marginal` — one model update away from flipping.
+
+Similarity is not correctness: embedding models can't tell `INV-1042` from `INV-1043`. Field-level facts belong in `t.check` with an exact matcher; semantic similarity grades "did it say approximately the right thing". Config resolution mirrors the judge — `runTask({ embedding })`, a task-level `embedding` layer, `opts.embedding` per call — against any OpenAI-compatible `/embeddings` endpoint (OpenRouter, OpenAI, local Ollama/vLLM/LM Studio via `baseURL`). For embedders that don't speak that wire (Cohere, Voyage), `runTask({ embedding: { embed: async (texts) => … } })` brings any function. Unconfigured, a `t.semantic` call records a setup error with the env guidance, never a vacuous pass.
+
+On traced runs the embeddings call appears as an `EMBEDDING` observation in the trace, and the similarity lands as a numeric `semantic_similarity` score on the run.
+
 ### `t.agent(instruction, opts?)`, async
 
 - **Signature:** `(instruction: string, opts?: AgentJudgeOptions) → Promise<void>`

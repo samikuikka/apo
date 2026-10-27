@@ -206,6 +206,27 @@ That failure is a signal about your budget or instruction, not about the agent �
 
 An agentic session costs real money and runs minutes, not seconds. Reserve it for the criteria that genuinely need investigation and keep the rest on `t.check` / `t.judge`. The judge model must be tool-calling capable (same judge config chain as `t.judge`, overridable per call), and the [second judge](#the-second-judge) never applies — only `t.judge` calls get one.
 
+## Semantic similarity
+
+Between the matchers and the judge sits a third way to grade what the agent produced: `t.semantic` embeds the value and your reference text with an embedding model and passes when their cosine similarity clears a threshold. It is deterministic under a pinned config, near-free, and fast in CI — the properties a judge can never have.
+
+```typescript title="extract-parties.eval.ts"
+test("answer-approximately-right", async (t, { deliverables }) => {
+  await t.semantic(
+    deliverables.answer,
+    "The refund policy allows returns within 30 days of purchase.",
+    { threshold: 0.75 },
+  );
+});
+```
+
+Use it where exact and fuzzy matchers are too brittle (a paraphrased answer), but a full judge is too much (no taste involved, just "did it say approximately the right thing"). Two rules keep it honest:
+
+- **The threshold is yours to pick.** There is no default because cosine scales are model-bound — 0.3 is a reasonable paraphrase bar on one embedding model and a tight one on another. Calibrate with a handful of labeled pass/fail pairs before committing. Every verdict records the raw score and a settings signature (`model:1536d:cosine:apo-v1`); scores from different signatures are not comparable.
+- **Similarity is not correctness.** An embedding model cannot tell `INV-1042` from `INV-1043` — keep field-level facts in `t.check` with an exact matcher, and reach for the judge when the criterion needs judgment.
+
+A score that lands within 0.02 of the threshold is marked **marginal** — one model update away from flipping, worth knowing before it does. The full option surface (per-call model overrides, local embeddings servers, custom embedders) is in the [Assertions API](/reference/assertions/).
+
 ## Re-judging a run
 
 A verdict is only meaningful together with the conditions that produced it: the task definition it ran under, and (for judged tests) the judge model that was configured. Change the judge and the *same deliverables* score differently: on rubric-heavy tasks, roughly one in six judged criteria flips with the judge, not the agent. That variance is a property of your eval, and you should be able to see it without re-running the agent.
@@ -240,7 +261,7 @@ Three terms keep this honest:
 
 A correction is not a re-judge: a re-judge produces a new *machine* judgment; a correction records a *human* one about existing evidence. Both leave the original verdict inspectable, `apo runs judgments` still lists the original machine counts verbatim.
 
-Correcting history does not fix the future. After correcting, repair the test itself (a better instruction, a `similarity` matcher where wording varies) so the next run doesn't need the correction.
+Correcting history does not fix the future. After correcting, repair the test itself (a better instruction, [`t.semantic`](#semantic-similarity) where wording varies) so the next run doesn't need the correction.
 
 ## Notes
 
