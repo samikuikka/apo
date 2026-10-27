@@ -26,7 +26,7 @@ export type RichCheckDiagnostic = CheckDiagnostic & {
   /** LLM judge reasoning — rendered as prose body when present. */
   reasoning?: string;
   /** "llm" for judge assertions (verdict presentation), "code" otherwise. */
-  evaluator_type?: "llm" | "code" | "agent";
+  evaluator_type?: "llm" | "code" | "agent" | "embedding";
 };
 
 /**
@@ -83,7 +83,7 @@ export function shouldShowDiff(diag: { severity?: "error" | "info" | "warning" }
  * (the reasoning IS the answer; the rubric is context) and never a value-diff
  * — the evaluated values are huge/noisy and live in Deliverables/JSON.
  */
-export function isJudgeDiagnostic(diag: { evaluator_type?: "llm" | "code" }): boolean {
+export function isJudgeDiagnostic(diag: { evaluator_type?: "llm" | "code" | "embedding" }): boolean {
   return diag.evaluator_type === "llm";
 }
 
@@ -158,7 +158,14 @@ export function buildCheckDiagnostics(
       reasoning:
         assertion?.reasoning?.trim()
         || (assertion?.judge ? extractJudgeReasoning(assertion.judge) : undefined),
-      evaluator_type: assertion?.evaluator_type === "llm" ? "llm" : "code",
+      // Embedding assertions present like code (value diff: score vs
+      // threshold) but stay truthfully classified for consumers.
+      evaluator_type:
+        assertion?.evaluator_type === "llm"
+          ? "llm"
+          : assertion?.evaluator_type === "embedding"
+            ? "embedding"
+            : "code",
     }];
   });
 }

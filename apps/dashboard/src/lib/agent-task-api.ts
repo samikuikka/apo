@@ -295,7 +295,7 @@ export interface GenerationUsageSummary {
   max_reasoning_call_id: string | null;
 }
 
-export type EvaluatorType = "llm" | "code" | "agent" | "regex";
+export type EvaluatorType = "llm" | "code" | "agent" | "regex" | "embedding" | "mixed";
 
 /** typed catalog selection stored on a source-owned Schedule. */
 export type ScheduleSelection =
@@ -382,6 +382,26 @@ export interface JudgeMetadata {
   secondJudge?: SecondJudgeEvidence;
 }
 
+/** Details of an embedding-similarity grading (`t.semantic`) call. */
+export interface EmbeddingMetadata {
+  model?: string;
+  /** The model the provider reports serving (gateway fallbacks diverge). */
+  served_model?: string;
+  dimensions?: number;
+  /** Cosine similarity, 4 decimals — recorded on passes too (drift signal). */
+  similarity?: number;
+  threshold?: number;
+  metric?: "cosine";
+  /** sacreBLEU-style pin of everything that can move the number. */
+  settings_hash?: string;
+  tokens?: { input?: number };
+  latency_ms?: number;
+  /** Deep link into the EMBEDDING observation span. */
+  span_id?: string;
+  value_preview?: string;
+  reference_preview?: string;
+}
+
 export type CheckOutcome = "pass" | "fail" | "unsupported" | "error";
 
 export interface CheckAssertionResult {
@@ -400,6 +420,8 @@ export interface CheckAssertionResult {
   location?: CheckLocation;
   evaluator_type?: EvaluatorType;
   judge?: JudgeMetadata;
+  /** Present when this assertion was graded by embedding similarity. */
+  embedding?: EmbeddingMetadata;
 }
 
 export interface CheckResult {
@@ -416,6 +438,8 @@ export interface CheckResult {
   deliverable?: string;
   evaluator_type?: EvaluatorType;
   judge?: JudgeMetadata;
+  /** Check-level rollup of an embedding-similarity grading, when present. */
+  embedding?: EmbeddingMetadata;
   /** For code checks: where in the source it failed (line-precise when captured). */
   location?: CheckLocation;
   /** The source filename this result came from (the `*.eval.ts` task file). */

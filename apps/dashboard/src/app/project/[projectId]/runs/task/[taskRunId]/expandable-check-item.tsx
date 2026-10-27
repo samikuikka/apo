@@ -18,6 +18,7 @@ import { secondJudgeAgreementLine, secondJudgeFacts, secondJudgeTakeaway } from 
 import { cn } from "@/lib/utils";
 import { AssertionDrawer } from "./assertion-drawer";
 import { JudgeStrip } from "./judge-strip";
+import { EmbeddingStrip } from "./embedding-strip";
 import { TestNotes } from "./task-notes";
 import { TestResultCorrectionDialog } from "./test-result-correction-dialog";
 
@@ -78,6 +79,11 @@ export function ExpandableCheckItem({
   // judge.span_id is recorded at emission by the SDK or joined by the
   // backend for runs recorded before that.
   const judgeTraceHref = judgeSpanTraceHref(projectId, traceRunId, judgeMeta?.span_id);
+  // Same join for embedding-similarity gradings (t.semantic): check-level
+  // metadata first, else the first assertion that carries one.
+  const embeddingMeta =
+    item.embedding ?? item.assertions?.find((a) => a.embedding)?.embedding;
+  const embeddingTraceHref = judgeSpanTraceHref(projectId, traceRunId, embeddingMeta?.span_id);
 
   // Shared resolver (issue #178): the anchor is derived from the check
   // result itself, so no view can forget it the way the compare view did.
@@ -327,7 +333,11 @@ export function ExpandableCheckItem({
                         <AssertionDrawer
                           assertion={selectedAssertion}
                           onClose={() => setSelectedLine(null)}
-                          traceHref={judgeSpanTraceHref(projectId, traceRunId, selectedAssertion.judge?.span_id)}
+                          traceHref={judgeSpanTraceHref(
+                            projectId,
+                            traceRunId,
+                            selectedAssertion.judge?.span_id ?? selectedAssertion.embedding?.span_id,
+                          )}
                         />
                       </div>
                     </>
@@ -349,7 +359,10 @@ export function ExpandableCheckItem({
                 {judgeMeta && (
                   <JudgeStrip judge={judgeMeta} checkPass={passed} traceHref={judgeTraceHref} />
                 )}
-                {!reasoning && !judgeMeta && (
+                {embeddingMeta && (
+                  <EmbeddingStrip embedding={embeddingMeta} checkPass={passed} traceHref={embeddingTraceHref} />
+                )}
+                {!reasoning && !judgeMeta && !embeddingMeta && (
                   <p className="text-[12px] text-muted-foreground">No additional details</p>
                 )}
               </>

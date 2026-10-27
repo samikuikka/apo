@@ -7,6 +7,7 @@ import type { CheckAssertionResult } from "@/lib/agent-task-api";
 import { extractJudgeReasoning } from "@/lib/judge-reasoning";
 import { formatAssertionValue } from "@/lib/format-assertion-value";
 import { cn } from "@/lib/utils";
+import { EmbeddingStrip } from "./embedding-strip";
 import { JudgeStrip } from "./judge-strip";
 import { AgentSessionTimeline } from "./agent-session-timeline";
 
@@ -25,6 +26,7 @@ export function AssertionDrawer({
   traceHref?: string | null;
 }) {
   const judge = assertion.judge;
+  const embedding = assertion.embedding;
   const isJudge = Boolean(judge) || assertion.evaluator_type === "llm";
   const reasoning = assertion.reasoning?.trim() || (judge ? extractJudgeReasoning(judge) : undefined);
 
@@ -115,8 +117,9 @@ export function AssertionDrawer({
             <AgentSessionTimeline session={judge.session} />
           )}
           {judge && <JudgeStrip judge={judge} traceHref={traceHref} />}
+          {embedding && <EmbeddingStrip embedding={embedding} checkPass={assertion.pass} traceHref={traceHref} />}
 
-          {!reasoning && !judge && !isJudge && (
+          {!reasoning && !judge && !embedding && !isJudge && (
             <p className="text-[12px] text-muted-foreground">No additional details</p>
           )}
         </div>
