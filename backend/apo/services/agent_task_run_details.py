@@ -31,6 +31,7 @@ from ..models.schemas import (
     ModelProviderPair,
     as_task_run_status,
     as_trace_persistence_status,
+    run_labels_from_metadata,
 )
 from .trace_backend import parse_model_providers
 from .agent_task_configuration import configuration_from_row
@@ -76,13 +77,10 @@ def load_task_run_summaries(
         )
     ).all()
     run_by_id = {run.id: run for run in runs}
-    triggers = _load_triggers(session, runs)
+    batches = {batch.id: batch for batch in _load_batches(session, runs)}
 
     return [
-        _to_summary(
-            run,
-            trigger=triggers.get(run.batch_run_id),
-        )
+        _to_summary(run, batch=batches.get(run.batch_run_id))
         for run_id in unique_ids
         if (run := run_by_id.get(run_id)) is not None
     ]
@@ -91,8 +89,9 @@ def load_task_run_summaries(
 def _to_summary(
     run: AgentTaskRunDB,
     *,
-    trigger: AgentTaskRunTrigger | None,
+    batch: AgentTaskBatchRunDB | None,
 ) -> AgentTaskRunSummary:
+    trigger = parse_trigger(batch.run_metadata) if batch is not None else None
     return AgentTaskRunSummary(
         id=run.id,
         batch_run_id=run.batch_run_id,
@@ -139,6 +138,8 @@ def _to_summary(
             run.configured_model,
             run.configured_effort,
         ),
+        environment=batch.environment if batch is not None else None,
+        labels=run_labels_from_metadata(batch.run_metadata) if batch is not None else {},
     )
 
 
@@ -226,13 +227,6 @@ def _load_batches(
             col(AgentTaskBatchRunDB.id).in_(batch_ids)
         )
     ).all()
-
-
-def _load_triggers(
-    session: Session,
-    runs: Sequence[AgentTaskRunDB],
-) -> dict[str, AgentTaskRunTrigger | None]:
-    return {batch.id: parse_trigger(batch.run_metadata) for batch in _load_batches(session, runs)}
 
 
 def _requesters(

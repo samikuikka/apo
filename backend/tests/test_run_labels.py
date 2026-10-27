@@ -213,6 +213,12 @@ def test_lists_carry_labels_and_environment(client: TestClient, seeded: Session)
     assert detail["labels"]["customer"]["id"] == "c-a"
     assert detail["task_runs"][0]["labels"]["agent"]["id"] == "ag-y"
 
+    from apo.services.agent_task_run_details import load_task_run_summaries
+
+    [compared] = load_task_run_summaries(seeded, ["r-staging-a-y"], project_id=PROJECT)
+    assert compared.environment == "staging", "every task run summary carries its batch's scope"
+    assert compared.labels["agent"].id == "ag-y"
+
 
 def test_stored_malformed_labels_are_skipped_on_read(client: TestClient, session: Session) -> None:
     session.add(ProjectDB(id=PROJECT, name=PROJECT, created_at=_NOW))
