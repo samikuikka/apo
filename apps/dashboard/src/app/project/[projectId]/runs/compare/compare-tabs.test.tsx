@@ -38,6 +38,8 @@ function makeRun(id: string, path: string, over: Partial<AgentTaskRunSummary> = 
     trace_error_message: null,
     error_category: null,
     run_configuration: null,
+    environment: null,
+    labels: {},
     ...over,
   };
 }

@@ -21,6 +21,7 @@ vi.mock("@/lib/agent-task-api", () => ({
     run_stats: null,
   }),
   listTaskRuns: (...args: unknown[]) => listTaskRunsMock(...(args as [])),
+  fetchRunLabelFacets: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/agent-task-view-api", () => ({
@@ -59,5 +60,15 @@ describe("TaskDetailPage run-history fetch", () => {
     const [, , cohort, limit] = listTaskRunsMock.mock.calls[0];
     expect(String(cohort?.model)).toContain("claude-opus-5");
     expect(limit).toBe(200);
+  });
+
+  it("forwards the environment and label scope to the list call", async () => {
+    await TaskDetailPage({
+      params: Promise.resolve({ projectId: "p", taskId: ["t"] }),
+      searchParams: Promise.resolve({ environment: "prod", label: ["customer:c-1", "agent:a-1"] }),
+    });
+
+    const [, , cohort] = listTaskRunsMock.mock.calls[0];
+    expect(cohort).toMatchObject({ environment: ["prod"], label: ["customer:c-1", "agent:a-1"] });
   });
 });

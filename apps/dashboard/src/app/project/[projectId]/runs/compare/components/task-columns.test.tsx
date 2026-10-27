@@ -37,6 +37,8 @@ function makeRun(
     trace_error_message: null,
     error_category: null,
     run_configuration: { model, effort: null },
+    environment: null,
+    labels: {},
     ...over,
   };
 }

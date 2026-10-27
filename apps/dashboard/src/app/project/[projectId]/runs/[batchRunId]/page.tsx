@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { formatCostMicro } from "@/lib/format";
 import { formatBatchExecution } from "@/lib/run-configuration";
 import { RequestedByInline, TriggerInline } from "@/components/trigger-badge";
+import { RunScopeInline } from "@/components/run-scope-inline";
 import { DeleteRunButton } from "@/components/runs/DeleteRunButton";
 import { BatchTaskRunsTable } from "./batch-task-runs-table";
 import { BatchRunAutoRefresh } from "@/components/agent-task-execution/batch-run-auto-refresh";
@@ -178,6 +179,11 @@ export default async function BatchRunDetailPage({
               <span className="text-muted-foreground/50">·</span>
               <TriggerInline trigger={batchRun.trigger} />
               <RequestedByInline label={batchRun.requested_by_label} />
+              <RunScopeInline
+                environment={batchRun.environment}
+                labels={batchRun.labels}
+                separator={<span className="text-muted-foreground/50">·</span>}
+              />
               <span className="text-muted-foreground/50">·</span>
               <span>{formatDate(batchRun.created_at)}</span>
             </div>

@@ -12,6 +12,7 @@ import {
 } from "@/lib/agent-task-api";
 import { conclusionStyle } from "@/components/run-outcome";
 import { DeleteRunButton } from "@/components/runs/DeleteRunButton";
+import { RunScopeInline } from "@/components/run-scope-inline";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { formatCostMicro, formatTokenTotal } from "@/lib/format";
@@ -199,6 +200,11 @@ export function RunsRow({
             </div>
             <div className="mt-1 flex items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
               <span className="shrink-0 font-mono text-muted-foreground/60">{batch.id.slice(0, 8)}</span>
+              <RunScopeInline
+                environment={batch.environment}
+                labels={batch.labels}
+                separator={<span className="shrink-0 text-muted-foreground/30">·</span>}
+              />
               {branch && (
                 <>
                   <span className="shrink-0 text-muted-foreground/30">·</span>

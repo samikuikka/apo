@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { type EffortFacetOption } from "@/lib/agent-task-api";
-import { FilterBar } from "@/components/filter-bar";
+import { FilterBar, type FilterBarFacet } from "@/components/filter-bar";
 import { BATCH_RUN_STATUS_FILTERS } from "@/lib/filter-status";
 
 import { type ModelOption } from "../runs-model-filter";
@@ -19,10 +19,12 @@ interface RunsToolbarProps {
   selectedEfforts: Set<string>;
   modelOptions: ModelOption[];
   effortOptions: EffortFacetOption[];
+  /** Environment and label pickers (`lib/run-scope`). */
+  scopeFilters: FilterBarFacet[];
   totalCount: number;
   /** Any filter dimension in play — typed here or carried in from Tasks. */
   hasActiveFilters: boolean;
-  updateUrl: (updates: Record<string, string | null>) => void;
+  updateUrl: (updates: Record<string, string | string[] | null>) => void;
   onClearFilters: () => void;
   /** Retire a model from the palette, or bring it back. */
   onSetArchived: (model: string, archived: boolean) => void;
@@ -42,6 +44,7 @@ export function RunsToolbar({
   selectedEfforts,
   modelOptions,
   effortOptions,
+  scopeFilters,
   totalCount,
   hasActiveFilters,
   updateUrl,
@@ -96,6 +99,7 @@ export function RunsToolbar({
           }))}
           effort={selectedEffort}
           onEffortChange={(effort) => updateUrl({ effort, page: null })}
+          facets={scopeFilters}
           since={urlSince}
           onSinceChange={(since) => updateUrl({ since, page: null })}
           query={searchInput}

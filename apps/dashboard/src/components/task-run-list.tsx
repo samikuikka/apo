@@ -10,6 +10,7 @@ import { DeleteRunButton } from "@/components/runs/DeleteRunButton";
 import { TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { errorMessageTextClass, runStatusLabel } from "@/lib/run-verdict";
+import { RunScopeInline } from "@/components/run-scope-inline";
 import { formatCostMicro, formatTokenTotal } from "@/lib/format";
 import { formatRunExecution, formatRunExecutionFull } from "@/lib/run-configuration";
 import {
@@ -108,6 +109,7 @@ export function TaskRunRow({
   onToggleCompare,
   canDelete = false,
   onDelete,
+  showScope = false,
 }: {
   run: AgentTaskRunSummary;
   projectId: string;
@@ -119,6 +121,8 @@ export function TaskRunRow({
    * prop is omitted, no delete button renders. */
   canDelete?: boolean;
   onDelete?: () => void;
+  /** Show the run's environment and labels (lists spanning several batches). */
+  showScope?: boolean;
 }) {
   const router = useRouter();
   const status = run.status;
@@ -152,6 +156,13 @@ export function TaskRunRow({
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-[12px] text-muted-foreground">
           <span className="font-mono text-muted-foreground">{run.id.slice(0, 10)}</span>
+          {showScope && (
+            <RunScopeInline
+              environment={run.environment}
+              labels={run.labels}
+              separator={<span className="text-muted-foreground">&middot;</span>}
+            />
+          )}
           {run.status === "running" && run.trace_run_id && (
             <>
               <span className="text-muted-foreground">&middot;</span>
