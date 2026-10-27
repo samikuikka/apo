@@ -32,7 +32,13 @@ import {
 import { createProjectionTee } from "../trace-projection/projection-tee.ts";
 import type { TraceProjectionSnapshot } from "../trace-projection/types.ts";
 import { readTaskRunProjection } from "../trace-projection/remote-capture.ts";
-import { resolveJudgeConfig, type JudgeConfig } from "../checks/t.ts";
+import { resolveJudgeConfig, type EmbeddingRuntime, type JudgeConfig } from "../checks/t.ts";
+import {
+  createEmbeddingClient,
+  resolveEmbeddingConfig,
+  type EmbeddingConfig,
+  type EmbeddingProvider,
+} from "../checks/embedding.ts";
 import {
   resolveJudgeTools,
   resolveMcpServerPaths,
@@ -98,6 +104,13 @@ export type RunTaskOptions = {
   /** LLM judge model config for `t.judge(...)` calls in the task checks. */
   judge?: JudgeConfig;
   /**
+   * Embedding provider for `t.semantic(...)` calls: the HTTP config for any
+   * OpenAI-compatible `/embeddings` endpoint, or a custom `embed` function.
+   * Layered under `TaskDefinition.embedding` and per-call
+   * `t.semantic(..., { embedding })`.
+   */
+  embedding?: EmbeddingProvider;
+  /**
    * Judge tool config for `t.agent(...)` sessions (MCP evidence servers).
    * Layered under `TaskDefinition.judgeTools` and per-call `tools.mcp`.
    */
@@ -142,6 +155,22 @@ function resolveJudgeToolsForTask(
   const layered = resolveJudgeTools(runLevel, taskLevel);
   if (!layered?.mcp) return layered;
   return { mcp: resolveMcpServerPaths(layered.mcp, taskDir) };
+}
+
+/**
+ * Layered embedding plane for `t.semantic`: the run-level provider under the
+ * task-level config layer, over one run-scoped client (shared vector cache —
+ * a reference text reused across checks is embedded once). Returns
+ * `undefined` when no layer configured a model, which turns `t.semantic`
+ * calls into recorded guidance errors.
+ */
+function buildEmbeddingRuntime(
+  runLevel: EmbeddingProvider | undefined,
+  taskLevel: Partial<EmbeddingConfig> | undefined,
+): EmbeddingRuntime | undefined {
+  const provider = resolveEmbeddingConfig(runLevel, taskLevel);
+  if (!provider) return undefined;
+  return { provider, client: createEmbeddingClient() };
 }
 
 export async function runTask(
@@ -577,6 +606,7 @@ async function executeLoadedTask(
         // plane, so "./mcp/server.mjs" works regardless of the runner's cwd.
         const judgeConfig = resolveJudgeConfig(options?.judge, task.judge);
         const judgeTools = resolveJudgeToolsForTask(options?.judgeTools, task.judgeTools, absoluteDir);
+        const embeddingRuntime = buildEmbeddingRuntime(options?.embedding, task.embedding);
         const historyPlane = await freezeHistoryPlaneFromEnv(task.id);
         if (!inlineChecks) {
           return loadAndRunFlowChecks(
@@ -590,6 +620,7 @@ async function executeLoadedTask(
               ...(judgeTools ? { judgeTools } : {}),
               judgeTracer: trace,
               ...(historyPlane ? { historyPlane } : {}),
+              ...(embeddingRuntime ? { embedding: embeddingRuntime } : {}),
             },
             validationResults.brokenDeliverables,
           );
@@ -606,6 +637,7 @@ async function executeLoadedTask(
           ...(judgeTools ? { judgeTools } : {}),
           judgeTracer: trace,
           ...(historyPlane ? { historyPlane } : {}),
+          ...(embeddingRuntime ? { embedding: embeddingRuntime } : {}),
           moduleUrl,
           displayFile: evalFileName,
         });
@@ -686,6 +718,7 @@ async function evaluate(
   // contract as the merge above.
   const judgeConfig = resolveJudgeConfig(options?.judge, task.judge);
   const judgeTools = resolveJudgeToolsForTask(options?.judgeTools, task.judgeTools, absoluteDir);
+  const embeddingRuntime = buildEmbeddingRuntime(options?.embedding, task.embedding);
   const historyPlane = await freezeHistoryPlaneFromEnv(task.id);
 
   const runChecks = async (): Promise<EvaluationItemResult[]> =>
@@ -701,6 +734,7 @@ async function evaluate(
           ...(judgeTools ? { judgeTools } : {}),
           ...(judgeTracer ? { judgeTracer } : {}),
           ...(historyPlane ? { historyPlane } : {}),
+          ...(embeddingRuntime ? { embedding: embeddingRuntime } : {}),
           moduleUrl,
           displayFile: evalFileName,
         })
@@ -715,6 +749,7 @@ async function evaluate(
             ...(judgeTools ? { judgeTools } : {}),
             ...(judgeTracer ? { judgeTracer } : {}),
             ...(historyPlane ? { historyPlane } : {}),
+            ...(embeddingRuntime ? { embedding: embeddingRuntime } : {}),
           },
           validationResults.brokenDeliverables,
         );

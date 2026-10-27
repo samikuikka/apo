@@ -86,6 +86,13 @@ export function createNoopAgentTaskTraceContext(): AgentTaskTraceContext {
 export type JudgeTracer = Pick<AgentTaskTraceContext, "step" | "traceTool">;
 
 /**
+ * The slice `t.semantic` uses: the embeddings call becomes an EMBEDDING
+ * observation span (nested under the check's span, like judge spans), and
+ * the similarity lands as a NUMERIC score record attached to it.
+ */
+export type EmbeddingTracer = Pick<AgentTaskTraceContext, "step" | "score">;
+
+/**
  * Whether a step-returned span id identifies a real, linkable span. The noop
  * trace context hands out sentinel ids ("agent-task-untraced-*") so callers
  * need no null-checks — but judge metadata must not record a sentinel as a

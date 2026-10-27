@@ -91,6 +91,19 @@ export type {
 } from "./checks/judge.ts";
 export { TEST_METHOD_NAMES } from "./checks/t.ts";
 export {
+  cosineSimilarity,
+  createEmbeddingClient,
+  embeddingSettingsSignature,
+  resolveEmbeddingConfig,
+  type EmbeddingCallResult,
+  type EmbeddingClient,
+  type EmbeddingConfig,
+  type EmbeddingMetadata,
+  type EmbeddingProvider,
+  type ResolvedEmbeddingProvider,
+} from "./checks/embedding.ts";
+export { type EmbeddingRuntime } from "./checks/t.ts";
+export {
   secondJudgeFacts,
   secondJudgeTakeaway,
   type SecondJudgeFacts,

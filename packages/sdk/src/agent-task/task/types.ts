@@ -1,5 +1,6 @@
 import type { JudgeConfig } from "../checks/t.ts";
 import type { JudgeToolsConfig, McpServerConfig } from "../checks/mcp-tools.ts";
+import type { EmbeddingConfig } from "../checks/embedding.ts";
 
 export type TaskDefinition<
   TAdapterName extends string = string,
@@ -19,6 +20,14 @@ export type TaskDefinition<
    * `prompt` that tells the judge what it is grading.
    */
   judge?: Partial<JudgeConfig>;
+  /**
+   * Task-level embedding layer: overrides the run-level
+   * `runTask({ embedding })` config for `t.semantic` calls in this task and
+   * is itself overridden per call (`t.semantic(..., { embedding })`). Set
+   * `{ model }` to grade this task's texts with a different embedding model
+   * than the suite default.
+   */
+  embedding?: Partial<EmbeddingConfig>;
   /**
    * Task-level judge-tools layer: MCP evidence servers for `t.agent` sessions
    * in this task. Overrides `runTask({ judgeTools })`, is overridden per
