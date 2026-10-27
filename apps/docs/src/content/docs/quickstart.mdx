@@ -12,6 +12,29 @@ import TerminalDemo from '../../components/demos/TerminalDemo.astro';
 - **Running your own apo server?** Continue here.
 :::
 
+## 0. See a verdict first: nothing but the CLI
+
+Before any stack, key, or account: run the keyless replay of the canonical
+example. A recorded session of the real example agent plays back through
+apo's runner, and the actual test suite evaluates it, a genuine verdict at
+zero cost (Node 22 or 24):
+
+```bash
+npm install -g @apo-ai/cli
+git clone https://github.com/samikuikka/apo.git && cd apo
+pnpm install --filter @apo/example-service...
+cd apps/example-service/e2e/agent-task-demo
+apo task run data-extraction-replay --dir ./tasks/ai-sdk-agent
+```
+
+The `note: run is not being recorded` line is expected: there is no backend
+yet, so the verdict and trace stay local. Once your stack is up (next
+section) and you are logged in, **the same command** records and appears in
+the dashboard with the full trace. The record/replay mechanics (including
+how to freeze a failing session and watch apo catch it) are documented in
+the example's `recorded-ai-sdk-adapter.ts` header.
+
+
 ## 1. Bring up the stack
 
 Self-host from source:
@@ -56,7 +79,7 @@ npm install -g @apo-ai/cli
 ## 3. Publish your Task catalog
 
 :::tip[Agent-first shortcut]
-Have a coding agent (Claude Code, Codex, Gemini, OpenCode, Cursor)? Run **[`apo init`](/cli/init/)** in this repository — it installs the apo authoring skill and launches your agent pointed at writing the adapter and first Task for you. The rest of this section is the manual path.
+Have a coding agent (Claude Code, Codex, Gemini, OpenCode, Cursor)? Run **[`apo init`](/cli/init/)** in this repository; it installs the apo authoring skill and launches your agent pointed at writing the adapter and first Task for you. The rest of this section is the manual path.
 :::
 
 Tasks live in your code, authored in TypeScript using the [`@apo-ai/sdk`](https://www.npmjs.com/package/@apo-ai/sdk) package. Install it in your application's repository first:

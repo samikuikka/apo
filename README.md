@@ -22,7 +22,7 @@
 
 ---
 
-Apo is a testing and engineering system for agent harnesses. Your experts define what the system must be capable of—the real jobs, conditions, outcomes, and requirements that define done—as **executable capability specifications**. Apo runs those specifications against your **real agent implementation** and returns a **binary verdict** backed by the test breakdown, trace, and deliverables. Execution problems surface separately as errors.
+Apo is a testing and engineering system for agent harnesses. Your experts define what the system must be capable of (the real jobs, conditions, outcomes, and requirements that define done) as **executable capability specifications**. Apo runs those specifications against your **real agent implementation** and returns a **binary verdict** backed by the test breakdown, trace, and deliverables. Execution problems surface separately as errors.
 
 That foundation serves two outcomes. For the organization, the suite is an executable record of what the agent system is required to do and whether those capabilities still hold as models, features, and harnesses change. For developers, the same verdict and evidence close the harness-engineering loop: a coding agent can change the prompts, tools, context, orchestration, models, or code and run the unchanged specification again.
 
@@ -53,7 +53,24 @@ improve the harness until it passes
 
 Apo owns one Task Run and the evidence it produces. A developer, CI workflow, or coding agent reads that evidence, changes the system, and decides whether to start another Task Run. Apo does not edit your agent or autonomously rerun a failed task to improve it.
 
-That loop is **harness engineering**. Your experts control where the loop must converge by encoding their judgment in the suite; the coding agent finds the implementation path. The specification is not only a regression guard—it is the interface between expert knowledge and the agents improving the system.
+That loop is **harness engineering**. Your experts control where the loop must converge by encoding their judgment in the suite; the coding agent finds the implementation path. The specification is not only a regression guard. It is the interface between expert knowledge and the agents improving the system.
+
+## Try it: one command, no API key
+
+The fastest way to see a verdict: a recorded session of the example agent, evaluated by the real test suite. No model key, no account, no server (Node 22 or 24):
+
+```bash
+npm install -g @apo-ai/cli
+git clone https://github.com/samikuikka/apo.git && cd apo
+pnpm install --filter @apo/example-service...
+cd apps/example-service/e2e/agent-task-demo
+apo task run data-extraction-replay --dir ./tasks/ai-sdk-agent
+```
+
+`PASS` with a four-check breakdown, in about half a second once install finishes. The agent's behavior is a frozen recording; the evaluation is real: the same tests that gate the live agent. Without a backend the run prints a *not recorded* notice and stays local; with one it records and appears in the dashboard like any run. Two escalations from there, in order:
+
+- **Live agent:** `OPENROUTER_API_KEY=... apo task run data-extraction --dir ./tasks/ai-sdk-agent`
+- **Your agent:** [`apo init`](https://docs.test-apo.online/cli/init/): one prompt, and your coding agent authors the adapter and first Task.
 
 ## The model
 

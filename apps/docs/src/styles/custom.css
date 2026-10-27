@@ -680,3 +680,39 @@ main p {
 .landing-footer__links a:hover {
   color: var(--sl-color-white);
 }
+
+/* ---- Facts strip: the logistics a newcomer needs before trying. ------ */
+.landing-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--sl-color-gray-3);
+}
+
+.landing-facts__item {
+  white-space: nowrap;
+}
+
+.landing-facts__dot {
+  color: var(--sl-color-gray-5);
+}
+
+.landing-facts__code {
+  font-family: var(--sl-font-mono);
+  font-size: 0.75rem;
+  color: var(--sl-color-gray-2);
+  background: var(--sl-color-gray-6);
+  border: 1px solid var(--sl-color-gray-5);
+  padding: 0.15rem 0.5rem;
+}
+
+/* One-line hint above the demo, matching the section sub style but smaller. */
+.landing-demo-hint {
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--sl-color-gray-4);
+  margin: 0 0 1rem;
+}
