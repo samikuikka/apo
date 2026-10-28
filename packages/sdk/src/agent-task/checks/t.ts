@@ -271,9 +271,8 @@ export interface TestContext {
    * embedding model (any OpenAI-compatible `/embeddings` endpoint —
    * OpenRouter, OpenAI, local Ollama/vLLM/LM Studio) and records one
    * assertion that passes when their cosine similarity ≥ `threshold`. Async —
-   * the check function must `await` it. Deterministic under a pinned config
-   * and near-free — the CI-friendly grader between the matchers and
-   * `t.judge`. A non-string `value` is stringified like `t.check` matchers
+   * the check function must `await` it. Deterministic under a pinned config,
+   * unlike `t.judge`. A non-string `value` is stringified like `t.check` matchers
    * do; `reference` is the authored text to compare against.
    *
    * The threshold is required and has no default: cosine scales are
@@ -1083,8 +1082,7 @@ function createSemanticMethod(
         ? `semantic similarity ${verdict.similarity.toFixed(4)} ≥ ${threshold.toFixed(4)} [${verdict.signature}]`
         : `semantic similarity ${verdict.similarity.toFixed(4)} < ${threshold.toFixed(4)} (delta ${delta.toFixed(4)}) [${verdict.signature}]`;
       // Marginal band: within 0.02 of the threshold the verdict is one model
-      // drift away from flipping — say so on every such verdict; no surveyed
-      // tool warns about this at all.
+      // drift away from flipping — say so on every such verdict.
       if (Math.abs(delta) < 0.02) {
         reasoning += " — marginal: within 0.02 of the threshold; this verdict will flip on model drift";
       }

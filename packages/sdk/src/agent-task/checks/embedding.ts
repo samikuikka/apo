@@ -3,8 +3,8 @@
  * vocabulary (exact/fuzzy matchers, `t.judge`, `t.agent`). Calls any
  * OpenAI-compatible `/embeddings` endpoint (OpenRouter, OpenAI direct, local
  * Ollama/vLLM/LM Studio), L2-normalizes both vectors, and compares with
- * cosine similarity. Cheap, synchronous-in-verdict, and reproducible under a
- * pinned config — the CI-friendly grader an LLM judge can never be.
+ * cosine similarity: the same inputs under the same config grade the same
+ * every time, unlike an LLM judge.
  *
  * Every verdict records a sacreBLEU-style settings signature
  * (`model:1536d:cosine:apo-v1`) because cosine scales are model-bound: a
@@ -188,7 +188,6 @@ export function createEmbeddingClient(): EmbeddingClient {
       if (needFetch.length > 0) {
         const fetchPromise = (async () => fetchEmbeddings(needFetch.map((n) => n.text), provider))();
         for (let i = 0; i < needFetch.length; i++) {
-          const index = i;
           const promise = fetchPromise.then((fetched) => {
             fetchedMeta = {
               dimensions: fetched.dimensions,
@@ -196,9 +195,9 @@ export function createEmbeddingClient(): EmbeddingClient {
               ...(fetched.tokens !== undefined ? { tokens: fetched.tokens } : {}),
               ...(fetched.latencyMs !== undefined ? { latencyMs: fetched.latencyMs } : {}),
             };
-            return fetched.vectors[index];
+            return fetched.vectors[i];
           });
-          inflight.set(needFetch[index].key, promise);
+          inflight.set(needFetch[i].key, promise);
         }
         // Cleanup after settle: any late reader either holds the promise or
         // finds the vector in `resolved` (set before cleanup, below).
