@@ -385,7 +385,8 @@ export function createTestContext(
   agentEvidence?: AgentEvidence,
   embedding?: EmbeddingRuntime,
 ): TestContext {
-  return {    calledTool(name, opts) {
+  return {
+    calledTool(name, opts) {
       const count = view.toolCalls.filter((call) =>
         matchesToolCall(call, name, opts),
       ).length;
@@ -1011,7 +1012,6 @@ function createSemanticMethod(
     }
 
     const valueText = typeof value === "string" ? value : describeValue(value);
-    const referenceText = reference;
     const modelName = resolved.config?.model ?? "custom";
     const tracer = embedding?.tracer;
 
@@ -1040,7 +1040,7 @@ function createSemanticMethod(
     };
 
     let spanId: string | undefined;
-    const call = () => client.embed([valueText, referenceText], resolved);
+    const call = () => client.embed([valueText, reference], resolved);
     try {
       const verdict = await (tracer
         ? tracer.step(
@@ -1102,7 +1102,7 @@ function createSemanticMethod(
         ...(verdict.latencyMs !== undefined ? { latency_ms: verdict.latencyMs } : {}),
         ...(isTraceableSpanId(spanId) ? { span_id: spanId } : {}),
         value_preview: previewOf(valueText),
-        reference_preview: previewOf(referenceText),
+        reference_preview: previewOf(reference),
       };
       rec.record(label, verdict.pass, reasoning, {
         evaluator_type: "embedding",
