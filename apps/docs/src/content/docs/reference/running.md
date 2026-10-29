@@ -26,6 +26,8 @@ type RunTaskOptions = {
   maxTurnsOverride?: number;
   /** LLM judge config for `t.judge(...)` calls. */
   judge?: JudgeConfig;
+  /** Embedding provider for `t.semantic(...)` calls: HTTP config, or a custom `embed` function. */
+  embedding?: EmbeddingProvider;
   /** Trace this run to the apo backend. Omit for an untraced run. */
   tracing?: AgentTaskTraceOptions;
   /** Called after each turn with the turn number, input, and response. */

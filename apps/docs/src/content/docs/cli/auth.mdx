@@ -58,7 +58,7 @@ If a remembered login exists for that backend, it is verified and restored, no e
   ]}
 />
 
-A remembered key the backend rejects (rotated, different database behind the same URL) falls through to normal email + password re-authentication. Logging into a new backend never destroys the old login, it stays remembered, and the success message tells you how to switch back.
+A remembered key the backend rejects (rotated, different database behind the same URL) falls through to normal email + password re-authentication. So does a valid key that cannot see the project named with `--project`: a key is scoped to the one project it was minted for, so apo re-authenticates and mints a key for that project rather than leave you logged in with a key every later command rejects. Logging into a new backend never destroys the old login, it stays remembered, and the success message tells you how to switch back.
 
 :::caution[You need a project first]
 `apo login` lists the projects your account can access and asks you to pick one. On a fresh backend with no projects yet, it exits with:
@@ -78,8 +78,8 @@ The mint endpoint rejects any project id that has no `ProjectDB` row (a `404`), 
 |---|---|---|
 | `--email <addr>` | (prompted) | Email to authenticate with. |
 | `--password <pw>` | (prompted) | Password (masked at the prompt). |
-| `--project <id\|name\|prefix>` | (prompted) | Project to scope the key to. Accepts an id, name, or unique prefix. If omitted and you have one project, it's auto-selected. |
-| `--backend <url>` | (prompted) | Backend to log in against. Switches instantly when a remembered login exists for it (`APO_BACKEND_URL` works too). |
+| `--project <id\|name\|prefix>` | (prompted) | Project to scope the key to. Accepts an id, name, or unique prefix. If omitted and you have one project, it's auto-selected. A saved or remembered login is reused only when its key can see this project. |
+| `--backend <url>` | (prompted) | Backend to log in against. Switches instantly when a remembered login exists for it (`APO_BACKEND_URL` works too), unless `--project` names a project that key cannot see. |
 | `--force` | off | Re-authenticate even if a valid key is already saved. |
 
 ### Output

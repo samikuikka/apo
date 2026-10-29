@@ -119,6 +119,14 @@ Declaring the harness's tool surface here keeps the task portable across harness
 - **Required:** no
 
 Task-level judge layer: overrides the run-level `runTask({ judge })` config and is itself overridden per `t.judge` call. Lets a task grade differently from its suite — a stronger model, or a custom briefing via `prompt` that tells the judge what it is grading. Fields: `model`, `baseURL`, `apiKey`, `provider` (force the Anthropic Messages wire), `prompt`, `mode` (`"cascade"` — second judge answers first, a confident verdict skips the primary), `temperature` (see [Assertions API → t.judge](/reference/assertions/) for the full semantics).
+
+### `embedding`
+
+- **Type:** `Partial<EmbeddingConfig>`
+- **Required:** no
+
+Task-level embedding layer: overrides the run-level `runTask({ embedding })` config for `t.semantic(...)` calls in this task and is itself overridden per call (`t.semantic(..., { embedding })`). Set `{ model }` to grade this task's texts with a different embedding model than the suite default. Fields: `model`, `baseURL`, `apiKey`, `dimensions` (see [Assertions API → t.semantic](/reference/assertions/) for the full semantics).
+
 ## `turn(fn)`
 
 Decide what the agent sees each turn. apo calls `turn` before each `sendUserTurn`; the return value becomes the user input for that turn.
