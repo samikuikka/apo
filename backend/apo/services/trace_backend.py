@@ -16,7 +16,7 @@ task runner or the trace UI needing to know which backend is active.
 from __future__ import annotations
 
 import statistics
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol, cast
 
@@ -589,6 +589,18 @@ def _generation_usage(
             reasoning.append((call, value))
     most = max(reasoning, key=lambda pair: pair[1], default=None)
 
+    # Prompt-cache reads and writes, both included in the input-token total.
+    usages = [
+        call.raw_usage or {}
+        for call in generations
+        if call.id not in errored_span_ids
+    ]
+    cache_read = sum(_usage_int(u, "cache_read") for u in usages)
+    cache_write = sum(
+        _usage_int(u, "cache_write_5m") + _usage_int(u, "cache_write_1h")
+        for u in usages
+    )
+
     return {
         "generations": len(generations),
         "model_time_ms": (
@@ -602,7 +614,14 @@ def _generation_usage(
         "reasoning_calls": len(reasoning),
         "max_call_reasoning_tokens": most[1] if most else None,
         "max_reasoning_call_id": most[0].id if most else None,
+        "cache_read_tokens": cache_read,
+        "cache_write_tokens": cache_write,
     }
+
+
+def _usage_int(usage: Mapping[str, object], key: str) -> int:
+    value = usage.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
 def _finish_reasons(attributes: dict[str, object]) -> list[str]:

@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from apo.models.db import AgentTaskRunDB, LoggedCallDB
+from apo.models.schemas import GenerationUsageSummary
 from apo.services.agent_task_projection import to_task_run_summary
 from apo.services.otlp_receiver import OtlpReceiver
 from apo.services.pricing.compute import compute_cost
@@ -61,6 +62,8 @@ def test_rolls_up_model_time_slowest_call_and_largest_reasoning(
         "reasoning_calls": 3,
         "max_call_reasoning_tokens": 1_054,
         "max_reasoning_call_id": "0000000000000002",
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
     }
     public = to_task_run_summary(task_run).generation_usage
     assert public is not None
@@ -175,6 +178,47 @@ def test_claude_thinking_tokens_roll_up_without_changing_cost(
     assert usage_json["reasoning_calls"] == 3
     assert usage_json["max_call_reasoning_tokens"] == 104
     assert usage_json["max_reasoning_call_id"] == "0000000000000002"
+    assert usage_json["cache_read_tokens"] == 0 + 33746 + 39060
+    assert usage_json["cache_write_tokens"] == 33746 + 5314 + 4832
+
+
+def test_cache_totals_count_both_write_ttls_and_skip_errored_generations(
+    session: Session,
+) -> None:
+    _ingest(
+        session,
+        [
+            _claude_generation(
+                "0000000000000001",
+                {"input": 4, "output": 365, "cache_read": 0, "cache_write": 33746, "cache_write_1h": 30000, "reasoning": 0},
+            ),
+            _claude_generation(
+                "0000000000000002",
+                {"input": 2, "output": 432, "cache_read": 33746, "cache_write": 5314, "reasoning": 0},
+            ),
+            _claude_generation(
+                "0000000000000003",
+                {"input": 2, "output": 0, "cache_read": 39060, "cache_write": 4832, "reasoning": 0},
+                errored=True,
+            ),
+        ],
+    )
+    usage = _aggregate(session).generation_usage_json
+
+    assert usage is not None
+    assert usage["cache_read_tokens"] == 33746
+    assert usage["cache_write_tokens"] == 33746 + 5314
+
+
+def test_runs_aggregated_before_cache_totals_read_as_unknown() -> None:
+    legacy = {"generations": 2, "model_time_ms": 1_000.0, "slowest_call_ms": 600.0, "slowest_call_id": "a",
+              "reasoning_tokens": None, "reasoning_calls": 0, "max_call_reasoning_tokens": None,
+              "max_reasoning_call_id": None}
+
+    summary = GenerationUsageSummary.model_validate(legacy)
+
+    assert summary.cache_read_tokens is None
+    assert summary.cache_write_tokens is None
 
 
 def test_ai_sdk_root_span_does_not_price_reasoning_twice(session: Session) -> None:
@@ -256,7 +300,9 @@ def _cost_before_the_split(session: Session, call: LoggedCallDB, usage: dict[str
     return result.total
 
 
-def _claude_generation(span_id: str, usage: dict[str, int]) -> dict[str, object]:
+def _claude_generation(
+    span_id: str, usage: dict[str, int], *, errored: bool = False
+) -> dict[str, object]:
     def int_attr(key: str, value: int) -> dict[str, object]:
         return {"key": key, "value": {"intValue": str(value)}}
 
@@ -270,7 +316,7 @@ def _claude_generation(span_id: str, usage: dict[str, int]) -> dict[str, object]
         int_attr("gen_ai.usage.cache_read_input_tokens", usage["cache_read"]),
         int_attr("gen_ai.usage.cache_creation.input_tokens", usage["cache_write"]),
         int_attr("gen_ai.usage.cache_creation_input_tokens", usage["cache_write"]),
-        int_attr("gen_ai.usage.cache_creation.ephemeral_1h_input_tokens", 0),
+        int_attr("gen_ai.usage.cache_creation.ephemeral_1h_input_tokens", usage.get("cache_write_1h", 0)),
         int_attr("gen_ai.usage.reasoning.output_tokens", usage["reasoning"]),
         int_attr("gen_ai.usage.reasoning_tokens", usage["reasoning"]),
     ]
@@ -281,7 +327,7 @@ def _claude_generation(span_id: str, usage: dict[str, int]) -> dict[str, object]
         "name": "gen_ai.chat claude-opus-5-5",
         "startTimeUnixNano": str(START_NS),
         "endTimeUnixNano": str(START_NS + 1_000 * MS),
-        "status": {"code": 1},
+        "status": {"code": 2 if errored else 1},
         "attributes": attributes,
     }
 

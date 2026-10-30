@@ -335,7 +335,7 @@ export default async function TaskRunDetailPage({
                 icon: DollarSign,
                 value: `${formatCostMicro(taskRun.total_cost)}${costIsPartial ? " partial" : ""}`,
                 label: taskRun.total_tokens != null
-                  ? `${formatTokenTotal(taskRun.total_tokens)}${generationErrors > 0 ? " partial" : ""}`
+                  ? `${formatTokenTotal(taskRun.total_tokens, taskRun.generation_usage?.cache_read_tokens)}${generationErrors > 0 ? " partial" : ""}`
                   : "cost",
               },
               // Reasoning rollup (issue #309): unknown renders as an em dash —

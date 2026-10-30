@@ -1,5 +1,5 @@
 import { formatCostMicro, formatDuration, formatTokenTotal } from "@/lib/format";
-import type { CumulativeMetrics } from "@/lib/cumulative-metrics";
+import { callCacheTokens, type CumulativeMetrics } from "@/lib/cumulative-metrics";
 import type { LoggedCall } from "./contexts";
 import { getDisplayName as sharedGetDisplayName } from "./trace-display";
 
@@ -88,6 +88,8 @@ export function getInlineMetricsStructured(
   const dCost = hasDesc && cumulative ? cumulative.cost : (call.cost ?? 0);
   const dTokens =
     hasDesc && cumulative ? cumulative.total_tokens : (call.total_tokens ?? 0);
+  const dCacheRead =
+    hasDesc && cumulative ? cumulative.cache_read_tokens : callCacheTokens(call).cache_read_tokens;
 
   const parts: InlineMetric[] = [];
   if (showDuration && call.latency_ms != null) {
@@ -95,7 +97,7 @@ export function getInlineMetricsStructured(
   }
   if (showCostTokens && dTokens > 0) {
     parts.push({
-      text: formatTokenTotal(dTokens),
+      text: formatTokenTotal(dTokens, dCacheRead),
       kind: "tokens",
     });
   }

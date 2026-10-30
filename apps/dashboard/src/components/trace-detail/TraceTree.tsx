@@ -41,8 +41,8 @@ import {
 import { useState, useMemo, useRef, useEffect, useCallback, type MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
-import type { CumulativeMetrics } from "@/lib/cumulative-metrics";
-import { formatCostMicro, formatDuration, formatTokenBreakdown, formatTokenTotal } from "@/lib/format";
+import { callCacheTokens, type CumulativeMetrics } from "@/lib/cumulative-metrics";
+import { formatCostMicro, formatDuration, formatInputCacheSplit, formatTokenBreakdown, formatTokenTotal } from "@/lib/format";
 import { CommentCountIcon } from "./CommentCountIcon";
 import { getHeatmapColor } from "./trace-heatmap";
 import { VerdictBadge } from "./VerdictBadge";
@@ -213,7 +213,7 @@ function SpanContent({
     const runParts: MetricPart[] = [
       { text: `${callCount} call${callCount === 1 ? "" : "s"}`, kind: "model" },
       ...(showDuration && runSummary.duration ? [{ text: runSummary.duration, kind: "duration" as const }] : []),
-      ...(showCostTokens && runSummary.tokens ? [{ text: runSummary.tokens, kind: "tokens" as const }] : []),
+      ...(showCostTokens && runSummary.tokens ? [{ text: runSummary.tokens, kind: "tokens" as const, title: runSummary.tokensTitle }] : []),
       ...(showCostTokens && runSummary.cost ? [{ text: `\u2211 ${runSummary.cost}`, kind: "cost" as const, title: "Aggregated cost of all child observations" }] : []),
     ];
 
@@ -227,7 +227,7 @@ function SpanContent({
             {runParts.map((part, index) => (
               <span key={`${part.text}-${index}`} className="flex items-center gap-1">
                 {index > 0 ? <span className="text-muted-foreground/60">·</span> : null}
-                <span className={part.kind !== "model" ? "font-mono" : ""}>
+                <span className={part.kind !== "model" ? "font-mono" : ""} title={part.title}>
                   {part.text}
                 </span>
               </span>
@@ -252,11 +252,21 @@ function SpanContent({
   if (showMetrics && modelLabel) metricParts.push({ text: modelLabel, kind: "model" });
   if (showCostTokens && showMetrics && displayTokens > 0) {
     if (hasDescendants && cumulative && (cumulative.prompt_tokens > 0 || cumulative.completion_tokens > 0)) {
-      metricParts.push({ text: formatTokenBreakdown(cumulative.prompt_tokens, cumulative.completion_tokens), kind: "tokens" });
+      metricParts.push({
+        text: formatTokenBreakdown(cumulative.prompt_tokens, cumulative.completion_tokens, cumulative.cache_read_tokens),
+        kind: "tokens",
+        title: formatInputCacheSplit(cumulative.prompt_tokens, cumulative.cache_read_tokens, cumulative.cache_write_tokens),
+      });
     } else if (!hasDescendants && c.prompt_tokens != null && c.completion_tokens != null) {
-      metricParts.push({ text: formatTokenBreakdown(c.prompt_tokens, c.completion_tokens), kind: "tokens" });
+      const cache = callCacheTokens(c);
+      metricParts.push({
+        text: formatTokenBreakdown(c.prompt_tokens, c.completion_tokens, cache.cache_read_tokens),
+        kind: "tokens",
+        title: formatInputCacheSplit(c.prompt_tokens, cache.cache_read_tokens, cache.cache_write_tokens),
+      });
     } else {
-      metricParts.push({ text: formatTokenTotal(displayTokens), kind: "tokens" });
+      const cacheRead = hasDescendants && cumulative ? cumulative.cache_read_tokens : callCacheTokens(c).cache_read_tokens;
+      metricParts.push({ text: formatTokenTotal(displayTokens, cacheRead), kind: "tokens" });
     }
   }
   if (showCostTokens && showMetrics && displayCost > 0) {

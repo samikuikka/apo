@@ -11,6 +11,7 @@ import { RunCostBreakdownTooltip } from "./DimensionBreakdownTooltip";
 import { CommentDrawer } from "./CommentDrawer";
 import { HeaderPill } from "./HeaderPill";
 import { formatDate, formatMetaParts } from "./call-detail-utils";
+import { sumCacheTokens } from "./trace-tree-utils";
 import { toggleBookmark } from "@/lib/traces-api";
 import { useProjectId } from "@/lib/project-router";
 import { taskDetailHref } from "@/lib/task-routes";
@@ -67,6 +68,7 @@ function TraceDetailRootView({
   const [bookmarked, setBookmarked] = useState<boolean>(run.run.bookmarked ?? false);
   const totalCost = run.calls.reduce((sum: number, c) => sum + (c.cost || 0), 0);
   const totalTokens = run.calls.reduce((sum: number, c) => sum + (c.total_tokens || 0), 0);
+  const cacheTokens = sumCacheTokens(run.calls);
   // Reasoning total (issue #309): a model-call fact, like every reasoning
   // surface — GENERATION observations only, and errored generations skip
   // usage (their projected usage is not a measurement). No reporting call
@@ -83,7 +85,7 @@ function TraceDetailRootView({
   const summaryParts = formatMetaParts([
     run.run.duration_ms != null ? formatDuration(run.run.duration_ms) : null,
     totalCost > 0 ? formatCostMicro(totalCost) : null,
-    totalTokens > 0 ? formatTokenTotal(totalTokens) : null,
+    totalTokens > 0 ? formatTokenTotal(totalTokens, cacheTokens.read) : null,
     totalReasoning != null && totalReasoning > 0
       ? `${tokenFormat(totalReasoning)} reasoning`
       : null,

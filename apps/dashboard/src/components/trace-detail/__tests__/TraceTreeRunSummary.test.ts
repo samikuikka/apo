@@ -41,4 +41,28 @@ describe("getRunSummary", () => {
     expect(getRunSummary([makeCall({ id: "1", cost: 0 })]).cost).toBeNull();
     expect(getRunSummary([makeCall({ id: "1" })]).cost).toBeNull();
   });
+
+  // Numbers from a 16-call Opus run (summed into one call) plus its judge.
+  it("names the cache reads inside the token total, and leaves an uncached run's total as it was", () => {
+    const cached = getRunSummary([
+      makeCall({
+        id: "1",
+        prompt_tokens: 831_866,
+        completion_tokens: 14_197,
+        total_tokens: 846_063,
+        raw_usage: { input: 38, cache_read: 655_535, cache_write_5m: 176_293, cache_write_1h: 0 },
+      }),
+      makeCall({ id: "2", prompt_tokens: 1_115, completion_tokens: 1_567, total_tokens: 2_682, raw_usage: { input: 1_115, cache_read: 0 } }),
+    ]);
+    expect(cached.tokens).toBe("848.7k tok (655.5k cached)");
+    expect(cached.tokensTitle).toBe(
+      "Input 833.0k: 655.5k read from cache, 176.3k written to cache, 1.2k uncached",
+    );
+
+    const uncached = getRunSummary([
+      makeCall({ id: "1", prompt_tokens: 900, completion_tokens: 100, total_tokens: 1_000, raw_usage: { input: 900 } }),
+    ]);
+    expect(uncached.tokens).toBe("1.0k tok");
+    expect(uncached.tokensTitle).toBeUndefined();
+  });
 });

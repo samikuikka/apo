@@ -23,7 +23,7 @@ import {
   getModelShort,
   getObservationType,
 } from "./call-detail-utils";
-import type { CumulativeMetrics } from "@/lib/cumulative-metrics";
+import { callCacheTokens, type CumulativeMetrics } from "@/lib/cumulative-metrics";
 import type { LoggedCall, TraceDetail } from "./contexts/TraceDataContext";
 
 /** Decode throughput of one generation: output tokens over (end - first
@@ -79,12 +79,16 @@ export function CallDetailHeader({
     call.latency_ms != null ? `${call.latency_ms.toFixed(0)}ms` : null,
     call.time_to_first_token_ms != null ? `TTFT ${call.time_to_first_token_ms.toFixed(0)}ms` : null,
     tokPerS != null ? `${formatTokPerS(tokPerS)} tok/s` : null,
-    call.total_tokens != null && call.total_tokens > 0 ? formatTokenTotal(call.total_tokens) : null,
+    call.total_tokens != null && call.total_tokens > 0
+      ? formatTokenTotal(call.total_tokens, callCacheTokens(call).cache_read_tokens)
+      : null,
     call.cost != null ? formatCostMicro(call.cost) : null,
     eventType ? formatEventLabel(eventType) : null,
   ]);
   const cumulativeParts = hasDescendants ? formatMetaParts([
-    cumulative.total_tokens > 0 ? `\u03A3 ${formatTokenTotal(cumulative.total_tokens)}` : null,
+    cumulative.total_tokens > 0
+      ? `\u03A3 ${formatTokenTotal(cumulative.total_tokens, cumulative.cache_read_tokens)}`
+      : null,
     cumulative.cost > 0 ? `\u03A3 ${formatCostMicro(cumulative.cost)}` : null,
     `${cumulative.descendant_count} descendant${cumulative.descendant_count === 1 ? "" : "s"}`,
   ]) : [];

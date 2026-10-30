@@ -9,6 +9,7 @@ import { DimensionMixBar } from "./DimensionMixBar";
 import { CallDetailTabs } from "./CallDetailTabs";
 import { useSelection } from "./contexts/SelectionContext";
 import type { LoggedCall, TraceDetail } from "./contexts/TraceDataContext";
+import { sumCacheTokens } from "./trace-tree-utils";
 import { formatCostMicro } from "@/lib/format";
 
 export interface TraceDetailTabsProps {
@@ -132,6 +133,8 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
     [calls],
   );
   const totalTokens = promptTokens + completionTokens;
+  const cacheTokens = useMemo(() => sumCacheTokens(calls), [calls]);
+  const touchedCache = cacheTokens.read > 0 || cacheTokens.write > 0;
 
   // Reasoning rollups (issue #309): a model-call fact, aligned with the
   // backend scalars — GENERATION observations only, and errored generations
@@ -274,6 +277,16 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
           <Section title="Token totals">
             <div>
               <MetricRow label="Prompt" value={promptTokens.toLocaleString()} />
+              {touchedCache ? (
+                <>
+                  <MetricRow label="Prompt read from cache" value={cacheTokens.read.toLocaleString()} />
+                  <MetricRow label="Prompt written to cache" value={cacheTokens.write.toLocaleString()} />
+                  <MetricRow
+                    label="Prompt uncached"
+                    value={Math.max(promptTokens - cacheTokens.read - cacheTokens.write, 0).toLocaleString()}
+                  />
+                </>
+              ) : null}
               <MetricRow label="Completion" value={completionTokens.toLocaleString()} />
               <MetricRow label="Total" value={totalTokens.toLocaleString()} />
               <MetricRow

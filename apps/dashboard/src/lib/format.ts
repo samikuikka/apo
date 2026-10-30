@@ -59,12 +59,18 @@ export function tokenFormat(value: number | null): string {
   return String(value);
 }
 
+/** Input counts include cache reads, which bill at a fraction of the input rate. */
+function cachedSuffix(cacheRead: number | null | undefined): string {
+  return cacheRead != null && cacheRead > 0 ? ` (${tokenFormat(cacheRead)} cached)` : "";
+}
+
 /**
  * Render a single token count with the standard suffix — e.g. `1.5k tok`.
  * Use for total-only displays where no input/output breakdown is available.
+ * With a cache read: `1.5k tok (1.2k cached)`.
  */
-export function formatTokenTotal(value: number | null): string {
-  return `${tokenFormat(value)} tok`;
+export function formatTokenTotal(value: number | null, cacheRead?: number | null): string {
+  return `${tokenFormat(value)} tok${cachedSuffix(cacheRead)}`;
 }
 
 /**
@@ -72,12 +78,25 @@ export function formatTokenTotal(value: number | null): string {
  * e.g. `383→78 tok`. The arrow is the canonical "weird symbol" separator
  * used across every trace surface; the suffix is the unit. Both halves
  * go through {@link tokenFormat} so large numbers abbreviate to `k`/`M`.
+ * With a cache read: `833.0k (655.5k cached)→15.8k tok`.
  */
 export function formatTokenBreakdown(
   input: number | null,
   output: number | null,
+  cacheRead?: number | null,
 ): string {
-  return `${tokenFormat(input)}\u2192${tokenFormat(output)} tok`;
+  return `${tokenFormat(input)}${cachedSuffix(cacheRead)}\u2192${tokenFormat(output)} tok`;
+}
+
+/** Hover (`title`) text splitting an input count into its cache parts; undefined when no cache was used. */
+export function formatInputCacheSplit(
+  input: number,
+  cacheRead: number,
+  cacheWrite: number,
+): string | undefined {
+  if (cacheRead <= 0 && cacheWrite <= 0) return undefined;
+  const uncached = Math.max(input - cacheRead - cacheWrite, 0);
+  return `Input ${tokenFormat(input)}: ${tokenFormat(cacheRead)} read from cache, ${tokenFormat(cacheWrite)} written to cache, ${tokenFormat(uncached)} uncached`;
 }
 
 /**

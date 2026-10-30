@@ -1,6 +1,7 @@
 "use client";
 
-import { formatCostMicro, formatTokenBreakdown, formatTokenTotal } from "@/lib/format";
+import { callCacheTokens } from "@/lib/cumulative-metrics";
+import { formatCostMicro, formatInputCacheSplit, formatTokenBreakdown, formatTokenTotal } from "@/lib/format";
 import { CopyIdPopover } from "./CopyIdPopover";
 import { CallCostBreakdownTooltip } from "./DimensionBreakdownTooltip";
 import { MetadataRow } from "./MetadataRow";
@@ -16,6 +17,7 @@ interface CallMetadataTabProps {
 
 export function CallMetadataTab({ call, run }: CallMetadataTabProps) {
   const eventType = getEventType(call);
+  const cache = callCacheTokens(call);
 
   return (
     <div className="space-y-1.5">
@@ -28,7 +30,7 @@ export function CallMetadataTab({ call, run }: CallMetadataTabProps) {
       <MetadataRow label="Started" value={formatDate(call.created_at)} />
       <MetadataRow label="Latency" value={call.latency_ms != null ? `${call.latency_ms.toFixed(0)}ms` : "—"} />
       <MetadataRow label="TTFT" value={call.time_to_first_token_ms != null ? `${call.time_to_first_token_ms.toFixed(0)}ms` : "—"} />
-      <MetadataRow label="Tokens" value={call.total_tokens != null && call.total_tokens > 0 ? (call.prompt_tokens != null || call.completion_tokens != null ? formatTokenBreakdown(call.prompt_tokens ?? 0, call.completion_tokens ?? 0) : formatTokenTotal(call.total_tokens)) : "\u2014"} />
+      <MetadataRow label="Tokens" value={call.total_tokens != null && call.total_tokens > 0 ? (call.prompt_tokens != null || call.completion_tokens != null ? <span title={formatInputCacheSplit(call.prompt_tokens ?? 0, cache.cache_read_tokens, cache.cache_write_tokens)}>{formatTokenBreakdown(call.prompt_tokens ?? 0, call.completion_tokens ?? 0, cache.cache_read_tokens)}</span> : formatTokenTotal(call.total_tokens, cache.cache_read_tokens)) : "\u2014"} />
       <MetadataRow label="Cost" value={call.cost != null ? <CallCostBreakdownTooltip breakdown={call.cost_breakdown} rawUsage={call.raw_usage} modelName={call.model} provenance={call.cost_provenance} cost={call.cost}><span className="font-mono">{formatCostMicro(call.cost)}</span></CallCostBreakdownTooltip> : "\u2014"} />
       {call.end_time ? <MetadataRow label="Ended" value={formatDate(call.end_time)} /> : null}
       {call.status_message ? <MetadataRow label="Status" value={<span className={call.level === "ERROR" ? "text-destructive font-medium" : ""}>{call.status_message}</span>} /> : null}
