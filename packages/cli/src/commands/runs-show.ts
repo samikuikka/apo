@@ -89,9 +89,9 @@ type GenerationUsage = {
   reasoning_calls: number;
   max_call_reasoning_tokens: number | null;
   max_reasoning_call_id: string | null;
-  /** Prompt-cache reads/writes within the input tokens; absent from older servers. */
-  cache_read_tokens?: number;
-  cache_write_tokens?: number;
+  /** Prompt-cache reads/writes within the input tokens; null or absent for older runs. */
+  cache_read_tokens?: number | null;
+  cache_write_tokens?: number | null;
 };
 
 type ModelProviderPair = {

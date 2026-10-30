@@ -181,3 +181,55 @@ describe("TraceDetailTabs reasoning rollups", () => {
     expect(screen.queryByText("Model time")).toBeNull();
   });
 });
+
+describe("TraceDetailTabs prompt cache rows", () => {
+  it("splits the prompt total into cache reads, cache writes and uncached", () => {
+    renderTabs({
+      run: { ...BASE_RUN },
+      calls: [
+        {
+          id: "c1",
+          input: {},
+          output: {},
+          observation_type: "GENERATION",
+          prompt_tokens: 25_731,
+          completion_tokens: 393,
+          total_tokens: 26_124,
+          raw_usage: { input: 2, cache_read: 17_651, cache_write_5m: 6_000, cache_write_1h: 2_078 },
+        },
+        {
+          id: "c2",
+          input: {},
+          output: {},
+          observation_type: "GENERATION",
+          prompt_tokens: 1_115,
+          completion_tokens: 1_567,
+          total_tokens: 2_682,
+          raw_usage: { input: 1_115 },
+        },
+      ],
+    });
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Tokens" }));
+
+    const row = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
+    expect(row("Prompt")).toBe("26,846");
+    expect(row("Prompt read from cache")).toBe("17,651");
+    expect(row("Prompt written to cache")).toBe("8,078");
+    expect(row("Prompt uncached")).toBe("1,117");
+  });
+
+  it("shows no cache rows when no call used the cache", () => {
+    renderTabs({
+      run: { ...BASE_RUN },
+      calls: [
+        { id: "c1", input: {}, output: {}, observation_type: "GENERATION", prompt_tokens: 900, completion_tokens: 100, total_tokens: 1_000, raw_usage: { input: 900 } },
+      ],
+    });
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Tokens" }));
+
+    expect(screen.getByText("Prompt")).toBeTruthy();
+    expect(screen.queryByText("Prompt read from cache")).toBeNull();
+  });
+});

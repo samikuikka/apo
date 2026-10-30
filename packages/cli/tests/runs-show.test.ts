@@ -489,6 +489,21 @@ describe("runs show command", () => {
     );
   });
 
+  it("prints no cache part for a run aggregated before cache totals were recorded", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(makeRun({
+        total_tokens: 848_745,
+        generation_usage: { cache_read_tokens: null, cache_write_tokens: null },
+      })),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    expect(stripAnsi(logs.join("\n"))).toMatch(/^  Tokens:   848,745$/m);
+  });
+
   it("prints reasoning with the call that dominates it", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse(makeRun({

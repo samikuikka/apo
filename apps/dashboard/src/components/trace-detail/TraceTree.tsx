@@ -265,7 +265,8 @@ function SpanContent({
         title: formatInputCacheSplit(c.prompt_tokens, cache.cache_read_tokens, cache.cache_write_tokens),
       });
     } else {
-      metricParts.push({ text: formatTokenTotal(displayTokens), kind: "tokens" });
+      const cacheRead = hasDescendants && cumulative ? cumulative.cache_read_tokens : callCacheTokens(c).cache_read_tokens;
+      metricParts.push({ text: formatTokenTotal(displayTokens, cacheRead), kind: "tokens" });
     }
   }
   if (showCostTokens && showMetrics && displayCost > 0) {
