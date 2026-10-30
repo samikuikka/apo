@@ -1,0 +1,11 @@
+order_id,customer,amount_usd,status,date
+1001,Acme Corp,2480.00,completed,2026-10-02
+1002,Bright Loop,1120.50,completed,2026-10-03
+1003,Northwind,376.25,refunded,2026-10-04
+1004,Helios Systems,2950.00,completed,2026-10-05
+1005,Cascade Media,840.75,refunded,2026-10-06
+1006,Meridian Labs,1625.00,completed,2026-10-07
+1007,Orbit Logistics,598.50,completed,2026-10-08
+1008,Pinewood Books,2210.25,completed,2026-10-09
+1009,Sable Foods,655.50,refunded,2026-10-10
+1010,Ternary Analytics,1332.50,completed,2026-10-11

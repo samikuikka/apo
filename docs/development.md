@@ -165,6 +165,7 @@ apps/example-service/e2e/agent-task-demo/tasks/
       security-audit/
   ai-sdk-agent/                # minimal adapter pattern
     data-extraction/
+    handoff-stale-ack/         # agent-postbox protocol fixture (real npm package, in-memory GitHub)
   claude-agent/                # Claude Agent SDK adapter on the same task
     data-extraction/
   claude-code-replay/          # no-OTel transcript replay
