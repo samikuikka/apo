@@ -60,24 +60,54 @@ export function tokenFormat(value: number | null): string {
 }
 
 /**
- * Render a single token count with the standard suffix — e.g. `1.5k tok`.
+ * Input tokens are stored as uncached + cache read + cache write, so a cached
+ * agent run's input count includes the whole conversation re-sent on every
+ * call. Cache reads are billed at a fraction of the input rate, so the count
+ * alone overstates what the run consumed; the cached share is named next to it.
+ */
+function cachedSuffix(cacheRead: number | null | undefined): string {
+  return cacheRead != null && cacheRead > 0 ? ` (${tokenFormat(cacheRead)} cached)` : "";
+}
+
+/**
+ * Render a single token count with the standard suffix — e.g. `1.5k tok`,
+ * or `1.5k tok (1.2k cached)` when part of it was read from the prompt cache.
  * Use for total-only displays where no input/output breakdown is available.
  */
-export function formatTokenTotal(value: number | null): string {
-  return `${tokenFormat(value)} tok`;
+export function formatTokenTotal(value: number | null, cacheRead?: number | null): string {
+  return `${tokenFormat(value)} tok${cachedSuffix(cacheRead)}`;
 }
 
 /**
  * Render an input → output token breakdown with the standard suffix —
- * e.g. `383→78 tok`. The arrow is the canonical "weird symbol" separator
- * used across every trace surface; the suffix is the unit. Both halves
- * go through {@link tokenFormat} so large numbers abbreviate to `k`/`M`.
+ * e.g. `383→78 tok`, or `833.0k (655.5k cached)→15.8k tok` when part of the
+ * input was read from the prompt cache. The arrow is the canonical "weird
+ * symbol" separator used across every trace surface; the suffix is the unit.
+ * Every count goes through {@link tokenFormat} so large numbers abbreviate
+ * to `k`/`M`.
  */
 export function formatTokenBreakdown(
   input: number | null,
   output: number | null,
+  cacheRead?: number | null,
 ): string {
-  return `${tokenFormat(input)}\u2192${tokenFormat(output)} tok`;
+  return `${tokenFormat(input)}${cachedSuffix(cacheRead)}\u2192${tokenFormat(output)} tok`;
+}
+
+/**
+ * Hover text splitting an input-token count into its cache parts, e.g.
+ * `Input 833.0k: 655.5k read from cache, 176.3k written to cache, 1.2k uncached`.
+ * Undefined when the input touched no cache, so callers can pass it straight
+ * to `title`.
+ */
+export function formatInputCacheSplit(
+  input: number,
+  cacheRead: number,
+  cacheWrite: number,
+): string | undefined {
+  if (cacheRead <= 0 && cacheWrite <= 0) return undefined;
+  const uncached = Math.max(input - cacheRead - cacheWrite, 0);
+  return `Input ${tokenFormat(input)}: ${tokenFormat(cacheRead)} read from cache, ${tokenFormat(cacheWrite)} written to cache, ${tokenFormat(uncached)} uncached`;
 }
 
 /**

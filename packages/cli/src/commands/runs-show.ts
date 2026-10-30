@@ -89,6 +89,10 @@ type GenerationUsage = {
   reasoning_calls: number;
   max_call_reasoning_tokens: number | null;
   max_reasoning_call_id: string | null;
+  /** The parts of the run's input tokens read from and written to the
+   * prompt cache. Absent on servers that predate them. */
+  cache_read_tokens?: number;
+  cache_write_tokens?: number;
 };
 
 type ModelProviderPair = {
@@ -254,7 +258,7 @@ function printRunDetail(run: RunDetail, verbose: boolean): void {
   console.log(`  Cost:     ${formatCost(run.total_cost)}${formatPartialCostSuffix(run)}`);
   if (run.total_tokens != null && run.total_tokens > 0) {
     console.log(
-      `  Tokens:   ${run.total_tokens.toLocaleString()}${formatErroredGenerationSuffix(run.generation_execution)}`,
+      `  Tokens:   ${run.total_tokens.toLocaleString()}${formatCachedSuffix(run.generation_usage)}${formatErroredGenerationSuffix(run.generation_execution)}`,
     );
   }
   if (run.total_reasoning_tokens != null) {
@@ -454,6 +458,15 @@ function formatPartialCostSuffix(run: RunDetail): string {
     reasons.push(`${count} unpriced call${count === 1 ? "" : "s"}`);
   }
   return reasons.length > 0 ? dim(` (partial — ${reasons.join(", ")})`) : "";
+}
+
+/** Input tokens include every prompt-cache read and write, so a cached agent
+ * run's total counts its conversation once per call. Name the cached part. */
+function formatCachedSuffix(usage?: GenerationUsage | null): string {
+  const read = usage?.cache_read_tokens ?? 0;
+  const write = usage?.cache_write_tokens ?? 0;
+  if (read <= 0 && write <= 0) return "";
+  return dim(` (${read.toLocaleString()} read from cache, ${write.toLocaleString()} written to cache)`);
 }
 
 function formatErroredGenerationSuffix(execution?: GenerationExecution | null): string {

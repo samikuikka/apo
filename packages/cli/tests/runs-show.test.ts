@@ -471,6 +471,35 @@ describe("runs show command", () => {
     expect(out).toMatch(/Tokens:.*partial/);
   });
 
+  it("names the cached part of the token total", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(makeRun({
+        total_tokens: 848_745,
+        generation_usage: {
+          generations: 17,
+          model_time_ms: 116_717,
+          slowest_call_ms: 24_165,
+          slowest_call_id: "3614930b53dda67a",
+          reasoning_tokens: 4_867,
+          reasoning_calls: 16,
+          max_call_reasoning_tokens: 2_385,
+          max_reasoning_call_id: "3614930b53dda67a",
+          cache_read_tokens: 655_535,
+          cache_write_tokens: 176_293,
+        },
+      })),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain(
+      "Tokens:   848,745 (655,535 read from cache, 176,293 written to cache)",
+    );
+  });
+
   it("prints reasoning with the call that dominates it", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse(makeRun({

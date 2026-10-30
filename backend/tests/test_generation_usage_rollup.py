@@ -61,6 +61,8 @@ def test_rolls_up_model_time_slowest_call_and_largest_reasoning(
         "reasoning_calls": 3,
         "max_call_reasoning_tokens": 1_054,
         "max_reasoning_call_id": "0000000000000002",
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
     }
     public = to_task_run_summary(task_run).generation_usage
     assert public is not None
@@ -175,6 +177,8 @@ def test_claude_thinking_tokens_roll_up_without_changing_cost(
     assert usage_json["reasoning_calls"] == 3
     assert usage_json["max_call_reasoning_tokens"] == 104
     assert usage_json["max_reasoning_call_id"] == "0000000000000002"
+    assert usage_json["cache_read_tokens"] == 0 + 33746 + 39060
+    assert usage_json["cache_write_tokens"] == 33746 + 5314 + 4832
 
 
 def test_ai_sdk_root_span_does_not_price_reasoning_twice(session: Session) -> None:
