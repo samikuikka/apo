@@ -129,27 +129,6 @@ def make_transcript(task_id: str, passed: bool) -> dict[str, Any]:
     }
 
 
-def make_deliverables(task_id: str, passed: bool) -> dict[str, Any]:
-    if "bug-triage" in task_id:
-        return {
-            "severity": "HIGH" if passed else "LOW",
-            "reproduction": ["Step 1: Send request with empty body", "Step 2: Observe 500 error in logs"],
-            "root_cause": "Missing null check in request handler" if passed else "Unknown",
-        }
-    if "code-review" in task_id:
-        return {
-            "issues": [
-                {"line": 42, "severity": "warning", "message": "Unused variable 'result'"},
-                {"line": 87, "severity": "error", "message": "SQL injection vulnerability"},
-            ] if passed else [],
-            "suggestions": ["Remove unused variable", "Use parameterized queries"] if passed else ["Looks fine"],
-        }
-    return {
-        "output": "Analysis complete." if passed else "Incomplete analysis.",
-        "confidence": round(random.uniform(0.7, 0.95) if passed else random.uniform(0.2, 0.5), 2),
-    }
-
-
 def create_batch_run(
     session: Session,
     task_indices: list[int],

@@ -10,7 +10,6 @@ This module re-exports all database models and API schemas for convenient import
 
 from ..models.schemas import (  # noqa: F401
     AgentTaskBatchRunDetail,
-    AgentTaskBatchRunExternalDetail,
     AgentTaskBatchRunSummary,
     AgentTaskBatchRunConfigurationSummary,
     AgentTaskDetail,
@@ -18,7 +17,6 @@ from ..models.schemas import (  # noqa: F401
     AgentTaskRunConfiguration,
     AgentTaskRunConfigurationCount,
     AgentTaskRunDetail,
-    AgentTaskRunExternalSummary,
     AgentTaskRunStats,
     AgentTaskRunSummary,
     AgentTaskRunTrigger,
@@ -94,7 +92,6 @@ from ..models.db import (  # noqa: F401
 __all__ = [
     # Schemas
     "AgentTaskBatchRunDetail",
-    "AgentTaskBatchRunExternalDetail",
     "AgentTaskBatchRunSummary",
     "AgentTaskBatchRunConfigurationSummary",
     "AgentTaskDetail",
@@ -102,7 +99,6 @@ __all__ = [
     "AgentTaskRunConfiguration",
     "AgentTaskRunConfigurationCount",
     "AgentTaskRunDetail",
-    "AgentTaskRunExternalSummary",
     "AgentTaskRunStats",
     "AgentTaskRunSummary",
     "AgentTaskRunTrigger",

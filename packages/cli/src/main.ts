@@ -15,9 +15,6 @@ type CommandEntry = {
   help: string;
   args?: [string, string][];
   options?: [string, string][];
-  /** Flags the command accepts that are too minor for the Options table
-   *  (rendered as one compact line instead of one row each). */
-  extraFlags?: string[];
   examples?: string[];
   note?: string;
 };
@@ -589,7 +586,7 @@ function loadCommand(name: string): CommandHandler {
 
 /** Flags every command accepts. */
 const GLOBAL_FLAGS = new Set([
-  "help", "h", "version", "v", "json",
+  "help", "h", "version", "json",
   "dir", "backend", "project", "actor", "api-key",
 ]);
 
@@ -600,9 +597,6 @@ function validFlagNames(entry: CommandEntry): Set<string> {
     if (name.startsWith("--")) {
       names.add(name.slice(2));
     }
-  }
-  for (const name of entry.extraFlags ?? []) {
-    names.add(name);
   }
   return names;
 }
@@ -720,11 +714,6 @@ function printCommandHelp(key: string, entry: CommandEntry): void {
     console.log("");
   }
 
-  if (entry.extraFlags?.length) {
-    console.log(dim(`Also accepted: ${entry.extraFlags.map((f) => `--${f}`).join(", ")}`));
-    console.log("");
-  }
-
   if (entry.examples?.length) {
     console.log(bold("Examples:"));
     for (const ex of entry.examples) {
@@ -743,7 +732,7 @@ function printCommandHelp(key: string, entry: CommandEntry): void {
 }
 
 function printHelp(): void {
-  console.log(bold("apo — Agent Task Runner"));
+  console.log(bold("apo: Agent Task Runner"));
   console.log("");
   console.log(bold("Quick start:"));
   console.log("  apo login                Authenticate");

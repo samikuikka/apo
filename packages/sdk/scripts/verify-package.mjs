@@ -105,7 +105,7 @@ function packSdk(tempDir) {
   step("Build + pack SDK tarball (prepack runs the build)");
   // `pnpm pack` is the only correct artifact source — it applies the
   // publishConfig rewrite (strips `development` conditions, locks the
-  // six dist-only exports). Output path is printed by pnpm.
+  // five dist-only exports). Output path is printed by pnpm.
   const output = run("pnpm", ["pack", "--pack-destination", tempDir], {
     cwd: PKG_DIR,
   });

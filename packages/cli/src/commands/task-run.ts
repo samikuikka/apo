@@ -57,7 +57,7 @@ export type LocalRunSummary = {
   runConfiguration?: { model: string; effort?: string };
 };
 
-/** Told whether a finished run's verdict was NO VERDICT — exit code 2 alone
+/** Told whether a finished run's verdict was NO VERDICT: exit code 2 alone
  * can't tell it apart from an execution error (`apo run` labels by it). */
 export type VerdictObserver = (noVerdict: boolean) => void;
 
@@ -66,21 +66,7 @@ export async function run(argv: string[], observeVerdict?: VerdictObserver): Pro
   const config = resolveConfig(flags);
   const taskRef = requirePositional(positional, 0, "task-id | path");
 
-  const flagRemote = getBoolFlag(flags, "remote");
-  const executorFlag = typeof flags["executor"] === "string" ? flags["executor"] : undefined;
   const noRecord = getBoolFlag(flags, "no-record");
-
-  // Execution-target compat. task run always executes on this machine (caller
-  // execution); --remote and pool targets no longer exist, so they fail
-  // loudly instead of silently running somewhere the caller didn't ask for.
-  if (flagRemote) {
-    console.error(red("error: --remote is not supported — task run always executes on this machine (caller execution)"));
-    return 2;
-  }
-  if (executorFlag) {
-    console.error(red(`error: --executor is not supported — task run always executes on this machine (caller execution)`));
-    return 2;
-  }
 
   // Resolve the task's filesystem path + its declared execution preference.
   // We read `execution` statically (no module load) so we don't re-register

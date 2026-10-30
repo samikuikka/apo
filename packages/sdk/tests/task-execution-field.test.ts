@@ -4,8 +4,8 @@ import { task, resetTaskRegistry, getRegisteredTask } from "../src/agent-task/ta
 import type {
   DeliverableDefinition,
   TaskDefinition,
-} from "../src/agent-task/types";
-import type { TaskExecutionPreference } from "../src/agent-task/task/types";
+  TaskExecutionPreference,
+} from "../src/agent-task/task/types";
 
 // Minimal adapter for defineTask/task — lifecycle isn't exercised here.
 const stubAdapter = {

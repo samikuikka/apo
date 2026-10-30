@@ -37,8 +37,8 @@ if TYPE_CHECKING:
     from ..services.request_body_limits import RequestBodyLimits
     from ..services.telemetry_limits import TelemetryTransportLimits
 
-# §Request and Storage Limits — defaults for constructions without explicit
-# limits (values match the shipped defaults of load_request_body_limits).
+# Defaults for constructions without explicit limits (values match the shipped
+# defaults of load_request_body_limits).
 _RESULT_BODY_LIMIT = 10 * 1024 * 1024  # 10 MiB Task result body
 _ARTIFACT_UPLOAD_LIMIT = 100 * 1024 * 1024  # 100 MiB per Artifact upload
 _WRITE_BODY_LIMIT = 10 * 1024 * 1024  # 10 MiB other write bodies

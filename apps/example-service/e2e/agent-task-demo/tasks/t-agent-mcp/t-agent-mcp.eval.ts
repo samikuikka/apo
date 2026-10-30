@@ -44,7 +44,7 @@ const { test: check } = task("t-agent-mcp", {
   maxTurns: 2,
   deliverables: ["result", "tool_log", "stats"],
   mcpServers: [GEO_MCP],
-  // Judge-plane config (Track A): the agentic judge below gets the same
+  // Judge-plane config: the agentic judge below gets the same
   // server and must call it before verdicting.
   judgeTools: { mcp: [GEO_MCP] },
 });

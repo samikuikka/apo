@@ -4,7 +4,7 @@
 
 OpenAI reports ``input_tokens`` / ``output_tokens`` *inclusive* of cache and
 reasoning subsets (OTel GenAI semconv), so the non-overlap invariant subtracts
-both. See ``wayfinder/assets/03-normalizer-research.md`` §3.
+both.
 """
 
 from __future__ import annotations

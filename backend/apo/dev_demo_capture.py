@@ -14,7 +14,7 @@ exports everything created after the watermark, merges it into
 and removes the watermark. ``verify`` loads the shipped fixture into a
 scratch database and asserts the surface checklist.
 
-Re-capture policy (S4): manual. Full recapture is worth it when the fixture
+Re-capture policy: manual. Full recapture is worth it when the fixture
 schema bumps, the demo task tree changed materially, captured evidence
 misrepresents the UI, or a captured model became unavailable/mispriced.
 Incremental sessions cover everything else. No release is ever blocked on a
@@ -58,10 +58,6 @@ from .services.project_task_inventory import seed_demo_inventory
 
 CAPTURE_PROJECT_ID = "demo-capture"
 
-
-def _export_project(args_project: str | None) -> str:
-    """The project whose rows an export reads (--project), or the capture default."""
-    return args_project or CAPTURE_PROJECT_ID
 DEMO_USER_ID = "demo-user"
 WATERMARK_PATH = Path(__file__).resolve().parents[1] / "data" / "demo-capture-session.json"
 
@@ -649,7 +645,7 @@ def cmd_verify(fixture_path: Path) -> int:
 
 
 def run_checklist(session: Any) -> list[str]:
-    """The N4 structural checklist; returns a list of failure strings."""
+    """The structural checklist for the loaded fixture; returns failure strings."""
     failures: list[str] = []
     batches = session.exec(
         select(AgentTaskBatchRunDB).where(AgentTaskBatchRunDB.project == "demo")

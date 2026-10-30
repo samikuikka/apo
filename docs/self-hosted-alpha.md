@@ -275,7 +275,7 @@ Alpha defaults are intentionally cheap:
 - **One node.** Do not provision extra capacity unless you see real pressure.
 - **SQLite first.** Move to Postgres when sustained concurrent writes or your
   operational requirements justify the extra service.
-- **Cheap default model** for agent tasks (`google/gemini-2.5-flash-lite` via OpenRouter by default; override with `AGENT_TASK_OPENROUTER_MODEL`).
+- **Cheap default model** for agent tasks (`deepseek/deepseek-v4.1-flash` via OpenRouter by default; override with `AGENT_TASK_OPENROUTER_MODEL`).
 - **Conservative schedules** — adaptive cadence defaults to ≥ 1 day between runs.
 - **Log rotation** is already configured in every Compose service (`max-size: 10m`, `max-file: 3`). Add cache pruning via cron if you sync many large Git sources.
 

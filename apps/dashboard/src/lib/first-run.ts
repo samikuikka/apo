@@ -6,14 +6,6 @@
  * shell itself.
  */
 
-export interface ProjectFirstRunSetup {
-  publicUrl: string;
-  projectId: string;
-  cliLoginCommand: string;
-  docsUrl: string;
-  exampleUrl: string;
-}
-
 /** True when the origin is an absolute http(s) URL safe to render in a command. */
 export function isValidPublicOrigin(raw: string | null | undefined): raw is string {
   if (!raw) return false;

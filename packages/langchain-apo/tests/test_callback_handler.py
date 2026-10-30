@@ -41,6 +41,9 @@ class TestGetObservationType:
         serialized: dict[str, object] = {"name": "MyChain"}
         assert get_observation_type("on_chain_start", serialized) == "CHAIN"
 
+    def test_chain_start_with_none_serialized(self) -> None:
+        assert get_observation_type("on_chain_start", None) == "CHAIN"
+
     def test_unknown_event_returns_span(self) -> None:
         assert get_observation_type("on_unknown_event") == "SPAN"
 
@@ -54,6 +57,9 @@ class TestIsAgent:
 
     def test_none_serialized(self) -> None:
         assert _is_agent(None) is False
+
+    def test_empty_serialized(self) -> None:
+        assert _is_agent({}) is False
 
     def test_agent_module_prefix(self) -> None:
         assert _is_agent({"module": "langchain.agents.types"}) is True
@@ -69,6 +75,10 @@ class TestExtractModelName:
     def test_from_kwargs_model(self) -> None:
         serialized: dict[str, object] = {"kwargs": {"model": "gpt-4"}}
         assert extract_model_name(serialized) == "gpt-4"
+
+    def test_from_kwargs_model_name(self) -> None:
+        serialized: dict[str, object] = {"kwargs": {"model_name": "gpt-3.5-turbo"}}
+        assert extract_model_name(serialized) == "gpt-3.5-turbo"
 
     def test_none_serialized(self) -> None:
         assert extract_model_name(None) == "unknown"

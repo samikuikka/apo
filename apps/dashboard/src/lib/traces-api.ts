@@ -166,18 +166,6 @@ export interface FacetBucket {
   count: number;
 }
 
-export interface TraceFacets {
-  status: FacetBucket[];
-  models: FacetBucket[];
-  /** Serving-host facet: merged provider + route values (issue #307). */
-  providers: FacetBucket[];
-  environments: FacetBucket[];
-  tags: FacetBucket[];
-  users: FacetBucket[];
-  sessions: FacetBucket[];
-  scores: FacetBucket[];
-}
-
 const NO_CACHE = { cache: "no-store" } as const;
 
 function normalizeTraceSummary(

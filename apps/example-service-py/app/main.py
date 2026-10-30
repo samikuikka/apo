@@ -1,8 +1,10 @@
 """FastAPI app for the Python example service.
 
-Two routes:
+Routes:
   - ``GET /``            → landing text (mirrors the TS example-service page)
   - ``POST /api/agent/chat`` → runs the agentic loop and returns ChatResponse
+  - ``GET/POST /api/orders`` → plain-service order list (no agent), from
+    ``app/orders.py``
 """
 
 from __future__ import annotations

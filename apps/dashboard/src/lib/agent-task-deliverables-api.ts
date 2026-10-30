@@ -20,11 +20,6 @@ export interface DeliverableSummary {
   download_url: string | null;
 }
 
-export interface DeliverableManifest {
-  task_run_id: string;
-  items: DeliverableSummary[];
-}
-
 /**
  * Fetch one JSON Deliverable body. The caller owns the AbortController so a
  * collapse/navigation cancels the in-flight request and no stale state update

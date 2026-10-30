@@ -40,7 +40,7 @@ def require_task_run_access(
     Capability tokens (service / Attempt) are exact-run-scoped: a mismatch
     raises 404 so a cross-run guess cannot infer the existence of another run.
     Session / API-key / open-dev callers go through the canonical Project
-    policy — non-member access is also 404 (opaque denial §6).
+    policy; non-member access is also 404 (opaque denial).
     Writes against the demo Project are rejected with 403.
     """
     batch = session.get(AgentTaskBatchRunDB, task_run.batch_run_id)

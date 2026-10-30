@@ -139,7 +139,7 @@ def load_demo_fixture(session: Session, *, path: Path | None = None) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Loading (FK order per wayfinder asset 07)
+# Loading (parents before children, in foreign-key-dependency order)
 # ---------------------------------------------------------------------------
 
 

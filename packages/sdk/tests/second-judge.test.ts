@@ -13,7 +13,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { callJudge } from "../src/agent-task/checks/judge.ts";
-import { decisionsEndpoint, secondJudgeFacts } from "../src/agent-task/checks/second-judge.ts";
+import { secondJudgeFacts } from "../src/agent-task/checks/second-judge.ts";
 
 const judgeArgs = {
   values: ["the deliverable"],
@@ -217,17 +217,6 @@ describe("second judge provider selection", () => {
     expect(result.judge.secondJudge?.error).toContain("APO_SECOND_JUDGE_PROVIDER");
     expect(result.judge.secondJudge?.error).toContain("openrouter");
     expect(result.judge.secondJudge?.error).toContain("openai");
-  });
-});
-
-describe("decisionsEndpoint URL derivation", () => {
-  it.each([
-    ["https://openrouter.ai/api/v1", "https://openrouter.ai/api/alpha/decisions"],
-    ["https://openrouter.ai/api/v1/", "https://openrouter.ai/api/alpha/decisions"],
-    ["https://proxy.example/v1", "https://proxy.example/alpha/decisions"],
-    ["https://proxy.example", "https://proxy.example/alpha/decisions"],
-  ])("%s -> %s", (base, expected) => {
-    expect(decisionsEndpoint(base)).toBe(expected);
   });
 });
 

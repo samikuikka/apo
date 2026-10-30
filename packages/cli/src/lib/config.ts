@@ -1,6 +1,7 @@
 import { lstatSync } from "fs";
 import { dirname, isAbsolute, join, resolve } from "path";
 import { readCredentials, credentialsPath } from "./credentials.ts";
+import { getFlagValue } from "./args.ts";
 
 export type Config = {
   taskRoot: string;
@@ -9,7 +10,6 @@ export type Config = {
   actor: string | undefined;
   apiKey: string | undefined;
   json: boolean;
-  ci: boolean;
   _rawFlags: Record<string, string | boolean>;
 };
 
@@ -45,20 +45,8 @@ export function resolveConfig(
       "APO_API_KEY",
     ) ?? stored?.api_key,
     json: flags.json === true || flags.json === "true",
-    ci: flags.ci === true || process.env.CI === "true",
     _rawFlags: flags,
   };
-}
-
-function getFlagValue(
-  flags: Record<string, string | boolean>,
-  name: string,
-): string | undefined {
-  const value = flags[name];
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  return value;
 }
 
 function resolvePath(

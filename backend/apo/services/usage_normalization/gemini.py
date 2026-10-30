@@ -5,8 +5,7 @@
 Gemini via official OTel genai instrumentation reports ``input_tokens`` /
 ``output_tokens`` *inclusive* of cache_read / reasoning subsets (OTel GenAI
 semconv). This covers Gemini 2.5 thinking models (reasoning is a distinct
-billed output dimension). See ``wayfinder/assets/03-normalizer-research.md``
-§4.
+billed output dimension).
 """
 
 from __future__ import annotations

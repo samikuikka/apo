@@ -7,7 +7,7 @@ diagnostic tails. Delegates Task Run verdict/Checks/Deliverables/cost/Trace to
 the shared :mod:`agent_task_run_service` finalizer so the new protocol and the
 old subprocess path land terminal state identically.
 
-Completion idempotency (§Start, heartbeat, result, failure): a result is
+Completion idempotency: a result is
 idempotent by ``(completion_id, canonical body digest)``. A replay with the
 same ID and body is a no-op success; a replay with the same ID but a different
 body raises a ``CompletionConflict`` (mapped to 409 by the route).

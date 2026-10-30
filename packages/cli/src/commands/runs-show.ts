@@ -103,7 +103,7 @@ type ModelProviderPair = {
 export async function run(argv: string[]): Promise<number> {
   const { positional, flags } = parseArgs(argv);
   const config = resolveConfig(flags);
-  const verbose = flags.verbose === true || flags.v === true;
+  const verbose = flags.verbose === true;
   const exitStatus = flags["exit-status"] === true;
   const taskFilter = getFlagValue(flags, "task");
 

@@ -10,7 +10,7 @@ uid/gid/user/group/mtime; deterministic mode from ``modeClass``; entries sorted
 by path. ``content_sha256`` (over schemaVersion + sorted files) is recomputed
 on verify and must match.
 
-Safety (§Bundle verification interface): reject absolute paths, ``..``
+Safety: reject absolute paths, ``..``
 components, duplicate normalized paths, entries outside ``workspace/``, link /
 device entries, size/count/digest mismatches, and any resolved destination
 outside the fresh workspace. Bounded: never load a whole Bundle into memory.
@@ -49,7 +49,7 @@ _WORKSPACE_PREFIX = "workspace/"
 
 @dataclass(frozen=True)
 class BundleLimits:
-    """§Limits. Exceeded limits raise :class:`BundleError` and leave no bundle."""
+    """Exceeded limits raise :class:`BundleError` and leave no bundle."""
 
     max_file_count: int = 50_000
     max_total_uncompressed_bytes: int = 256 * 1024 * 1024

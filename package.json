@@ -8,8 +8,6 @@
     "docs": "pnpm --filter docs dev",
     "docs:build": "pnpm --filter docs build",
     "apo": "node --experimental-strip-types --conditions development packages/cli/src/main.ts",
-    "prototype:apo-connect": "node --experimental-strip-types packages/cli/prototypes/apo-connect/tui.ts",
-    "prototype:apo-human": "node --experimental-strip-types packages/cli/prototypes/apo-human/main.ts",
     "lint": "oxlint --ignore-pattern=\"**/*.astro\" apps/ packages/",
     "lint:fix": "oxlint --fix --ignore-pattern=\"**/*.astro\" apps/ packages/",
     "typecheck": "pnpm --filter dashboard --filter @apo-ai/sdk --filter @apo/example-service --filter @apo-ai/cli run typecheck",

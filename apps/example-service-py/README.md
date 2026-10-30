@@ -9,7 +9,7 @@ It exists to prove the Python side of the integration is real: standard OpenTele
 - **FastAPI + uvicorn** (mirrors `backend/`)
 - **`openai` Python SDK** pointed at OpenRouter (same env vars and model default as the TS service)
 - **`opentelemetry-instrumentation-openai-v2`** — auto-instruments every OpenAI SDK call
-- **Custom OTLP/JSON exporter** (`app/otel.py`) — the official `OTLPSpanExporter` sends protobuf binary; apo's backend expects JSON, so we convert via `MessageToDict`
+- **OTLP export via `apo-otel`** (`app/otel.py` wires it up): standard OpenTelemetry export to apo's OTLP endpoint
 
 ## Quick start
 
@@ -82,7 +82,7 @@ The agent has four in-memory tools (no filesystem access): `read_file`, `list_fi
 
 **Tool calls are manually traced.** The instrumentor only wraps the OpenAI SDK, not our `dispatch()` function. So `agent.py` opens a small `TOOL` span via the OTel API around each tool execution, setting `gen_ai.tool.name`, `gen_ai.tool.call.arguments`, and `gen_ai.tool.call.result` attributes. These nest under the parent LLM span automatically via OTel context propagation.
 
-**Transport:** the custom `OtlpJsonSpanExporter` (`app/otel.py`) converts each span batch to OTLP/JSON via `MessageToDict` (the official exporter sends protobuf binary, which the backend doesn't parse) and POSTs to `/api/public/otel/v1/traces` with Basic auth.
+**Transport:** `apo-otel` exports spans over standard OTLP to `APO_OTLP_ENDPOINT` (default: apo's `/api/public/otel/v1/traces` ingest), authenticated with `APO_PUBLIC_KEY`/`APO_SECRET_KEY` Basic auth. See `app/otel.py`.
 
 Set `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=span_only` to capture the actual prompt + completion text (not just token counts).
 
@@ -92,8 +92,11 @@ Set `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=span_only` to capture th
 app/
 ├── main.py             # FastAPI app: GET / + POST /api/agent/chat
 ├── agent.py            # 8-step agentic loop + manual TOOL spans via OTel API
+├── orders.py           # plain-service order endpoints (no agent)
 ├── tools.py            # read_file / list_files / search_content / compute + OpenAI schemas
-└── otel.py             # OTLP/JSON exporter + OpenAI auto-instrumentation setup
+└── otel.py             # OTLP export + OpenAI auto-instrumentation via apo-otel
+scripts/
+└── seed_demo_traces.py # seed the backend with demo order traces
 tests/
 ├── test_tools.py       # pure unit tests on the 4 tools
 └── test_agent.py       # shape test on handle_chat with a mocked OpenAI client

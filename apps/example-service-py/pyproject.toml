@@ -22,19 +22,6 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["."]
 
-[tool.basedpyright]
-pythonVersion = "3.13"
-venvPath = "."
-venv = ".venv"
-reportMissingTypeStubs = false
-reportExplicitAny = false
-reportAny = false
-reportUnannotatedClassAttribute = false
-reportMissingParameterType = false
-reportUnknownParameterType = false
-reportUnknownArgumentType = false
-reportUnusedCallResult = false
-
 [tool.uv]
 cache-dir = ".uv-cache"
 default-groups = ["dev"]

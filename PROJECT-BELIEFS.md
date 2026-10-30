@@ -117,6 +117,12 @@ Every failing run should be debuggable through traces.
 
 The trace is a core product surface, not optional observability garnish.
 
+### 9. Deletion is maintenance
+
+Each new model makes constraints written for the previous one pointless, and someone has to delete them.
+
+A suite that only grows is not accumulating safety. A test that has not failed in a long time is not guarding anything; it is occupying attention. apo should surface which tests never fail and make pruning them a deliberate, normal act, so the suite stays an honest statement of what must hold.
+
 ## Product Language
 
 Preferred terms:
@@ -154,6 +160,7 @@ When making product or UI decisions, prefer solutions that reinforce these ideas
 7. Make traces the path for debugging.
 8. Return evidence that a human or coding agent can act on without inventing a second evaluation layer.
 9. Keep the repair loop outside apo: one completed evaluation produces one verdict; the caller decides what changes and whether to start another Task Run.
+10. Surface tests that never fail and prune them deliberately; a smaller honest suite beats a growing stale one.
 
 ## Current Status
 
