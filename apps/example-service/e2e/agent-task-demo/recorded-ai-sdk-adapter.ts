@@ -78,7 +78,7 @@ export const recordedAiSdkAdapter = defineAdapter({
   async startSession(ctx) {
     const recordTo = process.env.APO_RECORD_FIXTURE;
     return recordTo
-      ? liveSession(ctx, recordTo)
+      ? liveSession(ctx)
       : replaySession(ctx, await readFixture(fixturePath(ctx.taskDir)));
   },
 
@@ -128,7 +128,7 @@ async function writeFixture(path: string, fixture: RecordedSession): Promise<voi
 }
 
 /** The live half: the same run the plain AI SDK adapter does, plus capture. */
-function liveSession(ctx: { taskDir: string; state?: unknown }, _recordTo: string): RecordingSession {
+function liveSession(ctx: { taskDir: string; state?: unknown }): RecordingSession {
   const state = (ctx.state ?? EMPTY_STATE) as AgentState;
   const model = process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4-flash-0731";
   const recordedTurns: RecordedTurn[] = [];

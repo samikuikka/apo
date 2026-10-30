@@ -203,13 +203,10 @@ export async function runTask(
     async (traceContext) => {
       const phase1 = await captureExecution(loaded, options, traceContext);
 
-      // when this run is backend-launched (has a taskRunId),
-      // read the canonical projection snapshot back from the backend instead of
-      // the local tee. The backend's projection is the single source of truth —
-      // it includes spans the subprocess exported natively over OTLP (which the
-      // in-process tee can never see, since they're created in another process).
-      // Falls back to the local snapshot on any failure (offline runs, unreachable
-      // backend, projection timeout) so evaluation still runs.
+      // Backend-launched runs evaluate the canonical projection, not the
+      // local tee: the projection also holds spans the agent's subprocess
+      // exported natively over OTLP, which the in-process tee cannot see.
+      // Any read problem falls back to the local snapshot.
       const canonical = await readCanonicalSnapshot(
         trace,
         phase1.snapshot.observations.length,
@@ -228,7 +225,7 @@ export async function runTask(
  *
  * Returns `null` when there's nothing to read (no taskRunId = offline/local
  * run), when the read fails for any reason, or when the projection cannot
- * reach `minObservations` within the deadline — the caller falls back to the
+ * reach `minObservations` within the deadline; the caller falls back to the
  * local tee snapshot in every case. Errors are logged but never thrown: a
  * projection read problem must not fail the task run.
  *
@@ -246,7 +243,7 @@ export async function readCanonicalSnapshot(
   minObservations: number,
   opts: { deadlineMs?: number } = {},
 ): Promise<TraceProjectionSnapshot | null> {
-  if (!trace.taskRunId) return null; // offline/local run — no backend read
+  if (!trace.taskRunId) return null; // offline/local run, no backend read
   // The trace endpoint + the run's trace token (the same credential the OTLP
   // exporter uses), not APO_BACKEND_URL + an API key. Either way, a missing
   // endpoint or token means the local tee snapshot is the effective design.
@@ -261,11 +258,8 @@ export async function readCanonicalSnapshot(
       authToken,
       taskRunId: trace.taskRunId,
       deadlineMs,
-      // Fresh-run readback: the run row was pre-created by the caller/executor
-      // flow, and the subprocess-exported trace may still be in flight when
-      // the checks phase starts — a 409 "no trace yet" must wait for the
-      // claim, not fall back to a local snapshot that cannot see the
-      // subprocess's spans.
+      // Fresh-run readback: the trace claim may still be landing, so the
+      // 409 must be waited out rather than fallen back from.
       retryNoTrace: true,
     });
     while (snapshot.observations.length < minObservations) {

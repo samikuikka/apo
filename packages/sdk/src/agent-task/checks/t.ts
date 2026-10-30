@@ -157,8 +157,8 @@ export function resolveJudgeConfig(
 
 /**
  * The embedding plane threaded into check contexts: the layered provider
- * config, a run-scoped client (one shared vector cache — a reference reused
- * across checks is embedded once), and the tracer slice for the EMBEDDING
+ * config, a run-scoped client (one shared vector cache, so a reference
+ * reused across checks is embedded once), and the tracer slice for the EMBEDDING
  * observation + score record. Built once per run by the check runner.
  */
 export type EmbeddingRuntime = {
@@ -268,10 +268,10 @@ export interface TestContext {
 
   /**
    * Semantic similarity: embeds `value` and `reference` with the configured
-   * embedding model (any OpenAI-compatible `/embeddings` endpoint —
+   * embedding model (any OpenAI-compatible `/embeddings` endpoint:
    * OpenRouter, OpenAI, local Ollama/vLLM/LM Studio) and records one
-   * assertion that passes when their cosine similarity ≥ `threshold`. Async —
-   * the check function must `await` it. Deterministic under a pinned config,
+   * assertion that passes when their cosine similarity ≥ `threshold`. The
+   * call is async, so the check function must `await` it. Deterministic under a pinned config,
    * unlike `t.judge`. A non-string `value` is stringified like `t.check` matchers
    * do; `reference` is the authored text to compare against.
    *
@@ -279,7 +279,7 @@ export interface TestContext {
    * model-bound (0.3 and 0.79 are both "paraphrase" on different models).
    * Calibrate with a handful of labeled pass/fail pairs before committing to
    * one. Every verdict records the raw score to 4 decimals and a settings
-   * signature (`model:1536d:cosine:apo-v1`) — similarity numbers from
+   * signature (`model:1536d:cosine:apo-v1`); similarity numbers from
    * different signatures are not comparable.
    *
    * ``opts.embedding`` overrides the run's embedding config **for this call
@@ -969,7 +969,7 @@ type SemanticVerdict = {
  * value and reference under the resolved provider (inside an EMBEDDING
  * observation when traced), compares with cosine, and records one assertion
  * carrying the raw score, the threshold, and the pinned settings signature.
- * Unreachable endpoints and malformed responses record `outcome: "error"` —
+ * Unreachable endpoints and malformed responses record `outcome: "error"`:
  * an unreachable grader is not a FAIL, same contract as `t.judge`.
  */
 function createSemanticMethod(
@@ -1021,7 +1021,7 @@ function createSemanticMethod(
       if (!Number.isFinite(similarity)) {
         // Length mismatch is rejected upstream, so a non-finite cosine means
         // the provider returned non-finite vector components.
-        throw new Error("cosine similarity undefined — provider returned non-finite vector components");
+        throw new Error("cosine similarity undefined: provider returned non-finite vector components");
       }
       // Compare (and record) the 4-decimal rounding so the displayed number
       // and the verdict can never disagree.
@@ -1054,7 +1054,7 @@ function createSemanticMethod(
                 const res = r as SemanticVerdict;
                 const text =
                   `cosine ${res.similarity} vs threshold ${threshold}` +
-                  (res.pass ? " — pass" : " — fail");
+                  (res.pass ? ": pass" : ": fail");
                 return {
                   text,
                   verdict: {
@@ -1084,7 +1084,7 @@ function createSemanticMethod(
       // Marginal band: within 0.02 of the threshold the verdict is one model
       // drift away from flipping — say so on every such verdict.
       if (Math.abs(delta) < 0.02) {
-        reasoning += " — marginal: within 0.02 of the threshold; this verdict will flip on model drift";
+        reasoning += ". Verdict is marginal: within 0.02 of the threshold, it will flip on model drift";
       }
       if (verdict.zeroMagnitude) {
         reasoning += " (zero-magnitude vector: the provider returned an empty direction)";

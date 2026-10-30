@@ -1,5 +1,5 @@
 /**
- * Embedding-similarity grading — the deterministic third leg of the check
+ * Embedding-similarity grading, the deterministic third leg of the check
  * vocabulary (exact/fuzzy matchers, `t.judge`, `t.agent`). Calls any
  * OpenAI-compatible `/embeddings` endpoint (OpenRouter, OpenAI direct, local
  * Ollama/vLLM/LM Studio), L2-normalizes both vectors, and compares with
@@ -12,10 +12,10 @@
  * "unrelated" on another. The signature is the contract.
  */
 
-/** HTTP embedding config — any OpenAI-compatible `/embeddings` endpoint. */
+/** HTTP embedding config for any OpenAI-compatible `/embeddings` endpoint. */
 export type EmbeddingConfig = {
   /**
-   * Embedding model id in the provider's namespace — e.g.
+   * Embedding model id in the provider's namespace, e.g.
    * `"openai/text-embedding-3-small"` (OpenRouter) vs
    * `"text-embedding-3-small"` (OpenAI direct). Never reuse a chat model id.
    */
@@ -27,14 +27,14 @@ export type EmbeddingConfig = {
   /**
    * Best-effort Matryoshka truncation (models that support it only). The
    * dimensionality actually returned is always what gets recorded and
-   * compared — a 400 naming `dimensions` is retried once without it.
+   * compared; a 400 naming `dimensions` is retried once without it.
    */
   dimensions?: number;
 };
 
 /**
- * Full escape hatch: bring any embedder — Cohere/Voyage request dialects, an
- * in-process transformers.js pipeline — as a function. Programmatic layer
+ * Full escape hatch: bring any embedder, from Cohere/Voyage request dialects
+ * to an in-process transformers.js pipeline, as a function. Programmatic layer
  * only (`runTask({ embedding })`); env and task layers carry the HTTP shape.
  */
 export type EmbeddingProvider = EmbeddingConfig | { embed: (input: string[]) => Promise<number[][]> };
@@ -47,7 +47,7 @@ export function isEmbeddingHttpConfig(provider: EmbeddingProvider): provider is 
 /**
  * Metadata recorded on an assertion graded by embedding similarity. The
  * mirror of `JudgeMetadata`: what graded, under which pinned settings, at
- * what cost — so a similarity number is interpretable years later.
+ * what cost, so a similarity number is interpretable years later.
  */
 export type EmbeddingMetadata = {
   /** The requested model id, e.g. `openai/text-embedding-3-small`. */
@@ -60,7 +60,7 @@ export type EmbeddingMetadata = {
   similarity: number;
   threshold: number;
   metric: "cosine";
-  /** `model:1536d:cosine:apo-v1` — everything that can move the number. */
+  /** `model:1536d:cosine:apo-v1`, everything that can move the number. */
   settings_hash: string;
   tokens?: { input: number };
   latency_ms?: number;
@@ -85,11 +85,11 @@ export type ResolvedEmbeddingProvider = {
 
 /**
  * Merge an embedding config override onto a base provider, most specific
- * layer winning — the same field-by-field merge `resolveJudgeConfig` uses,
+ * layer winning, the same field-by-field merge `resolveJudgeConfig` uses,
  * so a partial layer (`{ dimensions }`, `{ apiKey }`) applies over the base
  * instead of being dropped. An override carrying a `model` always yields
  * the HTTP shape (switching away from a custom-embed base); without one, a
- * custom-embed base passes through untouched — dimensions and keys mean
+ * custom-embed base passes through untouched: dimensions and keys mean
  * nothing to a user-supplied function.
  */
 export function resolveEmbeddingConfig(
@@ -98,7 +98,7 @@ export function resolveEmbeddingConfig(
 ): ResolvedEmbeddingProvider | undefined {
   const base = resolveEmbeddingProvider(provider);
   if (!override) return base;
-  // A custom embed fn has no fields to merge into — a model-less override
+  // A custom embed fn has no fields to merge into: a model-less override
   // passes it through untouched; a model override switches to the HTTP
   // shape (baseURL, if missing, fails at request time with guidance rather
   // than silently guessing a provider).
@@ -129,7 +129,7 @@ function resolveEmbeddingProvider(
 
 /**
  * The embeddings endpoint could not be reached or returned no usable
- * response — no score exists. The caller records `outcome: "error"`,
+ * response, so no score exists. The caller records `outcome: "error"`,
  * mirroring `JudgeUnavailableError`: an unreachable grader is not a FAIL.
  */
 export class EmbeddingUnavailableError extends Error {
@@ -155,8 +155,8 @@ type CacheKey = string;
  * Create a run-scoped embedding client: one shared vector cache so a
  * reference reused across checks is embedded once, plus the retry/backoff
  * policy for a single request. The cache key carries every setting that
- * selects a different vector space (model, endpoint, requested dimensions)
- * — vectors from different configs must never mix in one comparison.
+ * selects a different vector space (model, endpoint, requested dimensions);
+ * vectors from different configs must never mix in one comparison.
  * In-flight fetches are deduplicated too: checks run concurrently, and two
  * checks embedding the same reference must share one request, not race past
  * each other into two.
@@ -176,7 +176,7 @@ export function createEmbeddingClient(): EmbeddingClient {
       // crashes the process under Node's default unhandled-rejection mode),
       // in one batched request; each text gets its own inflight promise
       // resolving from the shared fetch. Metadata (tokens/latency) is
-      // attributed only to the calls that initiated a fetch — a pure
+          // attributed only to the calls that initiated a fetch; a pure
       // cache/inflight hit reports none, because it made no request.
       const seen = new Set<CacheKey>();
       const needFetch = keyed.filter(({ key }) => {
@@ -216,7 +216,7 @@ export function createEmbeddingClient(): EmbeddingClient {
           }
           const cached = resolved.get(key);
           if (cached !== undefined) return cached;
-          throw new EmbeddingUnavailableError("embedding vector vanished — concurrent cache race");
+          throw new EmbeddingUnavailableError("embedding vector vanished: concurrent cache race");
         }),
       );
       const dims = vectors[0]!.length;
@@ -260,7 +260,7 @@ async function fetchEmbeddings(
   const call = (omitDimensions: boolean) =>
     requestEmbeddings(config, inputs, omitDimensions);
   // A 400 that names `dimensions` (fixed-dimensionality models reject it) is
-  // retried once without it — best-effort by design; the returned
+  // retried once without it, best-effort by design; the returned
   // dimensionality is what gets recorded and compared.
   const first = await callWithRetry(() => call(false));
   const result =
@@ -305,7 +305,7 @@ async function requestEmbeddings(
     return {
       kind: "error",
       message:
-        "no embeddings endpoint configured — set APO_EMBEDDING_BASE_URL (or pass baseURL), e.g. https://openrouter.ai/api/v1 or a local server like http://localhost:11434/v1",
+        "no embeddings endpoint configured: set APO_EMBEDDING_BASE_URL (or pass baseURL), e.g. https://openrouter.ai/api/v1 or a local server like http://localhost:11434/v1",
     };
   }
   const url = `${config.baseURL.replace(/\/$/, "")}/embeddings`;
@@ -350,7 +350,7 @@ async function requestEmbeddings(
   if (!Array.isArray(data) || data.length !== inputs.length) {
     return { kind: "error", message: `embeddings response malformed: expected ${inputs.length} vectors, got ${data?.length ?? "none"}` };
   }
-  // Order by the wire's `index` field, not array position — the field exists
+  // Order by the wire's `index` field, not array position: the field exists
   // precisely because gateways and batch paths may return vectors out of
   // order, and a swapped vector silently poisons the run cache under the
   // wrong text's key. Providers that omit `index` fall back to position.
@@ -377,7 +377,7 @@ async function requestEmbeddings(
 }
 
 /**
- * Cosine similarity of two vectors, L2-normalizing first — identical result
+ * Cosine similarity of two vectors, L2-normalizing first: identical result
  * on already-normalized providers (OpenAI), correct on unnormalized ones
  * (raw sentence-transformers served via OpenAI-compatible gateways). A
  * zero-magnitude vector has no direction: similarity 0, per the guard every
@@ -397,7 +397,7 @@ export function cosineSimilarity(a: readonly number[], b: readonly number[]): nu
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-/** Euclidean length of a vector — lets callers name a zero-magnitude case. */
+/** Euclidean length of a vector, so callers can name a zero-magnitude case. */
 export function vectorMagnitude(v: readonly number[]): number {
   let sum = 0;
   for (const x of v) sum += x * x;

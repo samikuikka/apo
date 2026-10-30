@@ -71,8 +71,8 @@ describe("readCanonicalSnapshot", () => {
   });
 
   it("keeps polling until the projection reaches the floor", async () => {
-    // First read: complete-flagged but missing in-flight child spans — the
-    // exact state that made recorded runs flake.
+    // First read is complete-flagged but still missing in-flight child
+    // spans, the exact state that made recorded runs flake.
     mockedRead
       .mockResolvedValueOnce(snapshotWith(1))
       .mockResolvedValueOnce(snapshotWith(2))

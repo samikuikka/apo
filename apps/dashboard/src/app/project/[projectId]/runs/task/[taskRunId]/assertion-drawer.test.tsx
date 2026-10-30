@@ -40,7 +40,7 @@ it("renders an embedding assertion's strip with model, score, and settings signa
 it("renders a marginal flag when the score sits within 0.02 of the threshold", () => {
   render(<AssertionDrawer onClose={vi.fn()} assertion={{
     id: "semantic", pass: true,
-    reasoning: "semantic similarity 0.7071 ≥ 0.7000 [test/embed:2d:cosine:apo-v1] — marginal",
+    reasoning: "semantic similarity 0.7071 ≥ 0.7000 [test/embed:2d:cosine:apo-v1]. Verdict is marginal: within 0.02 of the threshold, it will flip on model drift",
     evaluator_type: "embedding",
     expected: "cosine ≥ 0.7000 (test/embed:2d)",
     received: 0.7071,
