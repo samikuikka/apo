@@ -589,9 +589,7 @@ def _generation_usage(
             reasoning.append((call, value))
     most = max(reasoning, key=lambda pair: pair[1], default=None)
 
-    # The parts of the input-token total read from and written to the prompt
-    # cache. A cached agent run re-sends its conversation on every call, so
-    # without them the input count reads as fresh material it mostly isn't.
+    # Prompt-cache reads and writes, both included in the input-token total.
     usages = [
         call.raw_usage or {}
         for call in generations

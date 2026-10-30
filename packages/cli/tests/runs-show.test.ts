@@ -475,18 +475,7 @@ describe("runs show command", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse(makeRun({
         total_tokens: 848_745,
-        generation_usage: {
-          generations: 17,
-          model_time_ms: 116_717,
-          slowest_call_ms: 24_165,
-          slowest_call_id: "3614930b53dda67a",
-          reasoning_tokens: 4_867,
-          reasoning_calls: 16,
-          max_call_reasoning_tokens: 2_385,
-          max_reasoning_call_id: "3614930b53dda67a",
-          cache_read_tokens: 655_535,
-          cache_write_tokens: 176_293,
-        },
+        generation_usage: { cache_read_tokens: 655_535, cache_write_tokens: 176_293 },
       })),
     );
     const { logs, restore } = captureLog();

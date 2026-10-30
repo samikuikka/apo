@@ -781,9 +781,7 @@ class GenerationUsageSummary(SQLModel):
     reasoning_calls: int = 0
     max_call_reasoning_tokens: int | None = None
     max_reasoning_call_id: str | None = None
-    # The parts of the run's input tokens read from and written to the prompt
-    # cache, over the same generations as reasoning. Zero on runs aggregated
-    # before these were recorded.
+    # Cache reads/writes within the input tokens, from non-errored generations; 0 on older runs.
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
 

@@ -17,7 +17,7 @@ export function getRunSummary(calls: TraceObservation[]) {
   };
 }
 
-/** Input tokens across calls and the parts of them read from and written to the prompt cache. */
+/** Summed prompt tokens and the cache reads and writes included in them. */
 export function sumCacheTokens(calls: TraceObservation[]): { input: number; read: number; write: number } {
   return calls.reduce(
     (sum, call) => {

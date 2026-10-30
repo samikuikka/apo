@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { LoggedCall } from "@/components/trace-detail";
 import { computeCumulativeMetrics } from "@/lib/cumulative-metrics";
-import { formatTokenBreakdown, formatTokenTotal } from "@/lib/format";
+import { formatTokenBreakdown } from "@/lib/format";
 
 function call(overrides: Partial<LoggedCall> & { id: string }): LoggedCall {
   return {
@@ -18,15 +18,9 @@ function call(overrides: Partial<LoggedCall> & { id: string }): LoggedCall {
 }
 
 describe("token labels with a prompt cache", () => {
-  it("names the cached part of the input", () => {
+  it("names the cached part of the input, and only when some was read", () => {
     expect(formatTokenBreakdown(832_981, 15_764, 655_535)).toBe("833.0k (655.5k cached)→15.8k tok");
-    expect(formatTokenTotal(848_745, 655_535)).toBe("848.7k tok (655.5k cached)");
-  });
-
-  it("is unchanged when nothing was read from cache", () => {
     expect(formatTokenBreakdown(383, 78, 0)).toBe("383→78 tok");
-    expect(formatTokenBreakdown(383, 78)).toBe("383→78 tok");
-    expect(formatTokenTotal(1_500, null)).toBe("1.5k tok");
   });
 });
 

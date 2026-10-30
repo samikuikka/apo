@@ -293,8 +293,7 @@ export interface GenerationUsageSummary {
   reasoning_calls: number;
   max_call_reasoning_tokens: number | null;
   max_reasoning_call_id: string | null;
-  /** The parts of the run's input tokens read from and written to the prompt
-   * cache. Absent (or zero) on runs aggregated before they were recorded. */
+  /** Prompt-cache reads and writes within the input tokens; absent or 0 on older runs. */
   cache_read_tokens?: number;
   cache_write_tokens?: number;
 }

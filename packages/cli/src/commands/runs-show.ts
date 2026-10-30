@@ -89,8 +89,7 @@ type GenerationUsage = {
   reasoning_calls: number;
   max_call_reasoning_tokens: number | null;
   max_reasoning_call_id: string | null;
-  /** The parts of the run's input tokens read from and written to the
-   * prompt cache. Absent on servers that predate them. */
+  /** Prompt-cache reads/writes within the input tokens; absent from older servers. */
   cache_read_tokens?: number;
   cache_write_tokens?: number;
 };
@@ -460,8 +459,6 @@ function formatPartialCostSuffix(run: RunDetail): string {
   return reasons.length > 0 ? dim(` (partial — ${reasons.join(", ")})`) : "";
 }
 
-/** Input tokens include every prompt-cache read and write, so a cached agent
- * run's total counts its conversation once per call. Name the cached part. */
 function formatCachedSuffix(usage?: GenerationUsage | null): string {
   const read = usage?.cache_read_tokens ?? 0;
   const write = usage?.cache_write_tokens ?? 0;

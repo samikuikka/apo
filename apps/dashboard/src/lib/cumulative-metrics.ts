@@ -5,14 +5,13 @@ export interface CumulativeMetrics {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
-  /** The parts of `prompt_tokens` read from and written to the prompt cache. */
+  /** Prompt-cache reads and writes, both included in `prompt_tokens`. */
   cache_read_tokens: number;
   cache_write_tokens: number;
   latency_ms: number;
   descendant_count: number;
 }
 
-/** A call's own cache reads and writes, from its normalized usage. */
 export function callCacheTokens(call: Pick<LoggedCall, "raw_usage">): {
   cache_read_tokens: number;
   cache_write_tokens: number;
