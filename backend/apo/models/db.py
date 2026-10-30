@@ -168,7 +168,6 @@ class RunDB(SQLModel, table=True):
     # User and context
     user_id: str | None = Field(default=None)
 
-    # === NEW: Langfuse-style observability fields ===
     session_id: str | None = Field(
         default=None, index=True
     )  # Group related runs (e.g., multi-turn conversations)
@@ -349,7 +348,6 @@ class LoggedCallDB(LoggedCallBase, table=True):
         default=None, sa_column=Column("metadata", JSON)
     )
 
-    # === NEW: Langfuse-style observability fields ===
     parent_call_id: str | None = Field(
         default=None, index=True
     )  # For hierarchical spans
@@ -367,14 +365,11 @@ class LoggedCallDB(LoggedCallBase, table=True):
     prompt_tokens: int | None = Field(default=None)  # Input token count
     completion_tokens: int | None = Field(default=None)  # Output token count
 
-    # === NEW: Session and context fields ===
     session_id: str | None = Field(default=None, index=True)  # Link to session
     environment: str = Field(default="default")  # Environment name
     tags: list[str] = Field(
         default_factory=list, sa_column=Column("tags", JSON)
     )  # Tags for categorization
-
-    # === NEW: Langfuse-inspired enhancements ===
 
     # Computed token total
     total_tokens: int | None = Field(default=None)

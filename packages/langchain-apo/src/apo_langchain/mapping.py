@@ -89,29 +89,6 @@ def extract_name(serialized: dict[str, object] | None) -> str | None:
     return None
 
 
-def format_messages_as_dicts(
-    messages: list[Any] | list[list[Any]],
-) -> list[dict[str, Any]]:
-    result: list[dict[str, Any]] = []
-    flat: list[Any]
-    if messages and isinstance(messages[0], list):
-        flat = messages[0]
-    else:
-        flat = messages
-
-    for msg in flat:
-        if hasattr(msg, "to_messages"):
-            continue
-        if hasattr(msg, "content"):
-            result.append({
-                "role": getattr(msg, "type", type(msg).__name__),
-                "content": msg.content,
-            })
-        elif isinstance(msg, dict):
-            result.append(msg)
-    return result
-
-
 def format_output(output: Any) -> dict[str, Any]:
     if output is None:
         return {}

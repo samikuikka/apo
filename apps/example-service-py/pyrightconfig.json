@@ -1,5 +1,13 @@
 {
   "venvPath": ".",
   "venv": ".venv",
-  "pythonVersion": "3.13"
+  "pythonVersion": "3.13",
+  "reportMissingTypeStubs": false,
+  "reportExplicitAny": false,
+  "reportAny": false,
+  "reportUnannotatedClassAttribute": false,
+  "reportMissingParameterType": false,
+  "reportUnknownParameterType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnusedCallResult": false
 }

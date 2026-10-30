@@ -84,7 +84,7 @@ export async function run(argv: string[]): Promise<number> {
   const { positional, flags } = parseArgs(argv);
   const config = resolveConfig(flags);
   const traceId = requirePositional(positional, 0, "trace-id");
-  const verbose = getBoolFlag(flags, "verbose") || flags.v === true;
+  const verbose = getBoolFlag(flags, "verbose");
   const errorsOnly = getBoolFlag(flags, "errors-only");
   // getBoolFlag (not `=== true`) so `--full` and `--full=true` both work —
   // parseArgs stores the inline `=true` form as the string "true".

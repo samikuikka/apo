@@ -303,11 +303,6 @@ export function resolveSecondJudgeProvider(baseURL: string): SecondJudgeProvider
   return openRouterProvider;
 }
 
-/** OpenRouter URL derivation, exported for tests and diagnostics. */
-export function decisionsEndpoint(chatBaseURL: string): string {
-  return openRouterProvider.decisionsURL(chatBaseURL);
-}
-
 /**
  * OpenRouter's decisions endpoint reports an input that exceeds the model's
  * context limit as `error_type: "max_tokens_exceeded"` (wrapped in an HTTP

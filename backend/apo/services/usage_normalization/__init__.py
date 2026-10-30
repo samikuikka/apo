@@ -109,7 +109,7 @@ def _translate_claude_code_usage(attrs: dict[str, Any]) -> dict[str, Any]:
 
 
 def detect_provider(attrs: dict[str, Any], model_name: str | None) -> str:
-    """Multi-signal provider detection hierarchy (ticket 03 §detection)."""
+    """Multi-signal provider detection hierarchy, most authoritative first."""
     # 1. providerMetadata key-membership.
     metadata = get_json_dict(attrs, "ai.response.providerMetadata")
     if metadata:

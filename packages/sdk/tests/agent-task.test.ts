@@ -21,7 +21,7 @@ import { turn, getTaskTurn, resetTaskTurn } from "../src/agent-task/turn";
 import type {
   DeliverableDefinition,
   TaskDefinition,
-} from "../src/agent-task/types";
+} from "../src/agent-task/task/types";
 
 const TMP_ROOT = join(import.meta.dirname, "__agent_task_test__");
 let taskDir = "";

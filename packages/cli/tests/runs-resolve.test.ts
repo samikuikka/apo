@@ -23,7 +23,6 @@ function testConfig(): Config {
     actor: undefined,
     apiKey: "test-key",
     json: false,
-    ci: false,
     _rawFlags: {},
   };
 }

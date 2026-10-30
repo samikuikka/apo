@@ -128,15 +128,6 @@ export interface AutomationExecution {
   created_at: string;
 }
 
-export interface AutomationEvaluation {
-  metric: WindowMetricId | null;
-  window: EvaluationWindow | null;
-  value: number | null;
-  threshold: number | null;
-  operator: WindowOperator | null;
-  breached: boolean;
-}
-
 // ============================================================================
 // API helpers
 // ============================================================================
@@ -208,15 +199,6 @@ export function testAutomation(
   return apiClient(`/v1/automations/${encodeURIComponent(automationId)}/test`, {
     method: "POST",
   });
-}
-
-export function getAutomationEvaluation(
-  automationId: string,
-): Promise<AutomationEvaluation> {
-  return apiClient(
-    `/v1/automations/${encodeURIComponent(automationId)}/evaluation`,
-    NO_CACHE,
-  );
 }
 
 export function listAutomationExecutions(

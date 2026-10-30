@@ -35,9 +35,6 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-markers = [
-  "alpha: internal alpha release gate tests",
-]
 
 [tool.uv]
 cache-dir = ".uv-cache"

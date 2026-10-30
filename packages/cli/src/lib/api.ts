@@ -1,11 +1,6 @@
 import type { Config } from "./config.ts";
 import { readCredentials } from "./credentials.ts";
 
-export type ApiError = {
-  status: number;
-  message: string;
-};
-
 export class AuthError extends Error {
   constructor(message: string) {
     super(message);

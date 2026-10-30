@@ -101,7 +101,7 @@ describe("@apo-ai/sdk package manifest", () => {
       expect(pkg.publishConfig?.registry).toBe("https://registry.npmjs.org/");
     });
 
-    it("declares exactly the six public export keys", () => {
+    it("declares exactly the five public export keys", () => {
       const keys = Object.keys(pkg.publishConfig?.exports ?? {}).sort();
       expect(keys).toEqual([...FIVE_PUBLIC_EXPORTS].sort());
     });

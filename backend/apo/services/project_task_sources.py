@@ -32,8 +32,6 @@ from ..models.schemas import ProjectTaskSource
 
 DEMO_PROJECT_ID: Final[str] = "demo"
 
-VALID_SOURCE_TYPES: Final[frozenset[str]] = frozenset({"git", "filesystem", "demo"})
-
 # Status values used across the task source lifecycle. ``syncing`` is
 # included so the sync state machine (and the temporary sync stub) can mark a source
 # mid-flight without colliding with the persistent end states.

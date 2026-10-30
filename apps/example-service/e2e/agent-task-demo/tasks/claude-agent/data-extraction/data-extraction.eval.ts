@@ -10,9 +10,9 @@
  * The adapter is thin and the Claude Agent SDK uses its own built-in tools
  * (Read/Grep/Bash), so trajectory assertions target those names, not apo's
  * in-process tools. On a backend run the SDK's native OTel flows to the apo
- * backend and the eval reads it back via Track C; offline, the adapter mirrors
- * observed tool calls into the local projection (same pattern as
- * createApoAnthropic).
+ * backend and the eval reads it back from the canonical projection; offline,
+ * the adapter mirrors observed tool calls into the local projection (same
+ * pattern as createApoAnthropic).
  */
 import {
   task,

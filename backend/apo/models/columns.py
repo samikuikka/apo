@@ -5,7 +5,7 @@
 These ``as_column(cast(object, Model.attr))`` derivations exist so call sites
 get a typed ``ColumnElement[T]`` instead of the untyped
 ``InstrumentedAttribute`` pyright/SQLAlchemy produces natively. This module is
-the single source of truth — routes and services import from here instead of
+the single source of truth: routes and services import from here instead of
 keeping private copies. The explicit ``ColumnElement[T]`` parametrization (not
 ``[object]``) is what lets the core ``sa_select`` overloads resolve.
 
@@ -22,11 +22,9 @@ from ..db_helpers import as_column
 from .db import (
     AgentTaskBatchRunDB,
     AgentTaskRunDB,
-    AgentTaskScheduleDB,
     LoggedCallDB,
     RunDB,
     RunMetricDB,
-    SessionDB,
 )
 
 # --- RunDB ---
@@ -46,34 +44,21 @@ RUN_USER_ID_COL: ColumnElement[str | None] = as_column(cast(object, RunDB.user_i
 
 # --- LoggedCallDB ---
 
-LOGGED_CALL_ID_COL: ColumnElement[str] = as_column(cast(object, LoggedCallDB.id))
 LOGGED_CALL_CREATED_AT_COL: ColumnElement[datetime] = as_column(cast(object, LoggedCallDB.created_at))
 LOGGED_CALL_RUN_ID_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.run_id))
-LOGGED_CALL_PARENT_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.parent_call_id))
 LOGGED_CALL_PROJECT_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.project))
 LOGGED_CALL_STEP_INDEX_COL: ColumnElement[int | None] = as_column(cast(object, LoggedCallDB.step_index))
-LOGGED_CALL_VERSION_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.version))
-LOGGED_CALL_LATENCY_MS_COL: ColumnElement[float | None] = as_column(cast(object, LoggedCallDB.latency_ms))
-LOGGED_CALL_COST_COL: ColumnElement[float | None] = as_column(cast(object, LoggedCallDB.cost))
-LOGGED_CALL_TOTAL_TOKENS_COL: ColumnElement[int | None] = as_column(cast(object, LoggedCallDB.total_tokens))
 LOGGED_CALL_MODEL_COL: ColumnElement[str] = as_column(cast(object, LoggedCallDB.model))
 LOGGED_CALL_PROVIDER_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.provider))
 LOGGED_CALL_ROUTE_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.route))
-LOGGED_CALL_OBSERVATION_TYPE_COL: ColumnElement[str] = as_column(cast(object, LoggedCallDB.observation_type))
 LOGGED_CALL_LEVEL_COL: ColumnElement[str | None] = as_column(cast(object, LoggedCallDB.level))
 
 # --- RunMetricDB ---
 
-RUN_METRIC_ID_COL: ColumnElement[int] = as_column(cast(object, RunMetricDB.id))
 RUN_METRIC_RUN_ID_COL: ColumnElement[str | None] = as_column(cast(object, RunMetricDB.run_id))
 RUN_METRIC_PROJECT_COL: ColumnElement[str] = as_column(cast(object, RunMetricDB.project))
 RUN_METRIC_NAME_COL: ColumnElement[str] = as_column(cast(object, RunMetricDB.metric_name))
 RUN_METRIC_SCORE_COL: ColumnElement[float | None] = as_column(cast(object, RunMetricDB.score))
-RUN_METRIC_CREATED_AT_COL: ColumnElement[datetime] = as_column(cast(object, RunMetricDB.created_at))
-
-# --- SessionDB ---
-
-SESSION_CREATED_AT_COL: ColumnElement[datetime] = as_column(cast(object, SessionDB.created_at))
 
 # --- AgentTaskRunDB ---
 
@@ -110,12 +95,6 @@ AGENT_TASK_BATCH_ID_COL: ColumnElement[str] = as_column(cast(object, AgentTaskBa
 AGENT_TASK_BATCH_PROJECT_COL: ColumnElement[str] = as_column(cast(object, AgentTaskBatchRunDB.project))
 AGENT_TASK_BATCH_CREATED_AT_COL: ColumnElement[datetime] = as_column(
     cast(object, AgentTaskBatchRunDB.created_at)
-)
-
-# --- AgentTaskScheduleDB ---
-
-AGENT_TASK_SCHEDULE_CREATED_AT_COL: ColumnElement[object] = as_column(
-    cast(object, AgentTaskScheduleDB.created_at)
 )
 
 # Defer the heaviest LoggedCallDB columns on list/preview/metrics paths that

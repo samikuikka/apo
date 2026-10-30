@@ -32,12 +32,16 @@ pnpm --filter docs preview   # preview the build locally
 
 ```
 src/content/docs/
-├── index.md              ← splash landing page (/)
 ├── overview.md           ← what apo is
 ├── quickstart.md         ← clone → first verdict
-├── model.md              ← core vocabulary
-├── concepts/             ← how each noun works
+├── why-apo.md            ← positioning FAQ
+├── alpha-policy.mdx
+├── hosted-alpha.mdx
+├── concepts/             ← how each noun works (incl. the mental-model vocabulary)
 ├── guides/               ← task-focused recipes
+├── cli/                  ← CLI command pages
+├── reference/            ← assertion + integration reference
+├── ecosystem/            ← integrations
 └── self-hosting/         ← operator guides
 ```
 

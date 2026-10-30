@@ -69,19 +69,6 @@ def apply_tag_filters(
     return statement
 
 
-def apply_tag_all_filter(
-    statement: Any,
-    tags: list[str],
-    column_name: str = "tags",
-) -> Any:
-    safe = sanitize_tags(tags)
-    for tag in safe:
-        statement = statement.where(
-            sql_text(_tag_in_array_sql(column_name, tag))
-        )
-    return statement
-
-
 def apply_date_range(
     statement: Any,
     column: Any,

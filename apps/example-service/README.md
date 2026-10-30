@@ -65,20 +65,21 @@ apo task run real-agent/documents/data-extraction --dir e2e/agent-task-demo
 
 The demo tree lives under `e2e/agent-task-demo/`:
 
-- `tasks/real-agent/` — 11 demo tasks across `engineering/`, `documents/`,
+- `tasks/real-agent/` — 10 demo tasks across `engineering/`, `documents/`,
   `operations/`, `research/`, `security/`. These are the demo dataset for the
   agent-task evaluation feature and are seeded into the backend via
   `backend/seeds/seed_agent_task_runs.py`.
 - `tasks/ai-sdk-agent/data-extraction/` — the data-extraction task wired to
   the AI SDK adapter (Vercel AI SDK + OTel-native tracing, pointed at
-  OpenRouter/Gemini). Its `files/` directory is a symlink to
-  `tasks/real-agent/documents/data-extraction/files/` (the single source of
-  truth). Swap the provider in the adapter to use Anthropic instead.
+  OpenRouter/Gemini). Its `files/` directory holds copies of
+  `tasks/real-agent/documents/data-extraction/files/`. Swap the provider in
+  the adapter to use Anthropic instead.
 - `tasks/claude-agent/data-extraction/` — the same data-extraction task wired
-  to the Claude Agent SDK adapter (see below). Its `files/` directory is the
-  same symlink as `ai-sdk-agent`'s.
-- `*-adapter.ts` — five adapters (`echo`, `real-agent`, `ai-sdk`, `claude`,
-  `service`) showing different ways to trace an agent run.
+  to the Claude Agent SDK adapter (see below). Its `files/invoice.txt` is a
+  symlink into the `real-agent` task's files.
+- `*-adapter.ts` — eight adapters (`ai-sdk`, `real-agent`, `claude`,
+  `claude-code-replay`, `harbor`, `pi`, `reasoning`, `recorded-ai-sdk`)
+  showing different ways to trace an agent run.
 
 ### The `claude` adapter — reference pattern for native-OTel agents
 

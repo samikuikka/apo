@@ -194,16 +194,6 @@ function formatJudgeValues(values: unknown[]): string {
     .join("\n\n");
 }
 
-/**
- * Tolerantly parse the judge model's response into `{pass, reasoning}`.
- *
- * Despite `response_format: json_object`, models sometimes wrap output in
- * markdown code fences (```` ```json … ``` ````) or add surrounding prose.
- * Falling back to a raw `"invalid JSON"` string on the first parse failure
- * buries the verdict and reasoning the user actually needs. Instead: try the
- * raw text, strip fences, then extract the first balanced `{...}` block.
- */
-
 // Provider token usage for a judge call. Cached-prefix accounting arrives in
 // two shapes depending on the route: direct Anthropic exposes
 // cache_creation_input_tokens / cache_read_input_tokens, while OpenRouter
@@ -249,6 +239,15 @@ function parseJudgeUsage(usage: JudgeUsage | undefined): JudgeTokens | undefined
   return tokens;
 }
 
+/**
+ * Tolerantly parse the judge model's response into `{pass, reasoning}`.
+ *
+ * Despite `response_format: json_object`, models sometimes wrap output in
+ * markdown code fences (```` ```json … ``` ````) or add surrounding prose.
+ * Falling back to a raw `"invalid JSON"` string on the first parse failure
+ * buries the verdict and reasoning the user actually needs. Instead: try the
+ * raw text, strip fences, then extract the first balanced `{...}` block.
+ */
 function parseJudgeJson(raw: string): { pass?: unknown; reasoning?: unknown } {
   // 1. Direct parse (the common, well-behaved case).
   try {

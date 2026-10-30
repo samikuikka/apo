@@ -1125,13 +1125,12 @@ async def report_agent_task_run_result(
 ):
     """Finalize a task run from an external executor (Issue #4).
 
-    Companion to ``POST /v1/agent-task-batch-runs/external``: the external
-    executor (typically ``apo task run --local``) reports the verdict,
-    checks, transcript, and deliverables back after running the task on its
-    own machine.
+    The external executor (typically ``apo task run --local``) reports the
+    verdict, checks, transcript, and deliverables back after running the
+    task on its own machine.
 
     Authorization: the Project is derived through the Batch and
-    the caller must hold authority over it — a service/Attempt token must
+    the caller must hold authority over it: a service/Attempt token must
     match this exact run; a session/API-key caller must be a member.
     Cross-Project reports are opaque 404s, before any verdict, transcript,
     or Deliverable is written or read back.

@@ -3,7 +3,7 @@ import { defineConfig, type Options } from "tsup";
 /**
  * Dist build for `@apo-ai/sdk`.
  *
- * Emits compiled ESM + .d.ts for the six published entry points so external
+ * Emits compiled ESM + .d.ts for the five published entry points so external
  * consumers can use the package under plain Node + plain tsc — no
  * --experimental-strip-types runtime, no allowImportingTsExtensions tsconfig
  * flag (both of which the monorepo's source style requires internally).

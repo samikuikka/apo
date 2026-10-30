@@ -26,8 +26,8 @@
  *   Result: the SDK's LLM-generation and tool-call spans land in the SAME apo
  *   trace as the run, nested under the active `task.turn` span. No
  *   `registerApoTracing()`, no `createApoAnthropic`, no manual spans — pure
- *   native OTel. The eval reads them back from the backend via Track C
- *   (runTask.ts), so the adapter needs zero trace instrumentation.
+ *   native OTel. The eval reads them back from the backend's canonical
+ *   projection (runTask.ts), so the adapter needs zero trace instrumentation.
  */
 import { join } from "path";
 import { defineAdapter } from "@apo-ai/sdk/agent-task";

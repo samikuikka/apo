@@ -7,14 +7,12 @@ Executes agent tasks and persists results as TaskRun rows.
 # pyright: reportPrivateUsage=false, reportUnusedFunction=false, reportUnusedImport=false, reportUnusedParameter=false
 
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
 from typing import cast
 
 from sqlmodel import Session, select
 
-from ..auth.service_tokens import create_agent_task_trace_token
 # `engine` is not referenced in this module, but tests monkeypatch it to swap
 # in the test database.
 from ..db import engine  # noqa: F401
@@ -38,7 +36,6 @@ from .check_report_storage import (
 )
 from .trace_backend import get_trace_backend
 from .trace_ownership import (
-    mark_pending,
     reconcile_trace_id,
     roll_up_batch,
 )
@@ -630,49 +627,6 @@ def _resolve_run_error_message(
     return None
 
 
-def prepare_external_batch_runs(
-    session: Session,
-    batch: AgentTaskBatchRunDB,
-) -> list[tuple[AgentTaskRunDB, str]]:
-    """Mark each task run as ``running`` and mint a scoped trace token.
-
-    Called by ``POST /v1/agent-task-batch-runs/external`` after the batch is
-    created. Returns ``(task_run, token)`` pairs so the route can surface the
-    tokens to the external executor (e.g. the CLI ``--local`` flag). Does NOT
-    spawn a subprocess — the executor runs out-of-band and reports results
-    via ``POST /v1/agent-task-runs/{id}/result``.
-    """
-    task_runs = session.exec(
-        select(AgentTaskRunDB)
-        .where(AgentTaskRunDB.batch_run_id == batch.id)
-        .order_by(AgentTaskRunDB.id)
-    ).all()
-
-    now = datetime.now(timezone.utc)
-    batch.status = "running"
-    batch.started_at = batch.started_at or now
-    session.add(batch)
-
-    pairs: list[tuple[AgentTaskRunDB, str]] = []
-    for task_run in task_runs:
-        task_run.status = "running"
-        task_run.started_at = now
-        mark_pending(task_run)
-        session.add(task_run)
-        token = create_agent_task_trace_token(
-            task_run_id=task_run.id,
-            project=batch.project,
-            expires_in_seconds=_external_token_ttl_seconds(),
-        )
-        pairs.append((task_run, token))
-
-    session.commit()
-    for task_run, _token in pairs:
-        session.refresh(task_run)
-    session.refresh(batch)
-    return pairs
-
-
 def finalize_external_task_run(
     session: Session,
     task_run: AgentTaskRunDB,
@@ -741,20 +695,6 @@ def finalize_external_task_run(
             ).all()
         )
         emit_batch_run_event(batch.project, batch, task_runs)
-
-
-def _external_token_ttl_seconds() -> int:
-    """TTL for external-execution trace tokens.
-
-    External runs (e.g. ``apo task run --local``) may take longer than the
-    default 15-minute subprocess token — they touch dev-machine credentials,
-    VPC tunnels, and personal stages. The TTL gates only trace ingestion
-    during execution; reporting the result uses regular project auth.
-    """
-    raw = os.environ.get("APO_EXTERNAL_TASK_TOKEN_TTL")
-    if raw and raw.isdigit():
-        return int(raw)
-    return 2 * 60 * 60  # 2 hours
 
 
 _TASK_ENV_DENY_LIST = frozenset(

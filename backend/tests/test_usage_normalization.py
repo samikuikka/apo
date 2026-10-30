@@ -30,24 +30,13 @@ def _all_fixtures() -> list[tuple[str, dict[str, object]]]:
 
 def _assert_non_overlap(usage: dict[str, int]) -> None:
     """Cache and reasoning must be excluded from input/output (OTel semconv)."""
-    # If input + all cache keys are present, the cache keys are a SUBSET — so
-    # the "net input" (input alone) must be >= 0 and <= total input side.
+    # input excludes cache keys, so the non-cached remainder must not go
+    # negative after the normalizer subtracts them.
     input_total = usage.get(UsageKey.INPUT.value, 0)
-    cache_read = usage.get(UsageKey.CACHE_READ.value, 0)
-    cache_w5m = usage.get(UsageKey.CACHE_WRITE_5M.value, 0)
-    cache_w1h = usage.get(UsageKey.CACHE_WRITE_1H.value, 0)
-    cache_sum = cache_read + cache_w5m + cache_w1h
-    # input excludes cache: input is the non-cached portion. If both present,
-    # input + cache must be coherent (we assert input >= 0, i.e. not negative
-    # after subtraction — the normalizer already subtracted).
     assert input_total >= 0, "input must not be negative after cache subtraction"
-    if cache_sum:
-        assert input_total >= 0  # cache subtracted, not added
+    # output excludes reasoning tokens, so the remainder must not go negative.
     output = usage.get(UsageKey.OUTPUT.value, 0)
-    reasoning = usage.get(UsageKey.REASONING.value, 0)
     assert output >= 0, "output must not be negative after reasoning subtraction"
-    if reasoning:
-        assert output >= 0  # reasoning subtracted from output, not added
 
 
 @pytest.mark.parametrize(

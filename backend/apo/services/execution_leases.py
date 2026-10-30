@@ -12,7 +12,7 @@ body is never trusted as status. The state machine:
 No automatic retry after ``/start``: Tasks may spend money or cause external
 side effects and may still run during a network partition.
 
-Atomic claim (§Atomic claim): SELECT oldest eligible queued attempt in scope,
+Atomic claim: SELECT oldest eligible queued attempt in scope,
 conditional UPDATE only when status remains queued, confirm one affected row.
 SQLite uses conditional UPDATE + WAL/busy_timeout (no Redis, no SKIP LOCKED);
 PostgreSQL may additionally use ``SKIP LOCKED``.

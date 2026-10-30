@@ -221,7 +221,7 @@ export async function runTask(
 }
 
 /**
- * Read the canonical projection snapshot from the backend (Track C).
+ * Read the canonical projection snapshot from the backend.
  *
  * Returns `null` when there's nothing to read (no taskRunId = offline/local
  * run), when the read fails for any reason, or when the projection cannot
@@ -702,8 +702,6 @@ async function evaluate(
   const runChecks = async (): Promise<EvaluationItemResult[]> =>
     inlineChecks
       ? runTraceChecks({
-
-        ...(judgeTools ? { judgeTools } : {}),
           snapshot: phase1.snapshot,
           deliverables,
           files,
@@ -998,7 +996,7 @@ function buildTraceRunOptions(
   // Carry the task-run claim attributes on the root span. The
   // backend projector reads `apo.task.run.id` to atomically link this trace to
   // the task run. These land in rootSpan.metadata today (legacy ingestion);
-  // once the runner migrates to OTLP export (Track C) they become real OTel
+  // once the runner migrates to OTLP export they become real OTel
   // attributes that the projector's claim path reads directly.
   const rootMetadata: Record<string, unknown> = {
     taskId: loaded.task.id,

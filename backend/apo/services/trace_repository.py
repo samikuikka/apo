@@ -4,9 +4,8 @@
 
 Reads the physical Trace Projection tables (``RunDB`` / ``LoggedCallDB``,
 supplied by the projector) and returns an immutable
-``TraceProjectionSnapshot`` — never SQLModel rows. This is the read boundary
-the Task-Run-scoped projection endpoint (Track B) and the agent-task runner
-(Track C) consume.
+``TraceProjectionSnapshot``, never SQLModel rows. This is the read boundary
+the Task-Run-scoped projection endpoint and the agent-task runner consume.
 
 Properties:
   - Project isolation on every lookup: a trace_id without the authenticated

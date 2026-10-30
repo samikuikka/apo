@@ -165,6 +165,10 @@ apps/example-service/e2e/agent-task-demo/tasks/
       security-audit/
   ai-sdk-agent/                # minimal adapter pattern
     data-extraction/
+    data-extraction-replay/
+    gateway-serving/
+    judge-served-model/
+    steering-correction/
   claude-agent/                # Claude Agent SDK adapter on the same task
     data-extraction/
   claude-code-replay/          # no-OTel transcript replay
@@ -179,8 +183,10 @@ apps/example-service/e2e/agent-task-demo/tasks/
   judge-trace-probe/
   pi-agent/                    # third-party harness (pi) steering adapter
     steering-correction/
+  semantic-similarity-probe/
   t-agent-demo/
   t-agent-mcp/
+  t-describe-groups/
   t-jev-cascade/               # task-level cascade judge demo
   t-jev-split/
 ```

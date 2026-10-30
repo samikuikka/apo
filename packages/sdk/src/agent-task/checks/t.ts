@@ -321,14 +321,12 @@ export interface TestContext {
 /**
  * Canonical names of every assertion method on {@link TestContext}.
  *
- * Single source of truth for "what is a ``t.<method>`` call?" — consumers that
- * highlight, lint, or otherwise detect `t.*` usage in check source read this
- * array instead of keeping their own copy (which historically drifted out of
- * sync with the interface, leaving methods like ``t.maxTurns`` unstyled).
- *
- * The literal below is compile-time-checked against ``keyof TestContext``:
- * adding a method to the interface without registering it here is a type
- * error, and vice versa. See ``tests/test-context-methods.test.ts``.
+ * The dashboard keeps its own copy of this list for syntax highlighting,
+ * pinned to this array by an equality test, so the two cannot drift apart
+ * silently. The literal below is compile-time-checked against
+ * ``keyof TestContext``: adding a method to the interface without
+ * registering it here is a type error, and vice versa. See
+ * ``tests/test-context-methods.test.ts``.
  */
 export const TEST_METHOD_NAMES = [
   "calledTool",
@@ -378,189 +376,6 @@ function matchName(name: string, m: NameMatcher): boolean {
   return m(name);
 }
 
-export function createTestContext(
-  view: TraceView,
-  rec: Recorder,
-  judgeConfig?: JudgeConfig,
-  agentEvidence?: AgentEvidence,
-  embedding?: EmbeddingRuntime,
-): TestContext {
-  return {
-    calledTool(name, opts) {
-      const count = view.toolCalls.filter((call) =>
-        matchesToolCall(call, name, opts),
-      ).length;
-      const want = opts?.count;
-      const pass = want === undefined ? count > 0 : count === want;
-      rec.record(
-        `calledTool(${describeName(name)})`,
-        pass,
-        pass
-          ? ""
-          : want === undefined
-            ? `expected at least one ${describeName(name)} call, got ${count}`
-            : `expected exactly ${want} ${describeName(name)} calls, got ${count}`,
-        {
-          expected:
-            want === undefined
-              ? `≥1 ${describeName(name)} call`
-              : `exactly ${want} ${describeName(name)} calls`,
-          received: `${count}`,
-        },
-      );
-    },
-
-    notCalledTool(name, opts) {
-      const count = view.toolCalls.filter((call) =>
-        matchesToolCall(call, name, opts),
-      ).length;
-      rec.record(
-        `notCalledTool(${describeName(name)})`,
-        count === 0,
-        count === 0 ? "" : `expected no ${describeName(name)} calls, got ${count}`,
-        { expected: `0 ${describeName(name)} calls`, received: `${count}` },
-      );
-    },
-
-    toolOrder(names) {
-      const order = view.toolNamesInOrder;
-      let cursor = 0;
-      let missingIdx = -1;
-      for (let i = 0; i < names.length; i++) {
-        const found = order.indexOf(names[i], cursor);
-        if (found === -1) {
-          missingIdx = i;
-          break;
-        }
-        cursor = found + 1;
-      }
-      const ok = missingIdx === -1;
-      // Arrow separators read better than commas, and "expected X after Y"
-      // pinpoints WHICH tool broke the order — clearer than dumping both lists
-      // and asking the reader to do the visual diff.
-      const expectedStr = names.join(" → ");
-      const actualStr = order.length > 0 ? order.join(" → ") : "(no tools)";
-      const message = ok
-        ? ""
-        : missingIdx === 0
-          ? `expected "${names[0]}" first; actual order ${actualStr}`
-          : `expected "${names[missingIdx]}" after "${names[missingIdx - 1]}"; actual order ${actualStr}`;
-      rec.record(`toolOrder(${expectedStr})`, ok, message, {
-        expected: expectedStr,
-        received: actualStr,
-      });
-    },
-
-    usedNoTools() {
-      const count = view.toolCalls.length;
-      rec.record("usedNoTools", count === 0, count === 0 ? "" : `expected no tool calls, got ${count}`, {
-        expected: "0 tool calls",
-        received: `${count}`,
-      });
-    },
-
-    maxToolCalls(n) {
-      const count = view.toolCalls.length;
-      rec.record(`maxToolCalls(${n})`, count <= n, count <= n ? "" : `expected ≤ ${n} tool calls, got ${count}`, {
-        expected: `≤ ${n} tool calls`,
-        received: `${count}`,
-      });
-    },
-
-    noFailedActions() {
-      const failed = view.failedActions;
-      rec.record("noFailedActions", failed === 0, failed === 0 ? "" : `${failed} failed action(s)`, {
-        expected: "0 failed actions",
-        received: `${failed}`,
-      });
-    },
-
-    loadedSkill(skill) {
-      const ok = view.skillLoads.some((s) => s.skill === skill);
-      rec.record(`loadedSkill("${skill}")`, ok, ok ? "" : `skill "${skill}" was not loaded`, {
-        expected: `skill "${skill}" loaded`,
-        received: view.skillLoads.map((s) => s.skill).join(", ") || "none",
-      });
-    },
-
-    calledSubagent(agent) {
-      const ok = view.subagentCalls.some((s) => s.agent === agent);
-      rec.record(`calledSubagent("${agent}")`, ok, ok ? "" : `subagent "${agent}" was not called`, {
-        expected: `subagent "${agent}" called`,
-        received: view.subagentCalls.map((s) => s.agent).join(", ") || "none",
-      });
-    },
-
-    messageIncludes(token) {
-      const re = typeof token === "string" ? new RegExp(token) : token;
-      const ok = re.test(view.reply);
-      rec.record(`messageIncludes(${token instanceof RegExp ? token.source : token})`, ok, ok ? "" : `reply did not include ${token}`, {
-        expected: `reply includes ${token instanceof RegExp ? token.source : token}`,
-        received: describeValue(view.reply).slice(0, 200),
-      });
-    },
-
-    maxTurns(n) {
-      const turns = view.turnCount;
-      const pass = turns !== undefined && turns <= n;
-      rec.record(`maxTurns(${n})`, pass, pass ? "" : `expected ≤ ${n} turns, got ${turns}`, {
-        expected: `≤ ${n} turns`,
-        received: `${turns}`,
-      });
-    },
-
-    maxDurationMs(n, opts) {
-      if (opts?.turn !== undefined) {
-        recordTurnDuration(view, rec, n, opts.turn, recordMissingEvidence(rec, view));
-        return;
-      }
-      const ms = view.durationMs;
-      const pass = ms !== undefined && ms <= n;
-      rec.record(`maxDurationMs(${n})`, pass, pass ? "" : `expected ≤ ${n}ms, took ${ms}ms`, {
-        expected: `≤ ${n}ms`,
-        received: `${ms}ms`,
-      });
-    },
-
-    maxTokens(n, opts) {
-      recordTokenBudget(view, rec, "max", n, opts, recordMissingEvidence(rec, view));
-    },
-
-    minTokens(n, opts) {
-      recordTokenBudget(view, rec, "min", n, opts, recordMissingEvidence(rec, view));
-    },
-
-    check(value, matcher, label) {
-      const pass = matcher.test(value);
-      rec.record(
-        label ?? "check",
-        pass,
-        pass ? "" : `expected ${label ?? "value"} ${matcher.label}`,
-        // Expected = the matcher's own description; received = the actual value.
-        { expected: matcher.label, received: describeValue(value) },
-      );
-    },
-
-    assert(label, predicate) {
-      const pass = predicate(view);
-      rec.record(label, pass, pass ? "" : `assertion "${label}" failed`, {
-        expected: label,
-        received: pass ? "true" : "false",
-      });
-    },
-
-    ...createSteerAssertions(
-      view,
-      rec,
-      (window) => createTestContext(window, rec, judgeConfig, agentEvidence, embedding),
-    ),
-
-    judge: trackPending(rec, createJudgeMethod(rec, judgeConfig)),
-    agent: trackPending(rec, createAgentMethod(rec, judgeConfig, undefined, agentEvidence ?? { deliverables: {}, view })),
-    semantic: trackPending(rec, createSemanticMethod(rec, embedding)),
-  };
-}
-
 /**
  * Wrap ``t.judge`` / ``t.agent`` so their promise is registered on the
  * check's recorder. A check that returns without awaiting the call would
@@ -579,10 +394,9 @@ function trackPending<T extends (...args: never[]) => Promise<unknown>>(
 }
 
 /**
- * The steering assertion pair (`steerDelivered` + `afterSteer`), shared by
- * both test-context factories. `makeNested` builds the scoped context for
- * `afterSteer`'s window — each factory passes itself so inner assertions
- * keep its gating behavior.
+ * The steering assertion pair (`steerDelivered` + `afterSteer`).
+ * `makeNested` builds the scoped context for `afterSteer`'s window: the
+ * factory passes itself so inner assertions keep its gating behavior.
  */
 function createSteerAssertions(
   view: TraceView,
@@ -1162,10 +976,11 @@ const CAPABILITY_LABELS: Record<keyof TraceProjectionCapabilities, string> = {
 } as const;
 
 /**
- * Create a projection-first test context from a {@link TraceView}. Mirrors {@link createTestContext} but gates trace-dependent
- * assertions on capabilities: when the projection declares a capability
- * ``unavailable``, the assertion records ``outcome="unsupported"`` (pass=false)
- * instead of vacuously passing against fabricated zero/empty evidence.
+ * Create a projection-first test context from a {@link TraceView}. Gates
+ * trace-dependent assertions on capabilities: when the projection declares a
+ * capability ``unavailable``, the assertion records ``outcome="unsupported"``
+ * (pass=false) instead of vacuously passing against fabricated zero/empty
+ * evidence.
  *
  * Value assertions (``t.check``) and LLM assertions (``t.judge``) do not
  * consult capabilities and retain their existing behavior.
@@ -1438,17 +1253,6 @@ type RecordUnsupported = (
   capability: keyof TraceProjectionCapabilities,
 ) => void;
 
-/** The legacy context's stand-in for the capability-gated `unsupported`. */
-function recordMissingEvidence(rec: Recorder, view: TraceView): RecordUnsupported {
-  return (id, capability) => {
-    rec.record(id, false, `${CAPABILITY_LABELS[capability]} evidence is unavailable in this trace projection`, {
-      outcome: "unsupported" as AssertionOutcome,
-      expected: `${CAPABILITY_LABELS[capability]} evidence available`,
-      received: view.requireCapability(capability),
-    });
-  };
-}
-
 function requireBudget(method: string, n: number): void {
   if (!Number.isFinite(n) || n < 0) {
     throw new TypeError(`${method}: the budget must be a finite, non-negative number, got ${n}`);
@@ -1568,24 +1372,6 @@ function recordTokenBudget(
 
 function matchesTraceToolCall(
   call: { name: string; input?: unknown; output?: unknown; status?: string },
-  name: NameMatcher,
-  opts?: Omit<ToolCallOptions, "count">,
-): boolean {
-  if (!matchName(call.name, name)) return false;
-  if (opts?.input !== undefined && !matchValue(call.input, opts.input)) {
-    return false;
-  }
-  if (opts?.output !== undefined && !matchValue(call.output, opts.output)) {
-    return false;
-  }
-  if (opts?.status !== undefined && call.status !== opts.status) {
-    return false;
-  }
-  return true;
-}
-
-function matchesToolCall(
-  call: TraceView["toolCalls"][number],
   name: NameMatcher,
   opts?: Omit<ToolCallOptions, "count">,
 ): boolean {

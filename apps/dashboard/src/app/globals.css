@@ -1,6 +1,5 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-/* @import "shadcn/tailwind.css"; */
 
 @custom-variant dark (&:is(.dark *));
 
@@ -29,11 +28,6 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
   --color-type-generation: var(--type-generation);
   --color-type-tool: var(--type-tool);
   --color-type-agent: var(--type-agent);
@@ -106,13 +100,6 @@
   /* Success - muted green for pass/success states */
   --success: oklch(0.65 0.15 155);            /* softer emerald green */
   --warning: oklch(0.7 0.14 70);              /* muted amber */
-
-  /* Chart colors */
-  --chart-1: oklch(0.85 0.13 165);
-  --chart-2: oklch(0.77 0.15 163);
-  --chart-3: oklch(0.7 0.15 162);
-  --chart-4: oklch(0.6 0.13 163);
-  --chart-5: oklch(0.51 0.1 166);
 
   /* Trace timeline — type colors. Low-chroma to match the restrained palette. */
   --type-generation: oklch(0.62 0.13 255);  /* muted blue — LLM compute */

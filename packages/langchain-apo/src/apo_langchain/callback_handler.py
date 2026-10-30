@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, override
@@ -15,8 +14,6 @@ from .mapping import (
     format_output,
     get_observation_type,
 )
-
-logger = logging.getLogger("apo_langchain")
 
 type JsonMap = dict[str, object]
 
