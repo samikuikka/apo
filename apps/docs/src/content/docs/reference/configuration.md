@@ -27,12 +27,13 @@ credentials are read from the local environment:
 |---|---|---|
 | `OPENROUTER_API_KEY` | - | OpenRouter API key. Required for LLM-judge checks and adapter LLM calls. |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter-compatible base URL. |
-| `OPENROUTER_MODEL` | - | Judge model for local runs (`apo task run`, `apo connect`): the model the local runner reads, with `OPENAI_MODEL` as the alternative. When both are unset, `t.judge` records a setup error instead of guessing. |
-| `AGENT_TASK_OPENROUTER_MODEL` | - | Judge model for the packaged task runtime (backend-spawned runs). Consulted after `AGENT_TASK_JUDGE_MODEL`; the final fallback is `deepseek/deepseek-v4.1-flash`. Not read by local CLI runs. |
+| `OPENROUTER_MODEL` | - | Judge model fallback for local runs (`apo task run`, `apo connect`): read when `AGENT_TASK_OPENROUTER_MODEL` is unset, with `OPENAI_MODEL` as the next alternative. When no model name is set at all, `t.judge` records a setup error instead of guessing. |
+| `AGENT_TASK_OPENROUTER_MODEL` | - | The documented judge model name, and it works everywhere: local CLI runs and the packaged task runtime (backend-spawned runs) read it alike, so one `.env` serves both. Wins over `OPENROUTER_MODEL` when both are set; the packaged runtime's final fallback is `deepseek/deepseek-v4.1-flash`. |
+| `AGENT_TASK_JUDGE_MODEL` | - | Judge model override: wins over every other model name, on local runs and backend-spawned runs alike. With no provider env set, the judge client resolves wire, endpoint, and key from the model id. |
 | `OPENAI_API_KEY` | - | OpenAI API key. Alternative to OpenRouter for local/dev judge calls. |
 | `OPENAI_BASE_URL` | - | OpenAI-compatible base URL. |
 | `OPENAI_MODEL` | - | OpenAI model for local/dev judge calls. Read when `OPENROUTER_MODEL` is unset. |
-| `ANTHROPIC_MODEL` | - | Anthropic model for judge calls, direct against `api.anthropic.com` (Messages API). Read only when neither `OPENROUTER_MODEL` nor `OPENAI_MODEL` is set — lowest precedence, so adding it never changes an existing setup. |
+| `ANTHROPIC_MODEL` | - | Anthropic model for judge calls, direct against `api.anthropic.com` (Messages API). Read only when neither `OPENROUTER_MODEL` nor `OPENAI_MODEL` is set: lowest precedence, so adding it never changes an existing setup. `AGENT_TASK_ANTHROPIC_MODEL` is its alias at the same lowest precedence, honored by local and backend-spawned runs alike. |
 | `ANTHROPIC_API_KEY` | - | Anthropic API key (`x-api-key` auth). For the judge, read only on the Anthropic wire. |
 | `ANTHROPIC_AUTH_TOKEN` | - | Anthropic bearer token (OAuth/plan-credit style, sent as `Authorization: Bearer`). Alternative to `ANTHROPIC_API_KEY`. |
 | `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Anthropic base URL override (an Anthropic-protocol gateway). Read only on the Anthropic wire. |
