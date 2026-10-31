@@ -184,6 +184,52 @@ describe("apo login --project is honored by the fast paths", () => {
   });
 });
 
+describe("apo login on a fresh backend with no projects", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // The fresh-self-host journey: /setup creates the installation admin and
+  // nothing else, so the first login finds zero projects and cannot scope a
+  // key. The abort has to teach `apo project create`, otherwise the
+  // documented quickstart dead-ends at its second step.
+  it("aborts with the command that creates the first project", async () => {
+    vi.spyOn(credentials, "readCredentials").mockReturnValue(null);
+    vi.spyOn(credentials, "readRememberedLogin").mockReturnValue(null);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/auth/verify-password")) {
+        return new Response(
+          JSON.stringify({
+            id: "u1",
+            email: "dev@apo.local",
+            name: "Dev",
+            is_admin: true,
+            projects: [],
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`unexpected call: ${url}`);
+    });
+    const errors: string[] = [];
+    const origErr = console.error;
+    console.error = (msg: string) => { errors.push(msg); };
+
+    const code = await runLogin([
+      "--backend", "http://localhost:8000",
+      "--email", "dev@apo.local",
+      "--password", "irrelevant",
+    ]);
+
+    console.error = origErr;
+    const out = stripAnsi(errors.join("\n"));
+    expect(code).toBe(2);
+    expect(out).toContain("This account has no projects yet.");
+    expect(out).toContain("apo project create");
+  });
+});
+
 describe("apo logout forgets the remembered login", () => {
   afterEach(() => {
     vi.restoreAllMocks();
