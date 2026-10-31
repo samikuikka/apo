@@ -170,6 +170,7 @@ The CLI talks to your self-hosted instance. Install it once, authenticate, point
 ```bash
 npm install -g @apo-ai/cli   # one-time: install the Apo CLI
 apo login                   # one-time: save credentials to ~/.apo/credentials
+apo project create acme-eval --email you@example.com --password '••••••••'  # fresh backend: create your first project
 apo project list            # pick a project
 apo project use <id>        # set it as the current project
 apo task list               # see available tasks

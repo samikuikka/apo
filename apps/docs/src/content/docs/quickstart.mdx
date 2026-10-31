@@ -76,6 +76,17 @@ npm install -g @apo-ai/cli
   ]}
 />
 
+A login key is scoped to one project, and the admin account you just created
+has none yet. Create the first project, then log in:
+
+```bash
+apo project create acme-eval --email you@example.com --password '••••••••'
+apo login
+```
+
+`apo project create` saves the new key itself, and the `apo login` after it
+picks up the new project.
+
 ## 3. Publish your Task catalog
 
 :::tip[Agent-first shortcut]
