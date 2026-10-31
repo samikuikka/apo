@@ -65,20 +65,6 @@ export const aiSdkAdapter = defineAdapter({
     // model steps by runSteerableChat — this adapter's injection boundary.
     const steerInbox: ModelMessage[] = [];
 
-    // A task can widen the agent's step budget for protocol-heavy work
-    // (multi-tool workflows whose recovery needs headroom, e.g. a refused
-    // action that must be re-read and redone). Default stays the agent's 8.
-    // AGENT_MAX_STEPS is the harness-side deployment override: same spec,
-    // differently budgeted harness.
-    const envBudget = Number(process.env.AGENT_MAX_STEPS);
-    const taskBudget = ctx.task.metadata?.agentMaxSteps;
-    const maxSteps =
-      Number.isFinite(envBudget) && envBudget > 0
-        ? envBudget
-        : typeof taskBudget === "number" && taskBudget > 0
-          ? taskBudget
-          : undefined;
-
     return {
       runConfiguration: { model, ...(effort ? { effort } : {}) },
       ...(mcp ? { close: () => mcp.cleanup() } : {}),
@@ -95,7 +81,6 @@ export const aiSdkAdapter = defineAdapter({
             messages,
             files: state.fileContents,
             taskDir: ctx.taskDir,
-            ...(maxSteps ? { maxSteps } : {}),
             ...(mcp ? { extraTools: mcp.tools } : {}),
           },
           {
