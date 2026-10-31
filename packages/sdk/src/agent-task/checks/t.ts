@@ -498,9 +498,9 @@ function createJudgeMethod(
         label,
         false,
         "No judge model configured. Set one of:\n" +
-        "• OPENROUTER_MODEL + OPENROUTER_API_KEY (OpenRouter — works with 200+ models, one account)\n" +
+        "• AGENT_TASK_OPENROUTER_MODEL or OPENROUTER_MODEL + OPENROUTER_API_KEY (OpenRouter, 200+ models, one account; the AGENT_TASK_ names serve local and backend-spawned runs alike)\n" +
         "• OPENAI_MODEL + OPENAI_API_KEY (OpenAI direct)\n" +
-        "• ANTHROPIC_MODEL + ANTHROPIC_API_KEY (Anthropic direct — or ANTHROPIC_AUTH_TOKEN for plan credits)\n" +
+        "• ANTHROPIC_MODEL + ANTHROPIC_API_KEY (Anthropic direct, or ANTHROPIC_AUTH_TOKEN for plan credits)\n" +
         "Or pass { judge } to runTask() programmatically.",
         // No judge means no verdict — the same bucket as an unreachable judge.
         { evaluator_type: "llm", location, outcome: "error" },

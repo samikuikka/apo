@@ -686,7 +686,7 @@ function noVerdictHint(summary: LocalRunSummary, taskRunId: string | null): stri
   );
   if (unconfigured) {
     const configure =
-      "No verdict: no judge model is configured — set OPENROUTER_MODEL (or OPENAI_MODEL, or ANTHROPIC_MODEL) and its API key, then re-run";
+      "No verdict: no judge model is configured. Set AGENT_TASK_OPENROUTER_MODEL or OPENROUTER_MODEL (or OPENAI_MODEL, ANTHROPIC_MODEL, or the AGENT_TASK_JUDGE_MODEL override) plus its API key, then re-run. The AGENT_TASK_* names work for local runs and backend-spawned runs alike";
     // Re-judging a no-verdict run needs an SDK that knows the rule (0.8+);
     // an older one refuses it, so don't offer what would fail.
     if (taskRunId && summary.sdkReportsNoVerdict) {

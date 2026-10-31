@@ -90,11 +90,33 @@ function parseDimensions(raw: string): number | undefined {
 }
 
 function resolveJudgeFromEnv(): JudgeConfig | undefined {
-  const openRouterModel = process.env.OPENROUTER_MODEL;
-  const openAIModel = process.env.OPENAI_MODEL;
-  const anthropicModel = process.env.ANTHROPIC_MODEL;
-  const model = openRouterModel ?? openAIModel ?? anthropicModel;
+  // The AGENT_TASK_* model names are the documented operator set (.env.example,
+  // docker-compose) and the names the server-side runner reads
+  // (runner-entry.ts). Resolving them here too means one .env works for local
+  // `apo task run` and backend-driven runs alike; the bare names stay as
+  // fallbacks. Blank values count as unset: .env files and Compose's
+  // ${VAR:-} expansion both inject empty strings, which would otherwise
+  // shadow the alias.
+  const judgeOverride = firstEnvValue("AGENT_TASK_JUDGE_MODEL");
+  const openRouterModel = firstEnvValue("AGENT_TASK_OPENROUTER_MODEL", "OPENROUTER_MODEL");
+  const openAIModel = firstEnvValue("OPENAI_MODEL");
+  // Anthropic keeps last place under its AGENT_TASK_ alias too, mirroring
+  // runner-entry.ts: adding an Anthropic override never flips an existing
+  // OpenRouter/OpenAI setup onto the Anthropic wire.
+  const anthropicModel = firstEnvValue("ANTHROPIC_MODEL", "AGENT_TASK_ANTHROPIC_MODEL");
+  const model = judgeOverride ?? openRouterModel ?? openAIModel ?? anthropicModel;
   if (!model) return undefined;
+
+  // A judge override with no provider env set names no wire and no key. Hand
+  // over the bare model id and let the judge client resolve wire, endpoint,
+  // and credentials from the model id and the bare env, the same
+  // `{ model }` fallback runner-entry.ts produces for this case.
+  if (judgeOverride && !openRouterModel && !openAIModel && !anthropicModel) {
+    return {
+      model,
+      ...(process.env.APO_JUDGE_MODE?.trim() === "cascade" ? { mode: "cascade" as const } : {}),
+    };
+  }
 
   return {
     model,
@@ -123,6 +145,15 @@ function resolveJudgeFromEnv(): JudgeConfig | undefined {
     // an error.
     ...(process.env.APO_JUDGE_MODE?.trim() === "cascade" ? { mode: "cascade" as const } : {}),
   };
+}
+
+/** First of the named env vars holding a non-blank value, trimmed. */
+function firstEnvValue(...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return undefined;
 }
 
 export type RunTaskDirOptions = {

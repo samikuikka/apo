@@ -37,6 +37,9 @@ const PROVIDER_ENV_VARS = [
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_AUTH_TOKEN",
   "ANTHROPIC_BASE_URL",
+  "AGENT_TASK_JUDGE_MODEL",
+  "AGENT_TASK_OPENROUTER_MODEL",
+  "AGENT_TASK_ANTHROPIC_MODEL",
 ] as const;
 const savedEnv: Partial<Record<(typeof PROVIDER_ENV_VARS)[number], string>> = {};
 beforeAll(() => {
@@ -191,6 +194,79 @@ describe("resolveJudgeFromEnv precedence (loadTaskRuntime)", () => {
   it("no model env: no judge", async () => {
     const runtime = await loadTaskRuntime("/tmp");
     expect(runtime.judge).toBeUndefined();
+  });
+});
+
+describe("AGENT_TASK_* model names resolve locally too (the operator template set)", () => {
+  // .env.example documents AGENT_TASK_OPENROUTER_MODEL (+ OPENROUTER_API_KEY)
+  // as the operator configuration. Before the alias, a local `apo task run`
+  // read only the bare names and every judged check errored with
+  // "No judge model configured" (NO VERDICT, exit 2) on that template.
+  it("AGENT_TASK_OPENROUTER_MODEL alone configures the judge", async () => {
+    vi.stubEnv("AGENT_TASK_OPENROUTER_MODEL", "deepseek/deepseek-v4.1-flash");
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
+    const runtime = await loadTaskRuntime("/tmp");
+    expect(runtime.judge).toMatchObject({
+      model: "deepseek/deepseek-v4.1-flash",
+      apiKey: "sk-or-test",
+    });
+    expect(runtime.judge?.provider).toBeUndefined();
+  });
+
+  it("AGENT_TASK_OPENROUTER_MODEL wins over the bare name, mirroring the server runner", async () => {
+    vi.stubEnv("AGENT_TASK_OPENROUTER_MODEL", "qwen/qwen3-next");
+    vi.stubEnv("OPENROUTER_MODEL", "deepseek/deepseek-v4.1-flash");
+    const runtime = await loadTaskRuntime("/tmp");
+    expect(runtime.judge).toMatchObject({ model: "qwen/qwen3-next" });
+  });
+
+  it("AGENT_TASK_JUDGE_MODEL overrides the model but keeps the configured provider's wire", async () => {
+    vi.stubEnv("OPENROUTER_MODEL", "deepseek/deepseek-v4.1-flash");
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
+    vi.stubEnv("AGENT_TASK_JUDGE_MODEL", "openai/gpt-5-nano");
+    const runtime = await loadTaskRuntime("/tmp");
+    expect(runtime.judge).toMatchObject({
+      model: "openai/gpt-5-nano",
+      apiKey: "sk-or-test",
+    });
+  });
+
+  it("AGENT_TASK_JUDGE_MODEL alone leaves wire and key to the judge client's resolution", async () => {
+    vi.stubEnv("AGENT_TASK_JUDGE_MODEL", "deepseek/deepseek-v4.1-flash");
+    const runtime = await loadTaskRuntime("/tmp");
+    expect(runtime.judge).toMatchObject({ model: "deepseek/deepseek-v4.1-flash" });
+    expect(runtime.judge?.provider).toBeUndefined();
+    expect(runtime.judge?.apiKey).toBeUndefined();
+  });
+
+  it("AGENT_TASK_ANTHROPIC_MODEL alone configures the anthropic judge", async () => {
+    vi.stubEnv("AGENT_TASK_ANTHROPIC_MODEL", "claude-sonnet-4-5");
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-api");
+    const runtime = await loadTaskRuntime("/tmp");
+    expect(runtime.judge).toMatchObject({
+      model: "claude-sonnet-4-5",
+      baseURL: "https://api.anthropic.com",
+      apiKey: "sk-ant-api",
+      provider: "anthropic",
+    });
+  });
+
+  it("AGENT_TASK_ANTHROPIC_MODEL stays below the bare names, like the server runner", async () => {
+    vi.stubEnv("AGENT_TASK_ANTHROPIC_MODEL", "claude-sonnet-4-5");
+    vi.stubEnv("OPENROUTER_MODEL", "deepseek/deepseek-v4.1-flash");
+    const runtime = await loadTaskRuntime("/tmp");
+    expect(runtime.judge).toMatchObject({ model: "deepseek/deepseek-v4.1-flash" });
+  });
+
+  it("an empty bare value does not shadow the AGENT_TASK_* alias", async () => {
+    vi.stubEnv("OPENROUTER_MODEL", "");
+    vi.stubEnv("AGENT_TASK_OPENROUTER_MODEL", "deepseek/deepseek-v4.1-flash");
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
+    const runtime = await loadTaskRuntime("/tmp");
+    expect(runtime.judge).toMatchObject({
+      model: "deepseek/deepseek-v4.1-flash",
+      apiKey: "sk-or-test",
+    });
   });
 });
 

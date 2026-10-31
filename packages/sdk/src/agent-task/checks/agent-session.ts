@@ -953,9 +953,9 @@ export function createAgentMethod(
         label,
         false,
         "No judge model configured for t.agent. Set one of:\n" +
-        "• OPENROUTER_MODEL + OPENROUTER_API_KEY (OpenRouter — needs a tool-calling-capable model)\n" +
+        "• AGENT_TASK_OPENROUTER_MODEL or OPENROUTER_MODEL + OPENROUTER_API_KEY (OpenRouter, needs a tool-calling-capable model)\n" +
         "• OPENAI_MODEL + OPENAI_API_KEY (OpenAI direct)\n" +
-        "• ANTHROPIC_MODEL + ANTHROPIC_API_KEY (Anthropic direct — needs a tool-calling-capable model; or ANTHROPIC_AUTH_TOKEN for plan credits)\n" +
+        "• ANTHROPIC_MODEL + ANTHROPIC_API_KEY (Anthropic direct, needs a tool-calling-capable model, or ANTHROPIC_AUTH_TOKEN for plan credits)\n" +
         "Or pass { judge } to runTask() programmatically.",
         { evaluator_type: "agent", location, outcome: "error" },
       );
