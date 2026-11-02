@@ -55,9 +55,11 @@ Apo owns one Task Run and the evidence it produces. A developer, CI workflow, or
 
 That loop is **harness engineering**. Your experts control where the loop must converge by encoding their judgment in the suite; the coding agent finds the implementation path. The specification is not only a regression guard. It is the interface between expert knowledge and the agents improving the system.
 
-## Try it: one command, no API key
+## Try it
 
-The fastest way to see a verdict: a recorded session of the example agent, evaluated by the real test suite. No model key, no account, no server (Node 22 or 24):
+**Zero steps:** open the live demo project, no account needed: [test-apo.online/demo](https://test-apo.online/demo). Real tasks, runs, and verdicts from a hosted apo installation.
+
+**One command, no API key:** a recorded session of the example agent, evaluated by the real test suite. No model key, no account, no server (Node 22 or 24):
 
 ```bash
 npm install -g @apo-ai/cli
