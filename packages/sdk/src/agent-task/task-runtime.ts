@@ -90,13 +90,11 @@ function parseDimensions(raw: string): number | undefined {
 }
 
 function resolveJudgeFromEnv(): JudgeConfig | undefined {
-  // The AGENT_TASK_* model names are the documented operator set (.env.example,
-  // docker-compose) and the names the server-side runner reads
-  // (runner-entry.ts). Resolving them here too means one .env works for local
-  // `apo task run` and backend-driven runs alike; the bare names stay as
-  // fallbacks. Blank values count as unset: .env files and Compose's
-  // ${VAR:-} expansion both inject empty strings, which would otherwise
-  // shadow the alias.
+  // The AGENT_TASK_* names are the documented operator set (.env.example,
+  // docker-compose); resolving them here too means one .env serves local
+  // `apo task run` and backend-spawned runs alike. Blank counts as unset:
+  // .env files and Compose's ${VAR:-} expansion inject empty strings that
+  // would otherwise shadow the bare-name fallbacks.
   const judgeOverride = firstEnvValue("AGENT_TASK_JUDGE_MODEL");
   const openRouterModel = firstEnvValue("AGENT_TASK_OPENROUTER_MODEL", "OPENROUTER_MODEL");
   const openAIModel = firstEnvValue("OPENAI_MODEL");
@@ -107,10 +105,10 @@ function resolveJudgeFromEnv(): JudgeConfig | undefined {
   const model = judgeOverride ?? openRouterModel ?? openAIModel ?? anthropicModel;
   if (!model) return undefined;
 
-  // A judge override with no provider env set names no wire and no key. Hand
-  // over the bare model id and let the judge client resolve wire, endpoint,
-  // and credentials from the model id and the bare env, the same
-  // `{ model }` fallback runner-entry.ts produces for this case.
+  // A judge override with no provider env set names no wire and no key: pass
+  // the bare model id and let the judge client resolve wire, endpoint, and
+  // credentials from it and the bare env (the same `{ model }` fallback
+  // runner-entry.ts produces for this case).
   if (judgeOverride && !openRouterModel && !openAIModel && !anthropicModel) {
     return {
       model,
