@@ -53,16 +53,11 @@ export default async function Home() {
       const projects = await listProjects();
       owned = projects.filter((p) => p.id !== "demo");
     } catch (error) {
-      // A failed fetch is not an empty account. Rendering the empty state
-      // here used to make outages (dead backend, wrong port, expired
-      // session) indistinguishable from a genuine zero-project account, so
-      // failures surface as an explicit error state. The reason also goes to
-      // the server console for operators reading container logs.
+      // A failed fetch is an outage (dead backend, wrong port, expired
+      // session), not an empty account: surface an error state, and keep the
+      // reason in the server console for operators reading container logs.
       loadDetail = describeLoadFailure(error);
-      console.error(
-        "[home] listProjects failed; rendering error state:",
-        isApiError(error) ? `HTTP ${error.status}: ${error.message}` : error,
-      );
+      console.error("[home] listProjects failed; rendering error state:", error);
     }
     if (loadDetail !== null) {
       return <DashboardLoadError detail={loadDetail} />;

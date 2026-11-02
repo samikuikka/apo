@@ -199,9 +199,8 @@ describe("resolveJudgeFromEnv precedence (loadTaskRuntime)", () => {
 
 describe("AGENT_TASK_* model names resolve locally too (the operator template set)", () => {
   // .env.example documents AGENT_TASK_OPENROUTER_MODEL (+ OPENROUTER_API_KEY)
-  // as the operator configuration. Before the alias, a local `apo task run`
-  // read only the bare names and every judged check errored with
-  // "No judge model configured" (NO VERDICT, exit 2) on that template.
+  // as the operator configuration, so `apo task run` against that template
+  // must resolve a judge with no bare-name env set.
   it("AGENT_TASK_OPENROUTER_MODEL alone configures the judge", async () => {
     vi.stubEnv("AGENT_TASK_OPENROUTER_MODEL", "deepseek/deepseek-v4.1-flash");
     vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");

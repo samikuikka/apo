@@ -2,9 +2,7 @@
  * The authenticated home page must tell a fetch failure apart from a
  * genuinely empty account: a dead backend, a wrong port, or an expired
  * session renders an explicit error state, never the "create your first
- * project" prompt. A stalled evaluator looking at a near-blank dashboard
- * with a misleading call to action is the exact failure mode these tests
- * guard against.
+ * project" prompt.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";

@@ -28,8 +28,8 @@ credentials are read from the local environment:
 | `OPENROUTER_API_KEY` | - | OpenRouter API key. Required for LLM-judge checks and adapter LLM calls. |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter-compatible base URL. |
 | `OPENROUTER_MODEL` | - | Judge model fallback for local runs (`apo task run`, `apo connect`): read when `AGENT_TASK_OPENROUTER_MODEL` is unset, with `OPENAI_MODEL` as the next alternative. When no model name is set at all, `t.judge` records a setup error instead of guessing. |
-| `AGENT_TASK_OPENROUTER_MODEL` | - | The documented judge model name, and it works everywhere: local CLI runs and the packaged task runtime (backend-spawned runs) read it alike, so one `.env` serves both. Wins over `OPENROUTER_MODEL` when both are set; the packaged runtime's final fallback is `deepseek/deepseek-v4.1-flash`. |
-| `AGENT_TASK_JUDGE_MODEL` | - | Judge model override: wins over every other model name, on local runs and backend-spawned runs alike. With no provider env set, the judge client resolves wire, endpoint, and key from the model id. |
+| `AGENT_TASK_OPENROUTER_MODEL` | - | The documented judge model name: local CLI runs and the packaged task runtime (backend-spawned runs) read it alike, so one `.env` serves both. Wins over `OPENROUTER_MODEL` when both are set; the packaged runtime's final fallback is `deepseek/deepseek-v4.1-flash`. |
+| `AGENT_TASK_JUDGE_MODEL` | - | Judge model override: wins over every other model name on local and backend-spawned runs alike. With no provider env set, the judge client resolves wire, endpoint, and key from the model id. |
 | `OPENAI_API_KEY` | - | OpenAI API key. Alternative to OpenRouter for local/dev judge calls. |
 | `OPENAI_BASE_URL` | - | OpenAI-compatible base URL. |
 | `OPENAI_MODEL` | - | OpenAI model for local/dev judge calls. Read when `OPENROUTER_MODEL` is unset. |
