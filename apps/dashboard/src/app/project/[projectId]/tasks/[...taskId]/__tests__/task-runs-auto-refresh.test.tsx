@@ -13,6 +13,7 @@ interface CapturedOptions {
   enabled: boolean;
   onEvent: (event: RunEvent) => void;
   onReconnect?: () => void;
+  onOpen?: () => void;
   closeWhenHidden?: boolean;
 }
 let hookOptions: CapturedOptions;
@@ -39,8 +40,10 @@ const event = (event_type: string, task_run_id: string, task_id = TASK): RunEven
 const emit = (e: RunEvent) => act(() => hookOptions.onEvent(e));
 const flush = () => act(() => vi.advanceTimersByTime(1_000));
 
-const renderFor = (runs: AgentTaskRunSummary[]) =>
-  render(<TaskRunsAutoRefresh project="proj-1" taskId={TASK} runs={runs} />);
+const renderFor = (runs: AgentTaskRunSummary[], watchForNewRuns = true) =>
+  render(
+    <TaskRunsAutoRefresh project="proj-1" taskId={TASK} runs={runs} watchForNewRuns={watchForNewRuns} />,
+  );
 
 describe("TaskRunsAutoRefresh", () => {
   beforeEach(() => {
@@ -56,6 +59,51 @@ describe("TaskRunsAutoRefresh", () => {
     renderFor([]);
     expect(hookOptions.enabled).toBe(true);
     expect(hookOptions.closeWhenHidden).toBe(true);
+  });
+
+  it("stays off for a task that cannot get new runs, unless one is unsettled", () => {
+    const { rerender } = renderFor([run("r1", "passed")], false);
+    expect(hookOptions.enabled).toBe(false);
+
+    rerender(
+      <TaskRunsAutoRefresh project="proj-1" taskId={TASK} runs={[run("r1", "pending")]} watchForNewRuns={false} />,
+    );
+    expect(hookOptions.enabled).toBe(true);
+  });
+
+  it("refreshes on the first open only while a listed run is unsettled", () => {
+    renderFor([run("r1", "passed")]);
+    act(() => hookOptions.onOpen?.());
+    flush();
+    expect(refresh).not.toHaveBeenCalled();
+
+    renderFor([run("r1", "running")]);
+    act(() => hookOptions.onOpen?.());
+    flush();
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores the replay of a run once a refresh lists it as running", () => {
+    const { rerender } = renderFor([]);
+    emit(event("task_run.started", "r2"));
+    flush();
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <TaskRunsAutoRefresh project="proj-1" taskId={TASK} runs={[run("r3", "running")]} watchForNewRuns />,
+    );
+    emit(event("task_run.started", "r3"));
+    flush();
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes within a second of the first event, even under a steady stream", () => {
+    renderFor([run("r1", "running"), run("r2", "running"), run("r3", "running")]);
+    emit(event("task_run.completed", "r1"));
+    act(() => vi.advanceTimersByTime(600));
+    emit(event("task_run.completed", "r2"));
+    act(() => vi.advanceTimersByTime(400));
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes once when a new run of this task starts", () => {
