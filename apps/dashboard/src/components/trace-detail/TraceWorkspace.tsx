@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, ArrowLeft, Download, Settings2, ChevronLeft, ChevronRight, AlertTriangle, PanelLeft, Radio } from "lucide-react";
+import { Search, ArrowLeft, Download, Settings2, ChevronLeft, ChevronRight, PanelLeft, Radio } from "lucide-react";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useProjectId } from "@/lib/project-router";
@@ -40,7 +40,7 @@ import { TraceLayoutMobile } from "./TraceLayoutMobile";
 import { mergeLiveCalls } from "./merge-live-calls";
 import { useTraceStream } from "@/hooks/use-trace-stream";
 import type { TraceDetail } from "./contexts";
-import { TraceDataProvider, LARGE_TRACE_THRESHOLD, GRAPH_DISABLED_THRESHOLD } from "./contexts/TraceDataContext";
+import { TraceDataProvider, GRAPH_DISABLED_THRESHOLD } from "./contexts/TraceDataContext";
 import { ViewPreferencesProvider, useViewPreferences, type ViewPreferences } from "./contexts/ViewPreferencesContext";
 import { useSelection, type NavigationView } from "./contexts/SelectionContext";
 import {
@@ -280,14 +280,6 @@ function TraceNavToolbar({
           LIVE
         </span>
       )}
-
-      {run.calls.length > LARGE_TRACE_THRESHOLD && (
-        <span className="inline-flex shrink-0 items-center gap-1 border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning" title={`Large trace with ${run.calls.length} observations. Some features may be optimized for performance.`}>
-          <AlertTriangle className="h-3 w-3" />
-          {run.calls.length} obs
-        </span>
-      )}
-
 
       <ViewPreferencesDropdown />
 
