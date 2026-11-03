@@ -12,14 +12,11 @@ const REFRESH_COALESCE_MS = 1000;
 const TERMINAL_EVENTS = new Set(["task_run.completed", "task_run.error"]);
 
 /**
- * Re-renders the task page when one of this task's runs starts or ends, so a
- * run launched from the CLI or another tab shows up without a reload.
- *
- * The backend replays one `task_run.started` per running task on every stream
- * connect, so a start only refreshes for a run not already listed as running,
- * and only once per run: one still unlisted after that refresh is hidden by
- * the scope filters or beyond the fetch bound. A terminal event always
- * refreshes, since a finished run may now match a status filter.
+ * Re-renders the task page when one of this task's runs starts or ends.
+ * The backend replays `task_run.started` for every running task on each
+ * connect, so a start refreshes only for a run not listed as running, and
+ * once per run (one still unlisted after that is filtered out). A terminal
+ * event always refreshes: a finished run may now match a status filter.
  */
 export function TaskRunsAutoRefresh({
   project,
