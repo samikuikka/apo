@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TaskFileBrowser } from "@/components/agent-task-files/task-file-browser";
 import { TaskRunHistory } from "./task-run-history";
+import { TaskRunsAutoRefresh } from "./task-runs-auto-refresh";
 import { RunHistoryScopeBar } from "./run-history-scope-bar";
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -289,6 +290,7 @@ export default async function TaskDetailPage({
         </div>
 
         <TabsContent value="runs" className="mt-0">
+          <TaskRunsAutoRefresh project={projectId} taskId={taskId} runs={taskRuns} />
           <TaskRunHistory runs={taskRuns} canDelete={canDeleteRuns} />
         </TabsContent>
 
