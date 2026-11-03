@@ -15,6 +15,7 @@ import { usePublishRunCohort } from "@/lib/run-cohort-context";
 import { setSearchParamShallow } from "@/lib/shallow-search-params";
 import type { ProjectTaskSource } from "@/lib/projects-api";
 
+import { DemoReadOnlyBanner } from "./components/DemoReadOnlyBanner";
 import { EvidenceViewsBar } from "./components/EvidenceViewsBar";
 import { FolderList } from "./components/FolderList";
 import { OnboardingPanel } from "./components/OnboardingPanel";
@@ -302,6 +303,7 @@ export function AgentTasksClient({
 
   return (
     <div className="flex flex-col">
+      {isDemoProject && <DemoReadOnlyBanner />}
       {showOnboarding && (
         <OnboardingPanel signals={onboardingSignals} />
       )}
@@ -437,6 +439,7 @@ export function AgentTasksClient({
         folders={listFolders}
         expanded={expanded}
         selected={listSelected}
+        isDemoProject={isDemoProject}
         query={query}
         selectAllState={archivedActive ? "none" : selectAllState}
         visibleTaskCount={archivedActive ? archivedFolders.reduce((n, f) => n + f.tasks.length, 0) : visibleTaskIds.length}

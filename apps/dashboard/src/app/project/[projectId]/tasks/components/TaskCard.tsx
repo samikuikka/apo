@@ -10,7 +10,7 @@ import type {
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { formatCostMicro } from "@/lib/format";
+import { formatCostMicro, parseUTC } from "@/lib/format";
 import { useProjectId } from "@/lib/project-router";
 import { hrefWithRunCohort, withViewId } from "@/lib/run-cohort";
 import { useRunCohort, useRunCohortViewId } from "@/lib/run-cohort-context";
@@ -25,12 +25,16 @@ export function TaskCard({
   isSel,
   status,
   stats,
+  isDemoProject,
   toggleTask,
 }: {
   task: AgentTaskSummary;
   isSel: boolean;
   status: TaskStatus;
   stats: AgentTaskRunStats | null;
+  /** The demo capture is frozen: dates stay absolute and idle labels
+   *  never promise a run an anonymous visitor cannot start. */
+  isDemoProject: boolean;
   toggleTask: (id: string) => void;
 }) {
   const projectId = useProjectId();
@@ -99,7 +103,7 @@ export function TaskCard({
           {status === "idle" ? (
             <div className="mt-1.5 flex items-center gap-1.5 text-[12px] text-muted-foreground/50">
               <Play className="h-3 w-3" />
-              <span>{notStartedLabel(stats?.not_started_runs ?? 0)}</span>
+              <span>{notStartedLabel(stats?.not_started_runs ?? 0, isDemoProject)}</span>
               <span className="ml-auto font-mono text-[11px] text-muted-foreground/40">
                 {relativePath(task.task_path)}
               </span>
@@ -113,7 +117,7 @@ export function TaskCard({
               )}
               <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
                 <span className="text-muted-foreground/60">Last run</span>
-                <span className="font-mono tabular-nums text-muted-foreground">{formatRelativeTime(stats.last_run_at)}</span>
+                <span className="font-mono tabular-nums text-muted-foreground">{isDemoProject ? formatCaptureDate(stats.last_run_at) : formatRelativeTime(stats.last_run_at)}</span>
               </div>
               <span className="hidden font-mono text-[11px] text-muted-foreground/40 md:inline">
                 {relativePath(task.task_path)}
@@ -149,9 +153,10 @@ export function removedLabel(task: AgentTaskSummary): string {
 }
 
 /** An idle task may still have runs that ended before starting (no executor
- * claimed them): say so rather than implying it was never tried. */
-export function notStartedLabel(notStarted: number): string {
-  if (notStarted === 0) return "Ready to run";
+ * claimed them): say so rather than implying it was never tried. In a
+ * read-only capture the zero-runs case must not promise a run. */
+export function notStartedLabel(notStarted: number, readOnly = false): string {
+  if (notStarted === 0) return readOnly ? "Not run in this capture" : "Ready to run";
   return notStarted === 1 ? "1 run never started" : `${notStarted} runs never started`;
 }
 
@@ -192,4 +197,19 @@ function formatRelativeTime(dateStr: string | null): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+/** The demo's "Last run" is a frozen capture date: an age like "59d ago"
+ *  grows daily and reads as an abandoned project, so print the day itself
+ *  (en-US short-month style, UTC, the same convention as run headers). */
+const captureDateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+});
+
+function formatCaptureDate(dateStr: string | null): string {
+  if (!dateStr) return "Never";
+  return captureDateFormatter.format(parseUTC(dateStr));
 }

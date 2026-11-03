@@ -14,6 +14,7 @@ export function FolderRow({
   state,
   isOpen,
   selected,
+  isDemoProject,
   toggleFolder,
   toggleTask,
   toggleExpand,
@@ -22,6 +23,7 @@ export function FolderRow({
   state: "none" | "some" | "all";
   isOpen: boolean;
   selected: Set<string>;
+  isDemoProject: boolean;
   toggleFolder: (folder: FolderNode) => void;
   toggleTask: (id: string) => void;
   toggleExpand: (id: string) => void;
@@ -95,6 +97,7 @@ export function FolderRow({
                 isSel={isSel}
                 status={status}
                 stats={task.run_stats}
+                isDemoProject={isDemoProject}
                 toggleTask={toggleTask}
               />
             );
