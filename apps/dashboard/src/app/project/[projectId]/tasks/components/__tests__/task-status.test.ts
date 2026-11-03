@@ -79,6 +79,14 @@ describe("a task whose only runs never started", () => {
     expect(notStartedLabel(1)).toBe("1 run never started");
     expect(notStartedLabel(0)).toBe("Ready to run");
   });
+
+  it("says Not run in this capture when the visitor cannot run anything", () => {
+    // The read-only demo: "Ready to run" would promise an action an
+    // anonymous visitor cannot take, so only the zero-runs label changes.
+    expect(notStartedLabel(0, true)).toBe("Not run in this capture");
+    expect(notStartedLabel(2, true)).toBe("2 runs never started");
+    expect(notStartedLabel(1, true)).toBe("1 run never started");
+  });
 });
 
 describe("provenanceLabel", () => {

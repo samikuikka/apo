@@ -14,6 +14,7 @@ export function FolderList({
   folders,
   expanded,
   selected,
+  isDemoProject,
   query,
   selectAllState,
   visibleTaskCount,
@@ -25,6 +26,8 @@ export function FolderList({
   folders: FolderNode[];
   expanded: Set<string>;
   selected: Set<string>;
+  /** Cards render capture-honest copy (dates, idle labels) in the demo. */
+  isDemoProject: boolean;
   query: string;
   selectAllState: "none" | "some" | "all";
   visibleTaskCount: number;
@@ -57,6 +60,7 @@ export function FolderList({
           state={folderState(folder)}
           isOpen={expanded.has(folder.id) || !!query}
           selected={selected}
+          isDemoProject={isDemoProject}
           toggleFolder={onToggleFolder}
           toggleTask={onToggleTask}
           toggleExpand={onToggleExpand}

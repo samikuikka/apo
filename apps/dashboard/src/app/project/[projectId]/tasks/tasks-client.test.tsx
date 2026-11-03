@@ -355,6 +355,75 @@ describe("AgentTasksClient — select all", () => {
   });
 });
 
+describe("AgentTasksClient (read-only demo)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // A task with a completed run from the fixture's capture window: in the
+  // demo its "Last run" must read as the frozen date, not an age that grows.
+  const capturedTask = task({
+    run_stats: {
+      total_runs: 1,
+      passed_runs: 1,
+      failed_runs: 0,
+      errored_runs: 0,
+      pass_rate: 1,
+      avg_duration_ms: 1200,
+      last_run_at: "2026-09-04T12:00:00Z",
+      last_run_status: "passed",
+      last_run_passed: true,
+      total_checks: 0,
+      checks_pass_rate: 0,
+      avg_cost: null,
+    },
+  });
+
+  const renderClient = (isDemo: boolean, tasks: AgentTaskSummary[]) =>
+    render(
+      <AgentTasksClient
+        tasks={tasks}
+        error={null}
+        taskSource={taskSource}
+        isDemo={isDemo}
+      />,
+    );
+
+  it("renders the read-only banner with a Quickstart link in the demo", () => {
+    renderClient(true, [capturedTask]);
+    expect(screen.getByText(/This workspace is a read-only capture/i)).toBeInTheDocument();
+    const quickstart = screen.getByRole("link", { name: "Quickstart" });
+    expect(quickstart).toHaveAttribute("href", "https://docs.test-apo.online/quickstart/");
+    expect(quickstart).toHaveAttribute("target", "_blank");
+    expect(quickstart).toHaveAttribute("rel", "noreferrer");
+  });
+
+  it("never renders the banner for a normal project", () => {
+    renderClient(false, [capturedTask]);
+    expect(screen.queryByText(/read-only capture/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Quickstart" })).not.toBeInTheDocument();
+  });
+
+  it("shows the capture's absolute date instead of an aging relative one", () => {
+    renderClient(true, [capturedTask]);
+    expect(screen.getByText("Sep 4, 2026")).toBeInTheDocument();
+    expect(screen.queryByText(/ago/i)).not.toBeInTheDocument();
+  });
+
+  it("labels a never-run task honestly instead of Ready to run", () => {
+    renderClient(true, [task()]);
+    expect(screen.getByText("Not run in this capture")).toBeInTheDocument();
+    expect(screen.queryByText("Ready to run")).not.toBeInTheDocument();
+  });
+
+  it("keeps relative time and Ready to run for a normal project", () => {
+    renderClient(false, [capturedTask, task()]);
+    expect(screen.getByText(/\d+d ago/)).toBeInTheDocument();
+    expect(screen.getByText("Ready to run")).toBeInTheDocument();
+    expect(screen.queryByText("Not run in this capture")).not.toBeInTheDocument();
+  });
+});
+
 describe("AgentTasksClient — active view tab in the URL", () => {
   // A derived saved tab: model is pinned, so the tab is "derived" and shows
   // the scoped-stats chip when active.
