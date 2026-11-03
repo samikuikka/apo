@@ -277,6 +277,13 @@ export default async function TaskDetailPage({
         </Suspense>
       </div>
 
+      <TaskRunsAutoRefresh
+        project={projectId}
+        taskId={taskId}
+        runs={taskRuns}
+        watchForNewRuns={inCatalog}
+      />
+
       <Tabs defaultValue="runs" className="flex flex-col">
         <div className="border-b border-border px-6">
           <TabsList className="h-10 bg-card">
@@ -290,7 +297,6 @@ export default async function TaskDetailPage({
         </div>
 
         <TabsContent value="runs" className="mt-0">
-          <TaskRunsAutoRefresh project={projectId} taskId={taskId} runs={taskRuns} />
           <TaskRunHistory runs={taskRuns} canDelete={canDeleteRuns} />
         </TabsContent>
 

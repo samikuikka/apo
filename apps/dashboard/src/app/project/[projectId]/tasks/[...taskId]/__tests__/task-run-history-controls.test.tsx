@@ -31,12 +31,13 @@ const FACETS: RunConfigModelFacet[] = [
 ];
 
 let replaceMock: ReturnType<typeof vi.fn>;
+const refreshMock = vi.fn();
 let searchParamsHolder: URLSearchParams;
 let savedViewsMock: (...args: unknown[]) => Promise<unknown[]>;
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/project/acme/tasks/t1",
-  useRouter: () => ({ replace: replaceMock, push: vi.fn() }),
+  useRouter: () => ({ replace: replaceMock, push: vi.fn(), refresh: refreshMock }),
   useSearchParams: () => searchParamsHolder,
 }));
 
@@ -206,6 +207,17 @@ describe("RunHistoryScopeBar (URL ownership)", () => {
     expect(second).toContain("status=passed%2Cerror");
     expect(second).not.toContain("effort=");
     expect(second).not.toContain("since=");
+  });
+
+  it("refreshes the page in place from the refresh button, keeping the URL", async () => {
+    searchParamsHolder = new URLSearchParams("model=claude-opus-5");
+    refreshMock.mockClear();
+    render(<RunHistoryScopeBar projectId="acme" facets={FACETS} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Refresh task runs" }));
+
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(replaceMock).not.toHaveBeenCalled();
   });
 
   it("reset strips only the scope params and keeps the view identity", async () => {

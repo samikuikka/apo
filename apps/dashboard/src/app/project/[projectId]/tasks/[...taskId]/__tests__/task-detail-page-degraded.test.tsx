@@ -9,7 +9,7 @@
  * "removed from catalog" claim.
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/lib/api-error";
@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   getProjectAgentTask: vi.fn(),
   listTaskRuns: vi.fn(),
   taskRunHistory: vi.fn(),
+  autoRefresh: vi.fn(),
 }));
 
 vi.mock("@/lib/agent-task-api", () => ({
@@ -41,7 +42,10 @@ vi.mock("../run-history-scope-bar", () => ({
 }));
 
 vi.mock("../task-runs-auto-refresh", () => ({
-  TaskRunsAutoRefresh: () => null,
+  TaskRunsAutoRefresh: (props: unknown) => {
+    mocks.autoRefresh(props);
+    return <div data-testid="auto-refresh" />;
+  },
 }));
 
 vi.mock("../task-run-history", () => ({
@@ -77,6 +81,7 @@ describe("TaskDetailPage off-catalog degradation", () => {
     mocks.getProjectAgentTask.mockReset();
     mocks.listTaskRuns.mockReset();
     mocks.taskRunHistory.mockReset();
+    mocks.autoRefresh.mockReset();
   });
 
   it("shows historical runs with a warning when the task 404s", async () => {
@@ -139,5 +144,19 @@ describe("TaskDetailPage off-catalog degradation", () => {
     expect(
       screen.queryByText(/no longer in the project catalog/i),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the live refresh running for this task while the Files tab is open", async () => {
+    mocks.getProjectAgentTask.mockResolvedValue(IN_CATALOG_TASK);
+    mocks.listTaskRuns.mockResolvedValue([]);
+
+    render(await TaskDetailPage({ ...PAGE_ARGS }));
+    expect(mocks.autoRefresh).toHaveBeenCalledWith(
+      expect.objectContaining({ project: "p", taskId: "gone/task", watchForNewRuns: true }),
+    );
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Files" }), { button: 0 });
+    expect(screen.getByText("file-browser")).toBeInTheDocument();
+    expect(screen.getByTestId("auto-refresh")).toBeInTheDocument();
   });
 });

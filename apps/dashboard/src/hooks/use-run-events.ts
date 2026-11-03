@@ -22,6 +22,8 @@ interface UseRunEventsOptions {
    * as "anything may have happened" and re-fetch (router.refresh()).
    */
   onReconnect?: () => void;
+  /** Called on every successful open, the first one included. */
+  onOpen?: () => void;
   /**
    * Close the stream while the tab is hidden and reopen it (reported as a
    * reconnect) when the tab is seen again. For list pages that hold a stream
@@ -45,6 +47,7 @@ export function useRunEvents({
   enabled,
   onEvent,
   onReconnect,
+  onOpen,
   closeWhenHidden = false,
 }: UseRunEventsOptions) {
   const resolvedProject = project ?? getProjectId();
@@ -65,10 +68,12 @@ export function useRunEvents({
   const droppedRef = useRef(false);
   const onEventRef = useRef(onEvent);
   const onReconnectRef = useRef(onReconnect);
+  const onOpenRef = useRef(onOpen);
   // Written via useEffect (not in the render body) so render stays pure.
   useEffect(() => {
     onEventRef.current = onEvent;
     onReconnectRef.current = onReconnect;
+    onOpenRef.current = onOpen;
   });
 
   const connect = useCallback(() => {
@@ -84,6 +89,7 @@ export function useRunEvents({
 
     es.onopen = () => {
       attemptsRef.current = 0;
+      onOpenRef.current?.();
       if (droppedRef.current) {
         droppedRef.current = false;
         onReconnectRef.current?.();

@@ -11,6 +11,9 @@ const REFRESH_COALESCE_MS = 1000;
 
 const TERMINAL_EVENTS = new Set(["task_run.completed", "task_run.error"]);
 
+const isUnsettled = (run: AgentTaskRunSummary): boolean =>
+  run.status === "running" || run.status === "pending";
+
 /**
  * Re-renders the task page when one of this task's runs starts or ends.
  * The backend replays `task_run.started` for every running task on each
@@ -22,10 +25,13 @@ export function TaskRunsAutoRefresh({
   project,
   taskId,
   runs,
+  watchForNewRuns,
 }: {
   project: string;
   taskId: string;
   runs: AgentTaskRunSummary[];
+  /** The task can get new runs (it is in the catalog). */
+  watchForNewRuns: boolean;
 }) {
   const router = useRouter();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -35,6 +41,7 @@ export function TaskRunsAutoRefresh({
     () => new Set(runs.filter((r) => r.status === "running").map((r) => r.id)),
     [runs],
   );
+  const hasUnsettled = runs.some(isUnsettled);
 
   useEffect(() => {
     return () => {
@@ -70,8 +77,13 @@ export function TaskRunsAutoRefresh({
 
   useRunEvents({
     project,
-    enabled: true,
+    enabled: watchForNewRuns || hasUnsettled,
     onEvent: handleEvent,
+    // A run that ended between the server render and this open sent its
+    // terminal event to nobody, and the connect replay omits finished runs.
+    onOpen: () => {
+      if (hasUnsettled) scheduleRefresh();
+    },
     // Events published while the stream was down are never replayed.
     onReconnect: scheduleRefresh,
     closeWhenHidden: true,

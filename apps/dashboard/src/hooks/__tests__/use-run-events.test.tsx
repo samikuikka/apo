@@ -27,12 +27,13 @@ class FakeEventSource {
   close() {}
 }
 
-function Consumer({ onReconnect }: { onReconnect: () => void }) {
+function Consumer({ onReconnect, onOpen }: { onReconnect: () => void; onOpen?: () => void }) {
   useRunEvents({
     project: "proj-1",
     enabled: true,
     onEvent: () => {},
     onReconnect,
+    onOpen,
   });
   return null;
 }
@@ -64,6 +65,19 @@ describe("useRunEvents reconnect notification", () => {
 
     act(() => FakeEventSource.instances[0].onopen?.());
     expect(onReconnect).not.toHaveBeenCalled();
+  });
+
+  it("fires onOpen on the first open and on every reopen", () => {
+    const onOpen = vi.fn();
+    render(<Consumer onReconnect={vi.fn()} onOpen={onOpen} />);
+
+    act(() => FakeEventSource.instances[0].onopen?.());
+    expect(onOpen).toHaveBeenCalledTimes(1);
+
+    act(() => FakeEventSource.instances[0].onerror?.());
+    act(() => vi.advanceTimersByTime(3_000));
+    act(() => FakeEventSource.instances[1].onopen?.());
+    expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
   it("fires onReconnect when the stream reopens after a drop", () => {
