@@ -40,6 +40,10 @@ vi.mock("../run-history-scope-bar", () => ({
   RunHistoryScopeBar: () => <div>scope-bar</div>,
 }));
 
+vi.mock("../task-runs-auto-refresh", () => ({
+  TaskRunsAutoRefresh: () => null,
+}));
+
 vi.mock("../task-run-history", () => ({
   TaskRunHistory: (props: unknown) => {
     mocks.taskRunHistory(props);

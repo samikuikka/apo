@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { FilterBar } from "@/components/filter-bar";
+import { RefreshControls, useRouterRefresh } from "@/components/refresh-controls";
 import { fetchSavedViews } from "@/lib/agent-task-view-api";
 import type { RunConfigModelFacet } from "@/lib/agent-task-view-api";
 import { TASK_RUN_STATUS_FILTERS } from "@/lib/filter-status";
@@ -33,6 +34,7 @@ export function TaskRunHistoryControls({
   viewLabel,
   onScopeChange,
   onReset,
+  refreshControls,
 }: {
   scope: TaskRunHistoryScope;
   facets: RunConfigModelFacet[];
@@ -41,6 +43,7 @@ export function TaskRunHistoryControls({
   viewLabel: string | null;
   onScopeChange: (next: Partial<TaskRunHistoryScope>) => void;
   onReset: () => void;
+  refreshControls?: ReactNode;
 }) {
   const effortTiers = facets.find((f) => f.model === scope.model)?.efforts ?? [];
 
@@ -82,6 +85,7 @@ export function TaskRunHistoryControls({
           >
             All history
           </button>
+          {refreshControls && <div className="flex items-center gap-2">{refreshControls}</div>}
         </>
       }
     />
@@ -123,6 +127,7 @@ export function RunHistoryScopeBar({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { refresh, isRefreshing, autoRefreshInterval, setAutoRefreshInterval } = useRouterRefresh();
 
   const viewId = searchParams.get("view");
   const scope = useMemo<TaskRunHistoryScope>(() => {
@@ -232,6 +237,16 @@ export function RunHistoryScopeBar({
       hostOptions={hostOptions}
       viewLabel={viewLabel}
       onScopeChange={handleScopeChange}
+      refreshControls={
+        <RefreshControls
+          label="task runs"
+          testIdPrefix="task-runs"
+          onRefresh={refresh}
+          isRefreshing={isRefreshing}
+          autoRefreshInterval={autoRefreshInterval}
+          onAutoRefreshChange={setAutoRefreshInterval}
+        />
+      }
       onReset={() => {
         clearTimeout(statusTimer.current);
         setStatusMirror(new Set());
