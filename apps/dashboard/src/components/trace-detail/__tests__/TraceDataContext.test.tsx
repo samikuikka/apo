@@ -3,7 +3,6 @@ import { render, screen, act } from "@testing-library/react";
 import {
   TraceDataProvider,
   useTraceData,
-  LARGE_TRACE_THRESHOLD,
   GRAPH_DISABLED_THRESHOLD,
   SIMPLIFIED_TREE_THRESHOLD,
 } from "../contexts";
@@ -48,14 +47,12 @@ function Consumer() {
     prefetchObservation,
     isPrefetched,
     callCount,
-    isLargeTrace,
     isGraphDisabled,
     isSimplifiedTree,
   } = useTraceData();
   return (
     <div>
       <span data-testid="callCount">{callCount}</span>
-      <span data-testid="isLargeTrace">{String(isLargeTrace)}</span>
       <span data-testid="isGraphDisabled">{String(isGraphDisabled)}</span>
       <span data-testid="isSimplifiedTree">{String(isSimplifiedTree)}</span>
       <span data-testid="prefetchedCount">{prefetchedCalls.size}</span>
@@ -84,26 +81,15 @@ function renderWithProvider(ui: React.ReactElement, run: TraceDetail | null) {
 
 describe("TraceDataContext - performance thresholds", () => {
   it("exports correct threshold constants", () => {
-    expect(LARGE_TRACE_THRESHOLD).toBe(100);
     expect(GRAPH_DISABLED_THRESHOLD).toBe(500);
     expect(SIMPLIFIED_TREE_THRESHOLD).toBe(1000);
   });
 
-  it("reports normal trace for <= 100 calls", () => {
-    const run = makeTraceDetail(100);
+  it("reports normal trace for <= 500 calls", () => {
+    const run = makeTraceDetail(500);
     renderWithProvider(<Consumer />, run);
 
-    expect(screen.getByTestId("callCount").textContent).toBe("100");
-    expect(screen.getByTestId("isLargeTrace").textContent).toBe("false");
-    expect(screen.getByTestId("isGraphDisabled").textContent).toBe("false");
-    expect(screen.getByTestId("isSimplifiedTree").textContent).toBe("false");
-  });
-
-  it("reports large trace for 101 calls", () => {
-    const run = makeTraceDetail(101);
-    renderWithProvider(<Consumer />, run);
-
-    expect(screen.getByTestId("isLargeTrace").textContent).toBe("true");
+    expect(screen.getByTestId("callCount").textContent).toBe("500");
     expect(screen.getByTestId("isGraphDisabled").textContent).toBe("false");
     expect(screen.getByTestId("isSimplifiedTree").textContent).toBe("false");
   });
@@ -112,7 +98,6 @@ describe("TraceDataContext - performance thresholds", () => {
     const run = makeTraceDetail(501);
     renderWithProvider(<Consumer />, run);
 
-    expect(screen.getByTestId("isLargeTrace").textContent).toBe("true");
     expect(screen.getByTestId("isGraphDisabled").textContent).toBe("true");
     expect(screen.getByTestId("isSimplifiedTree").textContent).toBe("false");
   });
@@ -121,7 +106,6 @@ describe("TraceDataContext - performance thresholds", () => {
     const run = makeTraceDetail(1001);
     renderWithProvider(<Consumer />, run);
 
-    expect(screen.getByTestId("isLargeTrace").textContent).toBe("true");
     expect(screen.getByTestId("isGraphDisabled").textContent).toBe("true");
     expect(screen.getByTestId("isSimplifiedTree").textContent).toBe("true");
   });
@@ -130,7 +114,6 @@ describe("TraceDataContext - performance thresholds", () => {
     renderWithProvider(<Consumer />, null);
 
     expect(screen.getByTestId("callCount").textContent).toBe("0");
-    expect(screen.getByTestId("isLargeTrace").textContent).toBe("false");
     expect(screen.getByTestId("isGraphDisabled").textContent).toBe("false");
     expect(screen.getByTestId("isSimplifiedTree").textContent).toBe("false");
   });

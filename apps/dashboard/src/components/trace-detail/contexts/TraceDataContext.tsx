@@ -121,7 +121,6 @@ export interface TraceDetail {
   slim_calls?: boolean;
 }
 
-export const LARGE_TRACE_THRESHOLD = 100;
 export const GRAPH_DISABLED_THRESHOLD = 500;
 export const SIMPLIFIED_TREE_THRESHOLD = 1000;
 
@@ -135,7 +134,6 @@ interface TraceDataContextValue {
   prefetchObservation: (callId: string) => void;
   isPrefetched: (callId: string) => boolean;
   callCount: number;
-  isLargeTrace: boolean;
   isGraphDisabled: boolean;
   isSimplifiedTree: boolean;
 }
@@ -166,7 +164,6 @@ export function TraceDataProvider({
   );
 
   const callCount = run?.calls.length ?? 0;
-  const isLargeTrace = callCount > LARGE_TRACE_THRESHOLD;
   const isGraphDisabled = callCount > GRAPH_DISABLED_THRESHOLD;
   const isSimplifiedTree = callCount > SIMPLIFIED_TREE_THRESHOLD;
 
@@ -209,10 +206,9 @@ export function TraceDataProvider({
     prefetchObservation,
     isPrefetched,
     callCount,
-    isLargeTrace,
     isGraphDisabled,
     isSimplifiedTree,
-  }), [run, isLoading, error, refreshRun, cumulativeMetrics, prefetchedCalls, prefetchObservation, isPrefetched, callCount, isLargeTrace, isGraphDisabled, isSimplifiedTree]);
+  }), [run, isLoading, error, refreshRun, cumulativeMetrics, prefetchedCalls, prefetchObservation, isPrefetched, callCount, isGraphDisabled, isSimplifiedTree]);
 
   return (
     <TraceDataContext.Provider value={contextValue}>
