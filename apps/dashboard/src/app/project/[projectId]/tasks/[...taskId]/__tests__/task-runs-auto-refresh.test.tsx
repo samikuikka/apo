@@ -150,9 +150,12 @@ describe("TaskRunsAutoRefresh", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("refreshes after a reconnect", () => {
-    renderFor([]);
-    act(() => hookOptions.onReconnect?.());
+  it("refreshes once after a reconnect, which also reports an open", () => {
+    renderFor([run("r1", "running")]);
+    act(() => {
+      hookOptions.onOpen?.();
+      hookOptions.onReconnect?.();
+    });
     flush();
     expect(refresh).toHaveBeenCalledTimes(1);
   });
