@@ -631,3 +631,39 @@ class TestGenAiCallContext:
 
     def test_absent_attributes_add_nothing(self):
         assert self._generation().metadata == {}
+
+
+class TestErrorExtraction:
+    """``error_message`` marks a failed span; the projector turns it into level ERROR."""
+
+    @staticmethod
+    def _span(
+        *,
+        status_code: int = 0,
+        status_message: str | None = None,
+        events: list[dict[str, object]] | None = None,
+    ) -> OtlpSpanDB:
+        span = _make_span(attributes={"gen_ai.tool.name": "bash"})
+        span.status_code = status_code
+        span.status_message = status_message
+        span.events = events
+        return span
+
+    def test_status_message_is_the_error(self):
+        span = self._span(status_code=2, status_message="Connection refused")
+        assert normalize_span(span).error_message == "Connection refused"
+
+    def test_exception_event_message_when_status_has_none(self):
+        span = self._span(
+            status_code=2,
+            events=[{"name": "exception", "attributes": {"exception.message": "ECONNREFUSED"}}],
+        )
+        assert normalize_span(span).error_message == "ECONNREFUSED"
+
+    def test_error_status_without_message_still_fails_the_span(self):
+        span = self._span(status_code=2)
+        assert normalize_span(span).error_message == "Span status ERROR (no message)"
+
+    @pytest.mark.parametrize("status_code", [0, 1])
+    def test_unset_or_ok_status_is_not_an_error(self, status_code: int):
+        assert normalize_span(self._span(status_code=status_code)).error_message is None
