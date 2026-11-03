@@ -34,7 +34,9 @@ VALID_OBSERVATION_TYPES = frozenset({
 # v11: a generation's output keeps its tool calls and reasoning — messages
 # are dropped only when nothing renderable remains (previously rounds that
 # were "only" tool calls or thinking projected to an empty output).
-NORMALIZER_VERSION = 11
+# v12: an ERROR status without a description is a failed span (level ERROR);
+# the OTel JS SDK sends none for setStatus({ code: ERROR }).
+NORMALIZER_VERSION = 12
 
 
 @final

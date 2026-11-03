@@ -664,6 +664,10 @@ class TestErrorExtraction:
         span = self._span(status_code=2)
         assert normalize_span(span).error_message == "Span status ERROR (no message)"
 
+    def test_exception_event_without_a_message_falls_back_to_the_status(self):
+        span = self._span(status_code=2, events=[{"name": "exception", "attributes": {"exception.type": "Error"}}])
+        assert normalize_span(span).error_message == "Span status ERROR (no message)"
+
     @pytest.mark.parametrize("status_code", [0, 1])
     def test_unset_or_ok_status_is_not_an_error(self, status_code: int):
         assert normalize_span(self._span(status_code=status_code)).error_message is None
