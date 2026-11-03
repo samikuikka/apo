@@ -1,10 +1,10 @@
 import { hostname } from "node:os";
-import { resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 
 import { getFlagValue, parseArgs } from "../lib/args.ts";
 import { apiPost, AuthError } from "../lib/api.ts";
 import { resolveConfig } from "../lib/config.ts";
-import { writeCredentials } from "../lib/credentials.ts";
+import { writeCredentials, writeRememberedLogin } from "../lib/credentials.ts";
 import { type BootstrapResponse } from "../lib/api-types.ts";
 import { bold, dim, formatJson, green, red } from "../lib/format.ts";
 
@@ -65,17 +65,25 @@ export async function run(argv: string[]): Promise<number> {
     return 2;
   }
 
-  // Persist credentials so the new project becomes the active one — mirrors
-  // `apo login`'s post-bootstrap write.
+  // Persist the whole context like `apo login` does, so this bootstrap is a
+  // real login: active credentials plus a remembered one for switching back.
+  // The task root must be absolute at write time: a relative value stored in
+  // ~/.apo/credentials later resolves against ~/.apo, never the directory
+  // the command ran from.
   const taskRootFlag = getFlagValue(flags, "dir");
-  const taskRoot = taskRootFlag ? resolve(taskRootFlag) : "./e2e";
-  writeCredentials({
+  let taskRoot = taskRootFlag ?? "./e2e";
+  if (!isAbsolute(taskRoot)) {
+    taskRoot = resolve(taskRoot);
+  }
+  const creds = {
     backend_url: config.backendUrl,
     api_key: result.key,
     email,
     task_root: taskRoot,
     project: result.project,
-  });
+  };
+  const credentialsPath = writeCredentials(creds);
+  writeRememberedLogin(creds);
 
   if (config.json) {
     console.log(formatJson(result));
@@ -83,13 +91,13 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   console.log(green(`\u2713 Created project ${bold(name)} (${result.project}).`));
-  console.log(dim(`  API key: ${result.prefix}\u2026 (saved to ~/.apo/credentials)`));
+  console.log(dim(`  API key: ${result.prefix}\u2026 (saved to ${credentialsPath})`));
   console.log(dim(`  Run \`apo task list\` to verify task discovery.`));
   return 0;
 }
 
 function extractDetail(message: string): string {
-  // apiPost raises with "Backend error (status NNN): <body>" — pull the body.
+  // apiPost raises with "Backend error (status NNN): <body>"; pull the body out.
   const match = message.match(/Backend error \(status \d+\):\s*(.+)$/);
   if (match) {
     try {

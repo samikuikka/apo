@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { run } from "../src/commands/project-create.ts";
 import * as credentials from "../src/lib/credentials.ts";
 
@@ -24,6 +24,7 @@ describe("project create command", () => {
 
   it("creates a project and writes credentials on success", async () => {
     const writeSpy = vi.spyOn(credentials, "writeCredentials").mockReturnValue("/tmp/fake-credentials");
+    const rememberSpy = vi.spyOn(credentials, "writeRememberedLogin").mockReturnValue("/tmp/fake-login");
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse(201, {
         id: "key-1",
@@ -69,14 +70,22 @@ describe("project create command", () => {
       scope: "full",
     });
 
-    expect(writeSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        backend_url: "http://backend.test",
-        api_key: "sk-abcde1234567890",
-        project: "abc123def456",
-        email: "me@example.com",
-      }),
-    );
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    const written = writeSpy.mock.calls[0]![0];
+    // A relative task_root stored in ~/.apo/credentials later resolves
+    // against ~/.apo, not the cwd the command ran from, so the write must
+    // capture the absolute path.
+    expect(isAbsolute(written.task_root!)).toBe(true);
+    expect(written.task_root).toBe(resolve("./e2e"));
+    expect(written).toMatchObject({
+      backend_url: "http://backend.test",
+      api_key: "sk-abcde1234567890",
+      project: "abc123def456",
+      email: "me@example.com",
+    });
+    // The bootstrap is a real login: remember it so a later `apo login
+    // --backend <other>` can switch back without the password.
+    expect(rememberSpy).toHaveBeenCalledWith(written);
     expect(logs.join("\n")).toContain("abc123def456");
     expect(logs.join("\n")).toContain("my-proj");
   });

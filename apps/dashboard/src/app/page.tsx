@@ -46,25 +46,23 @@ export default async function Home() {
     return <DemoLanding />;
   }
 
-  if (session) {
-    let owned: { id: string }[] = [];
-    let loadDetail: string | null = null;
-    try {
-      const projects = await listProjects();
-      owned = projects.filter((p) => p.id !== "demo");
-    } catch (error) {
-      // A failed fetch is an outage (dead backend, wrong port, expired
-      // session), not an empty account: surface an error state, and keep the
-      // reason in the server console for operators reading container logs.
-      loadDetail = describeLoadFailure(error);
-      console.error("[home] listProjects failed; rendering error state:", error);
-    }
-    if (loadDetail !== null) {
-      return <DashboardLoadError detail={loadDetail} />;
-    }
-    if (owned.length > 0) {
-      redirect(`/project/${owned[0]!.id}/tasks`);
-    }
+  let owned: { id: string }[] = [];
+  let loadDetail: string | null = null;
+  try {
+    const projects = await listProjects();
+    owned = projects.filter((p) => p.id !== "demo");
+  } catch (error) {
+    // A failed fetch is an outage (dead backend, wrong port, expired
+    // session), not an empty account: surface an error state, and keep the
+    // reason in the server console for operators reading container logs.
+    loadDetail = describeLoadFailure(error);
+    console.error("[home] listProjects failed; rendering error state:", error);
+  }
+  if (loadDetail !== null) {
+    return <DashboardLoadError detail={loadDetail} />;
+  }
+  if (owned.length > 0) {
+    redirect(`/project/${owned[0]!.id}/tasks`);
   }
 
   return <DashboardEmptyState />;
