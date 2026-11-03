@@ -467,6 +467,9 @@ def extract_call_context(attrs: dict[str, Any]) -> dict[str, Any]:
     return context
 
 
+STATUS_ERROR_WITHOUT_MESSAGE = "Span status ERROR (no message)"
+
+
 def extract_error(span: Any, _attrs: dict[str, Any]) -> str | None:
     if span.status_code == 2 and span.status_message:
         return span.status_message
@@ -478,4 +481,8 @@ def extract_error(span: Any, _attrs: dict[str, Any]) -> str | None:
                     msg = event_attrs.get("exception.message")
                     if isinstance(msg, str):
                         return msg
+    # OTel makes the status description optional, and SDKs drop it unless the
+    # caller passes one: the ERROR code alone still marks a failed span.
+    if span.status_code == 2:
+        return STATUS_ERROR_WITHOUT_MESSAGE
     return None

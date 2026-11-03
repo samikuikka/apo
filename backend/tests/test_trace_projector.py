@@ -604,3 +604,40 @@ class TestTraceProjectorTaskRunCostRefresh:
             projector.project(span, session)
             session.commit()
         # No assertion beyond not raising — unlinked traces are the common case.
+
+
+class TestErrorStatusProjection:
+    def test_error_status_without_message_projects_as_error_level(self):
+        """A tool span marked ERROR with no description (what the OTel JS SDK
+        sends for ``setStatus({ code: ERROR })``) still counts as a failed call."""
+        root = _make_canonical_span(
+            trace_id="proj-err-01",
+            span_id="root-err-01",
+            attributes={"apo.observation.type": "AGENT"},
+        )
+        tool = _make_canonical_span(
+            trace_id="proj-err-01",
+            span_id="tool-err-01",
+            parent_span_id="root-err-01",
+            name="gen_ai.execute_tool bash",
+            attributes={"gen_ai.tool.name": "bash"},
+        )
+        tool.status_code = 2
+
+        projector = TraceProjector()
+        with Session(engine) as session:
+            projector.project(root, session)
+            projector.project(tool, session)
+            session.commit()
+
+        with Session(engine) as session:
+            call = session.exec(
+                select(LoggedCallDB).where(LoggedCallDB.id == "tool-err-01")
+            ).first()
+            root_call = session.exec(
+                select(LoggedCallDB).where(LoggedCallDB.id == "root-err-01")
+            ).first()
+            assert call is not None and root_call is not None
+            assert call.level == "ERROR"
+            assert call.status_message == "Span status ERROR (no message)"
+            assert root_call.level == "DEFAULT"
