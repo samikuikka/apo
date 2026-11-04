@@ -24,8 +24,6 @@
 
 Apo is a testing and engineering system for agent harnesses. Your experts define what the system must be capable of (the real jobs, conditions, outcomes, and requirements that define done) as **executable capability specifications**. Apo runs those specifications against your **real agent implementation** and returns a **binary verdict** backed by the test breakdown, trace, and deliverables. Execution problems surface separately as errors.
 
-That foundation serves two outcomes. For the organization, the suite is an executable record of what the agent system is required to do and whether those capabilities still hold as models, features, and harnesses change. For developers, the same verdict and evidence close the harness-engineering loop: a coding agent can change the prompts, tools, context, orchestration, models, or code and run the unchanged specification again.
-
 It is not another eval framework, and not an observability platform. Those categories are full, and they start somewhere else:
 
 | | Primary question |
@@ -34,7 +32,7 @@ It is not another eval framework, and not an observability platform. Those categ
 | Observability & eval platforms | What did my AI system already do? |
 | **Apo** | **Can this harness do what we require, and can we engineer it until it can?** |
 
-Production failures found in an observability stack become Apo regression tests. Coding agents work against the specification until it passes. The individual pieces can be assembled elsewhere; Apo makes the specification and the engineering loop one coherent system. [Why Apo](https://docs.test-apo.online/why-apo/) has the full map.
+The individual pieces can be assembled elsewhere; Apo makes the specification and the engineering loop one coherent system. [Why Apo](https://docs.test-apo.online/why-apo/) has the full map.
 
 > **Coding agent?** The docs are machine-readable: fetch [`docs.test-apo.online/llms.txt`](https://docs.test-apo.online/llms.txt) for the full index (every page has a `.md` rendition), or [`docs.test-apo.online/start.md`](https://docs.test-apo.online/start.md) for a complete setup skill.
 
@@ -51,9 +49,7 @@ improve the harness until it passes
        ↺
 ```
 
-Apo owns one Task Run and the evidence it produces. A developer, CI workflow, or coding agent reads that evidence, changes the system, and decides whether to start another Task Run. Apo does not edit your agent or autonomously rerun a failed task to improve it.
-
-That loop is **harness engineering**. Your experts control where the loop must converge by encoding their judgment in the suite; the coding agent finds the implementation path. The specification is not only a regression guard. It is the interface between expert knowledge and the agents improving the system.
+Apo owns one Task Run and the evidence it produces. A developer, CI workflow, or coding agent reads that evidence, changes the system, and runs the unchanged specification again. Apo does not edit your agent or autonomously rerun a failed task. That loop is **harness engineering**: your experts encode where it must converge, the coding agent finds the path, and the suite stays an executable record of what the system is required to do.
 
 ## Try it
 
@@ -99,16 +95,7 @@ scripts/self-host up --build
 # readiness  → curl -fsS http://localhost:8000/health/ready | jq
 ```
 
-Operator guide (single-host topology, env vars, TLS, deployment profiles) is in [`docs/self-hosted-alpha.md`](docs/self-hosted-alpha.md).
-
-To make the same installation reachable by teammates and sandboxed agents, switch to the server profile with `scripts/self-host init --profile server` and bring it up:
-
-```bash
-scripts/self-host up --build
-# dashboard  → https://apo.example.com
-# CLI API    → https://apo.example.com/backend-proxy
-# OTLP       → https://apo.example.com/api/public/otel/v1/traces
-```
+To open the same installation to teammates and sandboxed agents, init again with `scripts/self-host init --profile server` for TLS and a public CLI API. The operator guide (topology, env vars, TLS, profiles) is [`docs/self-hosted-alpha.md`](docs/self-hosted-alpha.md).
 
 ## Define a task
 
@@ -181,13 +168,9 @@ apo task show data-extraction   # test breakdown: which passed, which failed
 apo traces show <run-id>        # debug the failure
 ```
 
-## Schedules are policy, not cron
+## Schedules and traces
 
-Test importance isn't hardcoded in the task. Schedules say *how often* each subset runs, full suite nightly, smoke on every commit, regression on release. Different subsets have different operational value and different cost, so teams choose cadence per subset.
-
-## Traces
-
-Every failing run is debuggable through traces: parent/child call relationships, token usage, model parameters, and the actual messages exchanged. The failed test tells you what did not meet the specification; the linked trace helps explain why. The trace is evidence for the loop, not the workflow itself.
+Test importance isn't hardcoded in the task. Schedules say *how often* each subset runs: full suite nightly, smoke on every commit, regression on release. Every failing run is debuggable through traces: parent/child call relationships, token usage, model parameters, and the actual messages exchanged. The failed test says what did not meet the specification; the linked trace helps explain why.
 
 ## Status
 
