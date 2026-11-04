@@ -65,11 +65,9 @@ export async function run(argv: string[]): Promise<number> {
     return 2;
   }
 
-  // Persist the whole context like `apo login` does, so this bootstrap is a
-  // real login: active credentials plus a remembered one for switching back.
-  // The task root must be absolute at write time: a relative value stored in
-  // ~/.apo/credentials later resolves against ~/.apo, never the directory
-  // the command ran from.
+  // Like `apo login`: active credentials plus a remembered one for switching
+  // back. The task root must be absolute; a relative value in
+  // ~/.apo/credentials later resolves against ~/.apo, not this cwd.
   const taskRootFlag = getFlagValue(flags, "dir");
   let taskRoot = taskRootFlag ?? "./e2e";
   if (!isAbsolute(taskRoot)) {
