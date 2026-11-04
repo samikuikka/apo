@@ -101,13 +101,14 @@ const commands: Record<string, CommandEntry> = {
       ["--email <email>", "Account email (required)"],
       ["--password <password>", "Account password (required)"],
       ["--scope <full|ingest>", "API key scope (default: full)"],
+      ["--dir <path>", "Task root recorded for task discovery (default: ./e2e, stored absolute)"],
       ["--backend <url>", "Backend URL (default: http://localhost:8000)"],
       ["--json", "Machine-readable JSON output"],
     ],
     examples: [
       "apo project create my-project --email me@example.com --password secret",
     ],
-    note: "Solves the first-run chicken-and-egg: creates the project and saves credentials in one call, so `apo login` can proceed without a dashboard round-trip.",
+    note: "Solves the first-run chicken-and-egg: creates the project and performs the whole login (active credentials plus a remembered one) in one call, no dashboard round-trip needed.",
   },
   "project use": {
     handler: loadCommand("project-use"),

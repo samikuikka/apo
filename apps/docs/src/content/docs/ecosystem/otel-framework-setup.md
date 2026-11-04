@@ -246,6 +246,8 @@ Valid `apo.observation.type` values: `GENERATION`, `SPAN`, `TOOL`, `CHAIN`, `RET
 The Vercel AI SDK emits a wrapper span (`ai.generateText` / `ai.streamText`) plus per-step children (`ai.generateText.doGenerate` / `doStream`). apo classifies the wrapper as the GENERATION call — it carries the complete picture: the final assembled text and the total usage. The per-step children never become a second billed generation: with Vercel-only attributes they are not typed GENERATION at all, and when they also carry `gen_ai.*` attributes (mixed instrumentation), cost is attached to only one of the pair so a single LLM call is never double-counted.
 :::
 
+A span counts as failed when it ends with OTel status `ERROR` or carries an `exception` event. The status description is optional: the OTel JS SDK sends `setStatus({ code: ERROR })` with none, and that alone marks the span failed. Failed spans drive the trace tree's Errors pill, the run's status, and the `noFailedActions` check.
+
 Content capture (prompt/completion text) requires setting these env vars:
 
 ```

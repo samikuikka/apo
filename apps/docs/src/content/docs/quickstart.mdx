@@ -84,8 +84,9 @@ the first project:
 apo project create acme-eval --email you@example.com --password '••••••••'
 ```
 
-`apo project create` writes the new key to `~/.apo/credentials` itself, so the
-CLI is authenticated from here on.
+`apo project create` performs the whole login itself: the new key goes to
+`~/.apo/credentials` and is remembered under `~/.apo/logins/`, so the CLI is
+authenticated from here on.
 
 ## 3. Publish your Task catalog
 
