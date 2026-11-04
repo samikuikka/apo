@@ -11,7 +11,7 @@ import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 ## What's in a trace
 
 - **The call tree**: every call the agent made, parent/child relationships, what it returned.
-- **Token usage**: input/output tokens per call, with cost.
+- **Token usage**: input/output tokens per call, with cost. The prompt-cached share of the input is named separately (`833.0k (655.5k cached)→15.8k tok`): a cached run's input count would otherwise re-count the whole conversation on every call.
 - **Model parameters**: temperature, model, all params actually used.
 - **The messages**: the actual system, user, assistant, and tool messages exchanged.
 - **Mid-run steers**: every scripted correction is its own `task.steer` event inside its turn, between the tool call that triggered it and the generation that consumed it (see [Steer a running agent](/guides/steer-a-running-agent/)).

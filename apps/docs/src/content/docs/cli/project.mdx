@@ -18,14 +18,15 @@ Create the first project on a fresh instance and mint an API key for it in one c
 ### Synopsis
 
 ```bash
-apo project create <name> --email <addr> --password <pw> [--scope <full|ingest>] [--backend <url>] [--json]
+apo project create <name> --email <addr> --password <pw> [--scope <full|ingest>] [--dir <path>] [--backend <url>] [--json]
 ```
 
 ### What it does
 
 1. Verifies your email + password against the backend.
 2. Creates a new `ProjectDB` row with a random id and makes you its **owner**.
-3. Mints a `full`-scoped API key (shown once) and writes it to `~/.apo/credentials`, so the new project becomes the active one.
+3. Mints a `full`-scoped API key (shown once) and persists the whole login, exactly like [`apo login`](/cli/auth/): active credentials in `~/.apo/credentials` (the new project becomes the active one) plus a remembered login under `~/.apo/logins/<backend>.json`, so switching back to this backend later needs no password.
+4. Records the task root for task discovery (`--dir`, default `./e2e` under the current directory) as an absolute path: a relative value stored in `~/.apo/credentials` would later resolve against `~/.apo`, not the directory the command ran from.
 
 Because a real project row is committed before the key is minted, the new strict mint-path check (a nonexistent project id is rejected with `404`) is never an obstacle here.
 
