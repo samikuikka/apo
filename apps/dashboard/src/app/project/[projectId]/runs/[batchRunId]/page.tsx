@@ -31,7 +31,7 @@ export async function generateMetadata({
   const { batchRunId } = await params;
   try {
     const run = await getAgentTaskBatchRun(batchRunId);
-    return { title: detailTitle(getBatchName(run), "Run") };
+    return { title: detailTitle(run.trigger?.schedule_name || getBatchName(run), "Run") };
   } catch {
     return { title: "Run" };
   }
