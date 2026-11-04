@@ -1,5 +1,7 @@
 import { getAgentTaskBatchRun } from "@/lib/agent-task-api";
 import { getProject } from "@/lib/projects-api";
+import { detailTitle } from "@/lib/page-title";
+import { getBatchName } from "../components/runs-utils";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -21,9 +23,6 @@ import { BatchRunCancelButton } from "@/components/agent-task-execution/batch-ru
 
 export const dynamic = "force-dynamic";
 
-// Tab title: "Run #<short id>". Falls back to "Run" if the fetch fails so the
-// title never breaks the page load. Next.js dedupes this fetch against the
-// one in the default export, so there's no extra request.
 export async function generateMetadata({
   params,
 }: {
@@ -32,7 +31,7 @@ export async function generateMetadata({
   const { batchRunId } = await params;
   try {
     const run = await getAgentTaskBatchRun(batchRunId);
-    return { title: `Run #${run.id.slice(0, 8)}` };
+    return { title: detailTitle(getBatchName(run), "Run") };
   } catch {
     return { title: "Run" };
   }

@@ -6,6 +6,7 @@ import {
 } from "@/lib/agent-task-api";
 import { fetchTaskViewConfigFacets } from "@/lib/agent-task-view-api";
 import { getProject } from "@/lib/projects-api";
+import { detailTitle } from "@/lib/page-title";
 import { isNotFoundStatus } from "@/lib/api-error";
 import { Suspense } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -57,7 +58,6 @@ function parseScope(query: Record<string, string | string[] | undefined>): {
   };
 }
 
-// Tab title: "Task: <display_name>". Falls back to "Task" on any failure.
 export async function generateMetadata({
   params,
 }: {
@@ -67,7 +67,7 @@ export async function generateMetadata({
   const taskId = joinTaskId(taskIdSegments);
   try {
     const task = await getProjectAgentTask(projectId, taskId);
-    return { title: `Task: ${task.display_name}` };
+    return { title: detailTitle(task.display_name, "Task") };
   } catch {
     return { title: "Task" };
   }

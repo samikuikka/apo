@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import type { Metadata } from "next";
 import { getTraceDetail, getAdjacentTraces, type TraceDetail } from "@/lib/traces-api";
+import { taskName, traceTitle } from "@/lib/page-title";
 import {
   UrlSelectionProvider,
   TraceWorkspacePage,
@@ -19,7 +20,6 @@ const getTraceDetailCached = cache((runId: string, projectId?: string) =>
   getTraceDetail(runId, projectId, undefined, { slim: true }),
 );
 
-// Tab title: "Trace <short id>". Falls back to "Trace" on fetch failure.
 export async function generateMetadata({
   params,
 }: {
@@ -28,7 +28,7 @@ export async function generateMetadata({
   const { projectId, runId } = await params;
   try {
     const detail = await getTraceDetailCached(runId, projectId);
-    return { title: `Trace ${detail.run.id.slice(0, 8)}` };
+    return { title: traceTitle(detail.run) };
   } catch {
     return { title: "Trace" };
   }
@@ -86,7 +86,7 @@ export default async function TraceDetailPage({
           <ArrowLeft className="h-3.5 w-3.5" />
           Part of agent task run
           <span className="font-mono text-foreground">
-            {trace.run.task_run_id.slice(0, 12)}
+            {trace.run.task_id ? taskName(trace.run.task_id) : trace.run.task_run_id.slice(0, 12)}
           </span>
         </Link>
       )}
