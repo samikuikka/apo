@@ -106,6 +106,10 @@ export function getBatchName(batch: AgentTaskBatchRunSummary): string {
   if (batch.selection_type === "all" || batch.selection_query?.kind === "all") {
     return "All discovered tasks";
   }
+  const folderId = batch.selection_query?.folder_id;
+  if (batch.selection_query?.kind === "folder" && typeof folderId === "string" && folderId) {
+    return folderId;
+  }
   if (batch.selection_type === "folder") {
     const folders = getFullTaskPaths(batch);
     if (folders.length === 1) return folders[0];
