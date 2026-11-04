@@ -55,5 +55,8 @@ describe("getBatchName", () => {
   it("names folder selections as folders, not tasks", () => {
     expect(getBatchName(batch("folder", { task_paths: ["drafting/nda"] }))).toBe("drafting/nda");
     expect(getBatchName(batch("folder", { task_paths: ["drafting", "review"] }))).toBe("2 folders");
+    expect(
+      getBatchName(batch("tasks", { kind: "folder", folder_id: "drafting/nda", task_ids: ["drafting/nda/a"] })),
+    ).toBe("drafting/nda");
   });
 });
