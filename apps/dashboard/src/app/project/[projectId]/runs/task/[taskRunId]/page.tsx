@@ -34,6 +34,7 @@ import { TaskRunAutoRefresh } from "@/components/agent-task-execution/task-run-a
 import { OutcomeSummary } from "@/components/run-outcome";
 import { formatTokenTotal, formatCostMicro } from "@/lib/format";
 import { getProject } from "@/lib/projects-api";
+import { detailTitle, taskName } from "@/lib/page-title";
 import GenerationExecutionNotice from "@/components/generation-execution-notice";
 import { RunJudgmentsSection } from "./run-judgments-section";
 import { RunNotices } from "./run-notices";
@@ -50,7 +51,6 @@ const ERROR_BANNER_TONE = {
 // Per-request memo so generateMetadata and the page body share one fetch.
 const getAgentTaskRunCached = cache(getAgentTaskRun);
 
-// Tab title: "Task Run #<short id>". Falls back to "Task Run" on fetch failure.
 export async function generateMetadata({
   params,
 }: {
@@ -59,9 +59,9 @@ export async function generateMetadata({
   const { taskRunId } = await params;
   try {
     const run = await getAgentTaskRunCached(taskRunId);
-    return { title: `Task Run #${run.task_id.slice(0, 8)}` };
+    return { title: detailTitle(taskName(run.task_id), "Task run") };
   } catch {
-    return { title: "Task Run" };
+    return { title: "Task run" };
   }
 }
 

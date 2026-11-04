@@ -3,6 +3,7 @@ import { CalendarClock, GitBranch, Play, Zap } from "lucide-react";
 
 import { type AgentTaskBatchRunSummary } from "@/lib/agent-task-api";
 import { parseUTC } from "@/lib/format";
+import { taskName } from "@/lib/page-title";
 
 /** Task-path overlap between two batch runs, for the compare bar. */
 export interface TaskOverlap {
@@ -74,7 +75,7 @@ export function getTaskPaths(batch: AgentTaskBatchRunSummary): string[] {
   const q = batch.selection_query;
   if (q && typeof q === "object" && "task_paths" in q) {
     const paths = q.task_paths;
-    if (Array.isArray(paths)) return paths.map((p: string) => p.split("/").pop() ?? p);
+    if (Array.isArray(paths)) return paths.map((p: string) => taskName(p));
   }
   return [];
 }

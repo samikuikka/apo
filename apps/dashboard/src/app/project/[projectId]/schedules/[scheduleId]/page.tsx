@@ -5,12 +5,12 @@ import {
   type AgentTaskSummary,
 } from "@/lib/agent-task-api";
 import type { Metadata } from "next";
+import { detailTitle } from "@/lib/page-title";
 import { ScheduleDetailClient } from "./schedule-detail-client";
 import { listExecutorPools } from "@/lib/executor-api";
 
 export const dynamic = "force-dynamic";
 
-// Tab title: "Schedule: <name>". Falls back to "Schedule" on fetch failure.
 export async function generateMetadata({
   params,
 }: {
@@ -19,7 +19,7 @@ export async function generateMetadata({
   const { scheduleId } = await params;
   try {
     const schedule = await getAgentTaskSchedule(scheduleId);
-    return { title: `Schedule: ${schedule.name}` };
+    return { title: detailTitle(schedule.name, "Schedule") };
   } catch {
     return { title: "Schedule" };
   }
