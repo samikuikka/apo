@@ -71,22 +71,23 @@ export function formatTrigger(trigger: { source: string | null; actor: string | 
   return trigger.source ?? "Manual";
 }
 
-export function getTaskPaths(batch: AgentTaskBatchRunSummary): string[] {
+/** The batch's selected ids: `task_paths` on CLI and dashboard batches (folder
+ * paths when the selection is a folder), `task_ids` on queued ones, which
+ * store the resolved selection snapshot. */
+export function getFullTaskPaths(batch: AgentTaskBatchRunSummary): string[] {
   const q = batch.selection_query;
-  if (q && typeof q === "object" && "task_paths" in q) {
-    const paths = q.task_paths;
-    if (Array.isArray(paths)) return paths.map((p: string) => taskName(p));
+  if (!q || typeof q !== "object") return [];
+  for (const key of ["task_paths", "task_ids"]) {
+    const list = q[key];
+    if (Array.isArray(list) && list.length > 0) {
+      return list.filter((item): item is string => typeof item === "string");
+    }
   }
   return [];
 }
 
-export function getFullTaskPaths(batch: AgentTaskBatchRunSummary): string[] {
-  const q = batch.selection_query;
-  if (q && typeof q === "object" && "task_paths" in q) {
-    const paths = q.task_paths;
-    if (Array.isArray(paths) && paths.length > 0) return paths as string[];
-  }
-  return [];
+export function getTaskPaths(batch: AgentTaskBatchRunSummary): string[] {
+  return getFullTaskPaths(batch).map(taskName);
 }
 
 export function computeOverlap(
@@ -102,10 +103,17 @@ export function computeOverlap(
 }
 
 export function getBatchName(batch: AgentTaskBatchRunSummary): string {
-  const paths = getTaskPaths(batch);
-  if (paths.length === 1) return paths[0];
-  if (paths.length > 1) return `${paths.length} tasks`;
-  if (batch.selection_type === "all") return "All discovered tasks";
+  if (batch.selection_type === "all" || batch.selection_query?.kind === "all") {
+    return "All discovered tasks";
+  }
+  if (batch.selection_type === "folder") {
+    const folders = getFullTaskPaths(batch);
+    if (folders.length === 1) return folders[0];
+    if (folders.length > 1) return `${folders.length} folders`;
+  }
+  const names = getTaskPaths(batch);
+  if (names.length === 1) return names[0];
+  if (names.length > 1) return `${names.length} tasks`;
   return batch.selection_type;
 }
 

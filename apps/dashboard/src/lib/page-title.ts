@@ -16,15 +16,19 @@ export function detailTitle(name: string | null | undefined, kind: string): stri
   return trimmed ? `${trimmed} · ${kind}` : kind;
 }
 
-/** The name the trace header shows (trace name, else task id), shortened to
- * the task name when it is the task id, as it is on agent task runs. A short
- * id only when the trace has neither. */
+/** Agent task traces are named `agent-task.<task id>` by the SDK unless the
+ * runner gives a flow name, so the task name stands in for the default. Any
+ * other trace keeps the name its header shows, and a short id is the last
+ * resort. */
 export function traceTitle(run: {
   id: string;
   task_id?: string | null;
   scopeKey: string | null;
 }): string {
-  const name = run.scopeKey || run.task_id;
-  if (!name) return `Trace ${run.id.slice(0, 8)}`;
-  return detailTitle(name === run.task_id ? taskName(name) : name, "Trace");
+  const { task_id: taskId, scopeKey } = run;
+  if (taskId && (!scopeKey || scopeKey === taskId || scopeKey === `agent-task.${taskId}`)) {
+    return detailTitle(taskName(taskId), "Trace");
+  }
+  if (scopeKey) return detailTitle(scopeKey, "Trace");
+  return `Trace ${run.id.slice(0, 8)}`;
 }

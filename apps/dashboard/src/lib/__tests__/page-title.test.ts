@@ -29,6 +29,9 @@ describe("traceTitle", () => {
 
   it("names an agent task trace after its task", () => {
     expect(
+      traceTitle({ id, task_id: "drafting/redline-basic", scopeKey: "agent-task.drafting/redline-basic" }),
+    ).toBe("redline-basic · Trace");
+    expect(
       traceTitle({ id, task_id: "drafting/redline-basic", scopeKey: "drafting/redline-basic" }),
     ).toBe("redline-basic · Trace");
   });
