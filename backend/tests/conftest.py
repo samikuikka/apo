@@ -200,9 +200,14 @@ def open_dev_auth_bypass(request):
 
 @pytest.fixture(autouse=True)
 def reset_rate_limiters():
-    """Clear module-level rate limiter state between tests."""
+    """Clear module-level auth state between tests."""
+    from apo.auth.api_key_cache import api_key_cache
     from apo.auth.rate_limit import login_rate_limiter
 
+    # The api-key validation cache outlives its rows: a test that resets the
+    # DB leaves stale pk -> key_id entries, and the next Basic-auth request
+    # in the same process authenticates as the deleted key's id.
+    api_key_cache.invalidate_all()
     login_rate_limiter._attempts.clear()  # pyright: ignore[reportPrivateUsage]
     try:
         from apo.routes.auth import resend_rate_limiter
@@ -218,6 +223,23 @@ def reset_rate_limiters():
         resend_rate_limiter._attempts.clear()  # pyright: ignore[reportPrivateUsage]
     except ImportError:
         pass
+
+
+@pytest.fixture(autouse=True, scope="session")
+def file_engine_schema():
+    """Schema on the per-process FILE engine (apo.db.engine) for the whole run.
+
+    Routes that import apo.db.engine directly (health, admission identity)
+    bypass the get_session override and read this engine. Under parallel
+    workers a file-reading test may run before any init_db/reset_apo_file_db
+    caller in that worker; creating the schema once up front removes the
+    hidden ordering dependency. Tests that need a clean file DB call
+    reset_apo_file_db(), which drops and recreates it.
+    """
+    from apo.db import engine as file_engine
+
+    SQLModel.metadata.create_all(file_engine)
+    yield
 
 
 @pytest.fixture
