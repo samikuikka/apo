@@ -26,6 +26,7 @@ from apo.auth.api_key_auth import (
     validate_basic_auth,
     validate_legacy_bearer,
 )
+import apo.auth.api_key_cache as api_key_cache_module
 from apo.auth.api_key_cache import (
     ApiKeyCache,
     api_key_cache,
@@ -81,6 +82,25 @@ def _clear_cache() -> Any:
 # ---------------------------------------------------------------------------
 
 
+class _FakeClock:
+    """Patches the cache's clock seam so TTL expiry is advanced, not slept."""
+
+    def __init__(self) -> None:
+        self._elapsed: float = 0.0
+
+    def __call__(self) -> float:
+        return 1000.0 + self._elapsed
+
+    def advance(self, seconds: float) -> None:
+        self._elapsed += seconds
+
+
+def _install_fake_clock(monkeypatch: MonkeyPatch) -> _FakeClock:
+    clock = _FakeClock()
+    monkeypatch.setattr(api_key_cache_module, "monotonic", clock)
+    return clock
+
+
 class TestApiKeyCacheGetSet:
     def test_positive_hit_returns_cached_value(self) -> None:
         cache = ApiKeyCache(ttl_seconds=60, negative_ttl_seconds=60)
@@ -98,37 +118,49 @@ class TestApiKeyCacheGetSet:
         cache = ApiKeyCache(ttl_seconds=60, negative_ttl_seconds=60)
         assert cache.get("nonexistent") == "MISS"
 
-    def test_positive_entry_expires_after_ttl(self) -> None:
+    def test_positive_entry_expires_after_ttl(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        clock = _install_fake_clock(monkeypatch)
         cache = ApiKeyCache(ttl_seconds=1, negative_ttl_seconds=60)
         cache.set_positive("k1", _make_api_key())
         assert cache.get("k1") != "MISS"
-        time.sleep(1.1)
+        clock.advance(1.1)
         assert cache.get("k1") == "MISS"
 
-    def test_negative_entry_expires_after_negative_ttl(self) -> None:
+    def test_negative_entry_expires_after_negative_ttl(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        clock = _install_fake_clock(monkeypatch)
         cache = ApiKeyCache(ttl_seconds=60, negative_ttl_seconds=1)
         cache.set_negative("k1")
         assert cache.get("k1") is None
-        time.sleep(1.1)
+        clock.advance(1.1)
         assert cache.get("k1") == "MISS"
 
-    def test_sliding_expiration_refreshes_positive_ttl_on_get(self) -> None:
+    def test_sliding_expiration_refreshes_positive_ttl_on_get(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        clock = _install_fake_clock(monkeypatch)
         cache = ApiKeyCache(ttl_seconds=2, negative_ttl_seconds=60)
         cache.set_positive("k1", _make_api_key())
         # At 1s: still valid, get refreshes TTL for another 2s
-        time.sleep(1.0)
+        clock.advance(1.0)
         assert cache.get("k1") != "MISS"
         # At 2.5s: without refresh, the original 2s TTL would have expired (0.5s ago).
         # With sliding expiration, the get at 1s pushed expiry to 3s, so this is still valid.
-        time.sleep(1.5)
+        clock.advance(1.5)
         assert cache.get("k1") != "MISS"
 
-    def test_negative_entry_ttl_not_refreshed_on_get(self) -> None:
+    def test_negative_entry_ttl_not_refreshed_on_get(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        clock = _install_fake_clock(monkeypatch)
         cache = ApiKeyCache(ttl_seconds=60, negative_ttl_seconds=2)
         cache.set_negative("k1")
-        time.sleep(1.0)
+        clock.advance(1.0)
         assert cache.get("k1") is None  # Still within 2s window
-        time.sleep(1.1)
+        clock.advance(1.1)
         # Total elapsed 2.1s — negative TTL (2s) has elapsed even though we read at 1s.
         assert cache.get("k1") == "MISS"
 
@@ -292,8 +324,11 @@ class TestCacheKeyDerivation:
 
 
 class TestValidationCachingBasicExpiry:
-    def test_positive_cache_expires_after_ttl(self, session: Session) -> None:
+    def test_positive_cache_expires_after_ttl(
+        self, session: Session, monkeypatch: MonkeyPatch
+    ) -> None:
         """After the positive TTL elapses, the validation function hits the DB again."""
+        clock = _install_fake_clock(monkeypatch)
         local_cache = ApiKeyCache(ttl_seconds=1, negative_ttl_seconds=60)
         public_key, secret_key, hashed_secret_key, display = generate_key_pair()
         session.add(
@@ -320,8 +355,8 @@ class TestValidationCachingBasicExpiry:
             validate_basic_auth(public_key, secret_key, session)
             assert spy.call_count == 1
 
-            # Wait for positive TTL to expire, then re-lookup: DB hit again
-            time.sleep(1.1)
+            # Positive TTL expires, then re-lookup: DB hit again
+            clock.advance(1.1)
             validate_basic_auth(public_key, secret_key, session)
             assert spy.call_count == 2
 
@@ -378,8 +413,11 @@ class TestValidationCachingLegacy:
 
 
 class TestNewKeyAfterNegativeCache:
-    def test_new_key_found_after_negative_cache_expires(self, session: Session) -> None:
+    def test_new_key_found_after_negative_cache_expires(
+        self, session: Session, monkeypatch: MonkeyPatch
+    ) -> None:
         """A key created after a negative cache entry is found once the negative TTL expires."""
+        clock = _install_fake_clock(monkeypatch)
         # Use a cache with a short negative TTL (1s)
         local_cache = ApiKeyCache(ttl_seconds=300, negative_ttl_seconds=1)
         public_key, secret_key, hashed_secret_key, display = generate_key_pair()
@@ -410,8 +448,8 @@ class TestNewKeyAfterNegativeCache:
             result2 = validate_basic_auth(public_key, secret_key, session)
             assert result2 is None
 
-            # Wait for negative TTL to expire, then lookup finds the key
-            time.sleep(1.1)
+            # Negative TTL expires, then lookup finds the key
+            clock.advance(1.1)
             result3 = validate_basic_auth(public_key, secret_key, session)
             assert result3 is not None
             assert result3.public_key == public_key
