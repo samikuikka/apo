@@ -92,9 +92,19 @@ jobs:
         run: pnpm test:self-adoption-docs
 
   backend:
-    name: Typecheck + Test (Backend)
+    name: Backend tests (${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      # Filename-prefix halves, balanced on measured per-file test times
+      # ([a-m] ~214s vs [n-z] + benchmarks ~191s locally). A new test file
+      # matches exactly one shard by its name; nothing else to maintain.
+      matrix:
+        include:
+          - shard: a-m
+            paths: tests/test_[a-m]*.py
+          - shard: n-z
+            paths: tests/test_[n-z]*.py tests/benchmarks
     # The PostgreSQL gates (tests skipped without APO_TEST_POSTGRES_URL): the
     # migration ladder, the v44-v50 rungs, and the execution-lease claim race.
     # The SQLite suite cannot catch a dialect fault in a migration.
@@ -146,7 +156,7 @@ jobs:
         working-directory: backend
         run: uv sync --frozen
       - name: Typecheck
-        if: steps.npm_release.outputs.version_only != 'true'
+        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'a-m'
         working-directory: backend
         # basedpyright treats warnings as failures whenever GITHUB_ACTIONS is set,
         # even when --level error is requested. Keep the CI and local gates aligned.
@@ -159,22 +169,23 @@ jobs:
         # 4 workers match the runner's 4 vCPUs. Workers stay isolated: the
         # conftest keys each process's sqlite DB by pid, and the Postgres
         # gates create uuid-named throwaway databases. worksteal rebalances
-        # the skewed suite (slow files finish on one worker otherwise).
-        run: uv run pytest -x -q -n 4 --dist worksteal
+        # the skewed suite (slow files finish on one worker otherwise). The
+        # two shards each get a full runner, so each keeps 4 workers.
+        run: uv run pytest -x -q -n 4 --dist worksteal ${{ matrix.paths }}
       - name: Test apo-otel-python package
-        if: steps.npm_release.outputs.version_only != 'true'
+        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'n-z'
         # Orphaned suite found by the CI-covers-tests census; pytest is not in
         # the package env, so overlay it. Load-bearing command string.
         working-directory: packages/apo-otel-python
         run: uv run --with pytest pytest -q
       - name: Test langchain-apo package
-        if: steps.npm_release.outputs.version_only != 'true'
+        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'n-z'
         # Orphaned suite found by the CI-covers-tests census; langchain-core
         # lives in the package extras, so overlay both. Load-bearing command.
         working-directory: packages/langchain-apo
         run: uv run --with pytest --with langchain-core pytest -q
       - name: Test example-service-py
-        if: steps.npm_release.outputs.version_only != 'true'
+        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'n-z'
         # Orphaned suite found by the CI-covers-tests census (12 tests, <1s).
         working-directory: apps/example-service-py
         run: uv run pytest -q
