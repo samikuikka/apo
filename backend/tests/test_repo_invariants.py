@@ -278,7 +278,9 @@ def test_catchall_path_routes_do_not_shadow_later_routes() -> None:
 # unknown to CI and fail the census.
 
 _CI_TEST_INVOCATIONS: dict[str, str] = {
-    "uv run pytest -x -q": "backend/tests",
+    # The full command, flags included: the suite is only fast because it is
+    # parallel, so a silent revert of the xdist flags must fail this census.
+    "uv run pytest -x -q -n 4 --dist worksteal": "backend/tests",
     "uv run pytest -q": "apps/example-service-py/tests",
     "uv run --with pytest pytest -q": "packages/apo-otel-python/tests",
     "uv run --with pytest --with langchain-core pytest -q": "packages/langchain-apo/tests",

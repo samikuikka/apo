@@ -129,17 +129,22 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: echo "version_only=$(node scripts/is-version-only-npm-release.mjs "$BASE_SHA" "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+      # node_modules live on the n-z leg only: the one test that needs them
+      # (test_otel_end_to_end.py imports the SDK from source) starts with
+      # 'o'. The a-m leg spawns no node processes, so it skips the ~30s of
+      # pnpm/node setup; its version-only detect step uses the runner's
+      # preinstalled node.
       - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
-        if: steps.npm_release.outputs.version_only != 'true'
+        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'n-z'
         with:
           version: 11.3.0
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        if: steps.npm_release.outputs.version_only != 'true'
+        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'n-z'
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-        if: steps.npm_release.outputs.version_only != 'true'
+        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'n-z'
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         if: steps.npm_release.outputs.version_only != 'true'
         with:
