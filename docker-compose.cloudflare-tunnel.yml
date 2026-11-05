@@ -39,6 +39,10 @@ services:
       # docs site block in the Caddyfile is always valid but matches no traffic
       # when the public-docs overlay is absent. apo-mode tunnel overrides this.
       - APO_DOCS_HOST=${APO_DOCS_HOST:-apo-docs-disabled.invalid}
+      # Umami analytics host, same reserved-TLD trick as the docs host. The
+      # umami overlay requires a real value; without the overlay this default
+      # keeps the Caddyfile block valid but matching no traffic.
+      - APO_UMAMI_HOST=${APO_UMAMI_HOST:-umami-disabled.invalid}
       # Trust the private Compose network peer (cloudflared).
       - APO_TRUSTED_PROXY_RANGES=private_ranges
       - APO_TELEMETRY_MAX_REQUEST_BYTES=${APO_TELEMETRY_MAX_REQUEST_BYTES:-10485760}

@@ -4,6 +4,8 @@ credentials-file: /etc/cloudflared/credentials.json
 ingress:
   - hostname: docs.test-apo.online
     service: http://caddy:8080
+  - hostname: umami.test-apo.online
+    service: http://caddy:8080
   - hostname: test-apo.online
     service: http://caddy:8080
   - service: http_status:404

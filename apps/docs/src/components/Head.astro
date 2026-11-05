@@ -16,6 +16,12 @@ const OG_IMAGE = new URL("/og-landing.png", Astro.site).href;
 const TITLE = (entry.data.title as string) ?? id;
 const DESCRIPTION = (entry.data.description as string) ?? undefined;
 
+// Cookieless Umami beacon for the operator's deployment. Both build-time vars
+// are set by the umami Compose overlay; local builds leave them unset and the
+// docs carry no analytics.
+const UMAMI_URL = import.meta.env.PUBLIC_UMAMI_URL as string | undefined;
+const UMAMI_WEBSITE_ID = import.meta.env.PUBLIC_UMAMI_WEBSITE_ID as string | undefined;
+
 const ORG = {
 	"@context": "https://schema.org",
 	"@type": "TechArticle",
@@ -58,3 +64,6 @@ const ORG = {
 <meta property="og:image:alt" content="apo — executable specifications for harness engineering" />
 <meta name="twitter:image" content={OG_IMAGE} />
 <script type="application/ld+json" set:html={JSON.stringify(ORG)} />
+{UMAMI_URL && UMAMI_WEBSITE_ID && (
+	<script defer src={`${UMAMI_URL}/script.js`} data-website-id={UMAMI_WEBSITE_ID}></script>
+)}

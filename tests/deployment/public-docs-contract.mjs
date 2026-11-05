@@ -15,11 +15,12 @@ import { readFileSync } from "node:fs";
 
 const DOCS_HOST = "docs.test-apo.online";
 const APP_HOST = "test-apo.online";
+const UMAMI_HOST = "umami.test-apo.online";
 
 const renderedPath = process.argv[2];
 if (!renderedPath) {
   throw new Error(
-    "usage: node tests/deployment/public-docs-contract.mjs <rendered-compose.json>",
+    "usage: node tests/deployment/public-docs-contract.mjs <rendered-compose.json> [rendered-umami-compose.json]",
   );
 }
 const rendered = JSON.parse(readFileSync(renderedPath, "utf8"));
@@ -163,7 +164,96 @@ assert(
   "both hostnames must target http://caddy:8080",
 );
 
-console.log("public docs contract: ok");
+// ---------------------------------------------------------------------------
+// 10. Without the umami overlay, the umami host falls back to the reserved
+//     never-resolving TLD so the shared Caddyfile stays valid.
+// ---------------------------------------------------------------------------
+assertEnvironment(caddy, "APO_UMAMI_HOST", "umami-disabled.invalid");
+
+// ---------------------------------------------------------------------------
+// 11. Umami overlay: isolated analytics service, own database, no Apo secrets.
+// ---------------------------------------------------------------------------
+const umamiRenderedPath = process.argv[3];
+if (!umamiRenderedPath) {
+  console.log("public docs contract: ok (umami overlay not rendered)");
+} else {
+  const umamiStack = JSON.parse(readFileSync(umamiRenderedPath, "utf8"));
+
+  const umami = umamiStack.services?.umami;
+  assert(umami, "umami overlay must define a 'umami' service");
+  assertNoHostPorts(umami, "umami service must expose no host ports");
+  assertContainerPort(umami, 3000, "umami service must expose container port 3000");
+  assert(umami.read_only === true, "umami service must be read_only: true");
+  assert(
+    Array.isArray(umami.cap_drop) && umami.cap_drop.includes("ALL"),
+    "umami service must cap_drop: [ALL]",
+  );
+  assert(
+    Array.isArray(umami.security_opt) &&
+      umami.security_opt.includes("no-new-privileges:true"),
+    "umami service must set no-new-privileges:true",
+  );
+
+  const umamiEnv = umami.environment ?? {};
+  assert(
+    typeof umamiEnv.DATABASE_URL === "string" &&
+      umamiEnv.DATABASE_URL.startsWith("postgresql://umami:"),
+    "umami DATABASE_URL must target the overlay's own postgres, not an Apo database",
+  );
+  assert(
+    umamiEnv.UMAMI_DISABLE_TELEMETRY === "1",
+    "umami service must disable its own telemetry collection",
+  );
+  for (const key of ["AUTH_SECRET", "APO_CLOUDFLARE_TUNNEL_TOKEN", "TUNNEL_TOKEN"]) {
+    assert(!(key in umamiEnv), `umami service must not receive secret ${key}`);
+  }
+
+  const umamiDb = umamiStack.services?.["umami-db"];
+  assert(umamiDb, "umami overlay must define a 'umami-db' service");
+  assertNoHostPorts(umamiDb, "umami-db service must expose no host ports");
+
+  const umamiCaddy = umamiStack.services?.caddy;
+  assertEnvironment(umamiCaddy, "APO_UMAMI_HOST", UMAMI_HOST);
+  const caddyUmamiDep = umamiCaddy.depends_on?.umami;
+  assert(
+    caddyUmamiDep?.condition === "service_healthy",
+    "caddy must depend on umami service_healthy",
+  );
+
+  const docsBuildArgs = umamiStack.services?.docs?.build?.args ?? {};
+  assert(
+    docsBuildArgs.PUBLIC_UMAMI_URL === `https://${UMAMI_HOST}`,
+    "docs build must receive PUBLIC_UMAMI_URL when the umami overlay is active",
+  );
+  assert(
+    typeof docsBuildArgs.PUBLIC_UMAMI_WEBSITE_ID === "string" &&
+      docsBuildArgs.PUBLIC_UMAMI_WEBSITE_ID.length > 0,
+    "docs build must receive PUBLIC_UMAMI_WEBSITE_ID when the umami overlay is active",
+  );
+
+  // Caddy routes the umami host terminally, never reaching the backend.
+  const umamiBlockIdx = caddyfile.indexOf("{$APO_UMAMI_HOST}");
+  assert(umamiBlockIdx !== -1, "Caddyfile must define a {$APO_UMAMI_HOST} site block");
+  const umamiBlock = caddyfile.slice(umamiBlockIdx, appBlockIdx);
+  assert(
+    umamiBlock.includes("reverse_proxy umami:3000"),
+    "umami host block must proxy only to umami:3000",
+  );
+  assert(
+    !umamiBlock.includes("backend:8000"),
+    "umami host block must never reach the backend",
+  );
+
+  // Tunnel publishes the umami hostname before the terminal 404.
+  const umamiIngressIdx = tunnelConfig.indexOf(`hostname: ${UMAMI_HOST}`);
+  assert(umamiIngressIdx !== -1, `tunnel ingress must include ${UMAMI_HOST}`);
+  assert(
+    docsIngressIdx < umamiIngressIdx && umamiIngressIdx < catch404Idx,
+    "tunnel ingress must list the umami host between docs and the terminal 404",
+  );
+
+  console.log("public docs contract: ok");
+}
 
 // ---------------------------------------------------------------------------
 // helpers

@@ -31,6 +31,11 @@ const PAGE_DESCRIPTION =
 	"You built an agent. It passes your tests. It breaks with real users. apo runs the real thing and shows you what broke.";
 const OG_IMAGE = new URL("/og-landing.png", Astro.site).href;
 const CANONICAL = new URL("/", Astro.site).href;
+// Same cookieless Umami beacon as Head.astro emits for docs pages; the
+// landing bypasses Starlight so it carries its own copy. Unset for local
+// builds, so no analytics outside the operator's deployment.
+const UMAMI_URL = import.meta.env.PUBLIC_UMAMI_URL as string | undefined;
+const UMAMI_WEBSITE_ID = import.meta.env.PUBLIC_UMAMI_WEBSITE_ID as string | undefined;
 ---
 
 <!doctype html>
@@ -96,6 +101,9 @@ const CANONICAL = new URL("/", Astro.site).href;
 				],
 			})}
 		/>
+		{UMAMI_URL && UMAMI_WEBSITE_ID && (
+			<script defer src={`${UMAMI_URL}/script.js`} data-website-id={UMAMI_WEBSITE_ID}></script>
+		)}
 	</head>
 	<body>
 		<!-- Nav, matches the docs header: brand mark + wordmark, section tabs,

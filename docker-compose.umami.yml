@@ -1,0 +1,88 @@
+# Operator analytics overlay: self-hosted Umami behind the same ingress.
+#
+# Optional: only the project operator's public deployment uses this. It serves
+# the docs beacon endpoint and dashboard at https://umami.test-apo.online.
+# Selected by `scripts/apo-mode tunnel`, layered over the tunnel Compose stack.
+#
+# Umami receives no Apo credential, repository mount, or shared database. Its
+# postgres is private to this overlay. The docs container stays secret-free;
+# docs pages only reference Umami's public script URL.
+
+services:
+  umami-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: ${APO_UMAMI_DB_PASSWORD:?Set APO_UMAMI_DB_PASSWORD (scripts/apo-mode tunnel generates one)}
+    volumes:
+      - umami_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umami -d umami"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  umami:
+    # ghcr publishes no v3 version tags, only `latest` and the v2 line, so the
+    # digest is the reproducible pin. The pinned digest was verified end to
+    # end (pageviews, per-page paths, custom events) on 2026-11-05. Bump it
+    # deliberately, then re-verify login + Pages panel before pushing.
+    image: ghcr.io/umami-software/umami:latest@sha256:e69d1a7932e9dab0fc523edc7be1f3a53f3c261f57856fc2167ae74a8fc022e8
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DATABASE_URL: postgresql://umami:${APO_UMAMI_DB_PASSWORD:?Set APO_UMAMI_DB_PASSWORD}@umami-db:5432/umami
+      APP_SECRET: ${APO_UMAMI_APP_SECRET:?Set APO_UMAMI_APP_SECRET (scripts/apo-mode tunnel generates one)}
+      UMAMI_DISABLE_TELEMETRY: "1"
+    expose:
+      - "3000"
+    depends_on:
+      umami-db:
+        condition: service_healthy
+    healthcheck:
+      # The image's Next.js standalone server binds the interface its
+      # HOSTNAME resolves to (the container IP), never loopback, and this
+      # build has no /api/health route. Probe the bound interface on /login,
+      # which the beacon path also depends on.
+      test: ["CMD-SHELL", "wget -qO- http://$$HOSTNAME:3000/login > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    environment:
+      - APO_UMAMI_HOST=${APO_UMAMI_HOST:?Set APO_UMAMI_HOST to the public umami hostname}
+    depends_on:
+      umami:
+        condition: service_healthy
+
+  docs:
+    build:
+      context: .
+      dockerfile: apps/docs/Dockerfile
+      args:
+        PUBLIC_UMAMI_URL: ${PUBLIC_UMAMI_URL:-}
+        PUBLIC_UMAMI_WEBSITE_ID: ${PUBLIC_UMAMI_WEBSITE_ID:-}
+
+volumes:
+  umami_db_data:

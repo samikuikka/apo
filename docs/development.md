@@ -501,7 +501,20 @@ The fastest path is the root `pnpm dev`, which starts all four services concurre
   `pnpm test:public-docs` renders the tunnel + public-docs Compose stack and
   asserts the docs service is hardened (read-only, no caps, no secrets, no host
   port), Caddy routes the docs host terminally, and the Cloudflare Tunnel
-  publishes both hostnames.
+  publishes both hostnames. The same contract also renders the umami overlay
+  and asserts the analytics service stays isolated (own postgres, no Apo
+  secrets, no host port).
+- **Docs analytics (operator only)**: `docker-compose.umami.yml` adds
+  self-hosted Umami at `umami.test-apo.online` behind the same Caddy,
+  selected by `scripts/apo-mode tunnel`, which generates
+  `APO_UMAMI_APP_SECRET` and `APO_UMAMI_DB_PASSWORD` into `.env` on first
+  use. Docs pages carry its cookieless beacon only when
+  `PUBLIC_UMAMI_URL` + `PUBLIC_UMAMI_WEBSITE_ID` are set at docs build time.
+  First rollout: create the Cloudflare DNS/tunnel route for the hostname,
+  `scripts/apo-mode tunnel`, log in to Umami (default `admin`/`umami`) and
+  change the password, create a website for `docs.test-apo.online`, put its id
+  in `.env` as `PUBLIC_UMAMI_WEBSITE_ID`, then `scripts/apo-mode tunnel
+  --build` so the docs image rebuilds with the beacon.
 
 ### API Documentation
 

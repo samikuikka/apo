@@ -11,7 +11,6 @@
 # (/login, /join) and CLI routes (/auth/*, /v1/*) reach the application
 # unauthenticated; Apo's session/API-key auth and Project authorization are
 # the only security boundary.
-
 {
 	servers {
 		timeouts {
@@ -23,13 +22,30 @@
 	}
 }
 
-{$APO_DOCS_HOST} {
-	# Public docs host — terminal, unauthenticated, static only.
+# Host-routed blocks on the tunnel listener (:8080). The explicit http://
+# scheme plus port keeps these on the same plain-HTTP listener cloudflared
+# targets: a bare hostname would default to :443, where no tunnel traffic
+# ever arrives, and Caddy would retry ACME forever (certmagic manages any
+# configured hostname unless the scheme is explicitly http://). The
+# docs/umami overlays only ride the tunnel stack, so this is fixed by
+# construction.
+http://{$APO_DOCS_HOST}:8080 {
+	# Public docs host is terminal, unauthenticated, static only.
 	# Every path on this host proxies to the docs container and never
 	# reaches the backend, OTLP handler, or readiness probe.
 	handle {
 		encode zstd gzip
 		reverse_proxy docs:8080
+	}
+}
+
+http://{$APO_UMAMI_HOST}:8080 {
+	# Umami analytics host is terminal at the ingress. Umami owns its admin
+	# auth; the beacon endpoint it serves is public by design. No Apo
+	# secret crosses this boundary.
+	handle {
+		encode zstd gzip
+		reverse_proxy umami:3000
 	}
 }
 
