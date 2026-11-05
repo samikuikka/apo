@@ -12,6 +12,7 @@ import { CommentDrawer } from "./CommentDrawer";
 import { HeaderPill } from "./HeaderPill";
 import { formatDate, formatMetaParts } from "./call-detail-utils";
 import { sumCacheTokens } from "./trace-tree-utils";
+import { wholeCallTokens } from "@/lib/cumulative-metrics";
 import { toggleBookmark } from "@/lib/traces-api";
 import { useProjectId } from "@/lib/project-router";
 import { taskDetailHref } from "@/lib/task-routes";
@@ -67,7 +68,9 @@ function TraceDetailRootView({
   const [showScorePanel, setShowScorePanel] = useState(false);
   const [bookmarked, setBookmarked] = useState<boolean>(run.run.bookmarked ?? false);
   const totalCost = run.calls.reduce((sum: number, c) => sum + (c.cost || 0), 0);
-  const totalTokens = run.calls.reduce((sum: number, c) => sum + (c.total_tokens || 0), 0);
+  // Disjoint basis (uncached + read + write + completion), matching the
+  // Tokens tab below; the column sum contradicts it on net-column runs.
+  const totalTokens = run.calls.reduce((sum: number, c) => sum + wholeCallTokens(c), 0);
   const cacheTokens = sumCacheTokens(run.calls);
   // Reasoning total (issue #309): a model-call fact, like every reasoning
   // surface — GENERATION observations only, and errored generations skip

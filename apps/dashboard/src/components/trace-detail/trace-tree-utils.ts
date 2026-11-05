@@ -1,11 +1,13 @@
 import type { TraceObservation } from "./contexts";
-import { callCacheTokens } from "@/lib/cumulative-metrics";
+import { callCacheTokens, wholeCallTokens } from "@/lib/cumulative-metrics";
 import { formatCostMicro, formatDuration, formatInputCacheSplit, formatTokenTotal } from "@/lib/format";
 
 /** Aggregated duration / tokens / cost for a whole run (the TraceTree root row). */
 export function getRunSummary(calls: TraceObservation[]) {
   const totalDuration = calls.reduce((sum, call) => sum + (call.latency_ms ?? 0), 0);
-  const totalTokens = calls.reduce((sum, call) => sum + (call.total_tokens ?? 0), 0);
+  // Same disjoint basis as the split in tokensTitle, so the chip cannot
+  // contradict its own hover on runs whose columns are net of cache.
+  const totalTokens = calls.reduce((sum, call) => sum + wholeCallTokens(call), 0);
   const totalCost = calls.reduce((sum, call) => sum + (call.cost ?? 0), 0);
   const cache = sumCacheTokens(calls);
 

@@ -504,6 +504,23 @@ describe("runs show command", () => {
     expect(stripAnsi(logs.join("\n"))).toMatch(/^  Tokens:   848,745$/m);
   });
 
+  it("drops the cache part when it exceeds the net total it would annotate", async () => {
+    // A pre-#131 run: the columns are net of cache (input 4, read 33,746,
+    // write 33,746), so the suffix would claim 67k of cache inside 369.
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(makeRun({
+        total_tokens: 369,
+        generation_usage: { cache_read_tokens: 33_746, cache_write_tokens: 33_746 },
+      })),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    expect(stripAnsi(logs.join("\n"))).toMatch(/^  Tokens:   369$/m);
+  });
+
   it("prints reasoning with the call that dominates it", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse(makeRun({

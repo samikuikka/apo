@@ -257,7 +257,7 @@ function printRunDetail(run: RunDetail, verbose: boolean): void {
   console.log(`  Cost:     ${formatCost(run.total_cost)}${formatPartialCostSuffix(run)}`);
   if (run.total_tokens != null && run.total_tokens > 0) {
     console.log(
-      `  Tokens:   ${run.total_tokens.toLocaleString()}${formatCachedSuffix(run.generation_usage)}${formatErroredGenerationSuffix(run.generation_execution)}`,
+      `  Tokens:   ${run.total_tokens.toLocaleString()}${formatCachedSuffix(run.total_tokens, run.generation_usage)}${formatErroredGenerationSuffix(run.generation_execution)}`,
     );
   }
   if (run.total_reasoning_tokens != null) {
@@ -459,10 +459,15 @@ function formatPartialCostSuffix(run: RunDetail): string {
   return reasons.length > 0 ? dim(` (partial — ${reasons.join(", ")})`) : "";
 }
 
-function formatCachedSuffix(usage?: GenerationUsage | null): string {
+/** ` (N read from cache, M written to cache)` for cache parts that sit
+ * inside the total the suffix annotates. Runs aggregated before the columns
+ * went gross (issue #131) carry net totals, where the claim would overcount,
+ * so the suffix drops instead. */
+function formatCachedSuffix(total: number | null | undefined, usage?: GenerationUsage | null): string {
   const read = usage?.cache_read_tokens ?? 0;
   const write = usage?.cache_write_tokens ?? 0;
   if (read <= 0 && write <= 0) return "";
+  if (total == null || read + write > total) return "";
   return dim(` (${read.toLocaleString()} read from cache, ${write.toLocaleString()} written to cache)`);
 }
 
