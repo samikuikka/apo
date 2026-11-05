@@ -425,3 +425,66 @@ def test_every_test_file_runs_in_ci_or_is_exempt() -> None:
             )
 
     assert not problems, "\n".join(problems)
+
+
+def _backend_shard_path_args() -> list[str]:
+    """The space-separated pytest path arguments of each backend CI shard leg."""
+    document = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    matrix = document["jobs"]["backend"]["strategy"]["matrix"]["include"]
+    args: list[str] = []
+    for entry in matrix:
+        args.extend(str(entry["paths"]).split())
+    return args
+
+
+def test_backend_shard_args_cover_every_test_file() -> None:
+    """No backend test file may fall outside every CI shard's path arguments.
+
+    pytest collects test_*.py AND *_test.py by default, but the shard globs
+    only match test_[a-m]* / test_[n-z]* at the top level, so a future file
+    named foo_test.py (or tests in a new subdirectory) would match neither
+    leg and silently never run. Expand the shard args exactly as the shell
+    would and fail on any test file left uncovered.
+    """
+    import fnmatch
+
+    tests_root = REPO_ROOT / "backend" / "tests"
+
+    def _collectable(path: Path) -> bool:
+        # pytest's default python_files patterns: test_*.py and *_test.py.
+        name = path.name
+        return path.is_file() and name != "conftest.py" and (
+            name.startswith("test_") or name.endswith("_test.py")
+        ) and name.endswith(".py")
+
+    required = {
+        path for path in tests_root.rglob("*") if _collectable(path)
+    }
+    covered: set[Path] = set()
+    for arg in _backend_shard_path_args():
+        relative = arg.removeprefix("tests/")
+        if any(char in relative for char in "*?["):
+            # Single-level shell glob, e.g. test_[a-m]*.py: top-level files only.
+            covered.update(
+                path
+                for path in tests_root.iterdir()
+                if path.is_file() and fnmatch.fnmatch(path.name, relative)
+            )
+        else:
+            # A plain directory or file argument: everything pytest collects
+            # under it.
+            target = tests_root / relative
+            if target.is_dir():
+                covered.update(path for path in target.rglob("*") if _collectable(path))
+            elif target.is_file():
+                covered.add(target)
+
+    uncovered = [
+        str(path.relative_to(REPO_ROOT)) for path in sorted(required - covered)
+    ]
+    assert not uncovered, (
+        "Backend test files no CI shard collects; add them to a matrix leg's "
+        "paths in .github/workflows/ci.yml:\n" + "\n".join(uncovered)
+    )
