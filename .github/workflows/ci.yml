@@ -141,7 +141,11 @@ jobs:
         working-directory: backend
         env:
           APO_TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/postgres
-        run: uv run pytest -x -q
+        # 4 workers match the runner's 4 vCPUs. Workers stay isolated: the
+        # conftest keys each process's sqlite DB by pid, and the Postgres
+        # gates create uuid-named throwaway databases. worksteal rebalances
+        # the skewed suite (slow files finish on one worker otherwise).
+        run: uv run pytest -x -q -n 4 --dist worksteal
       - name: Test apo-otel-python package
         if: steps.npm_release.outputs.version_only != 'true'
         # Orphaned suite found by the CI-covers-tests census; pytest is not in
