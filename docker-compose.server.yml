@@ -34,6 +34,11 @@ services:
       # Keep the shared Caddyfile's optional docs site syntactically valid when
       # the public-docs overlay is absent. The overlay replaces this value.
       - APO_DOCS_HOST=${APO_DOCS_HOST:-apo-docs-disabled.invalid}
+      # Host-routed docs/umami site addresses. Direct mode passes the bare
+      # hostname (HTTPS on 443, ACME-managed), unlike the tunnel stack which
+      # composes an explicit http://host:8080 address.
+      - APO_DOCS_SITE_ADDR=${APO_DOCS_SITE_ADDR:-${APO_DOCS_HOST:-apo-docs-disabled.invalid}}
+      - APO_UMAMI_SITE_ADDR=${APO_UMAMI_SITE_ADDR:-${APO_UMAMI_HOST:-umami-disabled.invalid}}
       # Non-routable default so direct callers cannot forge forwarding headers.
       - APO_TRUSTED_PROXY_RANGES=192.0.2.0/24
       - APO_TELEMETRY_MAX_REQUEST_BYTES=${APO_TELEMETRY_MAX_REQUEST_BYTES:-10485760}

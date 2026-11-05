@@ -103,9 +103,9 @@ assert(
 // 8. Caddy routing is host-terminal.
 // ---------------------------------------------------------------------------
 const caddyfile = readFileSync("deploy/self-host/Caddyfile", "utf8");
-const docsBlockIdx = caddyfile.indexOf("{$APO_DOCS_HOST}");
+const docsBlockIdx = caddyfile.indexOf("{$APO_DOCS_SITE_ADDR}");
 const appBlockIdx = caddyfile.indexOf("{$APO_CADDY_SITE_ADDRESS}");
-assert(docsBlockIdx !== -1, "Caddyfile must define a {$APO_DOCS_HOST} site block");
+assert(docsBlockIdx !== -1, "Caddyfile must define a {$APO_DOCS_SITE_ADDR} site block");
 assert(appBlockIdx !== -1, "Caddyfile must define the {$APO_CADDY_SITE_ADDRESS} app block");
 assert(
   docsBlockIdx < appBlockIdx,
@@ -141,6 +141,10 @@ assert(
   "application host block must still proxy the frontend",
 );
 assertEnvironment(caddy, "APO_DOCS_HOST", DOCS_HOST);
+// Tunnel render composes an explicit http site address so the host block
+// joins the :8080 listener (a bare hostname would default to :443 and
+// trigger endless ACME retries behind the tunnel).
+assertEnvironment(caddy, "APO_DOCS_SITE_ADDR", `http://${DOCS_HOST}:8080`);
 
 // ---------------------------------------------------------------------------
 // 9. Locally managed tunnel publishes both hostnames.
@@ -169,6 +173,7 @@ assert(
 //     never-resolving TLD so the shared Caddyfile stays valid.
 // ---------------------------------------------------------------------------
 assertEnvironment(caddy, "APO_UMAMI_HOST", "umami-disabled.invalid");
+assertEnvironment(caddy, "APO_UMAMI_SITE_ADDR", "http://umami-disabled.invalid:8080");
 
 // ---------------------------------------------------------------------------
 // 11. Umami overlay: isolated analytics service, own database, no Apo secrets.
@@ -232,8 +237,8 @@ if (!umamiRenderedPath) {
   );
 
   // Caddy routes the umami host terminally, never reaching the backend.
-  const umamiBlockIdx = caddyfile.indexOf("{$APO_UMAMI_HOST}");
-  assert(umamiBlockIdx !== -1, "Caddyfile must define a {$APO_UMAMI_HOST} site block");
+  const umamiBlockIdx = caddyfile.indexOf("{$APO_UMAMI_SITE_ADDR}");
+  assert(umamiBlockIdx !== -1, "Caddyfile must define a {$APO_UMAMI_SITE_ADDR} site block");
   const umamiBlock = caddyfile.slice(umamiBlockIdx, appBlockIdx);
   assert(
     umamiBlock.includes("reverse_proxy umami:3000"),
@@ -243,6 +248,12 @@ if (!umamiRenderedPath) {
     !umamiBlock.includes("backend:8000"),
     "umami host block must never reach the backend",
   );
+
+  // Host blocks carry mode-composed site addresses. Direct mode
+  // (docker-compose.server.yml) passes the bare hostname, serving HTTPS on
+  // 443 with its own certificate; the tunnel render composes the explicit
+  // http://host:8080 address asserted above for docs.
+  assertEnvironment(umamiCaddy, "APO_UMAMI_SITE_ADDR", `http://${UMAMI_HOST}:8080`);
 
   // Tunnel publishes the umami hostname before the terminal 404.
   const umamiIngressIdx = tunnelConfig.indexOf(`hostname: ${UMAMI_HOST}`);
