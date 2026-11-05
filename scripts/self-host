@@ -85,10 +85,11 @@ _parse_line() {
 }
 
 _select_compose_files() {
-  local env_file="$1" profile db ingress
+  local env_file="$1" profile db ingress docs_host
   profile="$(grep -E '^APO_DEPLOYMENT_PROFILE=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- || true)"
   db="$(grep -E '^APO_DATABASE_PROFILE=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- || true)"
   ingress="$(grep -E '^APO_INGRESS_MODE=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  docs_host="$(grep -E '^APO_DOCS_HOST=' "$env_file" 2>/dev/null | head -1 | cut -d= -f2- || true)"
   profile="${profile:-local}"; db="${db:-sqlite}"; ingress="${ingress:-caddy}"
   local files=("${_REPO_ROOT}/docker-compose.yml")
   [[ "$db" == "postgres" ]] && files+=("${_REPO_ROOT}/docker-compose.postgres.yml")
@@ -98,6 +99,12 @@ _select_compose_files() {
     else
       files+=("${_REPO_ROOT}/docker-compose.server.yml")
     fi
+    # The public docs overlay is the operator's opt-in: it layers the static
+    # docs service and its caddy host onto the stack. Setting APO_DOCS_HOST is
+    # the switch, because the overlay itself refuses to start without it. With
+    # it included here, a plain `self-host up --build` rebuilds the docs image
+    # on every production update instead of leaving a stale container behind.
+    [[ -n "$docs_host" ]] && files+=("${_REPO_ROOT}/docker-compose.public-docs.yml")
   fi
   printf '%s\n' "${files[@]}"
 }
