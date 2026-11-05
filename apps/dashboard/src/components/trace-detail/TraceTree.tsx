@@ -24,7 +24,7 @@ import { getSemanticType, getEventType } from "./trace-utils";
 // views) and is imported here for local use; import it directly from
 // ./trace-display. getRunSummary lives in ./trace-tree-utils.
 import { getDisplayName } from "./trace-display";
-import { getRunSummary } from "./trace-tree-utils";
+import { buildTraceChildrenIndex, getRunSummary, type TraceChildrenIndex } from "./trace-tree-utils";
 import {
   ChevronRight,
   ChevronsDownUp,
@@ -96,12 +96,12 @@ const TYPE_CONFIG = {
   SPAN:       { icon: FileText,  label: "SPAN",  barColor: "bg-foreground/20",        color: "text-muted-foreground",   bg: "bg-muted/30" },
 } as const;
 
-function computeTimingBounds(calls: TraceObservation[]) {
+function computeTimingBounds(calls: TraceObservation[], index: TraceChildrenIndex) {
   if (calls.length === 0) return { minTs: 0, maxTs: 0, spanMs: 1 };
   let minTs = Infinity;
   let maxTs = -Infinity;
   for (const c of calls) {
-    const start = new Date(c.created_at).getTime();
+    const start = index.startMsById.get(c.id) ?? 0;
     const end = start + (c.latency_ms ?? 0);
     if (start < minTs) minTs = start;
     if (end > maxTs) maxTs = end;
@@ -110,18 +110,10 @@ function computeTimingBounds(calls: TraceObservation[]) {
   return { minTs, maxTs, spanMs };
 }
 
-function getChildren(callId: string | null, calls: TraceObservation[]): TraceObservation[] {
-  return calls
-    .filter((c) => (callId === null ? !c.parent_call_id : c.parent_call_id === callId))
-    .sort((a, b) => {
-      // Prefer step_index when spans carry it (Langfuse/OTLP traces). Agent-task
-      // spans leave it null, so fall back to created_at to preserve the real
-      // chronological order — otherwise siblings render in arbitrary array order.
-      const ai = a.step_index;
-      const bi = b.step_index;
-      if (ai != null && bi != null) return ai - bi;
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    });
+function getChildren(callId: string | null, index: TraceChildrenIndex): TraceObservation[] {
+  // Sibling order (step_index, then chronological created_at) was applied once
+  // when the index was built — see compareSiblings in ./trace-tree-utils.
+  return index.childrenByParent.get(callId) ?? [];
 }
 
 // getDisplayName and cleanSpanName live in ./trace-display and getRunSummary
@@ -338,6 +330,7 @@ function TreeNode({
   treeLines,
   searchQuery,
   runLabel,
+  runSummary,
   timingBounds,
   cumulative,
   totalCost,
@@ -353,6 +346,7 @@ function TreeNode({
   treeLines: boolean[];
   searchQuery: string;
   runLabel: string;
+  runSummary: ReturnType<typeof getRunSummary>;
   timingBounds: ReturnType<typeof computeTimingBounds>;
   cumulative?: CumulativeMetrics | undefined;
   totalCost: number;
@@ -366,7 +360,6 @@ function TreeNode({
   const isRun = node.type === "run";
   const semanticType = isRun ? "TRACE" : getSemanticType(node.call);
   const Icon = TYPE_CONFIG[semanticType].icon;
-  const runSummary = getRunSummary(calls);
   const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleMouseEnter = useCallback(() => {
@@ -480,12 +473,13 @@ function flattenTree(
   calls: TraceObservation[],
   expanded: Set<string>,
   searchQuery: string,
+  index: TraceChildrenIndex,
 ): Array<{ node: FlatNode; treeLines: boolean[] }> {
   const result: Array<{ node: FlatNode; treeLines: boolean[] }> = [];
-  const matchingIds = getMatchingIds(calls, searchQuery);
+  const matchingIds = getMatchingIds(calls, searchQuery, index);
   const isSearch = searchQuery.trim().length > 0;
   const runId = "root-run";
-  const rootCalls = getVisibleChildren(null, calls, matchingIds);
+  const rootCalls = getVisibleChildren(null, index, matchingIds);
 
   result.push({
     node: { id: runId, type: "run", call: null, level: 0, isLastSibling: true, hasChildren: rootCalls.length > 0 },
@@ -494,7 +488,7 @@ function flattenTree(
 
   if ((expanded.has(runId) || isSearch) && rootCalls.length > 0) {
     function traverse(call: TraceObservation, level: number, isLast: boolean, lines: boolean[]) {
-      const children = getVisibleChildren(call.id, calls, matchingIds);
+      const children = getVisibleChildren(call.id, index, matchingIds);
       result.push({
         node: { id: call.id, type: "call", call, level, isLastSibling: isLast, hasChildren: children.length > 0 },
         treeLines: [...lines, !isLast],
@@ -509,22 +503,21 @@ function flattenTree(
   return result;
 }
 
-function getVisibleChildren(callId: string | null, calls: TraceObservation[], matchingIds: Set<string> | null) {
-  const children = getChildren(callId, calls);
+function getVisibleChildren(callId: string | null, index: TraceChildrenIndex, matchingIds: Set<string> | null) {
+  const children = getChildren(callId, index);
   return matchingIds ? children.filter((c) => matchingIds.has(c.id)) : children;
 }
 
-function getMatchingIds(calls: TraceObservation[], searchQuery: string): Set<string> | null {
+function getMatchingIds(calls: TraceObservation[], searchQuery: string, index: TraceChildrenIndex): Set<string> | null {
   const q = searchQuery.trim().toLowerCase();
   if (!q) return null;
-  const byId = new Map(calls.map((c) => [c.id, c]));
   const included = new Set<string>();
   for (const call of calls) {
     if (!matchesCall(call, q)) continue;
     let cur: TraceObservation | undefined = call;
     while (cur) {
       included.add(cur.id);
-      cur = cur.parent_call_id ? byId.get(cur.parent_call_id) : undefined;
+      cur = cur.parent_call_id ? index.byId.get(cur.parent_call_id) : undefined;
     }
   }
   return included;
@@ -641,6 +634,8 @@ export function TraceTree({
     };
   }, [run, evaluation, spanVerdicts, verdictRowsVisible, phaseSummary]);
   const callsById = useMemo(() => new Map(calls.map((c) => [c.id, c])), [calls]);
+  const childrenIndex = useMemo(() => buildTraceChildrenIndex(calls), [calls]);
+  const runSummary = useMemo(() => getRunSummary(calls), [calls]);
   const verdictFor = useCallback(
     (call: TraceObservation | null): VerdictDisplay | undefined => {
       if (!call || !evaluation?.memberIds.has(call.id)) return undefined;
@@ -687,7 +682,7 @@ export function TraceTree({
       evalExpanded && spanId && !expanded.has(spanId)
         ? new Set(expanded).add(spanId)
         : expanded;
-    const tree = flattenTree(calls, effectiveExpanded, searchQuery);
+    const tree = flattenTree(calls, effectiveExpanded, searchQuery, childrenIndex);
     // Search suspends grouping: matching judge rows surface like any other row.
     if (!evaluation || searchQuery.trim().length > 0) return tree;
     const split = partitionEvaluation(tree, evaluation);
@@ -715,8 +710,8 @@ export function TraceTree({
       ...(evalExpanded ? evaluationSubtree : []),
       ...split.kept.slice(split.insertAt),
     ];
-  }, [calls, expanded, searchQuery, evaluation, evalExpanded, spanVerdicts, phaseSummary]);
-  const timingBounds = useMemo(() => computeTimingBounds(calls), [calls]);
+  }, [calls, expanded, searchQuery, evaluation, evalExpanded, spanVerdicts, phaseSummary, childrenIndex]);
+  const timingBounds = useMemo(() => computeTimingBounds(calls, childrenIndex), [calls, childrenIndex]);
   const totalCost = useMemo(() => calls.reduce((sum, c) => sum + (c.cost ?? 0), 0), [calls]);
 
   const levelCounts = useMemo(() => {
@@ -733,7 +728,7 @@ export function TraceTree({
   }, [flatTree]);
 
   const filteredTree = useMemo(() => {
-    const callsById = new Map(calls.map((c) => [c.id, c]));
+    const callsById = childrenIndex.byId;
     let tree = flatTree;
 
     if (levelFilter !== "all") {
@@ -780,7 +775,7 @@ export function TraceTree({
     }
 
     return tree;
-  }, [flatTree, levelFilter, calls, preferences.minObservationLevel]);
+  }, [flatTree, levelFilter, calls, preferences.minObservationLevel, childrenIndex]);
 
   const parentRef = useRef<HTMLDivElement>(null);
   const getScrollElement = useCallback(() => parentRef.current, []);
@@ -950,6 +945,7 @@ export function TraceTree({
                 treeLines={treeLines}
                 searchQuery={searchQuery}
                 runLabel={runLabel}
+                runSummary={runSummary}
                 timingBounds={timingBounds}
                 cumulative={node.call ? cumulativeMetrics.get(node.call.id) : undefined}
                 totalCost={totalCost}

@@ -82,12 +82,14 @@ async function downloadTrace(run: TraceDetail, projectId?: string) {
 
 function useCommentCounts(run: TraceDetail) {
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
-  const callIdKey = run.calls.map((c) => c.id).join(",");
+  const callIds = useMemo(() => run.calls.map((c) => c.id), [run.calls]);
+  // Value-keyed effect dependency: live-stream flushes give `callIds` a new
+  // identity a few times per second; comparing the joined key keeps the fetch
+  // firing only when the set of span ids actually changed.
+  const callIdKey = useMemo(() => callIds.join(","), [callIds]);
 
   useEffect(() => {
-    const runId = run.run.id;
-    const callIds = callIdKey ? callIdKey.split(",") : [];
-    const allIds = [runId, ...callIds];
+    const allIds = [run.run.id, ...(callIdKey ? callIdKey.split(",") : [])];
 
     let cancelled = false;
     getCommentCounts(allIds, "trace").then((counts) => {
