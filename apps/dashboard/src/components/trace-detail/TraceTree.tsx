@@ -864,7 +864,7 @@ export function TraceTree({
               levelFilter === opt.key
                 ? "bg-primary/10 text-primary font-medium"
                 : opt.count === 0
-                  ? "text-muted-foreground/40 cursor-default"
+                  ? "text-muted-foreground cursor-default"
                   : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
             )}
             onClick={() => setLevelFilter(opt.key)}
@@ -874,7 +874,7 @@ export function TraceTree({
               <span className={cn("inline-block h-1.5 w-1.5 rounded-full", opt.dotClass)} />
             )}
             {opt.label}
-            <span className="tabular-nums text-muted-foreground/60">{opt.count}</span>
+            <span className="tabular-nums">{opt.count}</span>
           </button>
         ))}
         <button
