@@ -53,12 +53,15 @@ export const TYPE_COLORS: Record<
   },
 };
 
-export function computeTimingBounds(calls: LoggedCall[]): TimingBounds {
+export function computeTimingBounds(
+  calls: LoggedCall[],
+  startMsById?: Map<string, number>,
+): TimingBounds {
   if (calls.length === 0) return { minTs: 0, maxTs: 0, spanMs: 1 };
   let minTs = Infinity;
   let maxTs = -Infinity;
   for (const c of calls) {
-    const start = new Date(c.created_at).getTime();
+    const start = startMsById?.get(c.id) ?? new Date(c.created_at).getTime();
     const end = start + (c.latency_ms ?? 0);
     if (start < minTs) minTs = start;
     if (end > maxTs) maxTs = end;

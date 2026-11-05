@@ -10,6 +10,7 @@ import { useSelection } from "./contexts/SelectionContext";
 import { useTraceData } from "./contexts/TraceDataContext";
 import { useViewPreferences } from "./contexts/ViewPreferencesContext";
 import { getSemanticType } from "./trace-utils";
+import { buildTraceChildrenIndex, type TraceChildrenIndex } from "./trace-tree-utils";
 import {
   TYPE_COLORS,
   getDisplayName,
@@ -65,9 +66,9 @@ function flattenWithTimeline(
   expanded: Set<string>,
   bounds: { minTs: number; spanMs: number },
   searchQuery: string,
+  index: TraceChildrenIndex,
 ): FlatTimelineNode[] {
   const result: FlatTimelineNode[] = [];
-  const byId = new Map(calls.map((c) => [c.id, c]));
   const q = searchQuery.trim().toLowerCase();
 
   const matchesCall = (call: TraceObservation) =>
@@ -84,30 +85,21 @@ function flattenWithTimeline(
       let cur: TraceObservation | undefined = call;
       while (cur) {
         included.add(cur.id);
-        cur = cur.parent_call_id ? byId.get(cur.parent_call_id) : undefined;
+        cur = cur.parent_call_id ? index.byId.get(cur.parent_call_id) : undefined;
       }
     }
     return included;
   })();
 
-  const getChildren = (callId: string | null): TraceObservation[] =>
-    calls
-      .filter(
-        (c) =>
-          (callId === null ? !c.parent_call_id : c.parent_call_id === callId) &&
-          (!matchingIds || matchingIds.has(c.id)),
-      )
-      .sort((a, b) => {
-        // Fall back to created_at when step_index is absent (agent-task spans),
-        // so siblings render in true chronological order, not array order.
-        const ai = a.step_index;
-        const bi = b.step_index;
-        if (ai != null && bi != null) return ai - bi;
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      });
+  // Sibling order was fixed once when the index was built (step_index, then
+  // chronological created_at) — see compareSiblings in ./trace-tree-utils.
+  const getChildren = (callId: string | null): TraceObservation[] => {
+    const children = index.childrenByParent.get(callId) ?? [];
+    return matchingIds ? children.filter((c) => matchingIds.has(c.id)) : children;
+  };
 
   const computeMetrics = (call: TraceObservation) => {
-    const start = new Date(call.created_at).getTime();
+    const start = index.startMsById.get(call.id) ?? 0;
     const latency = call.latency_ms ?? 0;
     const startOffset =
       ((start - bounds.minTs) / bounds.spanMs) * SCALE_WIDTH;
@@ -559,7 +551,11 @@ export function TraceGanttChart({
     return s;
   });
 
-  const bounds = useMemo(() => computeTimingBounds(calls), [calls]);
+  const childrenIndex = useMemo(() => buildTraceChildrenIndex(calls), [calls]);
+  const bounds = useMemo(
+    () => computeTimingBounds(calls, childrenIndex.startMsById),
+    [calls, childrenIndex],
+  );
   const totalCost = useMemo(
     () => calls.reduce((sum, c) => sum + (c.cost ?? 0), 0),
     [calls],
@@ -577,8 +573,9 @@ export function TraceGanttChart({
         expanded,
         { minTs: bounds.minTs, spanMs: bounds.spanMs },
         searchQuery,
+        childrenIndex,
       ),
-    [calls, expanded, bounds, searchQuery],
+    [calls, expanded, bounds, searchQuery, childrenIndex],
   );
 
   const contentWidth = useMemo(() => {
