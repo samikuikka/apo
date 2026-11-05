@@ -293,17 +293,34 @@ test("canonical-evidence", (t) => { t.calledTool("CanonicalOnly"); });
     });
 
     let projectionReads = 0;
+    // Span IDs the run exported over OTLP. The real backend keys projection
+    // observations by the exported span_id, so the mock echoes these same
+    // IDs back — fabricating fresh IDs per read would never satisfy the
+    // read-back's span-containment gate.
+    const exportedIds: string[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: unknown, init?: RequestInit) => {
         if (typeof url === "string" && url.endsWith("/api/public/otel/v1/traces")) {
+          const body = JSON.parse(String(init?.body ?? "{}")) as {
+            resourceSpans?: { scopeSpans?: { spans?: { spanId?: string }[] }[] }[];
+          };
+          for (const rs of body.resourceSpans ?? []) {
+            for (const ss of rs.scopeSpans ?? []) {
+              for (const span of ss.spans ?? []) {
+                if (span.spanId) exportedIds.push(span.spanId);
+              }
+            }
+          }
           return new Response(null, { status: 200 });
         }
         if (typeof url === "string" && url.includes("/trace-projection")) {
           projectionReads += 1;
-          // First read: the trace exists but the replay batch has not been
-          // projected yet (far below the observation floor). Second read: the
-          // full projection, including evidence only the backend has.
+          // First read: the trace exists and is flagged complete, but the
+          // replay batch has not been projected yet — none of the exported
+          // span IDs are there, only backend-only evidence. Second read: the
+          // full projection, every exported ID plus evidence only the
+          // backend has.
           if (projectionReads === 1) {
             return Response.json(
               snapshotWith([observation({ type: "TOOL", toolName: "CanonicalOnly" })]),
@@ -311,8 +328,11 @@ test("canonical-evidence", (t) => { t.calledTool("CanonicalOnly"); });
           }
           return Response.json(
             snapshotWith([
-              ...Array.from({ length: 12 }, () => observation({})),
-              observation({ type: "TOOL", toolName: "Read" }),
+              ...exportedIds.map((spanId, i) =>
+                i === 0
+                  ? observation({ spanId, type: "TOOL", toolName: "Read" })
+                  : observation({ spanId }),
+              ),
               observation({ type: "TOOL", toolName: "CanonicalOnly" }),
             ]),
           );

@@ -132,6 +132,15 @@ export interface ProjectionTee {
    * {@link getSnapshot} freezes; capabilities are derived at freeze time.
    */
   injectObservations(observations: readonly TraceProjectionObservation[]): void;
+  /**
+   * The real span IDs the run exported that the canonical read-back waits
+   * for: createSpan-delegated spans (tool calls, generations — the evidence
+   * checks evaluate) and injected replay observations' own IDs. Step-wrapper
+   * and otel-processor spans are excluded: the tee cannot name their remote
+   * IDs, and the backend projection serves observations under exported IDs,
+   * never the tee's own.
+   */
+  getExportedSpanIds(): ReadonlySet<string>;
 }
 
 /**
@@ -149,6 +158,10 @@ export function createProjectionTee(
   // real.createSpan's return value and endSpan can never find the real span —
   // the span is never ended, never exported, and its usage is lost.
   const realIdByTeeId = new Map<string, string>();
+  // Real span IDs the run delegates for export (createSpan) plus injected
+  // replay observations' own IDs. Recorded as established: endSpan deletes
+  // the delegation map entry after use, so it cannot be read back later.
+  const exportedSpanIds = new Set<string>();
   // `step` hands its callback the REAL span id, so children created inside a
   // step name that id as their parent. Map it back to the step's tee id so the
   // snapshot's parentSpanId chain stays connected (turn-scoped usage walks it).
@@ -318,6 +331,11 @@ export function createProjectionTee(
           // Remember the real id so endSpan can close the real span. Falls back
           // to the tee id when the real context returns nothing (noop mode).
           realIdByTeeId.set(spanId, realId);
+          // A distinct real id means a real exported span the backend read-back
+          // can wait on. The tee id itself (noop mode) never appears remotely.
+          if (realId != null && realId !== spanId) {
+            exportedSpanIds.add(realId);
+          }
         } catch { /* best-effort */ }
       }
       return spanId;
@@ -400,6 +418,9 @@ export function createProjectionTee(
     },
     injectObservations(injected: readonly TraceProjectionObservation[]): void {
       observations.push(...injected);
+      for (const observation of injected) {
+        exportedSpanIds.add(observation.spanId);
+      }
       // Keep the snapshot contract's deterministic order (invocation time,
       // then span id) — injected observations arrive with their own timestamps.
       observations.sort((a, b) => {
@@ -408,6 +429,9 @@ export function createProjectionTee(
         if (at !== bt) return at < bt ? -1 : 1;
         return a.spanId < b.spanId ? -1 : 1;
       });
+    },
+    getExportedSpanIds(): ReadonlySet<string> {
+      return exportedSpanIds;
     },
   };
 }
