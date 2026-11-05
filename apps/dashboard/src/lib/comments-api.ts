@@ -85,17 +85,40 @@ export const toggleReaction = (
     body: { emoji, user_id: userId },
   });
 
+/** Ids per counts request. The counts endpoint is a GET with ids in the
+ * query string; unbounded lists (one id per span on large traces) overflow
+ * header limits and the request dies with a 431 before the backend sees it. */
+const COUNTS_CHUNK = 200;
+
+async function getCommentCountsChunk(
+  objectIds: string[],
+  objectType: string,
+): Promise<Record<string, number>> {
+  return apiClient<Record<string, number>>("/api/v1/comments/counts", {
+    ...NO_CACHE,
+    query: { object_ids: objectIds.join(","), object_type: objectType },
+  });
+}
+
 export async function getCommentCounts(
   objectIds: string[],
   objectType: string,
 ): Promise<Record<string, number>> {
   if (objectIds.length === 0) return {};
-  try {
-    return await apiClient<Record<string, number>>("/api/v1/comments/counts", {
-      ...NO_CACHE,
-      query: { object_ids: objectIds.join(","), object_type: objectType },
-    });
-  } catch {
-    return {};
+  if (objectIds.length <= COUNTS_CHUNK) {
+    try {
+      return await getCommentCountsChunk(objectIds, objectType);
+    } catch {
+      return {};
+    }
   }
+  const chunks = await Promise.all(
+    Array.from({ length: Math.ceil(objectIds.length / COUNTS_CHUNK) }, (_, i) =>
+      getCommentCountsChunk(
+        objectIds.slice(i * COUNTS_CHUNK, (i + 1) * COUNTS_CHUNK),
+        objectType,
+      ).catch((): Record<string, number> => ({})),
+    ),
+  );
+  return Object.assign({}, ...chunks);
 }
