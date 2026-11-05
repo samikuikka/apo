@@ -41,7 +41,7 @@ import {
 import { useState, useMemo, useRef, useEffect, useCallback, type MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
-import { callCacheTokens, type CumulativeMetrics } from "@/lib/cumulative-metrics";
+import { callCacheTokens, wholePromptTokens, type CumulativeMetrics } from "@/lib/cumulative-metrics";
 import { formatCostMicro, formatDuration, formatInputCacheSplit, formatTokenBreakdown, formatTokenTotal } from "@/lib/format";
 import { CommentCountIcon } from "./CommentCountIcon";
 import { getHeatmapColor } from "./trace-heatmap";
@@ -253,16 +253,26 @@ function SpanContent({
   if (showCostTokens && showMetrics && displayTokens > 0) {
     if (hasDescendants && cumulative && (cumulative.prompt_tokens > 0 || cumulative.completion_tokens > 0)) {
       metricParts.push({
-        text: formatTokenBreakdown(cumulative.prompt_tokens, cumulative.completion_tokens, cumulative.cache_read_tokens),
+        text: formatTokenBreakdown(
+          cumulative.prompt_uncached_tokens + cumulative.cache_read_tokens + cumulative.cache_write_tokens,
+          cumulative.completion_tokens,
+          cumulative.cache_read_tokens,
+        ),
         kind: "tokens",
-        title: formatInputCacheSplit(cumulative.prompt_tokens, cumulative.cache_read_tokens, cumulative.cache_write_tokens),
+        title: formatInputCacheSplit(
+          cumulative.prompt_uncached_tokens,
+          cumulative.cache_read_tokens,
+          cumulative.cache_write_tokens,
+        ),
       });
     } else if (!hasDescendants && c.prompt_tokens != null && c.completion_tokens != null) {
       const cache = callCacheTokens(c);
       metricParts.push({
-        text: formatTokenBreakdown(c.prompt_tokens, c.completion_tokens, cache.cache_read_tokens),
+        text: formatTokenBreakdown(wholePromptTokens(c) ?? 0, c.completion_tokens, cache.cache_read_tokens),
         kind: "tokens",
-        title: formatInputCacheSplit(c.prompt_tokens, cache.cache_read_tokens, cache.cache_write_tokens),
+        title: cache.input_uncached != null
+          ? formatInputCacheSplit(cache.input_uncached, cache.cache_read_tokens, cache.cache_write_tokens)
+          : undefined,
       });
     } else {
       const cacheRead = hasDescendants && cumulative ? cumulative.cache_read_tokens : callCacheTokens(c).cache_read_tokens;

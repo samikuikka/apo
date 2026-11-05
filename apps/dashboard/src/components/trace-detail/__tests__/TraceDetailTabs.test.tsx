@@ -232,4 +232,33 @@ describe("TraceDetailTabs prompt cache rows", () => {
     expect(screen.getByText("Prompt")).toBeTruthy();
     expect(screen.queryByText("Prompt read from cache")).toBeNull();
   });
+
+  it("builds the prompt total from raw usage when the column is net of cache", () => {
+    // A direct-Anthropic span: its prompt column (4) excludes the cache, so
+    // the rows must not read "4 uncached" with 33,746 read beside it.
+    renderTabs({
+      run: { ...BASE_RUN },
+      calls: [
+        {
+          id: "c1",
+          input: {},
+          output: {},
+          observation_type: "GENERATION",
+          prompt_tokens: 4,
+          completion_tokens: 365,
+          total_tokens: 369,
+          raw_usage: { input: 4, cache_read: 33_746, cache_write_5m: 33_746 },
+        },
+      ],
+    });
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Tokens" }));
+
+    const row = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
+    expect(row("Prompt")).toBe("67,496");
+    expect(row("Prompt read from cache")).toBe("33,746");
+    expect(row("Prompt written to cache")).toBe("33,746");
+    expect(row("Prompt uncached")).toBe("4");
+    expect(row("Total")).toBe("67,861");
+  });
 });

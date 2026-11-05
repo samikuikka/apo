@@ -124,17 +124,17 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
   );
   const avgLatency = generations.length > 0 ? totalLatency / generations.length : 0;
 
-  const promptTokens = useMemo(
-    () => calls.reduce((sum: number, c: any) => sum + (c.prompt_tokens || 0), 0),
-    [calls],
-  );
   const completionTokens = useMemo(
     () => calls.reduce((sum: number, c: any) => sum + (c.completion_tokens || 0), 0),
     [calls],
   );
-  const totalTokens = promptTokens + completionTokens;
   const cacheTokens = useMemo(() => sumCacheTokens(calls), [calls]);
   const touchedCache = cacheTokens.read > 0 || cacheTokens.write > 0;
+  // The prompt row is the raw-usage split (uncached + read + write), not the
+  // column sum: the `prompt_tokens` column is net of cache on some providers,
+  // which would contradict the cache rows right below it.
+  const promptTokens = cacheTokens.uncached + cacheTokens.read + cacheTokens.write;
+  const totalTokens = promptTokens + completionTokens;
 
   // Reasoning rollups (issue #309): a model-call fact, aligned with the
   // backend scalars — GENERATION observations only, and errored generations
@@ -283,7 +283,7 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
                   <MetricRow label="Prompt written to cache" value={cacheTokens.write.toLocaleString()} />
                   <MetricRow
                     label="Prompt uncached"
-                    value={Math.max(promptTokens - cacheTokens.read - cacheTokens.write, 0).toLocaleString()}
+                    value={cacheTokens.uncached.toLocaleString()}
                   />
                 </>
               ) : null}

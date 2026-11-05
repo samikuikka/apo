@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import { callCacheTokens } from "@/lib/cumulative-metrics";
+import { callCacheTokens, wholePromptTokens, type CallCacheTokens } from "@/lib/cumulative-metrics";
 import { formatCostMicro, formatInputCacheSplit, formatTokenBreakdown, formatTokenTotal } from "@/lib/format";
 import { CopyIdPopover } from "./CopyIdPopover";
 import { CallCostBreakdownTooltip } from "./DimensionBreakdownTooltip";
@@ -44,17 +44,20 @@ export function CallMetadataTab({ call, run }: CallMetadataTabProps) {
   );
 }
 
-function tokensValue(
-  call: LoggedCall,
-  cache: ReturnType<typeof callCacheTokens>,
-): ReactNode {
+function tokensValue(call: LoggedCall, cache: CallCacheTokens): ReactNode {
   if (call.total_tokens == null || call.total_tokens <= 0) return "\u2014";
   if (call.prompt_tokens == null && call.completion_tokens == null) {
     return formatTokenTotal(call.total_tokens, cache.cache_read_tokens);
   }
-  const prompt = call.prompt_tokens ?? 0;
+  const prompt = wholePromptTokens(call) ?? 0;
   return (
-    <span title={formatInputCacheSplit(prompt, cache.cache_read_tokens, cache.cache_write_tokens)}>
+    <span
+      title={
+        cache.input_uncached != null
+          ? formatInputCacheSplit(cache.input_uncached, cache.cache_read_tokens, cache.cache_write_tokens)
+          : undefined
+      }
+    >
       {formatTokenBreakdown(prompt, call.completion_tokens ?? 0, cache.cache_read_tokens)}
     </span>
   );
