@@ -65,4 +65,31 @@ describe("getRunSummary", () => {
     expect(uncached.tokens).toBe("1.0k tok");
     expect(uncached.tokensTitle).toBeUndefined();
   });
+
+  // Pre-#131 columns are net of cache: input 4, read 33,746, write 33,746
+  // landed as prompt 4 / total 369. The chip must carry the whole prompt, or
+  // it contradicts its own hover on the same row.
+  it("carries the whole-prompt total when the columns are net of cache", () => {
+    const legacy = getRunSummary([
+      makeCall({
+        id: "1",
+        prompt_tokens: 4,
+        completion_tokens: 365,
+        total_tokens: 369,
+        raw_usage: { input: 4, cache_read: 33_746, cache_write_5m: 33_746 },
+      }),
+    ]);
+    expect(legacy.tokens).toBe("67.9k tok (33.7k cached)");
+    expect(legacy.tokensTitle).toBe(
+      "Input 67.5k: 33.7k read from cache, 33.7k written to cache, 4 uncached",
+    );
+  });
+
+  it("keeps the column total for a call that only reported one", () => {
+    const totalsOnly = getRunSummary([
+      makeCall({ id: "1", total_tokens: 1_234 }),
+    ]);
+    expect(totalsOnly.tokens).toBe("1.2k tok");
+    expect(totalsOnly.tokensTitle).toBeUndefined();
+  });
 });

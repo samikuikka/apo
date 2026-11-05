@@ -1,5 +1,10 @@
 import { formatCostMicro, formatDuration, formatTokenTotal } from "@/lib/format";
-import { callCacheTokens, type CumulativeMetrics } from "@/lib/cumulative-metrics";
+import {
+  callCacheTokens,
+  cumulativeWholeTokens,
+  wholeCallTokens,
+  type CumulativeMetrics,
+} from "@/lib/cumulative-metrics";
 import type { LoggedCall } from "./contexts";
 import { getDisplayName as sharedGetDisplayName } from "./trace-display";
 
@@ -89,8 +94,10 @@ export function getInlineMetricsStructured(
   const showCostTokens = options?.showCostTokens ?? true;
   const hasDesc = cumulative && cumulative.descendant_count > 0;
   const dCost = hasDesc && cumulative ? cumulative.cost : (call.cost ?? 0);
+  // Disjoint basis, matching the split surfaces next to the bar; the column
+  // values contradict those on runs whose columns are net of cache (pre-#131).
   const dTokens =
-    hasDesc && cumulative ? cumulative.total_tokens : (call.total_tokens ?? 0);
+    hasDesc && cumulative ? cumulativeWholeTokens(cumulative) : wholeCallTokens(call);
   const dCacheRead =
     hasDesc && cumulative ? cumulative.cache_read_tokens : callCacheTokens(call).cache_read_tokens;
 

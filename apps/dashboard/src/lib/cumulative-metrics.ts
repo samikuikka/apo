@@ -18,9 +18,11 @@ export interface CallCacheTokens {
   cache_read_tokens: number;
   cache_write_tokens: number;
   /** The prompt's uncached part; `raw_usage.input` is normalized net of cache
-   * on every provider, unlike the `prompt_tokens` column, which stores each
-   * provider's own convention (net for direct Anthropic spans, gross
-   * elsewhere). Null when the call has no normalized usage. */
+   * on every provider. The `prompt_tokens` column stores the input family
+   * sum (input + cache read + both cache writes) on every row the normalizer
+   * recognizes, since issue #131; only rows written before that carry the
+   * provider's own net convention. Null when the call has no normalized
+   * usage. */
   input_uncached: number | null;
 }
 
@@ -42,6 +44,41 @@ export function wholePromptTokens(
   const cache = callCacheTokens(call);
   if (cache.input_uncached == null) return call.prompt_tokens ?? null;
   return cache.input_uncached + cache.cache_read_tokens + cache.cache_write_tokens;
+}
+
+/** A call's token total on the same disjoint basis as the cache-split
+ * surfaces: the whole prompt plus the completion column. Falls back to the
+ * `total_tokens` column only when the split parts are absent, so a chip and
+ * the split beside it can never disagree (net columns on pre-#131 rows made
+ * the column sum contradict the split). */
+export function wholeCallTokens(
+  call: Pick<LoggedCall, "raw_usage" | "prompt_tokens" | "completion_tokens" | "total_tokens">,
+): number {
+  const prompt = wholePromptTokens(call);
+  if (prompt == null) return call.total_tokens ?? 0;
+  const total = prompt + (call.completion_tokens ?? 0);
+  return total > 0 || call.total_tokens == null ? total : call.total_tokens;
+}
+
+/** A subtree's token total on the same disjoint basis as `wholeCallTokens`:
+ * uncached plus both cache parts plus completion, falling back to the column
+ * sum when the split parts are absent. */
+export function cumulativeWholeTokens(
+  cumulative: Pick<
+    CumulativeMetrics,
+    | "prompt_uncached_tokens"
+    | "cache_read_tokens"
+    | "cache_write_tokens"
+    | "completion_tokens"
+    | "total_tokens"
+  >,
+): number {
+  const whole =
+    cumulative.prompt_uncached_tokens +
+    cumulative.cache_read_tokens +
+    cumulative.cache_write_tokens +
+    cumulative.completion_tokens;
+  return whole > 0 ? whole : cumulative.total_tokens;
 }
 
 export function computeCumulativeMetrics(
