@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  frontend:
-    name: Lint + Typecheck (Frontend)
+  packages:
+    name: Packages (SDK + CLI)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -53,6 +53,23 @@ jobs:
         run: pnpm --filter @apo-ai/sdk test
       - name: Clean consumer package gate (CLI)
         run: pnpm --filter @apo-ai/cli package:check
+      - name: External example clean-consumer contract
+        run: pnpm test:external-example
+
+  dashboard:
+    name: Dashboard + Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
       - name: Test dashboard
@@ -73,8 +90,6 @@ jobs:
         run: pnpm test:public-docs
       - name: Self-adoption docs contract
         run: pnpm test:self-adoption-docs
-      - name: External example clean-consumer contract
-        run: pnpm test:external-example
 
   backend:
     name: Typecheck + Test (Backend)
