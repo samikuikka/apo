@@ -360,6 +360,13 @@ main p {
   max-width: 48rem; /* 768px — for prose/demo blocks */
 }
 
+/* Wide frame for the live product demo: the app window renders at product
+   scale, so it gets the dashboard's own frame width rather than the prose
+   column. */
+.landing-container--wide {
+  max-width: 87.5rem; /* 1400px */
+}
+
 /* ---- Top nav: minimal, sticky, monochrome. ------------------------------ */
 .landing-nav {
   position: sticky;
@@ -517,12 +524,19 @@ main p {
     flex-direction: column-reverse;
     gap: 1.5rem;
   }
+
+  /* The sphere canvas initializes after paint and can shift the text below;
+     a fixed height stops the CLS. */
+  .landing-hero__visual {
+    min-height: 260px;
+  }
 }
 
 /* Title — short enough to wrap naturally at the container edge. No
    max-width: the container already caps width, and a ch-based cap miscalculates
    at the scaled font size + negative letter-spacing (clips the last word). */
 .landing-hero__title {
+  min-height: 1.1em; /* reserve space during font swap */
   font-size: clamp(2.25rem, calc(1.25rem + 4.5vw), 4rem);
   line-height: 1.04;
   font-weight: 700;
