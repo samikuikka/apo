@@ -8,6 +8,12 @@ logger = logging.getLogger(__name__)
 MAX_ENTRIES = 10_000
 
 
+def monotonic() -> float:
+    """Clock seam. Production reads the real monotonic clock; tests patch
+    this module attribute and advance it instead of sleeping out windows."""
+    return time.monotonic()
+
+
 class LoginRateLimiter:
     """In-memory sliding window rate limiter for login attempts.
 
@@ -37,7 +43,7 @@ class LoginRateLimiter:
     def is_allowed(self, key: str) -> bool:
         """Check if request is allowed. Returns False if rate exceeded."""
         with self._lock:
-            now = time.monotonic()
+            now = monotonic()
             cutoff = now - self.window_seconds
             attempts = self._attempts.get(key, [])
             attempts = [t for t in attempts if t > cutoff]
@@ -54,7 +60,7 @@ class LoginRateLimiter:
     def record_attempt(self, key: str) -> None:
         """Record a login attempt for the given key."""
         with self._lock:
-            now = time.monotonic()
+            now = monotonic()
             if key not in self._attempts:
                 self._attempts[key] = []
             self._attempts[key].append(now)
@@ -62,7 +68,7 @@ class LoginRateLimiter:
     def get_retry_after(self, key: str) -> int:
         """Returns seconds until the next attempt is allowed."""
         with self._lock:
-            now = time.monotonic()
+            now = monotonic()
             cutoff = now - self.window_seconds
             attempts = self._attempts.get(key, [])
             attempts = [t for t in attempts if t > cutoff]

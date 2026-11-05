@@ -1,13 +1,33 @@
 # pyright: reportAny=false, reportPrivateUsage=false, reportUnusedCallResult=false, reportUnusedFunction=false
 
-import time
 from unittest.mock import patch
 
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 from fastapi.testclient import TestClient
 
+import apo.auth.rate_limit as rate_limit_module
 from apo.auth.rate_limit import LoginRateLimiter, login_rate_limiter
 from apo.routes.auth import _account_rate_limiter
+
+
+class _FakeClock:
+    """Patches the limiter's clock seam so window expiry is advanced, not slept."""
+
+    def __init__(self) -> None:
+        self._elapsed: float = 0.0
+
+    def __call__(self) -> float:
+        return 1000.0 + self._elapsed
+
+    def advance(self, seconds: float) -> None:
+        self._elapsed += seconds
+
+
+def _install_fake_clock(monkeypatch: MonkeyPatch) -> _FakeClock:
+    clock = _FakeClock()
+    monkeypatch.setattr(rate_limit_module, "monotonic", clock)
+    return clock
 
 
 def _reset_rate_limiter() -> None:
@@ -43,7 +63,10 @@ class TestLoginRateLimiterIsAllowed:
         assert limiter.is_allowed("1.1.1.1") is False
         assert limiter.is_allowed("2.2.2.2") is True
 
-    def test_window_expiry_allows_new_attempts(self) -> None:
+    def test_window_expiry_allows_new_attempts(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        clock = _install_fake_clock(monkeypatch)
         limiter = LoginRateLimiter()
         limiter.max_attempts = 2
         limiter.window_seconds = 1
@@ -52,7 +75,7 @@ class TestLoginRateLimiterIsAllowed:
         limiter.record_attempt("1.1.1.1")
         assert limiter.is_allowed("1.1.1.1") is False
 
-        time.sleep(1.1)
+        clock.advance(1.1)
         assert limiter.is_allowed("1.1.1.1") is True
 
     def test_default_max_attempts_is_10(self) -> None:
@@ -87,11 +110,14 @@ class TestLoginRateLimiterGetRetryAfter:
         retry = limiter.get_retry_after("1.1.1.1")
         assert 1 <= retry <= 60
 
-    def test_returns_zero_after_window_expires(self) -> None:
+    def test_returns_zero_after_window_expires(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        clock = _install_fake_clock(monkeypatch)
         limiter = LoginRateLimiter()
         limiter.window_seconds = 1
         limiter.record_attempt("1.1.1.1")
-        time.sleep(1.1)
+        clock.advance(1.1)
         assert limiter.get_retry_after("1.1.1.1") == 0
 
 
@@ -107,12 +133,13 @@ class TestLoginRateLimiterMemoryCap:
 
         assert len(limiter._attempts) <= 10_000
 
-    def test_eviction_removes_oldest_key(self) -> None:
+    def test_eviction_removes_oldest_key(self, monkeypatch: MonkeyPatch) -> None:
+        clock = _install_fake_clock(monkeypatch)
         limiter = LoginRateLimiter()
         limiter.max_attempts = 100
 
         limiter.record_attempt("oldest-key")
-        time.sleep(0.01)
+        clock.advance(0.01)
 
         for i in range(10_000):
             key = f"1.2.3.{i}"

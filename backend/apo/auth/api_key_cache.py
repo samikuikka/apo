@@ -20,6 +20,12 @@ from ..models.db import ApiKeyDB
 _MISS_SENTINEL: Literal["MISS"] = "MISS"
 
 
+def monotonic() -> float:
+    """Clock seam. Production reads the real monotonic clock; tests patch
+    this module attribute and advance it instead of sleeping out TTLs."""
+    return time.monotonic()
+
+
 def cache_key_for_basic(public_key: str, secret_hash: str) -> str:
     """Build a cache key for Basic auth (public_key + secret_hash)."""
     return f"basic:{public_key}:{secret_hash}"
@@ -103,7 +109,7 @@ class ApiKeyCache:
                 return _MISS_SENTINEL
 
             value, expires_at = entry
-            now = time.monotonic()
+            now = monotonic()
             if now >= expires_at:
                 # Expired — drop and treat as miss
                 _ = self._entries.pop(cache_key, None)
@@ -120,7 +126,7 @@ class ApiKeyCache:
         if not _is_enabled():
             return
         with self._lock:
-            now = time.monotonic()
+            now = monotonic()
             self._entries[cache_key] = (api_key, now + self._ttl_seconds)
             self._enforce_capacity()
 
@@ -129,7 +135,7 @@ class ApiKeyCache:
         if not _is_enabled():
             return
         with self._lock:
-            now = time.monotonic()
+            now = monotonic()
             self._entries[cache_key] = (None, now + self._negative_ttl_seconds)
             self._enforce_capacity()
 
