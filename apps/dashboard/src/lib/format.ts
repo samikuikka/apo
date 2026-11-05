@@ -59,9 +59,13 @@ export function tokenFormat(value: number | null): string {
   return String(value);
 }
 
-/** Input counts include cache reads, which bill at a fraction of the input rate. */
-function cachedSuffix(cacheRead: number | null | undefined): string {
-  return cacheRead != null && cacheRead > 0 ? ` (${tokenFormat(cacheRead)} cached)` : "";
+/** ` (N cached)` for a count the cache reads sit inside. Guarded: when the
+ * reads exceed the count (a provider whose column is net of cache), the
+ * suffix would claim more than the number shows. */
+function cachedSuffix(value: number | null, cacheRead: number | null | undefined): string {
+  return value != null && cacheRead != null && cacheRead > 0 && cacheRead <= value
+    ? ` (${tokenFormat(cacheRead)} cached)`
+    : "";
 }
 
 /**
@@ -70,7 +74,7 @@ function cachedSuffix(cacheRead: number | null | undefined): string {
  * With a cache read: `1.5k tok (1.2k cached)`.
  */
 export function formatTokenTotal(value: number | null, cacheRead?: number | null): string {
-  return `${tokenFormat(value)} tok${cachedSuffix(cacheRead)}`;
+  return `${tokenFormat(value)} tok${cachedSuffix(value, cacheRead)}`;
 }
 
 /**
@@ -85,18 +89,21 @@ export function formatTokenBreakdown(
   output: number | null,
   cacheRead?: number | null,
 ): string {
-  return `${tokenFormat(input)}${cachedSuffix(cacheRead)}\u2192${tokenFormat(output)} tok`;
+  return `${tokenFormat(input)}${cachedSuffix(input, cacheRead)}\u2192${tokenFormat(output)} tok`;
 }
 
-/** Hover (`title`) text splitting an input count into its cache parts; undefined when no cache was used. */
+/** Hover (`title`) text splitting a prompt into its cache parts; undefined
+ * when no cache was used. The parts must be disjoint (raw-usage based): the
+ * total is their sum, not a separately reported count, because the
+ * `prompt_tokens` column is net of cache on some providers. */
 export function formatInputCacheSplit(
-  input: number,
+  uncached: number,
   cacheRead: number,
   cacheWrite: number,
 ): string | undefined {
   if (cacheRead <= 0 && cacheWrite <= 0) return undefined;
-  const uncached = Math.max(input - cacheRead - cacheWrite, 0);
-  return `Input ${tokenFormat(input)}: ${tokenFormat(cacheRead)} read from cache, ${tokenFormat(cacheWrite)} written to cache, ${tokenFormat(uncached)} uncached`;
+  const total = uncached + cacheRead + cacheWrite;
+  return `Input ${tokenFormat(total)}: ${tokenFormat(cacheRead)} read from cache, ${tokenFormat(cacheWrite)} written to cache, ${tokenFormat(uncached)} uncached`;
 }
 
 /**

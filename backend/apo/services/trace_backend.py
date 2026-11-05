@@ -589,7 +589,7 @@ def _generation_usage(
             reasoning.append((call, value))
     most = max(reasoning, key=lambda pair: pair[1], default=None)
 
-    # Prompt-cache reads and writes, both included in the input-token total.
+    # Prompt-cache reads and writes, from non-errored generations.
     usages = [
         call.raw_usage or {}
         for call in generations

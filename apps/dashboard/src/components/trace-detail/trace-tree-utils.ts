@@ -12,22 +12,29 @@ export function getRunSummary(calls: TraceObservation[]) {
   return {
     duration: totalDuration > 0 ? formatDuration(totalDuration) : null,
     tokens: totalTokens > 0 ? formatTokenTotal(totalTokens, cache.read) : null,
-    tokensTitle: formatInputCacheSplit(cache.input, cache.read, cache.write),
+    tokensTitle: formatInputCacheSplit(cache.uncached, cache.read, cache.write),
     cost: totalCost > 0 ? formatCostMicro(totalCost) : null,
   };
 }
 
-/** Summed prompt tokens and the cache reads and writes included in them. */
-export function sumCacheTokens(calls: TraceObservation[]): { input: number; read: number; write: number } {
+export interface CacheTokenSums {
+  /** Uncached prompt tokens: `raw_usage.input` where normalized usage exists,
+   * the `prompt_tokens` column otherwise. */
+  uncached: number;
+  read: number;
+  write: number;
+}
+
+export function sumCacheTokens(calls: TraceObservation[]): CacheTokenSums {
   return calls.reduce(
     (sum, call) => {
       const cache = callCacheTokens(call);
       return {
-        input: sum.input + (call.prompt_tokens ?? 0),
+        uncached: sum.uncached + (cache.input_uncached ?? call.prompt_tokens ?? 0),
         read: sum.read + cache.cache_read_tokens,
         write: sum.write + cache.cache_write_tokens,
       };
     },
-    { input: 0, read: 0, write: 0 },
+    { uncached: 0, read: 0, write: 0 },
   );
 }

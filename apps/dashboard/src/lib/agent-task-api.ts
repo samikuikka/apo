@@ -293,7 +293,7 @@ export interface GenerationUsageSummary {
   reasoning_calls: number;
   max_call_reasoning_tokens: number | null;
   max_reasoning_call_id: string | null;
-  /** Prompt-cache reads and writes within the input tokens; null or absent on older runs. */
+  /** Prompt-cache read/write totals from non-errored generations; null or absent on older runs. */
   cache_read_tokens?: number | null;
   cache_write_tokens?: number | null;
 }
