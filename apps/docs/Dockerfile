@@ -25,6 +25,13 @@ COPY apps/example-service/e2e/agent-task-demo/START-HERE.md ./apps/example-servi
 COPY apps/dashboard/src/lib/first-run.ts ./apps/dashboard/src/lib/first-run.ts
 
 WORKDIR /app/apps/docs
+# Umami beacon config for the operator's deployment. Empty by default, so
+# non-operator builds carry no analytics. Both vars are consumed in
+# apps/docs/src/components/Head.astro.
+ARG PUBLIC_UMAMI_URL=
+ARG PUBLIC_UMAMI_WEBSITE_ID=
+ENV PUBLIC_UMAMI_URL=$PUBLIC_UMAMI_URL \
+    PUBLIC_UMAMI_WEBSITE_ID=$PUBLIC_UMAMI_WEBSITE_ID
 RUN pnpm build
 
 # --- runtime: pinned static server, built output only ---

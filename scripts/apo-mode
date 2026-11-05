@@ -37,7 +37,7 @@ if [[ -z "$TUNNEL_URL" ]]; then
 fi
 
 COMPOSE_BASE=(-f "$REPO_ROOT/docker-compose.yml")
-COMPOSE_TUNNEL=(-f "$REPO_ROOT/docker-compose.yml" -f "$REPO_ROOT/docker-compose.cloudflare-tunnel.yml" -f "$REPO_ROOT/docker-compose.cloudflare-tunnel.override.yml" -f "$REPO_ROOT/docker-compose.public-docs.yml")
+COMPOSE_TUNNEL=(-f "$REPO_ROOT/docker-compose.yml" -f "$REPO_ROOT/docker-compose.cloudflare-tunnel.yml" -f "$REPO_ROOT/docker-compose.cloudflare-tunnel.override.yml" -f "$REPO_ROOT/docker-compose.public-docs.yml" -f "$REPO_ROOT/docker-compose.umami.yml")
 
 stop_all() {
   _ok "stopping containers..."
@@ -90,6 +90,18 @@ case "$MODE" in
     if [[ -z "$(get_env "APO_DOCS_HOST")" ]]; then
       set_env "APO_DOCS_HOST" "docs.test-apo.online"
     fi
+    # Umami analytics: default the host, generate secrets on first use. The
+    # values live in .env only; regenerating the db password after the volume
+    # exists would lock Umami out of its own database, so never overwrite.
+    if [[ -z "$(get_env "APO_UMAMI_HOST")" ]]; then
+      set_env "APO_UMAMI_HOST" "umami.test-apo.online"
+    fi
+    if [[ -z "$(get_env "APO_UMAMI_APP_SECRET")" ]]; then
+      set_env "APO_UMAMI_APP_SECRET" "$(openssl rand -hex 32)"
+    fi
+    if [[ -z "$(get_env "APO_UMAMI_DB_PASSWORD")" ]]; then
+      set_env "APO_UMAMI_DB_PASSWORD" "$(openssl rand -hex 24)"
+    fi
 
     stop_all
     _ok "starting in TUNNEL mode..."
@@ -98,8 +110,10 @@ case "$MODE" in
     _ok ""
     _ok "✓ Tunnel mode active"
     DOCS_URL=$(get_env "APO_DOCS_HOST")
+    UMAMI_URL=$(get_env "APO_UMAMI_HOST")
     _ok "  Public:    $TUNNEL_URL"
     _ok "  Docs:      https://$DOCS_URL"
+    _ok "  Analytics: https://$UMAMI_URL"
     _ok "  Dashboard: $TUNNEL_URL (username: apo)"
     _ok "  Health:    $TUNNEL_URL/api/public/health"
     ;;
