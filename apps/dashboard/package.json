@@ -57,6 +57,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.9",
+    "fast-check": "^4.10.2",
     "jsdom": "^28.1.0",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",

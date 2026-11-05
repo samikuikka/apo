@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import fc from "fast-check";
 import type { LoggedCall } from "@/components/trace-detail";
-import { computeCumulativeMetrics, wholePromptTokens } from "@/lib/cumulative-metrics";
-import { formatInputCacheSplit, formatTokenBreakdown } from "@/lib/format";
+import { computeCumulativeMetrics, wholeCallTokens, wholePromptTokens } from "@/lib/cumulative-metrics";
+import { formatInputCacheSplit, formatTokenBreakdown, formatTokenTotal } from "@/lib/format";
 
 function call(overrides: Partial<LoggedCall> & { id: string }): LoggedCall {
   return {
@@ -24,8 +25,8 @@ describe("token labels with a prompt cache", () => {
   });
 
   it("drops the cached suffix when the reads exceed the count they annotate", () => {
-    // A direct-Anthropic span: its prompt column is net of cache, so the
-    // reads are not part of the 4 and the suffix would claim more than it.
+    // A pre-#131 legacy row: its columns are net of cache, so the reads are
+    // not part of the 4 and the suffix would claim more than it.
     expect(formatTokenBreakdown(4, 365, 33_746)).toBe("4→365 tok");
   });
 
@@ -39,11 +40,11 @@ describe("token labels with a prompt cache", () => {
 
 describe("wholePromptTokens", () => {
   it("adds the cache parts to the uncached count, whatever the column says", () => {
-    // SDK-marked span: the column already carries the cache parts.
+    // Post-#131 row: the column carries the input family sum.
     expect(
       wholePromptTokens(call({ id: "sdk", prompt_tokens: 47_740, raw_usage: { input: 2, cache_read: 25_729, cache_write_5m: 22_009 } })),
     ).toBe(47_740);
-    // Direct-Anthropic span: the column is net of cache.
+    // Pre-#131 legacy row: the column is net of cache.
     expect(
       wholePromptTokens(call({ id: "direct", prompt_tokens: 4, raw_usage: { input: 4, cache_read: 33_746, cache_write_5m: 33_746 } })),
     ).toBe(67_496);
@@ -90,5 +91,68 @@ describe("computeCumulativeMetrics cache tokens", () => {
     ]);
 
     expect(metrics.get("root")?.prompt_uncached_tokens).toBe(900);
+  });
+});
+
+describe("token split laws (generated inputs)", () => {
+  const rawUsageArb = fc.record({
+    input: fc.nat({ max: 1_000_000 }),
+    cache_read: fc.nat({ max: 1_000_000 }),
+    cache_write_5m: fc.nat({ max: 1_000_000 }),
+    cache_write_1h: fc.nat({ max: 1_000_000 }),
+  });
+
+  it("the whole prompt is the disjoint sum of its parts", () => {
+    fc.assert(
+      fc.property(rawUsageArb, (raw) => {
+        expect(wholePromptTokens(call({ id: "p", raw_usage: raw }))).toBe(
+          raw.input + raw.cache_read + raw.cache_write_5m + raw.cache_write_1h,
+        );
+      }),
+    );
+  });
+
+  it("the whole call total never undercuts the cache parts it must contain", () => {
+    // The pre-#131 bug class: a chip total smaller than the cache it
+    // claims, which made the "(N cached)" suffix overcount.
+    fc.assert(
+      fc.property(rawUsageArb, fc.nat({ max: 1_000_000 }), (raw, completion) => {
+        const total = wholeCallTokens(
+          call({ id: "p", raw_usage: raw, completion_tokens: completion }),
+        );
+        expect(total).toBeGreaterThanOrEqual(
+          raw.cache_read + raw.cache_write_5m + raw.cache_write_1h,
+        );
+      }),
+    );
+  });
+
+  it("agrees with the gross columns the projector writes since #131", () => {
+    fc.assert(
+      fc.property(rawUsageArb, fc.nat({ max: 1_000_000 }), (raw, output) => {
+        const gross = raw.input + raw.cache_read + raw.cache_write_5m + raw.cache_write_1h;
+        expect(
+          wholeCallTokens(
+            call({
+              id: "p",
+              raw_usage: raw,
+              prompt_tokens: gross,
+              completion_tokens: output,
+              total_tokens: gross + output,
+            }),
+          ),
+        ).toBe(gross + output);
+      }),
+    );
+  });
+
+  it("the cached suffix survives only inside a count that can hold it", () => {
+    fc.assert(
+      fc.property(fc.nat({ max: 1_000_000 }), fc.nat({ max: 1_000_000 }), (value, cacheRead) => {
+        const label = formatTokenTotal(value, cacheRead);
+        if (cacheRead > 0 && cacheRead <= value) expect(label).toContain("cached");
+        else expect(label).not.toContain("cached");
+      }),
+    );
   });
 });
