@@ -22,14 +22,15 @@
 	}
 }
 
-# Host-routed blocks on the tunnel listener (:8080). The explicit http://
-# scheme plus port keeps these on the same plain-HTTP listener cloudflared
-# targets: a bare hostname would default to :443, where no tunnel traffic
-# ever arrives, and Caddy would retry ACME forever (certmagic manages any
-# configured hostname unless the scheme is explicitly http://). The
-# docs/umami overlays only ride the tunnel stack, so this is fixed by
-# construction.
-http://{$APO_DOCS_HOST}:8080 {
+# Host-routed blocks whose whole site address is mode-composed so direct
+# and tunnel deployments share one Caddyfile. Direct mode (docker-compose
+# .server.yml) passes the bare hostname: the block serves HTTPS on 443 with
+# its own ACME certificate. The tunnel stack passes an explicit
+# http://host:8080 address so the block joins the single plain-HTTP listener
+# cloudflared targets; there a bare hostname would default to :443, where no
+# tunnel traffic ever arrives and Caddy would retry ACME forever for a
+# hostname public CAs cannot reach through the tunnel.
+{$APO_DOCS_SITE_ADDR} {
 	# Public docs host is terminal, unauthenticated, static only.
 	# Every path on this host proxies to the docs container and never
 	# reaches the backend, OTLP handler, or readiness probe.
@@ -39,7 +40,7 @@ http://{$APO_DOCS_HOST}:8080 {
 	}
 }
 
-http://{$APO_UMAMI_HOST}:8080 {
+{$APO_UMAMI_SITE_ADDR} {
 	# Umami analytics host is terminal at the ingress. Umami owns its admin
 	# auth; the beacon endpoint it serves is public by design. No Apo
 	# secret crosses this boundary.

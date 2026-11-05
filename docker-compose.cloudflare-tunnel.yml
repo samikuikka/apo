@@ -43,6 +43,12 @@ services:
       # umami overlay requires a real value; without the overlay this default
       # keeps the Caddyfile block valid but matching no traffic.
       - APO_UMAMI_HOST=${APO_UMAMI_HOST:-umami-disabled.invalid}
+      # Host-routed blocks get explicit http addresses so they join caddy's
+      # single tunnel listener (:8080). A bare hostname would default to :443,
+      # unreachable behind the tunnel where Cloudflare owns public TLS, and
+      # certmagic would retry ACME forever for the hostname.
+      - APO_DOCS_SITE_ADDR=${APO_DOCS_SITE_ADDR:-http://${APO_DOCS_HOST:-apo-docs-disabled.invalid}:8080}
+      - APO_UMAMI_SITE_ADDR=${APO_UMAMI_SITE_ADDR:-http://${APO_UMAMI_HOST:-umami-disabled.invalid}:8080}
       # Trust the private Compose network peer (cloudflared).
       - APO_TRUSTED_PROXY_RANGES=private_ranges
       - APO_TELEMETRY_MAX_REQUEST_BYTES=${APO_TELEMETRY_MAX_REQUEST_BYTES:-10485760}
