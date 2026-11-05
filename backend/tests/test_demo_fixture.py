@@ -12,11 +12,13 @@ Also pins the digest-gated reconcile semantics and fail-hard behavior.
 from __future__ import annotations
 
 import json
+import shutil
 from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
+from _pytest.tmpdir import TempPathFactory
 from sqlalchemy import create_engine as sa_create_engine
 from sqlmodel import Session, SQLModel, col, select
 
@@ -46,19 +48,53 @@ from apo.services.demo_workspace import (
 from apo.services.task_definition_revisions import ensure_task_definition_revision
 
 
+@pytest.fixture(scope="module")
+def golden_demo_db(tmp_path_factory: TempPathFactory) -> Path:
+    """One loaded demo DB per process; every test asserts against a copy.
+
+    A full load replays the shipped OTLP dataset through the real ingestion
+    pipeline (~8s of CPU). This file used to load once per test, which
+    dominated its wall time; one golden load plus per-test sqlite file
+    copies keeps every test on its own engine AND its own file, so no
+    savepoint or write can bleed between tests.
+    """
+    db_path = tmp_path_factory.mktemp("demo-golden") / "golden.db"
+    engine = sa_create_engine(f"sqlite:///{db_path}")
+    SQLModel.metadata.create_all(engine)
+    assert ensure_demo_project_exists(Session(engine)) is True
+    assert load_demo_fixture(Session(engine)) is True
+    engine.dispose()
+    return db_path
+
+
 @pytest.fixture(name="session")
 def scratch_session_fixture(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+    tmp_path: Path, monkeypatch: MonkeyPatch, golden_demo_db: Path
 ) -> Generator[Session, None, None]:
-    """A private scratch DB per test.
+    """A private scratch DB per test, seeded from the golden load.
 
-    The loader replays OTLP synchronously — per-span SAVEPOINTs nested in
-    one long transaction. Sharing the suite-wide engine let savepoint
-    state bleed into unrelated tests' teardown; a scratch engine keeps the
-    fixture tests hermetic.
+    The digest gate lives in the DB (ProjectTaskSourceDB.catalog_digest), so
+    a copied file behaves exactly like a same-process reload.
     """
     monkeypatch.setenv("APO_DEMO_ENABLED", "true")
-    engine = sa_create_engine(f"sqlite:///{tmp_path}/demo.db")
+    db_path = tmp_path / "demo.db"
+    shutil.copyfile(golden_demo_db, db_path)
+    engine = sa_create_engine(f"sqlite:///{db_path}")
+    session = Session(engine)
+    try:
+        yield session
+    finally:
+        session.close()
+        engine.dispose()
+
+
+@pytest.fixture(name="empty_session")
+def empty_session_fixture(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> Generator[Session, None, None]:
+    """Schema and demo project, but no fixture load yet."""
+    monkeypatch.setenv("APO_DEMO_ENABLED", "true")
+    engine = sa_create_engine(f"sqlite:///{tmp_path}/demo-empty.db")
     SQLModel.metadata.create_all(engine)
     assert ensure_demo_project_exists(Session(engine)) is True
     session = Session(engine)
@@ -74,11 +110,10 @@ def _load(session: Session, path: Path | None = None) -> bool:
 
 
 class TestFixtureLoads:
-    def test_load_returns_true_first_time(self, session: Session) -> None:
-        assert _load(session) is True
+    def test_load_returns_true_first_time(self, empty_session: Session) -> None:
+        assert _load(empty_session) is True
 
     def test_catalog_and_definitions(self, session: Session) -> None:
-        assert _load(session)
         inventory = session_exec_ids(session)
         assert "tasks/dabstep/dabstep-merchant-high-fraud-fine-risk" in inventory
         assert "tasks/dabstep/dabstep-issuing-country-most-transactions" in inventory
@@ -125,7 +160,6 @@ class TestFixtureLoads:
     def test_error_runs_carry_a_no_verdict_reason(self, session: Session) -> None:
         """Every consumer reads ``no_verdict_reason``, so a demo ``error`` run
         without one would render as neither an executor error nor a no-verdict."""
-        assert _load(session)
         runs = session.exec(select(AgentTaskRunDB)).all()
         errored = [r for r in runs if r.status == "error"]
         assert errored
@@ -141,7 +175,6 @@ class TestFixtureLoads:
             read_definition_source,
         )
 
-        assert _load(session)
         # The dabstep family has no counterpart in the bundled demo tree —
         # the pinned revision is the ONLY source path for its runs.
         run = session.get(AgentTaskRunDB, "demo-run-001")
@@ -169,7 +202,6 @@ class TestFixtureLoads:
         assert '"read-spec-and-searched"' in ra_source["content"]
 
     def test_batches_runs_and_evidence(self, session: Session) -> None:
-        assert _load(session)
         batches = session.exec(
             select(AgentTaskBatchRunDB).where(
                 AgentTaskBatchRunDB.project == DEMO_PROJECT_ID
@@ -211,7 +243,6 @@ class TestFixtureLoads:
         assert judgment.samples == 3
 
     def test_schedule_and_occurrences(self, session: Session) -> None:
-        assert _load(session)
         schedule = session.get(AgentTaskScheduleDB, "demo-schedule-weekly")
         assert schedule is not None
         # The demo is read-only: schedules always load disabled.
@@ -239,7 +270,6 @@ class TestFixtureLoads:
         assert {o.status for o in ra_occurrences} >= {"delivered", "missed"}
 
     def test_views(self, session: Session) -> None:
-        assert _load(session)
         views = session.exec(
             select(TaskViewDB).where(TaskViewDB.project_id == DEMO_PROJECT_ID)
         ).all()
@@ -248,7 +278,6 @@ class TestFixtureLoads:
         assert {"demo-view-mini", "demo-view-sonnet"} <= {v.id for v in views}
 
     def test_merged_correction_loads(self, session: Session) -> None:
-        assert _load(session)
         corrections = session.exec(
             select(AgentTaskTestResultCorrectionDB).where(
                 AgentTaskTestResultCorrectionDB.task_run_id == "demo-run-corrected"
@@ -258,7 +287,6 @@ class TestFixtureLoads:
         assert {c.action for c in corrections} == {"set_pass"}
 
     def test_otel_replay_claims_and_projects(self, session: Session) -> None:
-        assert _load(session)
         run = session.get(AgentTaskRunDB, "demo-run-001")
         assert run is not None
         # The atomic claim filled the trace link during replay.
@@ -290,13 +318,14 @@ class TestFixtureLoads:
 
 class TestReconcileSemantics:
     def test_second_load_is_a_no_op(self, session: Session) -> None:
-        assert _load(session) is True
+        # The scratch copy arrives already loaded, so this call IS the
+        # second, digest-gated load.
         before = _count_demo_rows(session)
+        assert before > 0
         assert _load(session) is False
         assert _count_demo_rows(session) == before
 
     def test_digest_change_reloads(self, session: Session, tmp_path: Path) -> None:
-        assert _load(session)
         import apo.services.demo_fixture as fixture_mod
         document = json.loads(_read_fixture_bytes(Path(fixture_mod.DEFAULTS_PATH)))
         anchor = next(
@@ -334,12 +363,12 @@ class TestReconcileSemantics:
 
 class TestKillSwitch:
     def test_disabled_creates_nothing(
-        self, session: Session, monkeypatch: MonkeyPatch
+        self, empty_session: Session, monkeypatch: MonkeyPatch
     ) -> None:
         monkeypatch.setenv("APO_DEMO_ENABLED", "false")
-        assert ensure_demo_project_exists(session) is False
-        assert _load(session) is False
-        source = session.exec(
+        assert ensure_demo_project_exists(empty_session) is False
+        assert _load(empty_session) is False
+        source = empty_session.exec(
             select(ProjectTaskSourceDB).where(
                 ProjectTaskSourceDB.project == DEMO_PROJECT_ID
             )
