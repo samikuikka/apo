@@ -156,7 +156,9 @@ Keyboard support for click handlers. Body ≥12px. WCAG AA (4.5:1).
 
 ## Do / Don't
 
-- Do rank with gray scale (foreground/muted-foreground/muted-foreground/60).
+- Do rank with gray scale (foreground/muted-foreground). Text stays at full
+  `muted-foreground` or brighter: `/60` is 2.4:1 on the background, below AA;
+  opacity variants are for dots, bars and separators.
 - Do reserve accent color for state + the one primary action.
 - Do use type tokens, not hand-set sizes.
 - Do use color tokens (`text-destructive`/`success`/`warning`), not raw hues.

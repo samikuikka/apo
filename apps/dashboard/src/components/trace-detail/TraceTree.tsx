@@ -849,10 +849,12 @@ export function TraceTree({
             disabled={opt.count === 0 && opt.key !== "all"}
           >
             {opt.dotClass && (
-              <span className={cn("inline-block h-1.5 w-1.5 rounded-full", opt.dotClass)} />
+              <span
+                className={cn("inline-block h-1.5 w-1.5 rounded-full", opt.dotClass, opt.count === 0 && "opacity-40")}
+              />
             )}
             {opt.label}
-            <span className="tabular-nums">{opt.count}</span>
+            <span className={cn("tabular-nums", opt.count > 0 && "text-foreground")}>{opt.count}</span>
           </button>
         ))}
         <button
