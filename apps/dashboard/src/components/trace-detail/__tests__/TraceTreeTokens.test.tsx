@@ -103,3 +103,22 @@ describe("TraceTree token labels", () => {
     expect(screen.getByText("30.0k tok (29.0k cached)")).toBeTruthy();
   });
 });
+
+describe("TraceTree level filter chips", () => {
+  it("brightens counts that can be filtered to and leaves empty levels muted", () => {
+    const leveled = [...calls.slice(0, 2), call("warn", "turn", 4, { level: "WARNING" })];
+    traceData.cumulativeMetrics = computeCumulativeMetrics(leveled);
+    render(
+      <SelectionProvider>
+        <TraceTree calls={leveled} searchQuery="" />
+      </SelectionProvider>,
+    );
+
+    const chip = (label: string) => screen.getByRole("button", { name: new RegExp(`^${label}\\s*\\d+$`) });
+    const count = (label: string) => chip(label).querySelector(".tabular-nums");
+    expect(count("Warnings")?.className).toContain("text-foreground");
+    expect(count("Errors")?.className).not.toContain("text-foreground");
+    expect(count("Errors")?.className).not.toMatch(/muted-foreground\//);
+    expect((chip("Errors") as HTMLButtonElement).disabled).toBe(true);
+  });
+});
