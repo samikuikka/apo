@@ -208,3 +208,54 @@ describe("getCommentCounts", () => {
     expect(result).toEqual({});
   });
 });
+
+describe("getCommentCounts chunking", () => {
+  it("sends one request for a small id list", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ t1: 2 }) });
+    await getCommentCounts(["t1"], "trace");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("splits large id lists into bounded requests and merges the results", async () => {
+    const ids = Array.from({ length: 450 }, (_, i) => `span-${i}`);
+    mockFetch.mockImplementation(async (url) => {
+      const calledUrl = new URL(url);
+      const requested = calledUrl.searchParams.get("object_ids")!.split(",");
+      expect(requested.length).toBeLessThanOrEqual(200);
+      return {
+        ok: true,
+        json: () =>
+          Promise.resolve(Object.fromEntries(requested.map((id) => [id, 1]))),
+      };
+    });
+
+    const counts = await getCommentCounts(ids, "trace");
+    // 450 ids at <=200 per request => 3 requests
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(Object.keys(counts)).toHaveLength(450);
+    expect(counts["span-0"]).toBe(1);
+    expect(counts["span-449"]).toBe(1);
+  });
+
+  it("keeps results from other chunks when one chunk request fails", async () => {
+    const ids = Array.from({ length: 250 }, (_, i) => `span-${i}`);
+    mockFetch.mockImplementation(async (url) => {
+      const calledUrl = new URL(url);
+      const requested = calledUrl.searchParams.get("object_ids")!;
+      if (requested.startsWith("span-0,")) {
+        return { ok: false, status: 500, json: () => Promise.resolve({}) };
+      }
+      return {
+        ok: true,
+        json: () =>
+          Promise.resolve(Object.fromEntries(requested.split(",").map((id) => [id, 7]))),
+      };
+    });
+
+    const counts = await getCommentCounts(ids, "trace");
+    // First chunk (span-0..span-199) failed; the rest still land.
+    expect(counts["span-0"]).toBeUndefined();
+    expect(counts["span-200"]).toBe(7);
+    expect(counts["span-249"]).toBe(7);
+  });
+});
