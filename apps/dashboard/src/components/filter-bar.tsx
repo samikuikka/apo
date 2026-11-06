@@ -4,8 +4,8 @@
  * The shared filter bar for the list pages (Tasks, a task's run history,
  * Runs).
  *
- * One row — search, Status, Model, Effort, any page-supplied facet
- * dimensions, Date — with the same controls and the same density everywhere. The bar is fully controlled: each page keeps
+ * One row (search, Status, Model, Effort, any page-supplied facet
+ * dimensions, Date) with the same controls and the same density everywhere. The bar is fully controlled: each page keeps
  * owning its state (URL params or lifted state) and supplies its own status
  * vocabulary from `lib/filter-status`. The bar never fetches and never
  * mutates.
