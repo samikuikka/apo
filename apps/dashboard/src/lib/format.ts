@@ -69,7 +69,7 @@ function cachedSuffix(value: number | null, cacheRead: number | null | undefined
 }
 
 /**
- * Render a single token count with the standard suffix — e.g. `1.5k tok`.
+ * Render a single token count with the standard suffix, e.g. `1.5k tok`.
  * Use for total-only displays where no input/output breakdown is available.
  * With a cache read: `1.5k tok (1.2k cached)`.
  */
@@ -78,7 +78,7 @@ export function formatTokenTotal(value: number | null, cacheRead?: number | null
 }
 
 /**
- * Render an input → output token breakdown with the standard suffix —
+ * Render an input → output token breakdown with the standard suffix,
  * e.g. `383→78 tok`. The arrow is the canonical "weird symbol" separator
  * used across every trace surface; the suffix is the unit. Both halves
  * go through {@link tokenFormat} so large numbers abbreviate to `k`/`M`.
@@ -132,7 +132,7 @@ export function formatRelativeTime(dateStr: string | null): string {
 
 /**
  * Render an ISO timestamp as a fixed `YYYY-MM-DD HH:MM:SS UTC` label with
- * seconds preserved. Pure string surgery — no Date round-trip, so the
+ * seconds preserved. Pure string surgery, no Date round-trip, so the
  * naive-SQLite-read-back local-time trap {@link parseUTC} guards against
  * cannot bite and the stored precision is shown as-is.
  */

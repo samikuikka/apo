@@ -68,12 +68,10 @@ function TraceDetailRootView({
   const [showScorePanel, setShowScorePanel] = useState(false);
   const [bookmarked, setBookmarked] = useState<boolean>(run.run.bookmarked ?? false);
   const totalCost = run.calls.reduce((sum: number, c) => sum + (c.cost || 0), 0);
-  // Disjoint basis (uncached + read + write + completion), matching the
-  // Tokens tab below; the column sum contradicts it on net-column runs.
   const totalTokens = run.calls.reduce((sum: number, c) => sum + wholeCallTokens(c), 0);
   const cacheTokens = sumCacheTokens(run.calls);
   // Reasoning total (issue #309): a model-call fact, like every reasoning
-  // surface — GENERATION observations only, and errored generations skip
+  // surface, GENERATION observations only, and errored generations skip
   // usage (their projected usage is not a measurement). No reporting call
   // anywhere → unknown, and the pill is omitted rather than shown as zero.
   const reasoningCalls = run.calls.filter(

@@ -20,10 +20,8 @@ import {
   type RowVerdict,
 } from "./trace-evaluation";
 import { getSemanticType, getEventType } from "./trace-utils";
-// getDisplayName lives in trace-display (shared with gantt + graph + detail
-// views) and is imported here for local use; import it directly from
-// ./trace-display. getRunSummary lives in ./trace-tree-utils.
 import { getDisplayName } from "./trace-display";
+import { computeTimingBounds } from "./trace-gantt-utils";
 import { buildTraceChildrenIndex, getRunSummary, type TraceChildrenIndex } from "./trace-tree-utils";
 import {
   ChevronRight,
@@ -41,7 +39,7 @@ import {
 import { useState, useMemo, useRef, useEffect, useCallback, type MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
-import { callCacheTokens, wholePromptTokens, type CumulativeMetrics } from "@/lib/cumulative-metrics";
+import { callCacheTokens, cumulativeWholeTokens, wholeCallTokens, wholePromptTokens, type CumulativeMetrics } from "@/lib/cumulative-metrics";
 import { formatCostMicro, formatDuration, formatInputCacheSplit, formatTokenBreakdown, formatTokenTotal } from "@/lib/format";
 import { CommentCountIcon } from "./CommentCountIcon";
 import { getHeatmapColor } from "./trace-heatmap";
@@ -96,23 +94,9 @@ const TYPE_CONFIG = {
   SPAN:       { icon: FileText,  label: "SPAN",  barColor: "bg-foreground/20",        color: "text-muted-foreground",   bg: "bg-muted/30" },
 } as const;
 
-function computeTimingBounds(calls: TraceObservation[], index: TraceChildrenIndex) {
-  if (calls.length === 0) return { minTs: 0, maxTs: 0, spanMs: 1 };
-  let minTs = Infinity;
-  let maxTs = -Infinity;
-  for (const c of calls) {
-    const start = index.startMsById.get(c.id) ?? 0;
-    const end = start + (c.latency_ms ?? 0);
-    if (start < minTs) minTs = start;
-    if (end > maxTs) maxTs = end;
-  }
-  const spanMs = maxTs - minTs || 1;
-  return { minTs, maxTs, spanMs };
-}
-
 function getChildren(callId: string | null, index: TraceChildrenIndex): TraceObservation[] {
   // Sibling order (step_index, then chronological created_at) was applied once
-  // when the index was built — see compareSiblings in ./trace-tree-utils.
+  // when the index was built; see compareSiblings in ./trace-tree-utils.
   return index.childrenByParent.get(callId) ?? [];
 }
 
@@ -236,14 +220,14 @@ function SpanContent({
   const displayName = verdict?.label ?? getDisplayName(c);
   const hasDescendants = cumulative && cumulative.descendant_count > 0;
   const displayCost = hasDescendants && cumulative ? cumulative.cost : (c.cost ?? 0);
-  const displayTokens = hasDescendants && cumulative ? cumulative.total_tokens : (c.total_tokens ?? 0);
+  const displayTokens = hasDescendants && cumulative ? cumulativeWholeTokens(cumulative) : wholeCallTokens(c);
   const showMetrics = !isSimplifiedTree;
   const levelBadge = getLevelBadge(c.level);
   const metricParts: MetricPart[] = [];
   if (showDuration && showMetrics) metricParts.push({ text: latency, kind: "duration" });
   if (showMetrics && modelLabel) metricParts.push({ text: modelLabel, kind: "model" });
   if (showCostTokens && showMetrics && displayTokens > 0) {
-    if (hasDescendants && cumulative && (cumulative.prompt_tokens > 0 || cumulative.completion_tokens > 0)) {
+    if (hasDescendants && cumulative) {
       metricParts.push({
         text: formatTokenBreakdown(
           cumulative.prompt_uncached_tokens + cumulative.cache_read_tokens + cumulative.cache_write_tokens,
@@ -257,7 +241,7 @@ function SpanContent({
           cumulative.cache_write_tokens,
         ),
       });
-    } else if (!hasDescendants && c.prompt_tokens != null && c.completion_tokens != null) {
+    } else if (!hasDescendants && wholePromptTokens(c) != null && c.completion_tokens != null) {
       const cache = callCacheTokens(c);
       metricParts.push({
         text: formatTokenBreakdown(wholePromptTokens(c) ?? 0, c.completion_tokens, cache.cache_read_tokens),
@@ -633,8 +617,8 @@ export function TraceTree({
       controller.abort();
     };
   }, [run, evaluation, spanVerdicts, verdictRowsVisible, phaseSummary]);
-  const callsById = useMemo(() => new Map(calls.map((c) => [c.id, c])), [calls]);
   const childrenIndex = useMemo(() => buildTraceChildrenIndex(calls), [calls]);
+  const callsById = childrenIndex.byId;
   const runSummary = useMemo(() => getRunSummary(calls), [calls]);
   const verdictFor = useCallback(
     (call: TraceObservation | null): VerdictDisplay | undefined => {
@@ -711,7 +695,7 @@ export function TraceTree({
       ...split.kept.slice(split.insertAt),
     ];
   }, [calls, expanded, searchQuery, evaluation, evalExpanded, spanVerdicts, phaseSummary, childrenIndex]);
-  const timingBounds = useMemo(() => computeTimingBounds(calls, childrenIndex), [calls, childrenIndex]);
+  const timingBounds = useMemo(() => computeTimingBounds(calls, childrenIndex.startMsById), [calls, childrenIndex]);
   const totalCost = useMemo(() => calls.reduce((sum, c) => sum + (c.cost ?? 0), 0), [calls]);
 
   const levelCounts = useMemo(() => {
@@ -728,7 +712,6 @@ export function TraceTree({
   }, [flatTree]);
 
   const filteredTree = useMemo(() => {
-    const callsById = childrenIndex.byId;
     let tree = flatTree;
 
     if (levelFilter !== "all") {
@@ -740,7 +723,7 @@ export function TraceTree({
           let parentId = node.call.parent_call_id;
           while (parentId) {
             matchingIds.add(parentId);
-            const parent = callsById.get(parentId);
+            const parent = childrenIndex.byId.get(parentId);
             parentId = parent?.parent_call_id ?? null;
           }
         }
@@ -764,7 +747,7 @@ export function TraceTree({
             let parentId = node.call.parent_call_id;
             while (parentId) {
               matchingIds.add(parentId);
-              const parent = callsById.get(parentId);
+              const parent = childrenIndex.byId.get(parentId);
               parentId = parent?.parent_call_id ?? null;
             }
           }
