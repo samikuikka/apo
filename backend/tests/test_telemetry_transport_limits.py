@@ -13,9 +13,11 @@ import asyncio
 import gzip
 import io
 import json
+import time
 
 import pytest
 from fastapi.testclient import TestClient
+from apo.models.db import OtlpSpanDB
 from sqlmodel import Session, select
 
 
@@ -474,7 +476,9 @@ class TestRouteSpanCountCap:
         assert len(list(session.exec(select(OtlpIngestBatchDB)).all())) == 0
         assert len(list(session.exec(select(OtlpSpanDB)).all())) == 0
 
-    def test_route_admits_2048_spans(self, otlp_client: TestClient) -> None:
+    def test_route_admits_2048_spans(
+        self, otlp_client: TestClient, session: Session
+    ) -> None:
         payload = _otlp_json(2048)
         resp = otlp_client.post(
             "/api/public/otel/v1/traces",
@@ -482,6 +486,26 @@ class TestRouteSpanCountCap:
             headers={"content-type": "application/json"},
         )
         assert resp.status_code == 200
+        # Bound this test's own write load before it ends: the admitted
+        # batch's span SQL rides the process's one shared test connection,
+        # and an unbounded straggler once leaked 48+ projected run rows
+        # into the NEXT test's freshly recreated schema (observed on a slow
+        # CI runner as test_run_list_query seeing hex trace ids). Waiting
+        # for all 2048 canonical spans also upgrades the test from
+        # "route said 200" to "the batch actually landed".
+        # The i=0 span carries an all-zero trace id, which the receiver
+        # rejects, so 2047 canonical rows is the batch's exact steady state.
+        expected = 2047
+        deadline = time.monotonic() + 15.0
+        while True:
+            stored = len(list(session.exec(select(OtlpSpanDB)).all()))
+            if stored >= expected:
+                break
+            assert time.monotonic() < deadline, (
+                f"admitted 2048 spans but only {stored} canonical rows landed"
+            )
+            time.sleep(0.05)
+        assert stored == expected
 
 
 class TestRoutePartialSuccess:
