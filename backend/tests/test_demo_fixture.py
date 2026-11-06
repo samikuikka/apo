@@ -2,7 +2,7 @@
 
 Exercises the shipped placeholder fixture end-to-end: catalog + definitions,
 batch/run/check-report/deliverable/judgment rows, schedules + occurrences,
-views, and — the load-bearing part — the OTLP replay through the real
+views, and (the load-bearing part) the OTLP replay through the real
 ingestion pipeline (canonical spans, task-run trace claim, projection).
 Also pins the digest-gated reconcile semantics and fail-hard behavior.
 """
@@ -12,6 +12,7 @@ Also pins the digest-gated reconcile semantics and fail-hard behavior.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from collections.abc import Generator
 from pathlib import Path
@@ -58,13 +59,24 @@ def golden_demo_db(tmp_path_factory: TempPathFactory) -> Path:
     copies keeps every test on its own engine AND its own file, so no
     savepoint or write can bleed between tests.
     """
-    db_path = tmp_path_factory.mktemp("demo-golden") / "golden.db"
-    engine = sa_create_engine(f"sqlite:///{db_path}")
-    SQLModel.metadata.create_all(engine)
-    assert ensure_demo_project_exists(Session(engine)) is True
-    assert load_demo_fixture(Session(engine)) is True
-    engine.dispose()
-    return db_path
+    # Module scope cannot use the function-scoped monkeypatch, so pin the
+    # gate by hand: an ambient APO_DEMO_ENABLED=false would make the golden
+    # load silently skip and fail every test in this module at setup.
+    saved = os.environ.get("APO_DEMO_ENABLED")
+    os.environ["APO_DEMO_ENABLED"] = "true"
+    try:
+        db_path = tmp_path_factory.mktemp("demo-golden") / "golden.db"
+        engine = sa_create_engine(f"sqlite:///{db_path}")
+        SQLModel.metadata.create_all(engine)
+        assert ensure_demo_project_exists(Session(engine)) is True
+        assert load_demo_fixture(Session(engine)) is True
+        engine.dispose()
+        return db_path
+    finally:
+        if saved is None:
+            os.environ.pop("APO_DEMO_ENABLED", None)
+        else:
+            os.environ["APO_DEMO_ENABLED"] = saved
 
 
 @pytest.fixture(name="session")

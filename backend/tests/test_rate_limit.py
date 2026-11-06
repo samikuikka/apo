@@ -9,25 +9,11 @@ from fastapi.testclient import TestClient
 import apo.auth.rate_limit as rate_limit_module
 from apo.auth.rate_limit import LoginRateLimiter, login_rate_limiter
 from apo.routes.auth import _account_rate_limiter
+from tests._fake_clock import install_fake_clock
 
 
-class _FakeClock:
-    """Patches the limiter's clock seam so window expiry is advanced, not slept."""
-
-    def __init__(self) -> None:
-        self._elapsed: float = 0.0
-
-    def __call__(self) -> float:
-        return 1000.0 + self._elapsed
-
-    def advance(self, seconds: float) -> None:
-        self._elapsed += seconds
-
-
-def _install_fake_clock(monkeypatch: MonkeyPatch) -> _FakeClock:
-    clock = _FakeClock()
-    monkeypatch.setattr(rate_limit_module, "monotonic", clock)
-    return clock
+def _install_fake_clock(monkeypatch: MonkeyPatch):
+    return install_fake_clock(monkeypatch, rate_limit_module)
 
 
 def _reset_rate_limiter() -> None:

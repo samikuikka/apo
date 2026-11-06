@@ -9,6 +9,7 @@ lower the baseline in the same commit to lock in the improvement.
 """
 
 import ast
+import fnmatch
 import os
 import re
 import subprocess
@@ -428,9 +429,24 @@ def test_every_test_file_runs_in_ci_or_is_exempt() -> None:
 
 
 def _backend_shard_path_args() -> list[str]:
-    """The space-separated pytest path arguments of each backend CI shard leg."""
+    """The space-separated pytest path arguments of each backend CI shard leg.
+
+    Also asserts the backend job's pytest step still interpolates the matrix
+    paths: the census pins the command text and this function reads the
+    matrix, so a step edited to drop the interpolation would otherwise leave
+    both guards green while a shard silently stops running its files.
+    """
     document = yaml.safe_load(
         (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    backend_steps = document["jobs"]["backend"]["steps"]
+    interpolates_paths = any(
+        isinstance(step.get("run"), str) and "${{ matrix.paths }}" in step["run"]
+        for step in backend_steps
+    )
+    assert interpolates_paths, (
+        "the backend pytest step must interpolate ${{ matrix.paths }}; without it "
+        "the shard matrix legs silently stop running their files"
     )
     matrix = document["jobs"]["backend"]["strategy"]["matrix"]["include"]
     args: list[str] = []
@@ -448,8 +464,6 @@ def test_backend_shard_args_cover_every_test_file() -> None:
     leg and silently never run. Expand the shard args exactly as the shell
     would and fail on any test file left uncovered.
     """
-    import fnmatch
-
     tests_root = REPO_ROOT / "backend" / "tests"
 
     def _collectable(path: Path) -> bool:

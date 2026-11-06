@@ -11,7 +11,6 @@ Covers:
 
 import hashlib
 import threading
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import patch
@@ -35,6 +34,8 @@ from apo.auth.api_key_cache import (
 )
 from apo.auth.middleware import _is_expired
 from apo.models.db import ApiKeyDB, UserDB
+
+from tests._fake_clock import install_fake_clock
 
 from .conftest import TEST_PROJECT_ID, seed_project_for_user
 
@@ -82,23 +83,8 @@ def _clear_cache() -> Any:
 # ---------------------------------------------------------------------------
 
 
-class _FakeClock:
-    """Patches the cache's clock seam so TTL expiry is advanced, not slept."""
-
-    def __init__(self) -> None:
-        self._elapsed: float = 0.0
-
-    def __call__(self) -> float:
-        return 1000.0 + self._elapsed
-
-    def advance(self, seconds: float) -> None:
-        self._elapsed += seconds
-
-
-def _install_fake_clock(monkeypatch: MonkeyPatch) -> _FakeClock:
-    clock = _FakeClock()
-    monkeypatch.setattr(api_key_cache_module, "monotonic", clock)
-    return clock
+def _install_fake_clock(monkeypatch: MonkeyPatch):
+    return install_fake_clock(monkeypatch, api_key_cache_module)
 
 
 class TestApiKeyCacheGetSet:
