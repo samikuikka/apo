@@ -23,11 +23,10 @@ function ghJson(args) {
   const candidates = [stdout.indexOf("["), stdout.indexOf("{")].filter(
     (index) => index !== -1,
   );
-  const start = Math.min(...candidates);
-  if (start === -1) {
+  if (candidates.length === 0) {
     throw new Error(`gh produced no JSON: ${stdout.slice(0, 200)}`);
   }
-  return JSON.parse(stdout.slice(start));
+  return JSON.parse(stdout.slice(Math.min(...candidates)));
 }
 
 function secondsBetween(fromIso, toIso) {
@@ -111,13 +110,18 @@ function main() {
     listRuns(Number(args[1]) || 10);
     return 0;
   }
-  const ids = args.filter((arg) => /^\d+$/.test(arg));
-  if (ids.length === 0) {
+  const invalid = args.filter((arg) => !/^\d+$/.test(arg));
+  if (invalid.length > 0) {
+    console.error(`not a run id: ${invalid.join(", ")}`);
+    console.error("usage: ci-durations.mjs <run-id>... | --list [N]");
+    return 2;
+  }
+  if (args.length === 0) {
     console.error("usage: ci-durations.mjs <run-id>... | --list [N]");
     return 2;
   }
   let failed = 0;
-  for (const id of ids) failed += reportRun(id).failedJobs;
+  for (const id of args) failed += reportRun(id).failedJobs;
   return failed > 0 ? 1 : 0;
 }
 
