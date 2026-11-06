@@ -1,5 +1,5 @@
 /**
- * capability-sim — the scripted fixture behind the landing-page prototype.
+ * capability-sim: the scripted fixture behind the landing-page prototype.
  *
  * One task ("process-refund-request") flows through apo's whole loop:
  * the spec, a run of the real harness, the test verdict with judge
@@ -100,7 +100,7 @@ export interface FixDef {
 	readonly title: string;
 	/** The concrete change, file-level, like a commit subject. */
 	readonly change: string;
-	/** Judge quote that motivates the fix — the "from evidence" half. */
+	/** Judge quote that motivates the fix: the "from evidence" half. */
 	readonly evidence: string;
 	readonly rationale: string;
 }
@@ -109,17 +109,17 @@ export const FIXES: readonly FixDef[] = [
 	{
 		id: "email-body",
 		title: "Feed the agent the full email",
-		change: "supportInboxAdapter.ts — pass the message body, not just the subject line",
+		change: "supportInboxAdapter.ts: pass the message body, not just the subject line",
 		evidence:
 			"“The reply confirms a refund was issued but never mentions the cracked base, the metal shavings, or the worry about plugging it in. It is a form letter.”",
 		rationale:
-			"The agent never saw the complaint — the adapter dropped the body. This is a wiring problem, not a prompt problem, and no prompt can fix it.",
+			"The agent never saw the complaint: the adapter dropped the body. This is a wiring problem, not a prompt problem, and no prompt can fix it.",
 	},
 	{
 		id: "tone-guide",
 		requires: "email-body",
 		title: "Add a tone guide to the system prompt",
-		change: "system prompt — own the shipping failure, drop “per policy”, sign off like a person",
+		change: "system prompt: own the shipping failure, drop “per policy”, sign off like a person",
 		evidence:
 			"“Ownership is still missing: ‘per policy … has been authorized’ reads procedural. No apology, no warmth.”",
 		rationale:
@@ -210,7 +210,7 @@ const REPLY_V2 = [
 const REPLY_V3 = [
 	"Hi Dana,",
 	"",
-	"I'm so sorry your Encore arrived with a cracked base — that's not the",
+	"I'm so sorry your Encore arrived with a cracked base. That's not the",
 	"unboxing your dad should get for his birthday, and I understand the",
 	"worry about those metal shavings. Please don't use it; unplug it and set",
 	"it aside, and there's no need to ship anything back.",
@@ -221,7 +221,7 @@ const REPLY_V3 = [
 	"",
 	"If anything else arrives less than perfect, you know where to find me.",
 	"",
-	"— Priya, Support",
+	"Priya, Support",
 ];
 
 const REASONING_V1 =
@@ -231,7 +231,7 @@ const REASONING_V2 =
 	"The customer reports a cracked base and metal shavings, worries the unit is unsafe, and is considering a chargeback. Verify the order, confirm damage-in-shipping policy, refund in full, and address the safety and chargeback points explicitly.";
 
 const REASONING_MID =
-	"Order ord-8841: $84.00, delivered 6 days ago — inside the 30-day damage window. Full refund eligible, no return required. Issue $84.00.";
+	"Order ord-8841: $84.00, delivered 6 days ago, inside the 30-day damage window. Full refund eligible, no return required. Issue $84.00.";
 
 function buildSpans(version: VersionId): SpanScript[] {
 	const reply = version === 1 ? REPLY_V1 : version === 2 ? REPLY_V2 : REPLY_V3;
@@ -365,7 +365,7 @@ const RUBRIC_AGENT =
 
 export interface TestOutcomeScript {
 	readonly verdict: "pass" | "fail";
-	/** Deterministic assertion that failed (mixed tests) — shown ✗ in the breakdown. */
+	/** Deterministic assertion that failed (mixed tests), shown ✗ in the breakdown. */
 	readonly failedAssertion?: string;
 	readonly judge?: JudgeScript;
 }
@@ -403,7 +403,7 @@ const OUTCOMES: Readonly<Record<VersionId, Readonly<Record<TestId, TestOutcomeSc
 					"The tone is transactional. No ownership of the shipping failure, no apology, no warmth toward a gift missed.",
 				secondJudge: {
 					mark: "✓✗ 0.99",
-					note: "Verdicts differ — second judge contradicts at 0.99 confidence.",
+					note: "Verdicts differ: second judge contradicts at 0.99 confidence.",
 				},
 			},
 		},
@@ -433,7 +433,7 @@ const OUTCOMES: Readonly<Record<VersionId, Readonly<Record<TestId, TestOutcomeSc
 				rubric: RUBRIC_INCIDENT,
 				reasoning: [
 					"Scanning the reply for the reported damage…",
-					"It warns against use and mentions the damage — but only in policy language.",
+					"It warns against use and mentions the damage, but only in policy language.",
 				],
 				quote:
 					"The reply names the damage, warns against using the unit, and removes the chargeback worry. PASS.",
@@ -477,7 +477,7 @@ const OUTCOMES: Readonly<Record<VersionId, Readonly<Record<TestId, TestOutcomeSc
 				rubric: RUBRIC_INCIDENT,
 				reasoning: [
 					"Scanning the reply for the reported damage…",
-					"Cracked base, shavings, the birthday, the chargeback — all answered.",
+					"Cracked base, shavings, the birthday, the chargeback: all answered.",
 				],
 				quote:
 					"The reply addresses the damage and the safety worry by name and closes the loop on the chargeback. PASS.",
@@ -490,7 +490,7 @@ const OUTCOMES: Readonly<Record<VersionId, Readonly<Record<TestId, TestOutcomeSc
 				rubric: RUBRIC_TONE,
 				reasoning: [
 					"Reading the reply as the customer would…",
-					"“Not the unboxing your dad should get for his birthday” — that is ownership.",
+					"“Not the unboxing your dad should get for his birthday”: that is ownership.",
 				],
 				quote:
 					"The tone owns the failure, is warm without being performative, and never asks the customer to prove fault. PASS.",
@@ -524,7 +524,7 @@ export function gradedSignal(version: VersionId): { passed: number; total: numbe
 	return { passed, total: TESTS.length };
 }
 
-/** Live verdict over the enabled subset — the suite is the standard. */
+/** Live verdict over the enabled subset; the suite is the standard. */
 export function verdictFor(version: VersionId, enabled: Readonly<Record<TestId, boolean>>): {
 	passed: number;
 	total: number;
@@ -579,7 +579,7 @@ export function specBlockLines(test: TestDef): string[] {
 			];
 		case "stays-within-budget":
 			return [
-				'// Budgets are tests too — cheap, deterministic, and they catch',
+				'// Budgets are tests too: cheap, deterministic, and they catch',
 				'// the runaway harness before the bill does.',
 				'test("stays-within-budget", (t) => {',
 				"  t.maxTurns(4);",
@@ -633,15 +633,15 @@ export function specBlockLines(test: TestDef): string[] {
 	}
 }
 
-/** The customer email the agent reads — shown in the Run panel's input. */
+/** The customer email the agent reads, shown in the Run panel's input. */
 export const INBOUND_EMAIL = [
 	"From: Dana Whitfield <dana@example.com>",
-	"Subject: Order arrived damaged — ord-8841",
+	"Subject: Order arrived damaged (ord-8841)",
 	"",
-	"Hi — my Baratza Encore grinder arrived Tuesday with a cracked base",
+	"Hi, my Baratza Encore grinder arrived Tuesday with a cracked base",
 	"and metal shavings loose in the housing. I'm worried about plugging",
 	"it in at all. It was a gift for my father's birthday on the 12th and",
 	"I'd rather not have to dispute the charge to make it right.",
 	"",
-	"— Dana",
+	"Dana",
 ];

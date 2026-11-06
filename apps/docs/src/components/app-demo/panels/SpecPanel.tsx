@@ -1,7 +1,7 @@
 /**
- * SpecPanel — the task-detail page, in the dashboard's shape: header with
+ * SpecPanel: the task-detail page, in the dashboard's shape. Header with
  * back link, folder title, adapter badge and the badge row; tabs
- * (Files / Task Run History). The Files tab is the real TaskFileBrowser —
+ * (Files / Task Run History). The Files tab is the real TaskFileBrowser,
  * a two-pane file list + viewer over the task's files, where the suite
  * lives as the .eval.ts source. Check results are the run detail's job.
  */
@@ -162,7 +162,7 @@ function RunHistoryTab({ sim, go }: { sim: CapabilitySim; go: (panel: PanelId) =
 	const versions = ([1, 2, 3] as VersionId[]).filter((v) =>
 		sim.history.some((h) => h.version === v),
 	);
-	// The loop, product-honestly: apo never changes the harness — you do,
+	// The loop, product-honestly: apo never changes the harness; you do,
 	// then run again. Each "Run again" runs the next harness revision, and
 	// the graded signal shows whether the change helped.
 	const nextFix = FIXES.find((f) => !sim.appliedFixes.includes(f.id));
@@ -177,12 +177,12 @@ function RunHistoryTab({ sim, go }: { sim: CapabilitySim; go: (panel: PanelId) =
 				<span className="text-[12px] text-muted-foreground">
 					{nextFix ? (
 						<>
-							Fix your harness, then run again — the same suite grades every revision
+							Fix your harness, then run again: the same suite grades every revision
 							<span className="text-foreground"> ({sim.history.length} runs so far)</span>
 						</>
 					) : (
 						<>
-							<span className="font-medium text-success">The suite passes</span> — every future
+							<span className="font-medium text-success">The suite passes</span>, and every future
 							harness change runs against it
 						</>
 					)}

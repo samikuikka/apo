@@ -1,10 +1,10 @@
 /**
- * useCapabilitySim — drives the scripted fixture on a wall clock so the
+ * useCapabilitySim: drives the scripted fixture on a wall clock so the
  * landing-page panels behave like the product: a run streams spans in,
  * deliverables collect, tests settle one by one, judges stream reasoning
  * before their verdict, and applying a harness fix starts the next run.
  *
- * Ticks come from a Web Worker when possible — an occluded webview
+ * Ticks come from a Web Worker when possible: an occluded webview
  * starves page timers (down to ~1/min) while its event loop stays alive,
  * and worker timers keep firing, so the demo streams instead of
  * freezing. Each tick advances an ACCUMULATED clock by real elapsed time
@@ -47,7 +47,7 @@ interface SimState {
 	readonly version: VersionId;
 	readonly appliedFixes: readonly FixId[];
 	readonly enabled: Readonly<Record<TestId, boolean>>;
-	/** Enabled set frozen at run start — the judging schedule can't mutate mid-flight. */
+	/** Enabled set frozen at run start; the judging schedule can't mutate mid-flight. */
 	readonly judgingEnabled: Readonly<Record<TestId, boolean>>;
 	readonly phase: RunPhase;
 	/** Scaled ms since the run started; drives every derived state. */

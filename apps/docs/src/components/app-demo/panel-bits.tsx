@@ -1,5 +1,5 @@
 /**
- * panel-bits — the small shared pieces panels still use: the panel id
+ * panel-bits: the small shared pieces panels still use: the panel id
  * vocabulary, the verdict pill (native classes), code lines, formatting.
  * Presentation only.
  */

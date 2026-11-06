@@ -1,5 +1,5 @@
 /**
- * ConversationTab — a port of the dashboard's ConversationTranscript
+ * ConversationTab: a port of the dashboard's ConversationTranscript
  * (agent-task-execution/conversation-transcript.tsx): the rounded card
  * with "Conversation History · N messages", accordion rows with a
  * lowercase role + truncated preview + copy button + rotating chevron,
@@ -26,10 +26,10 @@ function buildConversation(sim: CapabilitySim): ChatMessage[] {
 	];
 	for (const span of sim.visibleSpans) {
 		if (span.kind === "generation") {
-			// The final generation IS the reply deliverable — no extra push.
+			// The final generation IS the reply deliverable; no extra push.
 			if (span.output) messages.push({ role: "assistant", content: span.output });
 		} else {
-			// OpenAI shape: a tool call hangs off an assistant message — start
+			// OpenAI shape: a tool call hangs off an assistant message, so start
 			// a bare assistant turn when the previous message was a tool result.
 			const last = messages[messages.length - 1];
 			if (last?.role !== "assistant") {
@@ -88,7 +88,7 @@ function Chevron({ open }: { open: boolean }) {
 		<Icon
 			name="chevron-down"
 			className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform"
-			// Closed rests at -90°, open at 0° — the real accordion's rotation.
+			// Closed rests at -90°, open at 0°: the real accordion's rotation.
 			style={{ transform: open ? "rotate(0deg)" : "rotate(-90deg)" }}
 		/>
 	);

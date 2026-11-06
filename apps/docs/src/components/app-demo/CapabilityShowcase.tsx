@@ -1,10 +1,10 @@
 /**
- * CapabilityShowcase — root island of the landing-page prototype.
+ * CapabilityShowcase: root island of the landing-page prototype.
  *
  * One presentation: the complete apo application window (ported shell +
  * ported pages), driven by a numbered tour strip. A deterministic,
- * scripted simulation of one task's whole loop runs inside it — spans
- * stream, judges settle, fixes converge — so the landing shows the real
+ * scripted simulation of one task's whole loop runs inside it: spans
+ * stream, judges settle, fixes converge, so the landing shows the real
  * product surfaces, alive, without a backend.
  *
  * `?panel=` deep-links a tour page (client-adopted; Astro 7 strips query
@@ -45,7 +45,7 @@ export function CapabilityShowcase() {
 		if (isPanelId(fromUrl)) setActivePanel(fromUrl);
 	}, []);
 
-	// Keep ?panel= shareable — but never stamp the default onto a URL that
+	// Keep ?panel= shareable, but never stamp the default onto a URL that
 	// never carried the param (and never overwrite before adoption ran).
 	const firstWrite = useRef(true);
 	useEffect(() => {
