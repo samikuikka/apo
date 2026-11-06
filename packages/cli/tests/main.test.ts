@@ -228,4 +228,28 @@ describe("unknown flag rejection", () => {
     spy.mockRestore();
     vi.restoreAllMocks();
   });
+
+  it("re-emits every value of a repeated flag to the handler", async () => {
+    // Dispatch used to rebuild argv from `flags`, which keeps only the LAST
+    // value of a repeat, so `--model a --model b` reached the command as just
+    // `--model b` and repeatable filters silently lost values.
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("[]", { headers: { "Content-Type": "application/json" } }));
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args.join(" ")); };
+
+    const code = await main([
+      "runs", "list", "--backend", "http://backend.test",
+      "--model", "gpt-a", "--model", "gpt-b",
+    ]);
+
+    console.log = origLog;
+    expect(code).toBe(0);
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain("model=gpt-a");
+    expect(url).toContain("model=gpt-b");
+    vi.restoreAllMocks();
+  });
 });

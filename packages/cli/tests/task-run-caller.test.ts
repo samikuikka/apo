@@ -137,6 +137,114 @@ describe("task run caller-execution dispatch", () => {
     expect(code).toBe(0);
   });
 
+  // --environment/--label must reach the batch the caller creates; without
+  // them the body stays byte-for-byte what it always was.
+  it("--environment and --label land on the caller batch body", async () => {
+    const savedEnv = process.env.AGENT_TASK_ENVIRONMENT;
+    delete process.env.AGENT_TASK_ENVIRONMENT;
+    let callerBody: Record<string, unknown> | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/health")) return new Response("ok", { status: 200 });
+      if (url.includes("/agent-task-batch-runs/caller")) {
+        callerBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return mockResp({
+          batch_run_id: "b1", task_run_id: "r1", attempt_id: "a1", lease_generation: 1,
+          lease_expires_at: "2026-01-01T00:00:00Z", attempt_jwt: "jwt-1",
+          trace_endpoint: "http://backend.test", trace_project: "proj-test",
+        }, 201);
+      }
+      if (url.includes("/attempts/a1/start")) return mockResp({ status: "running" });
+      if (url.includes("/attempts/a1/heartbeat")) return mockResp({ cancel_requested: false });
+      if (url.includes("/attempts/a1/result")) return mockResp({ status: "succeeded" });
+      return mockResp({}, 404);
+    });
+
+    try {
+      const code = await run([
+        taskId, "--dir", testDir, "--backend", "http://backend.test",
+        "--project", "proj-test", "--api-key", "sk-apo-test",
+        "--environment", "staging", "--label", "customer:acme", "--label", "area:billing",
+      ]);
+
+      expect(callerBody?.environment).toBe("staging");
+      expect(callerBody?.run_metadata).toEqual({
+        trigger: { source: "cli", executor: "caller" },
+        labels: {
+          customer: { id: "acme", name: "acme" },
+          area: { id: "billing", name: "billing" },
+        },
+      });
+      // Exported so the in-process trace carries the same environment.
+      expect(process.env.AGENT_TASK_ENVIRONMENT).toBe("staging");
+      expect(code).toBe(0);
+    } finally {
+      if (savedEnv === undefined) delete process.env.AGENT_TASK_ENVIRONMENT;
+      else process.env.AGENT_TASK_ENVIRONMENT = savedEnv;
+    }
+  });
+
+  it("without --environment/--label the body keeps environment \"default\" and no labels key", async () => {
+    const savedEnv = process.env.AGENT_TASK_ENVIRONMENT;
+    delete process.env.AGENT_TASK_ENVIRONMENT;
+    let callerBody: Record<string, unknown> | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/health")) return new Response("ok", { status: 200 });
+      if (url.includes("/agent-task-batch-runs/caller")) {
+        callerBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return mockResp({
+          batch_run_id: "b1", task_run_id: "r1", attempt_id: "a1", lease_generation: 1,
+          lease_expires_at: "2026-01-01T00:00:00Z", attempt_jwt: "jwt-1",
+          trace_endpoint: "http://backend.test", trace_project: "proj-test",
+        }, 201);
+      }
+      if (url.includes("/attempts/a1/start")) return mockResp({ status: "running" });
+      if (url.includes("/attempts/a1/heartbeat")) return mockResp({ cancel_requested: false });
+      if (url.includes("/attempts/a1/result")) return mockResp({ status: "succeeded" });
+      return mockResp({}, 404);
+    });
+
+    try {
+      const code = await run([
+        taskId, "--dir", testDir, "--backend", "http://backend.test",
+        "--project", "proj-test", "--api-key", "sk-apo-test",
+      ]);
+
+      expect(callerBody?.environment).toBe("default");
+      expect(callerBody?.run_metadata).toEqual({ trigger: { source: "cli", executor: "caller" } });
+      expect(JSON.stringify(callerBody?.run_metadata)).not.toContain("labels");
+      expect(code).toBe(0);
+    } finally {
+      if (savedEnv === undefined) delete process.env.AGENT_TASK_ENVIRONMENT;
+      else process.env.AGENT_TASK_ENVIRONMENT = savedEnv;
+    }
+  });
+
+  it("a malformed --label exits 2 before any task resolution or network call", async () => {
+    const savedEnv = process.env.AGENT_TASK_ENVIRONMENT;
+    delete process.env.AGENT_TASK_ENVIRONMENT;
+    const errors: string[] = [];
+    const origErr = console.error;
+    console.error = (...args: unknown[]) => errors.push(args.join(" "));
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => mockResp({}, 500));
+
+    try {
+      const code = await run([
+        taskId, "--dir", testDir, "--backend", "http://backend.test",
+        "--project", "proj-test", "--api-key", "sk-apo-test", "--label", "nocolon",
+      ]);
+
+      expect(code).toBe(2);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(errors.join("\n")).toContain("--label must be <key>:<id>");
+    } finally {
+      console.error = origErr;
+      if (savedEnv === undefined) delete process.env.AGENT_TASK_ENVIRONMENT;
+      else process.env.AGENT_TASK_ENVIRONMENT = savedEnv;
+    }
+  });
+
   // Regression: this path returned without releasing the run-scoped executor
   // env — APO_AUTH_TOKEN lingered, and the injected APO_API_KEY was cleaned on
   // the SDK-load path but not this one.

@@ -161,13 +161,16 @@ const commands: Record<string, CommandEntry> = {
     ],
     options: [
       ["--no-record", "Run on this machine WITHOUT recording (skips the backend entirely)"],
+      ["--environment <name>", "Environment recorded on the batch (default: $AGENT_TASK_ENVIRONMENT or \"default\")"],
+      ["--label <key>:<id>", "Label recorded on the batch for later filtering, e.g. customer:acme (repeatable, one value per key)"],
     ],
     examples: [
       "apo task run meeting-summary",
       "apo task run ./tasks/my-task",
       "apo task run meeting-summary --no-record",
+      "apo task run checkout --environment staging --label customer:acme",
     ],
-    note: "Always executes on this machine (caller execution). Records the run when backend + project + credential are configured; a configured recording that cannot reach the backend exits 2 — use --no-record to skip recording. Results over the server's advertised size limit are recorded as execution errors (inspectable via the printed run id). Exit codes: 0=pass, 1=fail, 2=error or NO VERDICT (only judge errors left non-passing). With a remote backend, traces go through a local buffering collector so they survive network drops and backend outages (APO_COLLECTOR=1/0 overrides).",
+    note: "Always executes on this machine (caller execution). Records the run when backend + project + credential are configured; a configured recording that cannot reach the backend exits 2; use --no-record to skip recording. Results over the server's advertised size limit are recorded as execution errors (inspectable via the printed run id). Exit codes: 0=pass, 1=fail, 2=error or NO VERDICT (only judge errors left non-passing). With a remote backend, traces go through a local buffering collector so they survive network drops and backend outages (APO_COLLECTOR=1/0 overrides).",
   },
   "task publish": {
     handler: loadCommand("task-publish"),
@@ -603,7 +606,7 @@ function validFlagNames(entry: CommandEntry): Set<string> {
 }
 
 export async function main(argv: string[]): Promise<number> {
-  const { positional, flags } = parseArgs(argv);
+  const { positional, flags, multiFlags } = parseArgs(argv);
 
   if (flags.version) {
     console.log(`apo ${VERSION}`);
@@ -656,7 +659,12 @@ export async function main(argv: string[]): Promise<number> {
   for (const [key, value] of Object.entries(flags)) {
     if (key === "help" || key === "version") continue;
     if (typeof value === "string") {
-      commandArgs.push(`--${key}`, value);
+      // flags[key] holds only the LAST value of a repeatable flag; re-emit
+      // every value or repeats (--model a --model b, --label k:1 --label k:2)
+      // are silently dropped between here and the command.
+      for (const v of multiFlags[key] ?? [value]) {
+        commandArgs.push(`--${key}`, v);
+      }
     } else if (value === true) {
       commandArgs.push(`--${key}`);
     }

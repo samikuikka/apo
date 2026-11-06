@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import { resolve } from "path";
-import { getBoolFlag, parseArgs, requirePositional } from "../lib/args.ts";
+import { getBoolFlag, getFlagValue, getFlagValues, parseArgs, requirePositional } from "../lib/args.ts";
+import { labelsFromFlags, type RunLabels } from "../lib/run-labels.ts";
 import { resolveConfig, type Config } from "../lib/config.ts";
 import { apiGet, isBackendReachable } from "../lib/api.ts";
 import { discoverTaskMeta, findTaskMetaById } from "../lib/task-meta.ts";
@@ -62,11 +63,33 @@ export type LocalRunSummary = {
 export type VerdictObserver = (noVerdict: boolean) => void;
 
 export async function run(argv: string[], observeVerdict?: VerdictObserver): Promise<number> {
-  const { positional, flags } = parseArgs(argv);
+  const { positional, flags, multiFlags } = parseArgs(argv);
   const config = resolveConfig(flags);
   const taskRef = requirePositional(positional, 0, "task-id | path");
 
   const noRecord = getBoolFlag(flags, "no-record");
+
+  const environmentFlag = getFlagValue(flags, "environment")?.trim();
+  const environment = environmentFlag || process.env.AGENT_TASK_ENVIRONMENT || "default";
+  const labelValues = getFlagValues(multiFlags, "label");
+  let labels: RunLabels = {};
+  if (labelValues.length > 0) {
+    try {
+      labels = labelsFromFlags(labelValues);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(red(`error: ${message}`));
+      return 2;
+    }
+  }
+  const targeting: BatchTargeting = { environment, labels };
+  // The SDK's in-process runtime stamps the trace with
+  // process.env.AGENT_TASK_ENVIRONMENT (task-runtime.ts), and loadEnvFiles
+  // never overrides an existing key, so setting it here keeps the trace's
+  // environment equal to the batch's.
+  if (environmentFlag) {
+    process.env.AGENT_TASK_ENVIRONMENT = environment;
+  }
 
   // Resolve the task's filesystem path + its declared execution preference.
   // We read `execution` statically (no module load) so we don't re-register
@@ -80,13 +103,14 @@ export async function run(argv: string[], observeVerdict?: VerdictObserver): Pro
   // caller execution is the only recorded runtime. --no-record
   // forces an unrecorded local run.
   if (noRecord) {
+    noteDroppedLabels(targeting);
     return runLocally(config, resolved.taskDir, observeVerdict);
   }
 
   // Default recorded path: caller create-and-claim.
   if (config.projectId && config.apiKey) {
     if (await isBackendReachable(config.backendUrl)) {
-      return runCallerRecorded(config, resolved, observeVerdict);
+      return runCallerRecorded(config, resolved, targeting, observeVerdict);
     }
     console.error(`${red("error:")} backend unreachable; configured recording failed (use --no-record to run unrecorded)`);
     return 2;
@@ -94,7 +118,23 @@ export async function run(argv: string[], observeVerdict?: VerdictObserver): Pro
 
   // No project or credential configured → run unrecorded with a notice.
   console.error(`${dim("note:")} run is not being recorded (no project or credential configured)`);
+  noteDroppedLabels(targeting);
   return runLocally(config, resolved.taskDir, observeVerdict);
+}
+
+/** What the caller stamps on the batch it creates: the environment label and
+ * the caller-defined labels (`run_metadata.labels`). */
+type BatchTargeting = {
+  environment: string;
+  labels: RunLabels;
+};
+
+/** Labels only exist on recorded batches, so an unrecorded run says it drops
+ * them instead of ignoring them silently. */
+function noteDroppedLabels(targeting: BatchTargeting): void {
+  if (Object.keys(targeting.labels).length > 0) {
+    console.error(dim("note: --label is recorded on the batch; this unrecorded run drops it"));
+  }
 }
 
 /**
@@ -185,6 +225,7 @@ function callerTrigger(config: Config): Record<string, string> {
 async function runCallerRecorded(
   config: Config,
   resolved: ResolvedTask,
+  targeting: BatchTargeting,
   observeVerdict?: VerdictObserver,
 ): Promise<number> {
   const taskDir = resolved.taskDir;
@@ -216,6 +257,8 @@ async function runCallerRecorded(
   }
 
   // 2. Create-and-claim.
+  const { labels } = targeting;
+  const hasLabels = Object.keys(labels).length > 0;
   let created;
   try {
     created = await createCallerRun({
@@ -224,7 +267,8 @@ async function runCallerRecorded(
         task_id: taskId, task_path: taskId, display_name: taskId,
         adapter_name: null, has_checks: false,
       },
-      environment: "default", runMetadata: { trigger: callerTrigger(config) },
+      environment: targeting.environment,
+      runMetadata: { trigger: callerTrigger(config), ...(hasLabels ? { labels } : {}) },
       attestation: {
         source_type: "caller_worktree",
         repository_url: git.repositoryUrl,
