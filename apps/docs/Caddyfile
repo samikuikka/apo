@@ -2,7 +2,7 @@
 #
 # Serves the prebuilt Astro output at /srv. Markdown routes get the correct
 # text/markdown content type so coding agents fetch clean content. No TLS,
-# no auth, no proxying — the public Caddy in front of this handles ingress.
+# no auth, no proxying; the public Caddy in front of this handles ingress.
 
 :8080 {
 	root * /srv
@@ -10,9 +10,19 @@
 	@markdown path *.md
 	header @markdown Content-Type "text/markdown; charset=utf-8"
 	header @markdown Cache-Control "public, max-age=60"
-	@html path *.html /
+	# Astro's directory format serves every page at /path/ (backed by an
+	# index.html), so HTML is whatever is not a static asset extension.
+	@html not path *.js *.css *.woff2 *.png *.svg *.webp *.ico *.txt *.xml *.md
 	header @html Cache-Control "no-cache, must-revalidate"
-	@static path *.js *.css *.woff2 *.png *.svg *.webp
-	header @static Cache-Control "public, max-age=31536000, immutable"
+	# Only /_astro/ output is content-hashed. public/ files (favicons, the
+	# og image, robots.txt) keep their names across builds, so a long
+	# max-age would pin stale assets after a redeploy.
+	@hashed path /_astro/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@public-assets {
+		path *.png *.svg *.webp *.ico
+		not path /_astro/*
+	}
+	header @public-assets Cache-Control "public, max-age=3600"
 	file_server
 }
