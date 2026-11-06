@@ -83,7 +83,7 @@ case "$MODE" in
     set_env "APO_PUBLIC_URL" "$TUNNEL_URL"
     set_env "APO_INGRESS_MODE" "cloudflare-tunnel"
     # Dev sign-in provisions a passwordless account and must never ride
-    # along into a publicly reachable profile — force it off when entering
+    # along into a publicly reachable profile, so force it off when entering
     # tunnel mode, whatever the local .env carried.
     set_env "DEV_SIGNIN_ENABLED" "false"
     # Default the public docs hostname only when absent.
@@ -93,6 +93,9 @@ case "$MODE" in
     # Umami analytics: default the host, generate secrets on first use. The
     # values live in .env only; regenerating the db password after the volume
     # exists would lock Umami out of its own database, so never overwrite.
+    # Both secrets come from openssl; without it an empty value would be
+    # written and only surface later as a compose interpolation error.
+    command -v openssl >/dev/null 2>&1 || { _err "error: openssl is required to generate the umami secrets"; exit 1; }
     if [[ -z "$(get_env "APO_UMAMI_HOST")" ]]; then
       set_env "APO_UMAMI_HOST" "umami.test-apo.online"
     fi

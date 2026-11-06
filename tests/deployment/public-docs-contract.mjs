@@ -11,6 +11,13 @@
 //      Apo application auth (no Basic Auth anywhere).
 //   9. The Cloudflare Tunnel publishes both hostnames, docs first, terminal 404
 //      last.
+//  10. Without the umami overlay, the umami host falls back to an explicit
+//      http address on the reserved never-resolving TLD.
+//  11. Umami overlay: isolated analytics service, own database, no Apo
+//      secrets; caddy starts with it, analytics never gates the site.
+//  12. Direct mode (docker-compose.server.yml): disabled hosts compose
+//      explicit http addresses (a bare reserved-TLD hostname would trigger
+//      endless ACME retries); the public origin stays the HTTPS site address.
 import { readFileSync } from "node:fs";
 
 const DOCS_HOST = "docs.test-apo.online";
@@ -20,7 +27,7 @@ const UMAMI_HOST = "umami.test-apo.online";
 const renderedPath = process.argv[2];
 if (!renderedPath) {
   throw new Error(
-    "usage: node tests/deployment/public-docs-contract.mjs <rendered-compose.json> [rendered-umami-compose.json]",
+    "usage: node tests/deployment/public-docs-contract.mjs <rendered-compose.json> [rendered-umami-compose.json] [rendered-server-compose.json]",
   );
 }
 const rendered = JSON.parse(readFileSync(renderedPath, "utf8"));
@@ -221,8 +228,8 @@ if (!umamiRenderedPath) {
   assertEnvironment(umamiCaddy, "APO_UMAMI_HOST", UMAMI_HOST);
   const caddyUmamiDep = umamiCaddy.depends_on?.umami;
   assert(
-    caddyUmamiDep?.condition === "service_healthy",
-    "caddy must depend on umami service_healthy",
+    caddyUmamiDep?.condition === "service_started",
+    "caddy must start with umami (service_started): optional analytics must not gate the public site",
   );
 
   const docsBuildArgs = umamiStack.services?.docs?.build?.args ?? {};
@@ -264,6 +271,33 @@ if (!umamiRenderedPath) {
   );
 
   console.log("public docs contract: ok");
+}
+
+// ---------------------------------------------------------------------------
+// 12. Direct mode: disabled hosts compose explicit http addresses, and the
+//     public origin is the HTTPS site address.
+// ---------------------------------------------------------------------------
+const serverRenderedPath = process.argv[4];
+if (serverRenderedPath) {
+  const serverStack = JSON.parse(readFileSync(serverRenderedPath, "utf8"));
+  const serverCaddy = serverStack.services?.caddy;
+  assert(serverCaddy, "server render must include caddy");
+  assertEnvironment(serverCaddy, "APO_CADDY_SITE_ADDRESS", "https://test-apo.online");
+  // Bare reserved-TLD hostnames would default to automatic HTTPS: certmagic
+  // would retry ACME forever for a TLD no CA can issue for. The disabled
+  // defaults must therefore carry an explicit http scheme (port 8080 is not
+  // published in direct mode, so the blocks stay unreachable).
+  assertEnvironment(
+    serverCaddy,
+    "APO_DOCS_SITE_ADDR",
+    "http://apo-docs-disabled.invalid:8080",
+  );
+  assertEnvironment(
+    serverCaddy,
+    "APO_UMAMI_SITE_ADDR",
+    "http://umami-disabled.invalid:8080",
+  );
+  console.log("server-mode contract: ok");
 }
 
 // ---------------------------------------------------------------------------
