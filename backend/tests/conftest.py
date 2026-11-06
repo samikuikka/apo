@@ -204,25 +204,27 @@ def reset_rate_limiters():
     from apo.auth.api_key_cache import api_key_cache
     from apo.auth.rate_limit import login_rate_limiter
 
-    # The api-key validation cache outlives its rows: a test that resets the
-    # DB leaves stale pk -> key_id entries, and the next Basic-auth request
-    # in the same process authenticates as the deleted key's id.
-    api_key_cache.invalidate_all()
-    login_rate_limiter._attempts.clear()  # pyright: ignore[reportPrivateUsage]
-    try:
-        from apo.routes.auth import resend_rate_limiter
+    def _clear() -> None:
+        # The api-key validation cache outlives its rows: a test that resets
+        # the DB leaves stale pk -> key_id entries, and the next Basic-auth
+        # request in the same process authenticates as the deleted key's id.
+        api_key_cache.invalidate_all()
+        # Every module-level limiter, not just the ones tests touch
+        # directly: under xdist worksteal, verify-password posts from any
+        # test module accumulate in the account limiter's 15-minute window
+        # and can 429 a later module's tests.
+        login_rate_limiter._attempts.clear()  # pyright: ignore[reportPrivateUsage]
+        try:
+            from apo.routes.auth import _account_rate_limiter, resend_rate_limiter
 
-        resend_rate_limiter._attempts.clear()  # pyright: ignore[reportPrivateUsage]
-    except ImportError:
-        pass
+            _account_rate_limiter._attempts.clear()  # pyright: ignore[reportPrivateUsage]
+            resend_rate_limiter._attempts.clear()  # pyright: ignore[reportPrivateUsage]
+        except ImportError:
+            pass
+
+    _clear()
     yield
-    login_rate_limiter._attempts.clear()  # pyright: ignore[reportPrivateUsage]
-    try:
-        from apo.routes.auth import resend_rate_limiter
-
-        resend_rate_limiter._attempts.clear()  # pyright: ignore[reportPrivateUsage]
-    except ImportError:
-        pass
+    _clear()
 
 
 @pytest.fixture(autouse=True, scope="session")
