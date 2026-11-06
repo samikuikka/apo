@@ -328,6 +328,9 @@ export function createOtelAgentTaskTraceClient(
       if (params.tags?.length) {
         rootSpan.setAttribute("apo.run.tags", JSON.stringify(params.tags));
       }
+      if (params.environment) {
+        rootSpan.setAttribute("apo.run.environment", params.environment);
+      }
 
       // The task-run claim attributes. The backend projector
       // reads `apo.task.run.id` from the root span and atomically links this
