@@ -12,7 +12,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RENDERED_CONFIG="$(mktemp)"
 RENDERED_UMAMI_CONFIG="$(mktemp)"
-trap 'rm -f "$RENDERED_CONFIG" "$RENDERED_UMAMI_CONFIG"' EXIT
+RENDERED_SERVER_CONFIG="$(mktemp)"
+trap 'rm -f "$RENDERED_CONFIG" "$RENDERED_UMAMI_CONFIG" "$RENDERED_SERVER_CONFIG"' EXIT
 
 export AUTH_SECRET="public-docs-contract-secret"
 export APO_PUBLIC_URL="https://test-apo.online"
@@ -44,5 +45,17 @@ docker compose \
   -f "$REPO_ROOT/docker-compose.umami.yml" \
   config --format json > "$RENDERED_UMAMI_CONFIG"
 
+# Direct-mode render (server profile, no docs/umami overlays): the disabled
+# host defaults must not compose bare reserved-TLD hostnames, which would
+# mean automatic HTTPS and endless ACME retries for a TLD no CA can reach.
+# APO_DOCS_HOST must stay unset for this render, so run it in a clean env.
+env -i PATH="$PATH" HOME="$HOME" \
+  AUTH_SECRET="public-docs-contract-secret" \
+  APO_PUBLIC_URL="https://test-apo.online" \
+  docker compose \
+    -f "$REPO_ROOT/docker-compose.yml" \
+    -f "$REPO_ROOT/docker-compose.server.yml" \
+    config --format json > "$RENDERED_SERVER_CONFIG"
+
 cd "$REPO_ROOT"
-node tests/deployment/public-docs-contract.mjs "$RENDERED_CONFIG" "$RENDERED_UMAMI_CONFIG"
+node tests/deployment/public-docs-contract.mjs "$RENDERED_CONFIG" "$RENDERED_UMAMI_CONFIG" "$RENDERED_SERVER_CONFIG"

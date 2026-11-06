@@ -73,8 +73,11 @@ services:
     environment:
       - APO_UMAMI_HOST=${APO_UMAMI_HOST:?Set APO_UMAMI_HOST to the public umami hostname}
     depends_on:
+      # Started, not healthy: caddy fronts the whole public site (app, docs,
+      # OTLP), and optional analytics must not be able to keep it down. A
+      # request to the umami host before it is up gets a brief 502.
       umami:
-        condition: service_healthy
+        condition: service_started
 
   docs:
     build:

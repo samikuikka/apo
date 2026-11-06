@@ -1,4 +1,4 @@
-# Public Server Profile — direct Caddy HTTPS on a VPS.
+# Public Server Profile: direct Caddy HTTPS on a VPS.
 #
 # Prerequisites:
 #   1. APO_PUBLIC_URL is an HTTPS origin whose DNS points to this host.
@@ -29,16 +29,19 @@ services:
         max-file: "3"
     environment:
       - APO_PUBLIC_URL=${APO_PUBLIC_URL:?Set APO_PUBLIC_URL to https://your-apo-host.example}
-      # direct mode — Caddy site is the public HTTPS origin.
+      # Direct mode: the Caddy site is the public HTTPS origin.
       - APO_CADDY_SITE_ADDRESS=${APO_PUBLIC_URL:?Set APO_PUBLIC_URL}
       # Keep the shared Caddyfile's optional docs site syntactically valid when
       # the public-docs overlay is absent. The overlay replaces this value.
       - APO_DOCS_HOST=${APO_DOCS_HOST:-apo-docs-disabled.invalid}
-      # Host-routed docs/umami site addresses. Direct mode passes the bare
-      # hostname (HTTPS on 443, ACME-managed), unlike the tunnel stack which
-      # composes an explicit http://host:8080 address.
-      - APO_DOCS_SITE_ADDR=${APO_DOCS_SITE_ADDR:-${APO_DOCS_HOST:-apo-docs-disabled.invalid}}
-      - APO_UMAMI_SITE_ADDR=${APO_UMAMI_SITE_ADDR:-${APO_UMAMI_HOST:-umami-disabled.invalid}}
+      # Host-routed docs/umami site addresses. An enabled host passes its bare
+      # hostname (HTTPS on 443, ACME-managed). The disabled defaults compose
+      # an explicit http:// address instead: a bare reserved-TLD hostname
+      # would also mean automatic HTTPS, with endless ACME retries for a TLD
+      # no CA can ever reach. Port 8080 is not published in direct mode, so
+      # the disabled blocks stay unreachable.
+      - APO_DOCS_SITE_ADDR=${APO_DOCS_SITE_ADDR:-${APO_DOCS_HOST:-http://apo-docs-disabled.invalid:8080}}
+      - APO_UMAMI_SITE_ADDR=${APO_UMAMI_SITE_ADDR:-${APO_UMAMI_HOST:-http://umami-disabled.invalid:8080}}
       # Non-routable default so direct callers cannot forge forwarding headers.
       - APO_TRUSTED_PROXY_RANGES=192.0.2.0/24
       - APO_TELEMETRY_MAX_REQUEST_BYTES=${APO_TELEMETRY_MAX_REQUEST_BYTES:-10485760}
