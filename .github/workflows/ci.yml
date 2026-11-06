@@ -34,16 +34,33 @@ jobs:
         # on every PR — previously no CI step built the SDK, which is how the
         # broken `build: tsc` script survived unnoticed.
         run: pnpm --filter @apo-ai/sdk build
-      - name: Clean consumer package gate (SDK)
-        # The single source of truth for the publish boundary: pack the SDK
-        # exactly as a registry release would, install it into a clean
-        # directory, import/compile every entry point, and run publint.
-        run: pnpm --filter @apo-ai/sdk package:check
       - name: Test @apo-ai/sdk
         # 45 test files no workflow executed before the CI-covers-tests
         # invariant; fast (~5s) and self-contained. The command string is
         # load-bearing: tests/test_repo_invariants.py asserts it.
         run: pnpm --filter @apo-ai/sdk test
+
+  sdk-gate:
+    name: SDK package gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 12.16.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build @apo-ai/sdk
+        run: pnpm --filter @apo-ai/sdk build
+      - name: Clean consumer package gate (SDK)
+        # The single source of truth for the publish boundary: pack the SDK
+        # exactly as a registry release would, install it into a clean
+        # directory, import/compile every entry point, and run publint.
+        run: pnpm --filter @apo-ai/sdk package:check
 
   cli:
     name: CLI
@@ -66,13 +83,9 @@ jobs:
         # behaviour could only fail on a user's machine. Same selection the
         # publish workflow uses (excludes the long connect scene test).
         run: pnpm --filter @apo-ai/cli test:unit
-      - name: Clean consumer package gate (CLI)
-        run: pnpm --filter @apo-ai/cli package:check
-      - name: External example clean-consumer contract
-        run: pnpm test:external-example
 
-  dashboard:
-    name: Dashboard tests
+  cli-gate:
+    name: CLI gate + external example
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -85,8 +98,32 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Build @apo-ai/cli
+        run: pnpm --filter @apo-ai/cli build
+      - name: Clean consumer package gate (CLI)
+        run: pnpm --filter @apo-ai/cli package:check
+      - name: External example clean-consumer contract
+        run: pnpm test:external-example
+
+  dashboard:
+    name: Dashboard tests (${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        shard: [1/3, 2/3, 3/3]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 12.16.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - name: Test dashboard
-        run: pnpm --filter dashboard test
+        run: pnpm --filter dashboard test --shard=${{ matrix.shard }}
 
   checks:
     name: Checks + Docs
@@ -126,17 +163,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
-      # Filename-prefix thirds, balanced on measured per-file test times
-      # (~131s / ~128s / ~105s + benchmarks locally). A new test file
-      # matches exactly one shard by its name; nothing else to maintain.
+      # Filename-prefix ninths, placed so each letter-heavy block (a, p, t-z)
+      # stays whole, the demo-fixture file rides its own leg, and the TS e2e
+      # test ('o') keeps node confined to one leg. A new test file matches
+      # exactly one shard by its name; nothing else to maintain.
       matrix:
         include:
-          - shard: a-d
-            paths: tests/test_[a-d]*.py
-          - shard: e-p
-            paths: tests/test_[e-p]*.py
-          - shard: q-z
-            paths: tests/test_[q-z]*.py tests/benchmarks
+          - shard: a
+            paths: tests/test_a*.py
+          - shard: b-c
+            paths: tests/test_[b-c]*.py
+          - shard: d
+            paths: tests/test_d*.py
+          - shard: e-h
+            paths: tests/test_[e-h]*.py
+          - shard: i-m
+            paths: tests/test_[i-m]*.py
+          - shard: n-o
+            paths: tests/test_[n-o]*.py
+          - shard: p
+            paths: tests/test_p*.py
+          - shard: q-s
+            paths: tests/test_[q-s]*.py
+          - shard: t-z
+            paths: tests/test_[t-z]*.py tests/benchmarks
     # The PostgreSQL gates (tests skipped without APO_TEST_POSTGRES_URL): the
     # migration ladder, the v44-v50 rungs, and the execution-lease claim race.
     # The SQLite suite cannot catch a dialect fault in a migration.
@@ -149,7 +199,7 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
-          --health-interval 5s
+          --health-interval 2s
           --health-timeout 5s
           --health-retries 10
     steps:
@@ -161,22 +211,22 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: echo "version_only=$(node scripts/is-version-only-npm-release.mjs "$BASE_SHA" "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
-      # node_modules live on the e-p leg only: the one test that needs them
+      # node_modules live on the n-p leg only: the one test that needs them
       # (test_otel_end_to_end.py imports the SDK from source) starts with
       # 'o'. The other legs spawn no node processes, so they skip the ~30s
       # of pnpm/node setup; their version-only detect step uses the
       # runner's preinstalled node.
       - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
-        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'e-p'
+        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'n-o'
         with:
           version: 12.16.1
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'e-p'
+        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'n-o'
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'e-p'
+        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'n-o'
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         if: steps.npm_release.outputs.version_only != 'true'
         with:
@@ -196,12 +246,6 @@ jobs:
         if: steps.npm_release.outputs.version_only != 'true'
         working-directory: backend
         run: uv sync --frozen
-      - name: Typecheck
-        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'q-z'
-        working-directory: backend
-        # basedpyright treats warnings as failures whenever GITHUB_ACTIONS is set,
-        # even when --level error is requested. Keep the CI and local gates aligned.
-        run: env -u GITHUB_ACTIONS uv run basedpyright --level error apo
       - name: Test
         if: steps.npm_release.outputs.version_only != 'true'
         working-directory: backend
@@ -210,23 +254,57 @@ jobs:
         # 4 workers match the runner's 4 vCPUs. Workers stay isolated: the
         # conftest keys each process's sqlite DB by pid, and the Postgres
         # gates create uuid-named throwaway databases. worksteal rebalances
-        # the skewed suite (slow files finish on one worker otherwise). The
-        # two shards each get a full runner, so each keeps 4 workers.
+        # the skewed suite (slow files finish on one worker otherwise).
+        # Every shard leg gets a full runner, so each keeps 4 workers.
         run: uv run pytest -x -q -n 4 --dist worksteal ${{ matrix.paths }}
+
+  backend-checks:
+    name: Backend checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 2
+      - name: Detect version-only npm release
+        id: npm_release
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: echo "version_only=$(node scripts/is-version-only-npm-release.mjs "$BASE_SHA" "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        if: steps.npm_release.outputs.version_only != 'true'
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        if: steps.npm_release.outputs.version_only != 'true'
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Sync dependencies
+        if: steps.npm_release.outputs.version_only != 'true'
+        working-directory: backend
+        run: uv sync --frozen
+      - name: Typecheck
+        if: steps.npm_release.outputs.version_only != 'true'
+        working-directory: backend
+        # basedpyright treats warnings as failures whenever GITHUB_ACTIONS is set,
+        # even when --level error is requested. Keep the CI and local gates aligned.
+        run: env -u GITHUB_ACTIONS uv run basedpyright --level error apo
       - name: Test apo-otel-python package
-        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'q-z'
+        if: steps.npm_release.outputs.version_only != 'true'
         # Orphaned suite found by the CI-covers-tests census; pytest is not in
         # the package env, so overlay it. Load-bearing command string.
         working-directory: packages/apo-otel-python
         run: uv run --with pytest pytest -q
       - name: Test langchain-apo package
-        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'q-z'
+        if: steps.npm_release.outputs.version_only != 'true'
         # Orphaned suite found by the CI-covers-tests census; langchain-core
         # lives in the package extras, so overlay both. Load-bearing command.
         working-directory: packages/langchain-apo
         run: uv run --with pytest --with langchain-core pytest -q
       - name: Test example-service-py
-        if: steps.npm_release.outputs.version_only != 'true' && matrix.shard == 'q-z'
+        if: steps.npm_release.outputs.version_only != 'true'
         # Orphaned suite found by the CI-covers-tests census (12 tests, <1s).
         working-directory: apps/example-service-py
         run: uv run pytest -q
