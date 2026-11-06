@@ -130,15 +130,21 @@ export interface ProjectionTee {
    * capture). They keep their own span ids and parent chain, so assertions
    * treat them exactly like locally recorded ones. Must be called before
    * {@link getSnapshot} freezes; capabilities are derived at freeze time.
+   * `opts.remote` (default true) says the observations were also exported to
+   * the backend, so the canonical read-back may wait on their span ids.
    */
-  injectObservations(observations: readonly TraceProjectionObservation[]): void;
+  injectObservations(
+    observations: readonly TraceProjectionObservation[],
+    opts?: { remote?: boolean },
+  ): void;
   /**
-   * The real span IDs the run exported that the canonical read-back waits
-   * for: createSpan-delegated spans (tool calls, generations — the evidence
-   * checks evaluate) and injected replay observations' own IDs. Step-wrapper
-   * and otel-processor spans are excluded: the tee cannot name their remote
-   * IDs, and the backend projection serves observations under exported IDs,
-   * never the tee's own.
+   * The real span IDs the canonical read-back waits for: createSpan-delegated
+   * spans once endSpan closes them (an abandoned span never exports, so
+   * waiting for it would only burn the read-back deadline), step wrappers
+   * (turn-scoped observations are served under the step's real span id), and
+   * remotely exported replay observations. Otel-processor spans are
+   * excluded: their originals already export through the OTLP exporter under
+   * IDs the tee cannot name.
    */
   getExportedSpanIds(): ReadonlySet<string>;
 }
@@ -158,9 +164,10 @@ export function createProjectionTee(
   // real.createSpan's return value and endSpan can never find the real span —
   // the span is never ended, never exported, and its usage is lost.
   const realIdByTeeId = new Map<string, string>();
-  // Real span IDs the run delegates for export (createSpan) plus injected
-  // replay observations' own IDs. Recorded as established: endSpan deletes
-  // the delegation map entry after use, so it cannot be read back later.
+  // Real span IDs the backend will serve once ingestion catches up: spans
+  // endSpan actually closed (added there, so an abandoned createSpan span
+  // never blocks the read-back), step wrappers' real ids, and remotely
+  // exported replay observations.
   const exportedSpanIds = new Set<string>();
   // `step` hands its callback the REAL span id, so children created inside a
   // step name that id as their parent. Map it back to the step's tee id so the
@@ -274,6 +281,9 @@ export function createProjectionTee(
               ambiguousRealStepIds.add(realSpanId);
             } else {
               teeIdByRealStepId.set(realSpanId, obsSpanId);
+              // Turn-scoped observations are served under the step's real
+              // span id, so the canonical read-back must wait for it too.
+              exportedSpanIds.add(realSpanId);
             }
           }
           return activeStep.run(obsSpanId, () => fn(realSpanId));
@@ -331,11 +341,6 @@ export function createProjectionTee(
           // Remember the real id so endSpan can close the real span. Falls back
           // to the tee id when the real context returns nothing (noop mode).
           realIdByTeeId.set(spanId, realId);
-          // A distinct real id means a real exported span the backend read-back
-          // can wait on. The tee id itself (noop mode) never appears remotely.
-          if (realId != null && realId !== spanId) {
-            exportedSpanIds.add(realId);
-          }
         } catch { /* best-effort */ }
       }
       return spanId;
@@ -345,7 +350,14 @@ export function createProjectionTee(
       complete(spanId, endParams);
       const realId = realIdByTeeId.get(spanId) ?? spanId;
       realIdByTeeId.delete(spanId);
-      try { real.endSpan(realId, endParams); } catch { /* best-effort */ }
+      try {
+        real.endSpan(realId, endParams);
+        // Only now does the span actually export. A distinct real id is one
+        // the backend can serve; the tee id itself never appears remotely.
+        if (realId != null && realId !== spanId) {
+          exportedSpanIds.add(realId);
+        }
+      } catch { /* best-effort */ }
     },
 
     async traceTool(name, params, fn) {
@@ -416,10 +428,15 @@ export function createProjectionTee(
         observations: [...observations],
       };
     },
-    injectObservations(injected: readonly TraceProjectionObservation[]): void {
+    injectObservations(
+      injected: readonly TraceProjectionObservation[],
+      opts?: { remote?: boolean },
+    ): void {
       observations.push(...injected);
-      for (const observation of injected) {
-        exportedSpanIds.add(observation.spanId);
+      if (opts?.remote !== false) {
+        for (const observation of injected) {
+          exportedSpanIds.add(observation.spanId);
+        }
       }
       // Keep the snapshot contract's deterministic order (invocation time,
       // then span id) — injected observations arrive with their own timestamps.
@@ -431,7 +448,9 @@ export function createProjectionTee(
       });
     },
     getExportedSpanIds(): ReadonlySet<string> {
-      return exportedSpanIds;
+      // Copy, like getSnapshot: a later delegation (Phase 2 judge work)
+      // must not mutate a set the caller still holds.
+      return new Set(exportedSpanIds);
     },
   };
 }

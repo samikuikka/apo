@@ -460,9 +460,11 @@ function formatPartialCostSuffix(run: RunDetail): string {
 }
 
 /** ` (N read from cache, M written to cache)` for cache parts that sit
- * inside the total the suffix annotates. Runs aggregated before the columns
- * went gross (issue #131) carry net totals, where the claim would overcount,
- * so the suffix drops instead. */
+ * inside the total the suffix annotates. The guard catches the clear
+ * contradiction (parts exceeding the total, which runs aggregated before
+ * the columns went gross, issue #131, can produce); a net total that
+ * happens to exceed the parts still slips through, since the CLI cannot
+ * tell pre- and post-#131 rows apart. */
 function formatCachedSuffix(total: number | null | undefined, usage?: GenerationUsage | null): string {
   const read = usage?.cache_read_tokens ?? 0;
   const write = usage?.cache_write_tokens ?? 0;

@@ -295,7 +295,7 @@ test("canonical-evidence", (t) => { t.calledTool("CanonicalOnly"); });
     let projectionReads = 0;
     // Span IDs the run exported over OTLP. The real backend keys projection
     // observations by the exported span_id, so the mock echoes these same
-    // IDs back — fabricating fresh IDs per read would never satisfy the
+    // IDs back: fabricating fresh IDs per read would never satisfy the
     // read-back's span-containment gate.
     const exportedIds: string[] = [];
     vi.stubGlobal(
@@ -317,7 +317,7 @@ test("canonical-evidence", (t) => { t.calledTool("CanonicalOnly"); });
         if (typeof url === "string" && url.includes("/trace-projection")) {
           projectionReads += 1;
           // First read: the trace exists and is flagged complete, but the
-          // replay batch has not been projected yet — none of the exported
+          // replay batch has not been projected yet: none of the exported
           // span IDs are there, only backend-only evidence. Second read: the
           // full projection, every exported ID plus evidence only the
           // backend has.
@@ -332,6 +332,12 @@ test("canonical-evidence", (t) => { t.calledTool("CanonicalOnly"); });
                 i === 0
                   ? observation({ spanId, type: "TOOL", toolName: "Read" })
                   : observation({ spanId }),
+              ),
+              // The read-back gate also waits on the run's step spans (turn
+              // observations are served under them); the fake client hands
+              // those out as span-<n> without an OTLP round-trip.
+              ...Array.from({ length: recordedSteps.length }, (_, i) =>
+                observation({ spanId: `span-${i + 1}` }),
               ),
               observation({ type: "TOOL", toolName: "CanonicalOnly" }),
             ]),
