@@ -1,10 +1,11 @@
 import { getFlagValues, getFlagValue, parseArgs } from "../lib/args.ts";
 import { resolveConfig } from "../lib/config.ts";
-import { dim, formatCost, formatJson, formatTable, formatTime } from "../lib/format.ts";
+import { dim, formatCost, formatJson, formatTable, formatTime, red } from "../lib/format.ts";
 import { apiGet } from "../lib/api.ts";
 import { highlightIds } from "../lib/prefix.ts";
 import { reportCommandError } from "../lib/command-error.ts";
 import { formatRunResult } from "../lib/checks-format.ts";
+import { parseLabelRef } from "../lib/run-labels.ts";
 
 type RunConfiguration = { model: string; effort?: string | null } | null;
 
@@ -72,6 +73,21 @@ export async function run(argv: string[]): Promise<number> {
   // run's trace calls, so "openrouter:nitro" finds routed runs (issue #307).
   const providers = getFlagValues(multiFlags, "provider");
   if (providers.length > 0) params.provider = providers;
+  // Batch targeting filters: environments OR, labels OR within a key and
+  // AND across keys (the backend splits each raw key:id value itself).
+  const environments = getFlagValues(multiFlags, "environment");
+  if (environments.length > 0) params.environment = environments.join(",");
+  const labels = getFlagValues(multiFlags, "label");
+  for (const raw of labels) {
+    try {
+      parseLabelRef(raw);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(red(`error: ${message}`));
+      return 2;
+    }
+  }
+  if (labels.length > 0) params.label = labels;
 
   let runs: RunSummary[];
   try {

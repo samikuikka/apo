@@ -125,6 +125,46 @@ describe("runs list command", () => {
     expect(logs.join("\n")).toContain("No runs found");
   });
 
+  it("joins repeated --environment with commas and sends each --label as its own param", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(mockResponse([]));
+    const { logs, restore } = captureLog();
+
+    await run([
+      "--backend", "http://backend.test",
+      "--environment", "staging",
+      "--environment", "prod",
+      "--label", "customer:acme",
+      "--label", "customer:globex",
+    ]);
+    restore();
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    // apiGet builds the query with URLSearchParams: ',' and ':' arrive encoded.
+    expect(url).toContain("environment=staging%2Cprod");
+    expect(url).toContain("label=customer%3Aacme");
+    expect(url).toContain("label=customer%3Aglobex");
+    expect(logs.join("\n")).toContain("No runs found");
+  });
+
+  it("exits 2 on a malformed --label before making the request", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(mockResponse([]));
+    const { errors, restore } = captureError();
+
+    const code = await run([
+      "--backend", "http://backend.test",
+      "--label", "nocolon",
+    ]);
+    restore();
+
+    expect(code).toBe(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(errors.join("\n")).toContain("--label must be <key>:<id>");
+  });
+
   it("renders the Execution column from run_configuration", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       mockResponse([

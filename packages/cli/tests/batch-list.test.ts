@@ -127,4 +127,54 @@ describe("batch list", () => {
       restore();
     }
   });
+
+  it("joins repeated --environment with commas and sends each --label as its own param", async () => {
+    const fetchMock = vi.fn(async () =>
+      mockResponse({
+        data: [],
+        total_count: 0,
+        page: 0,
+        page_size: 20,
+        total_pages: 0,
+        model_facets: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { restore } = captureLog();
+    try {
+      const code = await run([
+        "--backend", "http://backend.test",
+        "--environment", "staging",
+        "--environment", "prod",
+        "--label", "customer:acme",
+        "--label", "customer:globex",
+      ]);
+      expect(code).toBe(0);
+    } finally {
+      restore();
+    }
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    // apiGet builds the query with URLSearchParams: ',' and ':' arrive encoded.
+    expect(url).toContain("environment=staging%2Cprod");
+    expect(url).toContain("label=customer%3Aacme");
+    expect(url).toContain("label=customer%3Aglobex");
+  });
+
+  it("exits 2 on a malformed --label before making the request", async () => {
+    const fetchMock = vi.fn(async () => mockResponse({ data: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { errors, restore } = captureError();
+    try {
+      const code = await run([
+        "--backend", "http://backend.test",
+        "--label", "nocolon",
+      ]);
+      expect(code).toBe(2);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(stripAnsi(errors.join("\n"))).toContain("--label must be <key>:<id>");
+    } finally {
+      restore();
+    }
+  });
 });
