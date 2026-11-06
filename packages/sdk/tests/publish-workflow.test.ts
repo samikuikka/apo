@@ -36,8 +36,8 @@ describe(".github/workflows/publish-sdk.yml contract", () => {
     expect(yaml).toMatch(/runs-on:\s*ubuntu-latest/);
   });
 
-  it("uses pnpm 11.3.0 and Node 24", () => {
-    expect(yaml).toMatch(/version:\s*11\.3\.0/);
+  it("uses pnpm 12.16.1 and Node 24", () => {
+    expect(yaml).toMatch(/version:\s*12\.16\.1/);
     expect(yaml).toMatch(/node-version:\s*24/);
   });
 

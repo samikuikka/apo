@@ -15,7 +15,7 @@ COPY apps/docs/package.json ./apps/docs/package.json
 COPY apps/dashboard/package.json ./apps/dashboard/package.json
 COPY packages/sdk/package.json ./packages/sdk/package.json
 COPY packages/cli/package.json ./packages/cli/package.json
-RUN npm install -g pnpm@11.3.0 && pnpm install --frozen-lockfile
+RUN npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile
 
 COPY apps/docs/ ./apps/docs/
 COPY contracts/ ./contracts/

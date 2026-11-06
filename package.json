@@ -1,7 +1,7 @@
 {
   "name": "apo-root",
   "private": true,
-  "packageManager": "pnpm@11.3.0",
+  "packageManager": "pnpm@12.16.1",
   "scripts": {
     "predev": "fuser -k -TERM 3000/tcp 3001/tcp 3002/tcp 8000/tcp 2>/dev/null; sleep 1; fuser -k 3000/tcp 3001/tcp 3002/tcp 8000/tcp 2>/dev/null || true",
     "dev": "concurrently \"pnpm --filter dashboard dev\" \"pnpm --filter backend dev\" \"pnpm --filter example-service dev\" \"pnpm --filter example-service-py dev\"",

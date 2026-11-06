@@ -37,7 +37,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
         with:
-          version: 11.3.0
+          version: 12.16.1
 
       - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5

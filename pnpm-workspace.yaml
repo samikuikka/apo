@@ -2,6 +2,11 @@ packages:
   - 'apps/*'
   - 'packages/*'
   - 'backend'
+# pnpm is pinned in packageManager, the Dockerfiles, and every workflow;
+# it moves only by a reviewed change. An "Update available!" banner inside
+# Docker builds proposes acting on that pin mid-build, where nobody can,
+# so keep it out of build logs.
+updateNotifier: false
 allowBuilds:
   # pi's tree pulls @google/genai (its postinstall is optional telemetry
   # setup) and protobufjs (a donation-notice postinstall) — neither needs
