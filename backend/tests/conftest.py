@@ -244,6 +244,9 @@ def file_engine_schema():
 
 @pytest.fixture
 def db_schema():
+    # Drop first too: a background writer that straggled past the previous
+    # test's teardown finds no leftover rows in this test's fresh schema.
+    SQLModel.metadata.drop_all(engine)
     SQLModel.metadata.create_all(engine)
     yield
     SQLModel.metadata.drop_all(engine)
