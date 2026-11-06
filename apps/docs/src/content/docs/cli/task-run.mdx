@@ -32,7 +32,7 @@ import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 ## Synopsis
 
 ```bash
-apo task run <task-id | path> [--no-record]
+apo task run <task-id | path> [--no-record] [--environment <name>] [--label <key>:<id>]
 ```
 
 ## Description
@@ -65,6 +65,8 @@ The folder scoping is why two families can each define `task("cost-inquiry")` wi
 |---|---|---|
 | `<task-id \| path>` | (required) | Task id (folder name) or filesystem path. |
 | `--no-record` | off | Run on this machine without creating a backend Run. |
+| `--environment <name>` | `default` | Environment recorded on the batch (`$AGENT_TASK_ENVIRONMENT` if set). |
+| `--label <key>:<id>` | none | Label recorded on the batch for later filtering. The value is `key:id`, the id is what later filters match, and the flag repeats with one value per key, e.g. `--label customer:acme --label area:billing`. |
 
 :::note[Targeting flags are gone]
 `apo task run` always executes on your machine (caller execution): there is no remote dispatch to target. `--remote`, `--local`, and `--executor` all exit `2` as unknown options. For persistent execution owned by your machine, use [`apo connect`](/cli/connect/).
