@@ -1,5 +1,5 @@
 /**
- * VerdictPanel — a port of the dashboard's task-run detail page, driven by
+ * VerdictPanel: a port of the dashboard's task-run detail page, driven by
  * the prototype's simulation. One bordered box: run header (breadcrumb +
  * status pill + meta + action buttons), OutcomeSummary, tab strip
  * (Checks / Conversation History / Deliverables / Trace home), checks
@@ -36,7 +36,7 @@ export function VerdictPanel({ sim, go }: { sim: CapabilitySim; go: (panel: Pane
 	const waiting = sim.phase === "running" || sim.phase === "collecting";
 	const judging = sim.phase === "judging";
 
-	// When a run's verdict lands, open the first failing check — the one a
+	// When a run's verdict lands, open the first failing check: the one a
 	// visitor (or a coding agent) reads first.
 	useEffect(() => {
 		if (sim.phase !== "done") return;

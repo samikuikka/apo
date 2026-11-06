@@ -1,5 +1,5 @@
 /**
- * native.tsx — pixel-faithful ports of the dashboard components the
+ * native.tsx: pixel-faithful ports of the dashboard components the
  * prototype needs, with their original Tailwind class strings (implemented
  * in native.css) and their original lucide icon geometry. PROTOTYPE.
  *
@@ -617,7 +617,7 @@ export function CheckRow({
 /**
  * Test enable/disable toggle, styled as the real row affordance: a ghost
  * icon button that appears on row hover (expandable-check-item's correct
- * button pattern — opacity-0 until group-hover). Eye = test is in the
+ * button pattern: opacity-0 until group-hover. Eye = test is in the
  * suite; eye-off + the row's "Disabled" chip = excluded.
  */
 export function CheckRowToggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {

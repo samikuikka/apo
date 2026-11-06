@@ -1,5 +1,5 @@
 /**
- * RunPanel — the trace workspace, ported: a toolbar (search, call count,
+ * RunPanel: the trace workspace, ported. A toolbar (search, call count,
  * green LIVE while streaming, line tabs Tree/Timeline), the span tree in
  * the real two-line row shape (type-colored icon chips, indent guides,
  * duration · model · tokens · cost metrics), a timeline waterfall, and
@@ -29,7 +29,7 @@ function typeConf(kind: "generation" | "tool") {
 	return TYPE_CONFIG[kind.toUpperCase() as keyof typeof TYPE_CONFIG];
 }
 
-/** Per-span cost slice of the run's total — a plausible split for the fixture. */
+/** Per-span cost slice of the run's total: a plausible split for the fixture. */
 function spanCost(span: VisibleSpan, totalCost: string, totalTokens: number): string {
 	if (!span.tokens || totalTokens === 0) return "$0.0000";
 	const share = (span.tokens / totalTokens) * Number.parseFloat(totalCost.replace("$", ""));
@@ -55,7 +55,7 @@ export function RunPanel({ sim, go }: { sim: CapabilitySim; go: (panel: PanelId)
 		: sim.visibleSpans;
 	const selected: VisibleSpan | undefined = sim.visibleSpans.find((s) => s.id === selectedId) ?? undefined;
 
-	// Auto-select the newest call once a finished run has spans — unless the
+	// Auto-select the newest call once a finished run has spans, unless the
 	// user pressed Back to read the trace overview.
 	useEffect(() => {
 		if (!deselected && selectedId === null && !running && sim.visibleSpans.length > 0) {
@@ -96,7 +96,7 @@ export function RunPanel({ sim, go }: { sim: CapabilitySim; go: (panel: PanelId)
 						{running && (
 							<span
 								className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-success"
-								title="This trace is still running — spans stream in live"
+								title="This trace is still running; spans stream in live"
 							>
 								<Icon name="radio" className="h-3 w-3 animate-pulse" />
 								LIVE
@@ -315,7 +315,7 @@ function TreeView({
 
 			{spans.length === 0 && sim.visibleSpans.length === 0 && (
 				<p className="px-4 py-6 text-center text-sm text-muted-foreground">
-					The trace appears here as the harness works — press Re-run.
+					The trace appears here as the harness works. Press Re-run.
 				</p>
 			)}
 		</div>
@@ -393,7 +393,7 @@ function TimelineView({
 				);
 			})}
 			{spans.length === 0 && sim.visibleSpans.length === 0 && (
-				<p className="px-4 py-6 text-center text-sm text-muted-foreground">No calls recorded — re-run the task.</p>
+				<p className="px-4 py-6 text-center text-sm text-muted-foreground">No calls recorded. Re-run the task.</p>
 			)}
 			{!running && failingJudged && (
 				<p className="border-t border-border/60 px-2.5 py-1.5 text-[11px] text-muted-foreground">
@@ -553,7 +553,7 @@ function CallDetail({
 	);
 }
 
-// ── Trace overview (no call selected — the run root view) ──────────────
+// ── Trace overview (no call selected: the run root view) ──────────────
 
 function TraceOverview({
 	sim,
@@ -572,7 +572,7 @@ function TraceOverview({
 				{sim.script.meta.cost}
 			</p>
 			<p className="mt-4 text-sm text-muted-foreground">
-				Select a call in the tree to inspect its payload — input, output, tokens, and timing.
+				Select a call in the tree to inspect its payload: input, output, tokens, and timing.
 			</p>
 			<div className="mt-4 space-y-1">
 				{spans.slice(-3).map((span) => (

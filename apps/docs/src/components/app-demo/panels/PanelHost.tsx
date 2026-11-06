@@ -1,5 +1,5 @@
 /**
- * PanelHost — maps a PanelId to its component and carries the shared
+ * PanelHost: maps a PanelId to its component and carries the shared
  * per-panel copy the shell reuses (numbered tour tab labels).
  */
 import type { PanelId, PanelProps } from "../panel-bits";

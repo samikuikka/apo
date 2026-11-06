@@ -1,8 +1,8 @@
 /**
- * highlight — tokenizer for the prototype's code viewers, matching the
+ * highlight: tokenizer for the prototype's code viewers, matching the
  * real dashboard CodeViewer's GitHub-dark palette exactly
  * (components/CodeViewer.tsx githubDarkHighlight + cm-apo-t-api).
- * PROTOTYPE — throwaway copy of the colors, not the engine.
+ * PROTOTYPE: throwaway copy of the colors, not the engine.
  */
 
 export interface Tok {
@@ -11,7 +11,7 @@ export interface Tok {
 }
 
 /** The SDK's TEST_METHOD_NAMES (dashboard lib/t-api-methods.ts), for the
- * orange t.<method> colorization — same list, same longest-first order. */
+ * orange t.<method> colorization; same list, same longest-first order. */
 const T_METHODS = [
 	"calledTool",
 	"notCalledTool",
@@ -63,7 +63,7 @@ export function tokenizeLine(line: string): Tok[] {
 	return tokens;
 }
 
-/** True when a line carries an assertion — the real viewer marks those
+/** True when a line carries an assertion; the real viewer marks those
  * with a (green, faded) lint-gutter dot. */
 export function isAssertionLine(line: string): boolean {
 	return /\bt\./.test(line);
