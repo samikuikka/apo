@@ -231,7 +231,7 @@ export async function runTask(
  *
  * The readiness gate is span-ID containment: every span the run exported
  * must have been ingested before Phase 2 evaluates. The local observation
- * count was never a safe gate — ingestion lands spans out of order, so the
+ * count was never a safe gate: ingestion lands spans out of order, so the
  * backend total can reach the local count while specific TOOL spans are
  * still missing, and checks evaluated against that snapshot failed on tool
  * calls the run itself made (false FAILs on recorded replay runs). The
@@ -253,7 +253,6 @@ export async function readCanonicalSnapshot(
   if (!endpoint || !authToken) return null;
   const deadlineMs = opts.deadlineMs ?? 30_000;
   const start = Date.now();
-  const required = exportedSpanIds;
   try {
     let snapshot = await readTaskRunProjection({
       endpoint,
@@ -264,11 +263,11 @@ export async function readCanonicalSnapshot(
       // 409 must be waited out rather than fallen back from.
       retryNoTrace: true,
     });
-    while (!containsAllSpanIds(snapshot, required)) {
+    while (!containsAllSpanIds(snapshot, exportedSpanIds)) {
       const remaining = deadlineMs - (Date.now() - start);
       if (remaining <= 0) {
         console.error(
-          `[AgentTask] Projection missing ${countMissingSpanIds(snapshot, required)}/${required.size} ` +
+          `[AgentTask] Projection missing ${countMissingSpanIds(snapshot, exportedSpanIds)}/${exportedSpanIds.size} ` +
             `spans the run exported after ${deadlineMs}ms; using the local snapshot`,
         );
         return null;
@@ -296,7 +295,14 @@ function containsAllSpanIds(
   snapshot: TraceProjectionSnapshot,
   required: ReadonlySet<string>,
 ): boolean {
-  return countMissingSpanIds(snapshot, required) === 0;
+  if (required.size === 0) return true;
+  const present = new Set(
+    snapshot.observations.map((observation) => observation.spanId),
+  );
+  for (const id of required) {
+    if (!present.has(id)) return false;
+  }
+  return true;
 }
 
 /** How many required span IDs the snapshot is still missing. */
@@ -324,11 +330,7 @@ interface CapturedExecution {
   runConfiguration: AgentTaskRunConfiguration | undefined;
   /** The frozen projection snapshot Phase 2 evaluates against. */
   snapshot: TraceProjectionSnapshot;
-  /**
-   * The real span IDs the run exported (tee IDs translated to their remote
-   * counterparts). The canonical read-back waits until the backend projection
-   * holds every one of them.
-   */
+  /** Span IDs the canonical read-back waits on; see the tee for what lands here. */
   exportedSpanIds: ReadonlySet<string>;
 }
 
@@ -346,9 +348,9 @@ interface AdapterRunOutcome {
   /** Freeze the projection snapshot. Call before the root span ends. */
   getSnapshot: () => TraceProjectionSnapshot;
   /**
-   * The real (exported) span IDs behind the snapshot's observations. The tee
-   * issues its own IDs for delegated spans, so the snapshot alone cannot key
-   * the backend read-back's readiness check.
+   * The real span IDs behind the snapshot's observations. The tee issues its
+   * own IDs for delegated spans, so the snapshot alone cannot key the
+   * backend read-back's readiness check.
    */
   getExportedSpanIds: () => ReadonlySet<string>;
 }
@@ -545,7 +547,7 @@ async function executeAdapterRun<T>(
                   endpoint: process.env.AGENT_TASK_TRACE_ENDPOINT,
                 }),
             );
-            tee.injectObservations(replay.observations);
+            tee.injectObservations(replay.observations, { remote: replay.exported });
           }
 
           return await continueWith({
@@ -694,9 +696,8 @@ async function captureExecution(
     collected: outcome.collected,
     transcriptTurns: outcome.transcriptTurns,
     runConfiguration: outcome.runConfiguration,
-    // Freeze the snapshot before the root span ends — Phase 2 reads it.
+    // Freeze the snapshot before the root span ends: Phase 2 reads it.
     snapshot: outcome.getSnapshot(),
-    // The exported IDs the backend read-back waits for (see AdapterRunOutcome).
     exportedSpanIds: outcome.getExportedSpanIds(),
   }));
 }

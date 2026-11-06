@@ -179,3 +179,57 @@ describe("projection-tee real span id propagation", () => {
     expect(snapshot.capabilities.skills).toBe("available");
   });
 });
+
+describe("projection-tee exported span ids (read-back gate)", () => {
+  it("requires a delegated span only once endSpan has closed it", async () => {
+    const real = makeRecordingReal();
+    const tee = createProjectionTee(real);
+    const teeId = tee.trace.createSpan({ step_name: "gen", observation_type: "GENERATION" });
+
+    // An abandoned span never exports, so waiting for it would only burn the
+    // read-back deadline.
+    expect(tee.getExportedSpanIds().has(real.creates[0]!.issuedId)).toBe(false);
+
+    tee.trace.endSpan(teeId, { prompt_tokens: 10 });
+    expect(tee.getExportedSpanIds().has(real.creates[0]!.issuedId)).toBe(true);
+  });
+
+  it("requires the real span id the step wrapper reports", async () => {
+    const real = makeRecordingReal();
+    const tee = createProjectionTee(real);
+
+    await tee.trace.step({ step_name: "task.turn" }, async () => {
+      // The recording context hands the callback a fixed real step id.
+      expect(tee.getExportedSpanIds().has("step-span")).toBe(true);
+    });
+  });
+
+  it("requires injected replay ids only when they were exported remotely", () => {
+    const real = makeRecordingReal();
+    const tee = createProjectionTee(real);
+    const observation = {
+      spanId: "replayed-1",
+      type: "GENERATION" as const,
+      name: "turn 1",
+      status: "ok" as const,
+    };
+
+    tee.injectObservations([observation]);
+    expect(tee.getExportedSpanIds().has("replayed-1")).toBe(true);
+
+    const localTee = createProjectionTee(makeRecordingReal());
+    localTee.injectObservations([observation], { remote: false });
+    expect(localTee.getExportedSpanIds().has("replayed-1")).toBe(false);
+    // The local snapshot still carries the observation either way.
+    expect(localTee.getSnapshot().observations).toHaveLength(1);
+  });
+
+  it("hands out a copy, so later spans cannot mutate a set the caller holds", () => {
+    const tee = createProjectionTee(makeRecordingReal());
+    const held = tee.getExportedSpanIds();
+    const teeId = tee.trace.createSpan({ step_name: "gen", observation_type: "GENERATION" });
+    tee.trace.endSpan(teeId, {});
+
+    expect(held.size).toBe(0);
+  });
+});
