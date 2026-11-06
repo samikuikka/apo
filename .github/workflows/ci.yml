@@ -152,10 +152,14 @@ jobs:
       - name: Install uv
         if: steps.npm_release.outputs.version_only != 'true'
         # Cached install: the backend + package overlays re-resolve several
-        # hundred MB of wheels per run without it.
+        # hundred MB of wheels per run without it. The cache glob must stay
+        # a literal lockfile path: the default glob walks the whole tree
+        # including node_modules, which cost ~50s per job before the glob
+        # hashed every mirrored pyproject.toml under .pnpm.
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
+          cache-dependency-glob: backend/uv.lock
       - name: Sync dependencies
         if: steps.npm_release.outputs.version_only != 'true'
         working-directory: backend
