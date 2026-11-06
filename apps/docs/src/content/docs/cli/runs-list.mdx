@@ -24,7 +24,7 @@ List task runs from the backend. Filter by task, status, model, effort, or servi
 ## Synopsis
 
 ```bash
-apo runs list [--task <id>] [--status <s>] [--model <m>] [--effort <e>] [--provider <p>] [--limit <n>]
+apo runs list [--task <id>] [--status <s>] [--model <m>] [--effort <e>] [--provider <p>] [--limit <n>] [--environment <name>] [--label <key>:<id>]
 ```
 
 ## Options
@@ -36,6 +36,8 @@ apo runs list [--task <id>] [--status <s>] [--model <m>] [--effort <e>] [--provi
 | `--model <m>` | all | Filter by adapter-reported model. Repeatable; OR within model, AND with `--effort`. |
 | `--effort <e>` | all | Filter by adapter-reported effort. Repeatable; OR within effort, AND with `--model`. |
 | `--provider <p>` | all | Filter by observed serving provider or route, e.g. `fireworks` or `openrouter:nitro`. Repeatable. |
+| `--environment <name>` | all | Filter by the batch's environment. Repeatable; matches any of the listed environments (OR). |
+| `--label <key>:<id>` | all | Filter by the batch's label, e.g. `customer:acme`. Repeatable; OR within a key, AND across keys. |
 | `--limit <n>` | backend default | Maximum runs to list. |
 
 ## Output

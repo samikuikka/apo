@@ -90,8 +90,16 @@ List batch runs.
 ### Synopsis
 
 ```bash
-apo batch list [--status <s>]
+apo batch list [--status <s>] [--environment <name>] [--label <key>:<id>]
 ```
+
+### Options
+
+| Option | Default | Description |
+|---|---|---|
+| `--status <s>` | all | Filter by batch status. |
+| `--environment <name>` | all | Filter by the batch's environment. Repeatable; matches any of the listed environments (OR). |
+| `--label <key>:<id>` | all | Filter by the batch's label, e.g. `customer:acme`. Repeatable; OR within a key, AND across keys. |
 
 ### Output
 

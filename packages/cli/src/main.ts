@@ -216,12 +216,15 @@ const commands: Record<string, CommandEntry> = {
       ["--effort <e>", "Filter by adapter-reported effort (repeatable; OR within effort, AND with --model)"],
       ["--provider <p>", "Filter by observed serving provider/route, e.g. fireworks or openrouter:nitro (repeatable)"],
       ["--limit <n>", "Max results to show"],
+      ["--environment <name>", "Filter by batch environment (repeatable; OR)"],
+      ["--label <key>:<id>", "Filter by batch label, e.g. customer:acme (repeatable; OR within a key, AND across keys)"],
     ],
     examples: [
       "apo runs list",
       "apo runs list --task meeting-summary --limit 5",
       "apo runs list --model gpt-5.6-terra --effort high",
       "apo runs list --provider fireworks",
+      "apo runs list --label customer:acme",
     ],
     note: "Requires backend auth. Supports --json. The Execution column shows the adapter-reported model · effort; the Hosts column shows the serving provider/route each run actually used (empty when the tracer did not report one).",
   },
@@ -491,9 +494,12 @@ const commands: Record<string, CommandEntry> = {
     help: "List batch runs from backend",
     options: [
       ["--status <s>", "Filter by batch status"],
+      ["--environment <name>", "Filter by batch environment (repeatable; OR)"],
+      ["--label <key>:<id>", "Filter by batch label, e.g. customer:acme (repeatable; OR within a key, AND across keys)"],
     ],
     examples: [
       "apo batch list",
+      "apo batch list --environment staging --label customer:acme",
     ],
     note: "Requires backend auth. Supports --json.",
   },

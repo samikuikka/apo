@@ -1,10 +1,11 @@
-import { parseArgs, getFlagValue } from "../lib/args.ts";
+import { parseArgs, getFlagValue, getFlagValues } from "../lib/args.ts";
 import { resolveConfig } from "../lib/config.ts";
-import { dim, formatCost, formatJson, formatTable, formatTime } from "../lib/format.ts";
+import { dim, formatCost, formatJson, formatTable, formatTime, red } from "../lib/format.ts";
 import { formatDuration } from "../lib/format.ts";
 import { apiGet } from "../lib/api.ts";
 import { highlightIds } from "../lib/prefix.ts";
 import { reportCommandError } from "../lib/command-error.ts";
+import { parseLabelRef } from "../lib/run-labels.ts";
 
 type BatchSummary = {
   id: string;
@@ -21,13 +22,28 @@ type BatchSummary = {
 };
 
 export async function run(argv: string[]): Promise<number> {
-  const { flags } = parseArgs(argv);
+  const { flags, multiFlags } = parseArgs(argv);
   const config = resolveConfig(flags);
 
-  const params: Record<string, string> = {};
+  const params: Record<string, string | string[]> = {};
   if (config.projectId) params.project = config.projectId;
   const status = getFlagValue(flags, "status");
   if (status) params.status = status;
+  // Batch targeting filters: environments OR, labels OR within a key and
+  // AND across keys (the backend splits each raw key:id value itself).
+  const environments = getFlagValues(multiFlags, "environment");
+  if (environments.length > 0) params.environment = environments.join(",");
+  const labels = getFlagValues(multiFlags, "label");
+  for (const raw of labels) {
+    try {
+      parseLabelRef(raw);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(red(`error: ${message}`));
+      return 2;
+    }
+  }
+  if (labels.length > 0) params.label = labels;
 
   let batches: BatchSummary[];
   try {
