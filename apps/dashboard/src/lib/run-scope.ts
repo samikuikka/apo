@@ -1,5 +1,5 @@
 /**
- * The run scope — which environments and labels a run list is narrowed to.
+ * The run scope: which environments and labels a run list is narrowed to.
  *
  * The URL uses the API's own encoding, so a page forwards it unchanged:
  * `?environment=prod,staging` (comma-joined, OR'd) and a repeated

@@ -50,7 +50,7 @@ export default async function RunsPage({
   let error: string | null = null;
   let taskSource: ProjectTaskSource | null = null;
 
-  // Fetch runs list, project and label facets in parallel — they're
+  // Fetch runs list, project and label facets in parallel; they're
   // independent. Facets only feed the filter pickers, so a failure there must
   // not blank the list.
   const projectPromise = getProject(projectId).catch(() => null);

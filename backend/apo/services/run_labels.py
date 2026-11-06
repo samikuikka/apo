@@ -38,7 +38,7 @@ def parse_label_filters(values: Sequence[str]) -> dict[str, list[str]]:
     """Parse repeated ``label=<key>:<id>`` query values into ``{key: [ids]}``.
 
     The id is everything after the first ``:``, so ids may contain colons.
-    Raises ``ValueError`` on a malformed value — a filter that silently
+    Raises ``ValueError`` on a malformed value: a filter that silently
     matched nothing would read as "no runs".
     """
     parsed: dict[str, list[str]] = {}
@@ -61,7 +61,7 @@ def batch_scope_conditions(
     """WHERE conditions on ``agent_task_batch_runs`` for the two dimensions.
 
     Environments OR. Labels OR within a key and AND across keys, matching on
-    the label ``id`` only — ``name`` is display and may change between runs.
+    the label ``id`` only; ``name`` is display and may change between runs.
     """
     conditions: list[ColumnElement[bool]] = []
     if environments:
