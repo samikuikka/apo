@@ -25,6 +25,9 @@ const ENV_KEYS = [
   "APO_COLLECTOR_HEALTH_PORT",
   "APO_COLLECTOR_METRICS_PORT",
   "APO_COLLECTOR_WATCHDOG_MS",
+  "APO_COLLECTOR_SPAWN_CONFIRM_MS",
+  "APO_COLLECTOR_SETTLE_MS",
+  "APO_COLLECTOR_EMPTY_WINDOW_MS",
   "FAKE_OTELCOL_START_DELAY_MS",
   "TEST_BACKEND_URL",
 ] as const;
@@ -105,6 +108,13 @@ beforeEach(async () => {
   process.env.APO_COLLECTOR_HEALTH_PORT = String(healthPort);
   process.env.APO_COLLECTOR_METRICS_PORT = String(await freePort());
   process.env.APO_COLLECTOR_WATCHDOG_MS = "200";
+  // Shrink the lifecycle padding windows the way WATCHDOG_MS above does:
+  // real child processes on real ports, but the bind-loser grace after a
+  // spawn, the pre-drain settle, and the sustained-empty drain window run
+  // at test scale instead of the production defaults (1s / 2.5s / 1s).
+  process.env.APO_COLLECTOR_SPAWN_CONFIRM_MS = "250";
+  process.env.APO_COLLECTOR_SETTLE_MS = "100";
+  process.env.APO_COLLECTOR_EMPTY_WINDOW_MS = "250";
   backend = createServer((_req, res) => res.end("ok"));
   await new Promise<void>((resolve) => backend.listen(0, "127.0.0.1", resolve));
   backendUrl = `http://127.0.0.1:${(backend.address() as { port: number }).port}`;

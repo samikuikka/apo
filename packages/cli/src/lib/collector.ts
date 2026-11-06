@@ -603,7 +603,9 @@ async function spawnCollector(opts: StartCollectorOptions, ports: CollectorPorts
   // The health check passes for whichever collector answers the port. A child
   // that lost the bind to another one exits shortly after loading its config;
   // its pid must never be recorded as the collector's.
-  await new Promise((resolve) => setTimeout(resolve, SPAWN_CONFIRM_MS));
+  await new Promise((resolve) =>
+    setTimeout(resolve, intEnv("APO_COLLECTOR_SPAWN_CONFIRM_MS", SPAWN_CONFIRM_MS)),
+  );
   if (child.exitCode !== null || child.signalCode !== null) return false;
 
   writeFileSync(paths.pid, `${child.pid}\n`);
@@ -841,13 +843,18 @@ async function isBackendUp(backendUrl: string): Promise<boolean> {
  */
 async function waitForQueueDrain(metricsPort: number): Promise<boolean> {
   const timeoutMs = intEnv("APO_COLLECTOR_DRAIN_TIMEOUT_MS", DEFAULT_DRAIN_TIMEOUT_MS);
+  const settleMs = intEnv("APO_COLLECTOR_SETTLE_MS", DEFAULT_SETTLE_MS);
+  const emptyWindowMs = intEnv(
+    "APO_COLLECTOR_EMPTY_WINDOW_MS",
+    DEFAULT_EMPTY_WINDOW_MS,
+  );
   const deadline = Date.now() + timeoutMs;
   if ((await scrapeExporterMetrics(metricsPort)) === null) {
     return false; // metrics unreachable — cannot prove drain
   }
   // Let any partial batch move from the batch processor into the exporter
   // queue first; only then does a zero reading mean anything.
-  await new Promise((resolve) => setTimeout(resolve, DEFAULT_SETTLE_MS));
+  await new Promise((resolve) => setTimeout(resolve, settleMs));
   let emptySince: number | null = null;
   let failedSpans = -1;
   while (Date.now() < deadline) {
@@ -866,7 +873,7 @@ async function waitForQueueDrain(metricsPort: number): Promise<boolean> {
       continue;
     }
     if (emptySince === null) emptySince = Date.now();
-    if (Date.now() - emptySince >= DEFAULT_EMPTY_WINDOW_MS) return true;
+    if (Date.now() - emptySince >= emptyWindowMs) return true;
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   return false;
