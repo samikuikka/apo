@@ -43,7 +43,7 @@ function outputTokPerS(call: LoggedCall): number | null {
   return tokens / (windowMs / 1000);
 }
 
-/** tok/s with one decimal under 100 and integers above — the precision a
+/** tok/s with one decimal under 100 and integers above: the precision a
  * host comparison can actually read (issue #307). */
 function formatTokPerS(value: number): string {
   return value < 100 ? value.toFixed(1) : `${Math.round(value)}`;
@@ -73,14 +73,12 @@ export function CallDetailHeader({
   );
   const cumulative = cumulativeMetrics.get(call.id);
   const hasDescendants = cumulative && cumulative.descendant_count > 0;
-  // Disjoint basis, matching the split surfaces below; the column values
-  // contradict those on runs whose columns are net of cache (pre-#131).
   const wholeTotal = wholeCallTokens(call);
   const cumulativeWhole = cumulative ? cumulativeWholeTokens(cumulative) : 0;
   const modelParams = extractModelParams(call);
   // Decode throughput (issue #307): output tokens over the window after the
   // first token. Errored generations are excluded, matching the backend's
-  // run-level median — a call that died mid-stream reports a truncated
+  // run-level median: a call that died mid-stream reports a truncated
   // token count, and its ratio would read as fabricated slowness.
   const tokPerS = call.level === "ERROR" ? null : outputTokPerS(call);
   const summaryParts = formatMetaParts([

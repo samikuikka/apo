@@ -94,8 +94,6 @@ export function getInlineMetricsStructured(
   const showCostTokens = options?.showCostTokens ?? true;
   const hasDesc = cumulative && cumulative.descendant_count > 0;
   const dCost = hasDesc && cumulative ? cumulative.cost : (call.cost ?? 0);
-  // Disjoint basis, matching the split surfaces next to the bar; the column
-  // values contradict those on runs whose columns are net of cache (pre-#131).
   const dTokens =
     hasDesc && cumulative ? cumulativeWholeTokens(cumulative) : wholeCallTokens(call);
   const dCacheRead =

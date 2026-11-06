@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import { callCacheTokens, wholePromptTokens, type CallCacheTokens } from "@/lib/cumulative-metrics";
+import { callCacheTokens, wholeCallTokens, wholePromptTokens, type CallCacheTokens } from "@/lib/cumulative-metrics";
 import { formatCostMicro, formatInputCacheSplit, formatTokenBreakdown, formatTokenTotal } from "@/lib/format";
 import { CopyIdPopover } from "./CopyIdPopover";
 import { CallCostBreakdownTooltip } from "./DimensionBreakdownTooltip";
@@ -45,9 +45,10 @@ export function CallMetadataTab({ call, run }: CallMetadataTabProps) {
 }
 
 function tokensValue(call: LoggedCall, cache: CallCacheTokens): ReactNode {
-  if (call.total_tokens == null || call.total_tokens <= 0) return "\u2014";
-  if (call.prompt_tokens == null && call.completion_tokens == null) {
-    return formatTokenTotal(call.total_tokens, cache.cache_read_tokens);
+  const total = wholeCallTokens(call);
+  if (total <= 0) return "\u2014";
+  if (wholePromptTokens(call) == null && call.completion_tokens == null) {
+    return formatTokenTotal(call.total_tokens ?? 0, cache.cache_read_tokens);
   }
   const prompt = wholePromptTokens(call) ?? 0;
   return (

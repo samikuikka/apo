@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import type { LoggedCall } from "@/components/trace-detail";
-import { computeCumulativeMetrics, wholeCallTokens, wholePromptTokens } from "@/lib/cumulative-metrics";
+import { callCacheTokens, computeCumulativeMetrics, wholeCallTokens, wholePromptTokens } from "@/lib/cumulative-metrics";
 import { formatInputCacheSplit, formatTokenBreakdown, formatTokenTotal } from "@/lib/format";
 
 function call(overrides: Partial<LoggedCall> & { id: string }): LoggedCall {
@@ -54,6 +54,27 @@ describe("wholePromptTokens", () => {
     expect(wholePromptTokens(call({ id: "legacy", prompt_tokens: 900 }))).toBe(900);
     expect(wholePromptTokens(call({ id: "bare" }))).toBeNull();
   });
+
+  it("treats a cache-only call as fully cached, never as column + cache", () => {
+    // The provider reported cache reads but no uncached input: the gross
+    // prompt column holds the reads alone, so falling back to it would count
+    // them twice (uncached 1000 + read 1000).
+    const cacheOnly = call({ id: "co", prompt_tokens: 1000, raw_usage: { cache_read: 1000 } });
+    expect(wholePromptTokens(cacheOnly)).toBe(1000);
+    expect(callCacheTokens(cacheOnly)).toEqual({
+      cache_read_tokens: 1000,
+      cache_write_tokens: 0,
+      input_uncached: 0,
+    });
+  });
+
+  it("keeps the split basis even when it disagrees with the total column", () => {
+    // Raw usage is present and sums to zero: the column cannot override it
+    // without the chip contradicting the split beside it.
+    expect(
+      wholeCallTokens(call({ id: "zero", raw_usage: { input: 0 }, total_tokens: 100 })),
+    ).toBe(0);
+  });
 });
 
 describe("computeCumulativeMetrics cache tokens", () => {
@@ -91,6 +112,23 @@ describe("computeCumulativeMetrics cache tokens", () => {
     ]);
 
     expect(metrics.get("root")?.prompt_uncached_tokens).toBe(900);
+  });
+
+  it("does not double-count a cache-only descendant through the column fallback", () => {
+    const metrics = computeCumulativeMetrics([
+      call({ id: "root" }),
+      call({
+        id: "co",
+        parent_call_id: "root",
+        prompt_tokens: 1000,
+        raw_usage: { cache_read: 1000 },
+      }),
+    ]);
+
+    expect(metrics.get("root")).toMatchObject({
+      prompt_uncached_tokens: 0,
+      cache_read_tokens: 1000,
+    });
   });
 });
 

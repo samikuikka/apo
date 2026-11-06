@@ -92,7 +92,7 @@ function flattenWithTimeline(
   })();
 
   // Sibling order was fixed once when the index was built (step_index, then
-  // chronological created_at) — see compareSiblings in ./trace-tree-utils.
+  // chronological created_at); see compareSiblings in ./trace-tree-utils.
   const getChildren = (callId: string | null): TraceObservation[] => {
     const children = index.childrenByParent.get(callId) ?? [];
     return matchingIds ? children.filter((c) => matchingIds.has(c.id)) : children;

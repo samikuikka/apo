@@ -21,17 +21,22 @@ export interface CallCacheTokens {
    * on every provider. The `prompt_tokens` column stores the input family
    * sum (input + cache read + both cache writes) on every row the normalizer
    * recognizes, since issue #131; only rows written before that carry the
-   * provider's own net convention. Null when the call has no normalized
-   * usage. */
+   * provider's own net convention. Null only when the call has no normalized
+   * usage at all; zero when usage exists but reports no uncached input (a
+   * cache-only call must not fall back to the column, which counts the
+   * cached tokens too). */
   input_uncached: number | null;
 }
 
 export function callCacheTokens(call: Pick<LoggedCall, "raw_usage">): CallCacheTokens {
-  const usage = call.raw_usage ?? {};
+  const usage = call.raw_usage;
+  if (!usage) {
+    return { cache_read_tokens: 0, cache_write_tokens: 0, input_uncached: null };
+  }
   return {
     cache_read_tokens: usage.cache_read ?? 0,
     cache_write_tokens: (usage.cache_write_5m ?? 0) + (usage.cache_write_1h ?? 0),
-    input_uncached: usage.input ?? null,
+    input_uncached: usage.input ?? 0,
   };
 }
 
@@ -56,8 +61,7 @@ export function wholeCallTokens(
 ): number {
   const prompt = wholePromptTokens(call);
   if (prompt == null) return call.total_tokens ?? 0;
-  const total = prompt + (call.completion_tokens ?? 0);
-  return total > 0 || call.total_tokens == null ? total : call.total_tokens;
+  return prompt + (call.completion_tokens ?? 0);
 }
 
 /** A subtree's token total on the same disjoint basis as `wholeCallTokens`:
@@ -149,19 +153,11 @@ export function computeCumulativeMetrics(
     accumulate(root.id);
   }
 
+  // Orphans (parent_call_id pointing at a call the page did not receive)
+  // never reach a root, so accumulate them here; memoization keeps
+  // subtrees that were already visited free.
   for (const call of calls) {
-    if (!result.has(call.id)) {
-      result.set(call.id, {
-        cost: call.cost ?? 0,
-        prompt_tokens: call.prompt_tokens ?? 0,
-        completion_tokens: call.completion_tokens ?? 0,
-        total_tokens: call.total_tokens ?? 0,
-        prompt_uncached_tokens: callCacheTokens(call).input_uncached ?? call.prompt_tokens ?? 0,
-        ...callCacheTokens(call),
-        latency_ms: call.latency_ms ?? 0,
-        descendant_count: 0,
-      });
-    }
+    if (!result.has(call.id)) accumulate(call.id);
   }
 
   return result;

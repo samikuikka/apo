@@ -130,9 +130,8 @@ export function TraceDetailTabs({ run }: TraceDetailTabsProps) {
   );
   const cacheTokens = useMemo(() => sumCacheTokens(calls), [calls]);
   const touchedCache = cacheTokens.read > 0 || cacheTokens.write > 0;
-  // The prompt row is the raw-usage split (uncached + read + write), not the
-  // column sum: the `prompt_tokens` column is net of cache on some providers,
-  // which would contradict the cache rows right below it.
+  // The raw-usage split, not the `prompt_tokens` column sum, so the prompt
+  // row cannot contradict the cache rows right below it (see wholeCallTokens).
   const promptTokens = cacheTokens.uncached + cacheTokens.read + cacheTokens.write;
   const totalTokens = promptTokens + completionTokens;
 
