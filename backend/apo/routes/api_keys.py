@@ -63,6 +63,15 @@ def _generate_legacy_api_key() -> tuple[str, str, str]:
     return full_key, prefix, hashed
 
 
+def _env_default_daily_span_quota() -> int | None:
+    """Deployment default quota for newly minted keys (unset/0 = unlimited)."""
+    try:
+        default_quota = int(os.environ.get("APO_DEFAULT_DAILY_SPAN_QUOTA", "0"))
+    except ValueError:
+        default_quota = 0
+    return default_quota if default_quota > 0 else None
+
+
 def mint_legacy_key(
     session: Session,
     *,
@@ -76,7 +85,9 @@ def mint_legacy_key(
     Shared by ``POST /v1/api-keys/bootstrap`` (existing CLI login flow) and
     ``POST /v1/projects/bootstrap`` (first-project creation). Hashes the key
     with SHA256 in storage and returns the row plus the plaintext key (shown
-    to the caller exactly once).
+    to the caller exactly once). The env default quota applies here too:
+    a mint through ``apo login`` is a newly minted key like any other, and
+    the CLI onboarding path is exactly where hosted guardrails must bite.
     """
     full_key, prefix, hashed_key = _generate_legacy_api_key()
     api_key = ApiKeyDB(
@@ -86,6 +97,7 @@ def mint_legacy_key(
         project=project,
         created_by=user_id,
         scope=scope,
+        daily_span_quota=_env_default_daily_span_quota(),
     )
     session.add(api_key)
     session.commit()
@@ -169,14 +181,12 @@ def create_api_key(
     public_key, secret_key, hashed_secret_key, display_secret_key = generate_key_pair()
 
     # Explicit body quota wins; otherwise the env default applies
-    # to NEW keys only (existing keys are untouched — bulk-apply in the UI).
-    quota = body.daily_span_quota
-    if quota is None:
-        try:
-            default_quota = int(os.environ.get("APO_DEFAULT_DAILY_SPAN_QUOTA", "0"))
-        except ValueError:
-            default_quota = 0
-        quota = default_quota if default_quota > 0 else None
+    # to NEW keys only (existing keys are untouched; edit per key in the UI).
+    quota = (
+        body.daily_span_quota
+        if body.daily_span_quota is not None
+        else _env_default_daily_span_quota()
+    )
 
     api_key = ApiKeyDB(
         name=body.name,

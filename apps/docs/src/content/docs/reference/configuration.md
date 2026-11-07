@@ -255,6 +255,10 @@ purges the OTLP spans of what it deletes.
 | `PROJECT_INVITATION_TTL_HOURS` | `168` | How long project invitations stay valid (7 days). |
 | `APO_READ_RATE_LIMIT_MAX` | `120` | Per-identity cap (per window) on the heavy list endpoints (`GET /v1/runs`, facets, task-run and batch-run lists). Generous by design, dashboard polling stays far below it; a leaking script gets 429s instead of pinning the database. `0` disables. |
 | `APO_READ_RATE_LIMIT_WINDOW_SECONDS` | `60` | The window for the read rate limit above. |
+| `APO_REQUEST_BUDGET_IDENTITY_PER_MINUTE` | `3600` | Aggregate request budget: sustained requests per minute one authenticated identity (user, API key, service token, attempt) may send across ALL endpoints. The backstop above the per-route limiters; normal clients sit far below it. Applies per identity; anonymous-demo traffic is one shared identity. `0` disables the per-identity dimension. |
+| `APO_REQUEST_BUDGET_IDENTITY_BURST` | `600` | Burst capacity for the per-identity request budget above. `0` disables the per-identity dimension. |
+| `APO_REQUEST_BUDGET_GLOBAL_PER_MINUTE` | `12000` | Installation-wide aggregate: sustained requests per minute across ALL callers combined, authenticated or not. Bounds a fleet of distinct identities whose combined rate would otherwise saturate the backend. `0` disables the global dimension. |
+| `APO_REQUEST_BUDGET_GLOBAL_BURST` | `2000` | Burst capacity for the global request budget above. `0` disables the global dimension. |
 
 See [Self-Hosting → Data Growth and Retention](/self-hosting/data-growth/)
 for what accumulates, how the tiers work, and recommended settings.
@@ -277,7 +281,7 @@ container required. The optional `s3` backend keeps the same server API.
 | `APO_RESULT_EVIDENCE_MAX_TOTAL_BYTES` | `536870912` | 512 MiB combined logical evidence per attempt. |
 | `APO_RESULT_EVIDENCE_STALE_TTL_SECONDS` | `86400` | The daily pass reaps result-evidence staging rows (and their objects) older than this — abandoned uploads from attempts that never finalized. |
 | `APO_ARTIFACT_ORPHAN_GRACE_HOURS` | `48` | The daily pass reaps artifact-store objects no manifest row references (crash orphans). Objects younger than this grace are left alone; `staging/*.part` files are never touched. |
-| `APO_DEFAULT_DAILY_SPAN_QUOTA` | `0` | Default accepted-spans/day quota applied to NEWLY MINTED API keys. `0` = unlimited. Existing keys are untouched, edit per key (Settings → API Keys) or bulk-apply there. Quota is per key (N keys = N × cap) and resets at UTC midnight; over-quota ingest gets 429. |
+| `APO_DEFAULT_DAILY_SPAN_QUOTA` | `0` | Default accepted-spans/day quota applied to NEWLY MINTED API keys, including keys minted by `apo login`. `0` = unlimited. Existing keys are untouched; edit per key (Settings → API Keys). Quota is per key (N keys = N × cap) and resets at UTC midnight; over-quota ingest gets 429. |
 | `APO_USAGE_RETENTION_DAYS` | `400` | Days to keep per-key daily ingest-usage rows. `0` = keep forever. |
 | `APO_S3_BUCKET` | - | Required for S3 writes. |
 | `APO_S3_REGION` | - | Optional; provider default otherwise. |
