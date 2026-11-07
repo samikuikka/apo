@@ -33,6 +33,7 @@ from apo.services.execution_leases import (
     CurrentAttemptLease,
     LeaseError,
     _require_current,
+    transition_attempt,
 )
 
 # Bounded diagnostic tails: 64 KiB each.
@@ -178,11 +179,9 @@ def finalize_attempt_result(
         terminal_status=SUCCEEDED,
     ):
         return attempt
-    if attempt.status != "running":
-        raise LeaseError("state_mismatch", f"cannot finalize result from status {attempt.status!r}")
 
     now = datetime.now(timezone.utc)
-    attempt.status = SUCCEEDED
+    transition_attempt(attempt, SUCCEEDED)
     attempt.completion_id = body.completion_id
     attempt.completion_sha256 = digest
     attempt.exit_code = body.exit_code
@@ -225,11 +224,9 @@ def finalize_attempt_failure(
         terminal_status=terminal_status,
     ):
         return attempt
-    if attempt.status not in ("leased", "running"):
-        raise LeaseError("state_mismatch", f"cannot finalize failure from status {attempt.status!r}")
 
     now = datetime.now(timezone.utc)
-    attempt.status = terminal_status
+    transition_attempt(attempt, terminal_status)
     attempt.completion_id = body.completion_id
     attempt.completion_sha256 = digest
     attempt.failure_kind = body.failure_kind

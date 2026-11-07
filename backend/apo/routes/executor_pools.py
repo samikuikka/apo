@@ -34,6 +34,7 @@ from apo.models.db import (
     UserDB,
 )
 from apo.models.execution import SUPPORTED_EXECUTOR_PROTOCOL_VERSIONS
+from apo.services.execution_leases import transition_attempt
 from apo.services.execution_pools import PoolError, set_default_pool
 from apo.services.executor_auth import generate_enrollment_token
 from apo.services.project_memberships import enforce_project_role_from_request
@@ -575,12 +576,12 @@ async def revoke_executor_route(
     now = datetime.now(timezone.utc)
     for att in attempts:
         if att.started_at is None:
-            att.status = "queued"
+            transition_attempt(att, "queued")
             att.executor_id = None
             att.claimed_at = None
             att.lease_expires_at = None
         else:
-            att.status = "lost"
+            transition_attempt(att, "lost")
             att.failure_kind = "executor_revoked"
             att.completed_at = now
         session.add(att)

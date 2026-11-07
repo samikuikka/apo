@@ -21,7 +21,7 @@ PostgreSQL may additionally use ``SKIP LOCKED``.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -54,6 +54,19 @@ LOST = "lost"
 TERMINAL_STATUSES = frozenset({SUCCEEDED, FAILED, CANCELLED, LOST})
 NONTERMINAL_STATUSES = frozenset({QUEUED, LEASED, RUNNING})
 
+#: Legal attempt-status transitions. Every in-process writer routes through
+#: ``transition_attempt``; the claim paths encode theirs atomically in the
+#: conditional ``UPDATE ... WHERE status = 'queued'``.
+ATTEMPT_STATUS_TRANSITIONS: Mapping[str, frozenset[str]] = {
+    QUEUED: frozenset({LEASED, CANCELLED, FAILED}),
+    LEASED: frozenset({RUNNING, QUEUED, CANCELLED, FAILED}),
+    RUNNING: frozenset({SUCCEEDED, FAILED, CANCELLED, LOST}),
+    SUCCEEDED: frozenset(),
+    FAILED: frozenset(),
+    CANCELLED: frozenset(),
+    LOST: frozenset(),
+}
+
 _logger = logging.getLogger(__name__)
 
 
@@ -78,6 +91,21 @@ def lease_error_to_http(exc: LeaseError) -> HTTPException:
     if exc.kind == "not_found":
         return HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     return HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+
+
+def transition_attempt(attempt: TaskExecutionAttemptDB, new_status: str) -> None:
+    """Apply one attempt-status transition, rejecting any the table forbids.
+
+    An illegal move raises ``LeaseError("state_mismatch")`` at the write site,
+    so a writer bug surfaces immediately instead of silently corrupting the
+    lease machine and surfacing later as a stuck run.
+    """
+    if new_status not in ATTEMPT_STATUS_TRANSITIONS.get(attempt.status, frozenset()):
+        raise LeaseError(
+            "state_mismatch",
+            f"illegal attempt transition {attempt.status!r} -> {new_status!r}",
+        )
+    attempt.status = new_status
 
 
 @dataclass(frozen=True)
@@ -408,9 +436,7 @@ def start_attempt(
     attempt = _require_current(session, lease)
     if attempt.status == RUNNING:
         return attempt  # idempotent re-start at the same generation
-    if attempt.status != LEASED:
-        raise LeaseError("state_mismatch", f"cannot start from status {attempt.status!r}")
-    attempt.status = RUNNING
+    transition_attempt(attempt, RUNNING)
     attempt.phase = "preparing"
     attempt.started_at = _now()
     attempt.heartbeat_at = _now()
@@ -468,7 +494,7 @@ def request_cancellation(session: Session, *, attempt_id: str) -> None:
         return
     now = _now()
     if attempt.status in (QUEUED, LEASED):
-        attempt.status = CANCELLED
+        transition_attempt(attempt, CANCELLED)
         attempt.cancel_requested_at = now
         attempt.completed_at = now
         _finalize_logical_run(
@@ -507,14 +533,14 @@ def recover_expired_attempts(session: Session, *, now: datetime) -> RecoveryCoun
     def recover_lease(attempt: TaskExecutionAttemptDB) -> str:
         if attempt.started_at is None:
             # Pre-start: safe to requeue. Drop the lease so another executor can claim.
-            attempt.status = QUEUED
+            transition_attempt(attempt, QUEUED)
             attempt.executor_id = None
             attempt.claimed_at = None
             attempt.lease_expires_at = None
             attempt.heartbeat_at = None
             return "requeued"
         # Post-start: uncertain; never auto-retry.
-        attempt.status = LOST
+        transition_attempt(attempt, LOST)
         attempt.failure_kind = "lease_expired"
         attempt.error_message = (
             "Executor lease expired after task code started; outcome is unknown"
@@ -524,7 +550,7 @@ def recover_expired_attempts(session: Session, *, now: datetime) -> RecoveryCoun
         return "lost"
 
     def recover_queued(attempt: TaskExecutionAttemptDB) -> str:
-        attempt.status = FAILED
+        transition_attempt(attempt, FAILED)
         attempt.failure_kind = "executor_unavailable"
         attempt.error_message = "queue TTL expired before an executor claimed the task"
         attempt.completed_at = now
@@ -635,7 +661,7 @@ def fail_attempt(
     if attempt.status in TERMINAL_STATUSES:
         return attempt
     now = _now()
-    attempt.status = FAILED
+    transition_attempt(attempt, FAILED)
     attempt.failure_kind = failure_kind
     attempt.error_message = error_message
     attempt.completed_at = now
@@ -757,6 +783,7 @@ def _attempt_started_for_batch(session: Session, batch_run_id: str) -> bool:
 
 
 __all__ = [
+    "ATTEMPT_STATUS_TRANSITIONS",
     "CANCELLED",
     "ClaimedAttempt",
     "CurrentAttemptLease",
@@ -781,6 +808,7 @@ __all__ = [
     "start_attempt",
     "start_lease_reaper",
     "stop_lease_reaper",
+    "transition_attempt",
 ]
 
 
