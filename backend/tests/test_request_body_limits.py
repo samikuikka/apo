@@ -18,7 +18,7 @@ import asyncio
 
 import pytest
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse
+from starlette.responses import PlainTextResponse, StreamingResponse
 
 from apo.middleware.request_size import RequestSizeMiddleware
 from apo.services.request_body_limits import (
@@ -76,6 +76,22 @@ async def _body_echo_app(scope, receive, send):
     await response(scope, receive, send)
 
 
+async def _poll_after_body_app(scope, receive, send):
+    """Downstream app: read the body like a route, then poll receive once
+    more the way Starlette's BaseHTTPMiddleware does after the body arrives.
+    A live connection has nothing more to say, so the poll only resolves if
+    the middleware reports a disconnect it did not observe."""
+    request = Request(scope, receive)
+    body = await request.body()
+    try:
+        later = await asyncio.wait_for(request.receive(), timeout=0.05)
+        state = later["type"]
+    except asyncio.TimeoutError:
+        state = "pending"
+    response = PlainTextResponse(f"len:{len(body)}:later:{state}")
+    await response(scope, receive, send)
+
+
 def _drive(
     middleware: RequestSizeMiddleware,
     method: str,
@@ -105,14 +121,20 @@ def _drive(
 
     chunk_iter = iter(body_chunks)
     receive_count = 0
+    exhausted = False
 
     async def receive():
-        nonlocal receive_count
+        nonlocal receive_count, exhausted
         receive_count += 1
+        # Spec-conformant server: after the final body message a live
+        # connection sends nothing more, so later reads just wait.
+        if exhausted:
+            await asyncio.sleep(3600)
         try:
             chunk = next(chunk_iter)
             return {"type": "http.request", "body": chunk, "more_body": True}
         except StopIteration:
+            exhausted = True
             return {"type": "http.request", "body": b"", "more_body": False}
 
     sent: list[dict] = []  # pyright: ignore[reportMissingTypeArgument]
@@ -239,6 +261,29 @@ class TestWritePathByteCaps:
         assert resolved[("POST", "/v1/runs", None)] == 10_485_760
 
 
+class TestReplayContract:
+    """The replay installed after a pre-read must forward LATER reads to the
+    real connection instead of synthesizing http.disconnect.
+
+    Starlette 1.0's BaseHTTPMiddleware polls receive again once the body has
+    arrived; a synthetic disconnect there reads as a dead client and cancels
+    the response mid-stream (streamed downloads on capped paths came through
+    as one chunk with a 200 status). A live client must stay reported live.
+    """
+
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [("POST", "/v1/runs/bulk-export"), ("POST", "/v1/agent-task-runs/tr-1/result")],
+    )
+    def test_later_reads_forward_to_the_real_receive(self, method, path):
+        middleware = RequestSizeMiddleware(_poll_after_body_app, body_limits=None)
+        status, body, _ = _drive(middleware, method, path, [b"xyz"], content_length=3)
+        assert status == 200
+        # The connection is alive and silent: the later poll must still be
+        # pending, not resolved with a disconnect the server never saw.
+        assert body == b"len:3:later:pending"
+
+
 # ---------------------------------------------------------------------------
 # 3. Full-app wiring (scene)
 # ---------------------------------------------------------------------------
@@ -255,3 +300,33 @@ class TestAppWiring:
         )
         assert resp.status_code == 413
         assert "exceeds" in resp.json()["detail"]
+
+    def test_streamed_download_on_capped_path_arrives_complete(self, client):
+        # A capped write path must still be able to SERVE a streamed
+        # download. Starlette polls receive after the body arrives; a
+        # synthetic disconnect in the middleware's replay used to cancel
+        # the response mid-stream (one chunk, 200 status, no error).
+        from apo.api import app as real_app
+
+        chunks = [f"chunk-{i}-".encode() * 1024 for i in range(8)]
+        expected = b"".join(chunks)
+
+        async def stream_probe(request: Request) -> StreamingResponse:
+            _ = await request.body()
+
+            async def gen():
+                for chunk in chunks:
+                    yield chunk
+
+            return StreamingResponse(gen(), media_type="application/octet-stream")
+
+        probe_path = "/v1/runs/bulk-export-stream-probe"
+        real_app.add_api_route(probe_path, stream_probe, methods=["POST"])
+        try:
+            resp = client.post(probe_path, json={"probe": True})
+            assert resp.status_code == 200
+            assert resp.content == expected
+        finally:
+            real_app.router.routes = [
+                r for r in real_app.router.routes if getattr(r, "path", "") != probe_path
+            ]
