@@ -132,8 +132,10 @@ class TestSqliteRowIdBounds:
         session: Session,
         make_authed_client: Any,
     ) -> None:
-        _authed(client, session, make_authed_client)
-        resp = client.get(f"/api/v1/models/{_HUGE_ID}")
+        # Authenticated: with auth enforced (as in CI) an anonymous hit
+        # would 401 at the middleware before the id ever gets validated.
+        authed = _authed(client, session, make_authed_client)
+        resp = authed.get(f"/api/v1/models/{_HUGE_ID}")
         assert resp.status_code == 422
 
     def test_huge_webhook_id_gets_422_not_500(
