@@ -173,10 +173,36 @@ export function terminalSafeDeep<T>(value: T): T {
   return value;
 }
 
-/** "-" for a missing timestamp: `new Date(null)` would print the 1970 epoch. */
+/** Options matching Date#toLocaleString's defaults, so output is byte-identical. */
+const timestampFormatterOptions: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+  second: "numeric",
+};
+
+// Built on first use, not at module load: constructing an Intl formatter is
+// the first ICU touch in the process (~25ms of locale-data init), which
+// every command would otherwise pay even when it never prints a timestamp.
+let timestampFormatter: Intl.DateTimeFormat | null = null;
+
+/** "-" for a missing timestamp: `new Date(null)` would print the 1970 epoch.
+ * Formats through one shared formatter: constructing an Intl.DateTimeFormat
+ * per call cost ~0.2ms each and dominated list rendering (137 rows was
+ * ~27ms of pure formatter construction). */
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return "-";
-  return new Date(iso).toLocaleString();
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    // Intl#format throws on an invalid date where toLocaleString printed
+    // "Invalid Date"; keep the printed form so unparseable input reads the
+    // same as before.
+    return String(date);
+  }
+  timestampFormatter ??= new Intl.DateTimeFormat(undefined, timestampFormatterOptions);
+  return timestampFormatter.format(date);
 }
 
 /**

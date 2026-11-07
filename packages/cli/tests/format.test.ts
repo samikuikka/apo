@@ -105,4 +105,18 @@ describe("formatTime", () => {
     const result = formatTime("not-a-date");
     expect(result).toBe("Invalid Date");
   });
+
+  it("formats identically to Date#toLocaleString across edge timestamps", () => {
+    const stamps = [
+      "2026-06-02T12:00:00Z",
+      "2026-01-01T00:00:00Z",
+      "2025-12-31T23:59:59.999Z",
+      "1970-01-01T00:00:00Z",
+      "2024-02-29T12:00:00Z",
+      "2026-07-04T16:05:09Z",
+    ];
+    for (const iso of stamps) {
+      expect(formatTime(iso)).toBe(new Date(iso).toLocaleString());
+    }
+  });
 });
