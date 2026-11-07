@@ -27,6 +27,9 @@ from apo.models.db import (
     TaskRevisionDB,
 )
 from apo.services.execution_leases import (
+    ATTEMPT_STATUS_TRANSITIONS,
+    NONTERMINAL_STATUSES,
+    TERMINAL_STATUSES,
     CurrentAttemptLease,
     LeaseError,
     claim_next_attempt,
@@ -34,6 +37,7 @@ from apo.services.execution_leases import (
     recover_expired_attempts,
     request_cancellation,
     start_attempt,
+    transition_attempt,
 )
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -926,3 +930,32 @@ def test_a_queued_run_past_its_queue_ttl_is_not_live(session: Session) -> None:
     session.add(atts[0])
     session.commit()
     assert _live_flag(session) is False
+
+
+def test_transition_attempt_applies_every_legal_move() -> None:
+    legal = [
+        ("queued", "leased"), ("queued", "cancelled"), ("queued", "failed"),
+        ("leased", "running"), ("leased", "queued"),
+        ("leased", "cancelled"), ("leased", "failed"),
+        ("running", "succeeded"), ("running", "failed"),
+        ("running", "cancelled"), ("running", "lost"),
+    ]
+    for start, end in legal:
+        attempt = TaskExecutionAttemptDB(id=f"att-{start}-{end}", status=start)
+        transition_attempt(attempt, end)
+        assert attempt.status == end
+
+
+def test_transition_attempt_rejects_every_illegal_move() -> None:
+    statuses = ["queued", "leased", "running", "succeeded", "failed", "cancelled", "lost"]
+    for start in statuses:
+        for end in statuses:
+            if end in ATTEMPT_STATUS_TRANSITIONS[start]:
+                continue
+            attempt = TaskExecutionAttemptDB(id=f"att-{start}-{end}", status=start)
+            with pytest.raises(LeaseError, match="illegal attempt transition"):
+                transition_attempt(attempt, end)
+
+
+def test_the_transition_table_covers_exactly_the_known_statuses() -> None:
+    assert set(ATTEMPT_STATUS_TRANSITIONS) == NONTERMINAL_STATUSES | TERMINAL_STATUSES

@@ -33,6 +33,7 @@ from apo.models.db import (
     TaskExecutionAttemptDB,
     TaskRevisionDB,
 )
+from apo.services.execution_leases import transition_attempt
 from apo.services.lifecycle import TASK_RUN_TERMINAL, BATCH_RUN_TERMINAL
 
 logger = logging.getLogger(__name__)
@@ -152,7 +153,7 @@ def _retire_bundled_attempts(session: Session, ts: datetime) -> int:
     ).all()
     changed = 0
     for attempt in active:
-        attempt.status = "cancelled"
+        transition_attempt(attempt, "cancelled")
         attempt.failure_kind = EXECUTION_RETIRED_FAILURE_KIND
         attempt.error_message = "bundled execution retired"
         attempt.completed_at = ts
