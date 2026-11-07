@@ -23,13 +23,13 @@ const moduleWithCompileCache = nodeModule as unknown as {
 };
 
 if (!process.env.NODE_COMPILE_CACHE && moduleWithCompileCache.enableCompileCache) {
-  // Node already honors NODE_COMPILE_CACHE at startup; an explicit dir here
-  // would fight the operator's choice, so leave it alone when set. The
-  // versioned subdir exists because the cache is not portable across Node
-  // versions.
+  // Node already honors NODE_COMPILE_CACHE at startup and covers strictly
+  // more than this call (the entry module included), so leave it alone
+  // when set. The same directory as the bin/apo launcher keeps both
+  // mechanisms on one set of entries; Node namespaces it per version.
   try {
     moduleWithCompileCache.enableCompileCache(
-      join(homedir(), ".cache", "apo-cli", "compile-cache", process.versions.node),
+      join(homedir(), ".cache", "apo-cli", "compile-cache"),
     );
   } catch {
     // A failed cache enablement must never break the command itself.

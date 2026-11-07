@@ -1,0 +1,16 @@
+#!/bin/sh
+# apo launcher for running the CLI from source in this checkout.
+#
+# NODE_COMPILE_CACHE must be set before the process starts: an env-var
+# cache also covers the entry module and Node's loader bootstrap, which
+# the in-process enableCompileCache() call (src/lib/compile-cache.ts) can
+# never reach. Measured on Node 25: ~87ms less CPU per invocation versus
+# no cache; the in-process call alone recovers none of the entry-module
+# cost.
+#
+# An already-set value wins so callers can redirect or disable the cache.
+set -e
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+NODE_COMPILE_CACHE=${NODE_COMPILE_CACHE:-"$HOME/.cache/apo-cli/compile-cache"}
+export NODE_COMPILE_CACHE
+exec node --experimental-strip-types --conditions development "$DIR/src/main.ts" "$@"

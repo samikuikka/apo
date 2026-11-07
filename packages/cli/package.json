@@ -44,7 +44,7 @@
     "build": "tsup",
     "prepack": "pnpm run build",
     "package:check": "node scripts/verify-package.mjs",
-    "apo": "node --experimental-strip-types --conditions development src/main.ts",
+    "apo": "bin/apo",
     "test": "vitest run",
     "test:unit": "vitest run --exclude 'tests/connect-scene.test.ts'",
     "test:watch": "vitest"
