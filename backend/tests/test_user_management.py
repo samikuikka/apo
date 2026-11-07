@@ -269,6 +269,61 @@ class TestDeactivatedUserAuth:
         assert resp.json()["detail"] == "Invalid credentials"
 
 
+class TestInstallationAdminGuard:
+    """The /auth/users surface requires a browser-session installation admin."""
+
+    def test_admin_api_key_rejected(
+        self, client: TestClient, session: Session, make_authed_client: Any,
+        make_api_key_client: Any,
+    ) -> None:
+        _, admin_id = _setup_admin_authed(client, session, make_authed_client)
+        key_client = make_api_key_client(admin_id, "proj-a", session)
+        resp = key_client.get("/auth/users")
+        assert resp.status_code == 403
+        assert "browser session" in resp.json()["detail"]
+
+    def test_deactivated_admin_cannot_self_resurrect_via_api_key(
+        self, client: TestClient, session: Session, make_authed_client: Any,
+        make_api_key_client: Any,
+    ) -> None:
+        _, admin_id = _setup_admin_authed(client, session, make_authed_client)
+        admin = session.get(UserDB, admin_id)
+        assert admin is not None
+        admin.is_active = False
+        session.add(admin)
+        session.commit()
+
+        key_client = make_api_key_client(admin_id, "proj-a", session)
+        resp = key_client.patch(f"/auth/users/{admin_id}", json={"is_active": True})
+        assert resp.status_code == 403
+
+        # The deactivation stuck: the rejected PATCH changed nothing.
+        session.expire_all()
+        row = session.get(UserDB, admin_id)
+        assert row is not None
+        assert row.is_active is False
+
+    def test_patch_deactivation_sets_session_watermark(
+        self, client: TestClient, session: Session, make_authed_client: Any
+    ) -> None:
+        authed, _ = _setup_admin_authed(client, session, make_authed_client)
+        invite_resp = authed.post(
+            "/auth/users",
+            json={"email": "member@test.com", "name": "Member", "password": "Pass1234"},
+        )
+        assert invite_resp.status_code == 200
+        member = invite_resp.json()
+
+        resp = authed.patch(f"/auth/users/{member['id']}", json={"is_active": False})
+        assert resp.status_code == 200
+
+        session.expire_all()
+        row = session.get(UserDB, member["id"])
+        assert row is not None
+        assert row.is_active is False
+        assert row.token_invalid_before is not None
+
+
 class TestFullWorkflow:
     def test_invite_toggle_deactivate(
         self, client: TestClient, session: Session, make_authed_client: Any

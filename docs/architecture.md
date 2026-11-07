@@ -116,12 +116,24 @@ Administrator; accepting it (publicly for a new account, or with a matching
 authenticated session for an existing one) creates the invitee's User when
 needed, exactly one new Project, one owner membership, and consumes the
 invitation — all in one transaction that rolls back completely on any
-failure. The issuer gains no membership, and the raw token is stored only as
-a SHA-256 hash and shown exactly once (email, or the copy-link fallback when
+failure. The issuer gains no membership, and the raw token is stored only as a
+SHA-256 hash and shown exactly once (email, or the copy-link fallback when
 `EMAIL_TRANSPORT_URL` is unconfigured). `require_installation_admin` accepts
 browser-session authority only: Project API keys and executor capability
 credentials cannot manage admission even when their creator is an
 administrator.
+
+### User Lifecycle (no admin purge)
+
+Deactivating a User (`DELETE /auth/users/{id}`, or
+`PATCH ... {"is_active": false}`) is the complete lock-out: existing session
+cookies fail on the next request, login is refused, and every API key the
+User created stops authenticating immediately (the middleware re-reads the
+creator's `is_active` on each Basic/Bearer authentication, deliberately
+outside the API-key cache). User rows are never hard-deleted, and
+installation admin status grants no Project authority: `/auth/users` itself
+accepts browser-session authority only, and Project deletion stays
+owner-only through project membership.
 
 ### Agent-Task Trace Auth
 
@@ -162,7 +174,7 @@ Credential kinds:
 | Credential | Authority |
 |---|---|
 | Session (cookie) | All current memberships + roles |
-| Project API key | Exact bound Project + creator membership recheck |
+| Project API key | Exact bound Project + creator membership and active-status recheck |
 | Attempt/service token | Exact Project + Task Run capability (resource-specific authorizer) |
 | Executor credential | Exact Project + Pool + Executor + permitted operation |
 
