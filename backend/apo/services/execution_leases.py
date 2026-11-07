@@ -546,7 +546,7 @@ def recover_expired_attempts(session: Session, *, now: datetime) -> RecoveryCoun
             "Executor lease expired after task code started; outcome is unknown"
         )
         attempt.completed_at = now
-        _finalize_recovered_run(session, attempt, error_message=attempt.error_message)
+        finalize_recovered_run(session, attempt, error_message=attempt.error_message)
         return "lost"
 
     def recover_queued(attempt: TaskExecutionAttemptDB) -> str:
@@ -554,7 +554,7 @@ def recover_expired_attempts(session: Session, *, now: datetime) -> RecoveryCoun
         attempt.failure_kind = "executor_unavailable"
         attempt.error_message = "queue TTL expired before an executor claimed the task"
         attempt.completed_at = now
-        _finalize_recovered_run(session, attempt, error_message=attempt.error_message)
+        finalize_recovered_run(session, attempt, error_message=attempt.error_message)
         return "failed_unavailable"
 
     lease_expired = (
@@ -629,9 +629,16 @@ def _recover_attempt(
     return outcome
 
 
-def _finalize_recovered_run(
+def finalize_recovered_run(
     session: Session, attempt: TaskExecutionAttemptDB, *, error_message: str
 ) -> None:
+    """Align a forcibly-ended Attempt's logical Run/Batch state.
+
+    Used by the lease reaper and by executor revocation. Ends the Run as
+    ``error`` (executor no-verdict), rolls the Batch up, and resolves any
+    pending Schedule Occurrence. A missing Run/Batch is tolerated: the Attempt
+    still ends, or every sweep would find it again.
+    """
     try:
         _finalize_logical_run(session, attempt, error_message=error_message)
     except LeaseError as exc:
@@ -802,6 +809,7 @@ __all__ = [
     "claim_next_source_owned_attempt",
     "cancel_active_batch_on_pause",
     "fail_attempt",
+    "finalize_recovered_run",
     "heartbeat_attempt",
     "recover_expired_attempts",
     "request_cancellation",
