@@ -1,3 +1,4 @@
+import "./lib/compile-cache.ts";
 import { parseArgs } from "./lib/args.ts";
 import { bold, dim } from "./lib/format.ts";
 import { isDirectInvocation } from "./lib/entrypoint.ts";
