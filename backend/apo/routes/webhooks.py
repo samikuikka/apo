@@ -13,6 +13,7 @@ from sqlmodel import Session, select
 
 from ..auth.deps import require_api_key_scope
 from ..db import get_session
+from ..params import SqliteRowId
 from ..models.db import WebhookDB
 from ..services.demo_workspace import require_project_not_demo
 from ..services.project_memberships import enforce_project_role_from_request
@@ -151,7 +152,7 @@ def list_webhooks(
 
 @router.get("/{webhook_id}", response_model=WebhookResponse)
 def get_webhook(
-    webhook_id: int,
+    webhook_id: SqliteRowId,
     request: Request,
     session: Session = Depends(get_session),
     _: object = Depends(require_api_key_scope("full")),
@@ -174,7 +175,7 @@ def get_webhook(
 
 @router.patch("/{webhook_id}", response_model=WebhookResponse)
 def update_webhook(
-    webhook_id: int,
+    webhook_id: SqliteRowId,
     body: WebhookUpdate,
     request: Request,
     session: Session = Depends(get_session),
@@ -225,7 +226,7 @@ def update_webhook(
 
 @router.delete("/{webhook_id}", status_code=204)
 def delete_webhook(
-    webhook_id: int,
+    webhook_id: SqliteRowId,
     request: Request,
     session: Session = Depends(get_session),
     _: object = Depends(require_api_key_scope("full")),
@@ -245,7 +246,7 @@ def delete_webhook(
 
 @router.post("/{webhook_id}/rotate-secret", response_model=WebhookSecretResponse)
 def rotate_secret(
-    webhook_id: int,
+    webhook_id: SqliteRowId,
     request: Request,
     session: Session = Depends(get_session),
     _: object = Depends(require_api_key_scope("full")),
@@ -273,7 +274,7 @@ def rotate_secret(
 
 @router.post("/{webhook_id}/test", response_model=WebhookTestResponse)
 async def test_webhook(
-    webhook_id: int,
+    webhook_id: SqliteRowId,
     request: Request,
     session: Session = Depends(get_session),
     _: object = Depends(require_api_key_scope("full")),
