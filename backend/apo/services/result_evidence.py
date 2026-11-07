@@ -45,6 +45,10 @@ from apo.services.agent_task_deliverables import (
     validate_sha256_hex,
 )
 from apo.services.artifact_store import ArtifactStore
+from apo.services.storage_quota import (
+    enforce_project_storage_quota,
+    record_project_storage,
+)
 
 SLOTS = frozenset({"transcript", "checks", "deliverable"})
 
@@ -178,6 +182,14 @@ async def create_result_evidence_intent(
 
     _reject_total_overflow(session, attempt.id, size_bytes, max_total)
     _reject_part_count_overflow(session, attempt.id)
+
+    # Project-level daily storage budget, counted at accept time. The
+    # idempotent same-metadata return above means retries never
+    # double-count.
+    enforce_project_storage_quota(
+        session, project_id=attempt.project, pending_bytes=size_bytes
+    )
+    record_project_storage(session, attempt.project, size_bytes=size_bytes)
 
     row = AgentTaskResultEvidenceDB(
         id=_new_id(),

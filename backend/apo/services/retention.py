@@ -412,15 +412,16 @@ def usage_retention_days() -> int:
 def reap_old_usage_rows(session: Session, cutoff_day: str) -> int:
     """Delete usage rollup rows older than the retention window.
 
-    Covers both grains: per-key (api_key_daily_usage) and per-account
-    (user_daily_usage), which must reap on the same schedule or the
-    aggregate table outlives the exact record it summarizes. Rows are
-    tiny; 0 = keep forever (matching apo's other retention-knob
-    semantics). Days are compared as YYYY-MM-DD strings — lexicographic
-    order equals chronological order for zero-padded ISO dates.
+    Covers all grains: per-key (api_key_daily_usage), per-account
+    (user_daily_usage), and per-project storage (project_daily_usage),
+    which must reap on the same schedule or an aggregate table outlives
+    the exact record it summarizes. Rows are tiny; 0 = keep forever
+    (matching apo's other retention-knob semantics). Days are compared
+    as YYYY-MM-DD strings — lexicographic order equals chronological
+    order for zero-padded ISO dates.
     """
     deleted = 0
-    for table in ("api_key_daily_usage", "user_daily_usage"):
+    for table in ("api_key_daily_usage", "user_daily_usage", "project_daily_usage"):
         if not table_exists(session, table):
             continue
         result = cast(

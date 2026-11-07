@@ -283,6 +283,7 @@ container required. The optional `s3` backend keeps the same server API.
 | `APO_ARTIFACT_ORPHAN_GRACE_HOURS` | `48` | The daily pass reaps artifact-store objects no manifest row references (crash orphans). Objects younger than this grace are left alone; `staging/*.part` files are never touched. |
 | `APO_DEFAULT_DAILY_SPAN_QUOTA` | `0` | Default accepted-spans/day quota applied to NEWLY MINTED API keys, including keys minted by `apo login`. `0` = unlimited. Existing keys are untouched; edit per key (Settings → API Keys). Quota is per key (N keys = N × cap) and resets at UTC midnight; over-quota ingest gets 429. |
 | `APO_USER_DAILY_SPAN_QUOTA` | `0` | Account-level accepted-spans/day cap summed across every API key the user minted; bounds the whole key fleet of one account. `0` = off (per-key quotas alone multiply by key count). Resets at UTC midnight; over-quota ingest gets 429 with `Retry-After`, same shape as the per-key quota. |
+| `APO_PROJECT_DAILY_STORAGE_QUOTA` | `0` | Project-level bytes/day cap for accepted Deliverable and result-evidence uploads (counted at upload-intent time, summed across every run in the project). `0` = off (item/run/attempt caps never bound the sum across runs). Resets at UTC midnight; over-quota intents get 429 with `Retry-After`. Complements retention, which bounds stored data by age. |
 | `APO_USAGE_RETENTION_DAYS` | `400` | Days to keep per-key daily ingest-usage rows. `0` = keep forever. |
 | `APO_S3_BUCKET` | - | Required for S3 writes. |
 | `APO_S3_REGION` | - | Optional; provider default otherwise. |

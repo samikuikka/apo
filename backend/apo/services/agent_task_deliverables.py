@@ -42,6 +42,10 @@ from apo.models.schemas import (
 )
 from apo.services.artifact_store import ArtifactStore
 from apo.services.lifecycle import TASK_RUN_TERMINAL
+from apo.services.storage_quota import (
+    enforce_project_storage_quota,
+    record_project_storage,
+)
 
 # — inline threshold is a code constant, not a tuning knob.
 INLINE_THRESHOLD_BYTES = 64 * 1024  # 64 KiB
@@ -106,6 +110,10 @@ async def persist_json_deliverable(
 
     _, max_run, _ = artifact_limits()
     _reject_run_total_overflow(session, task_run_id, size, max_run)
+    # Project-level daily storage budget: same accept moment, one choke
+    # point shared with artifact intents.
+    enforce_project_storage_quota(session, project_id=project, pending_bytes=size)
+    record_project_storage(session, project, size_bytes=size)
 
     if size <= INLINE_THRESHOLD_BYTES:
         row = AgentTaskDeliverableDB(
@@ -486,6 +494,12 @@ async def create_artifact_upload_intent(
         raise ValueError(
             f"Deliverable name '{name}' already exists with conflicting metadata"
         )
+
+    # Project-level daily storage budget, counted at accept time so the
+    # obligation is visible before any byte streams. Idempotent re-posts
+    # returned above, so retries never double-count.
+    enforce_project_storage_quota(session, project_id=project, pending_bytes=size_bytes)
+    record_project_storage(session, project, size_bytes=size_bytes)
 
     row = AgentTaskDeliverableDB(
         id=_new_id(),
