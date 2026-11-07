@@ -24,13 +24,15 @@ export function ShikiCodeBlock({
   code,
   language,
   className,
+  defaultWrapped = false,
 }: {
   code: string;
   language?: string;
   className?: string;
+  defaultWrapped?: boolean;
 }) {
   const [html, setHtml] = useState<string>("");
-  const [wrapped, setWrapped] = useState(false);
+  const [wrapped, setWrapped] = useState(defaultWrapped);
   const lang = resolveLang(language);
 
   useEffect(() => {
@@ -47,7 +49,7 @@ export function ShikiCodeBlock({
   }, [code, lang]);
 
   return (
-    <div className={cn("group/code relative border border-border overflow-hidden", className)}>
+    <div className={cn("group/code relative min-w-0 border border-border overflow-hidden", className)}>
       <div className="flex items-center justify-between border-b border-border/50 px-3 py-1.5 bg-card">
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           {lang}
