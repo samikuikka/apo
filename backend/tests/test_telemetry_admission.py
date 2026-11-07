@@ -375,3 +375,111 @@ class TestProtectedRouteRegistry:
         ]
         for method, path in unprotected:
             assert not is_protected_telemetry_route(method, path), f"{method} {path} should NOT be protected"
+
+
+# ---------------------------------------------------------------------------
+# Unit test 10: global-only request consumption (request budget engine)
+# ---------------------------------------------------------------------------
+
+
+class TestGlobalOnlyConsumption:
+    """consume_request_global charges the aggregate without identity buckets."""
+
+    def test_global_only_consumption_leaves_identity_buckets_untouched(self) -> None:
+        from apo.services.telemetry_admission import TelemetryAdmissionController
+
+        limits = _admission_limits(g_req_burst=6)
+        ctrl = TelemetryAdmissionController(limits)
+
+        for _ in range(5):
+            assert ctrl.consume_request_global() is None
+
+        # No identity was involved, so no per-identity state exists yet.
+        assert ctrl.tracked_identity_count() == 0
+
+        # A later paired consume starts from the identity's full burst (the
+        # sixth global token is still there to admit it).
+        assert ctrl.consume_request("id1") is None
+
+    def test_global_only_rejects_when_global_bucket_empty(self) -> None:
+        from apo.services.telemetry_admission import TelemetryAdmissionController
+
+        limits = _admission_limits(g_req_rate=60, g_req_burst=1)
+        ctrl = TelemetryAdmissionController(limits)
+
+        assert ctrl.consume_request_global() is None
+        rejection = ctrl.consume_request_global()
+        assert rejection is not None
+        assert rejection.resource == "requests"
+        assert rejection.scope == "global"
+        assert rejection.limit == 1
+        assert rejection.retry_after_seconds >= 1
+
+    def test_rejection_scope_marks_which_dimension_rejected(self) -> None:
+        from apo.services.telemetry_admission import TelemetryAdmissionController
+
+        # Identity bucket tighter than global: rejection is the caller's own.
+        tight_identity = _admission_limits(req_rate=60, req_burst=1, g_req_burst=10)
+        ctrl = TelemetryAdmissionController(tight_identity)
+        assert ctrl.consume_request("a") is None
+        rejection = ctrl.consume_request("a")
+        assert rejection is not None
+        assert rejection.scope == "identity"
+
+        # Global bucket tighter than identity: rejection is the aggregate.
+        tight_global = _admission_limits(req_burst=10, g_req_rate=60, g_req_burst=1)
+        ctrl2 = TelemetryAdmissionController(tight_global)
+        assert ctrl2.consume_request("a") is None
+        rejection2 = ctrl2.consume_request("b")
+        assert rejection2 is not None
+        assert rejection2.scope == "global"
+
+    def test_concurrency_rejection_scope_is_global(self) -> None:
+        from apo.services.telemetry_admission import (
+            AdmissionRejection,
+            TelemetryAdmissionController,
+        )
+
+        ctrl = TelemetryAdmissionController(_admission_limits(max_concurrency=0))
+        rejection = ctrl.try_acquire_concurrency()
+        assert isinstance(rejection, AdmissionRejection)
+        # Concurrency is an installation-wide dimension, never per caller.
+        assert rejection.scope == "global"
+
+
+# ---------------------------------------------------------------------------
+# Unit test 11: identity-only request consumption (budget mixed config)
+# ---------------------------------------------------------------------------
+
+
+class TestIdentityOnlyConsumption:
+    """consume_request_identity charges one caller without the aggregate."""
+
+    def test_identity_only_leaves_global_bucket_untouched(self) -> None:
+        from apo.services.telemetry_admission import TelemetryAdmissionController
+
+        # Global burst of 1: if identity-only consumption touched it, the
+        # second caller would be rejected by the aggregate.
+        limits = _admission_limits(req_burst=10, g_req_burst=1)
+        ctrl = TelemetryAdmissionController(limits)
+
+        for identity in ("a", "b", "c"):
+            assert ctrl.consume_request_identity(identity) is None
+
+        # The single global token was never drawn.
+        assert ctrl.consume_request_global() is None
+
+    def test_identity_only_rejects_when_identity_bucket_empty(self) -> None:
+        from apo.services.telemetry_admission import TelemetryAdmissionController
+
+        limits = _admission_limits(req_rate=60, req_burst=1, g_req_burst=10)
+        ctrl = TelemetryAdmissionController(limits)
+
+        assert ctrl.consume_request_identity("a") is None
+        rejection = ctrl.consume_request_identity("a")
+        assert rejection is not None
+        assert rejection.scope == "identity"
+        assert rejection.limit == 1
+        assert rejection.retry_after_seconds >= 1
+        # Other callers keep their own buckets.
+        assert ctrl.consume_request_identity("b") is None

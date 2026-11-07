@@ -204,17 +204,56 @@ def create_app() -> FastAPI:
     app.state.public_readiness_probe = PublicReadinessProbe()
 
     # Middleware execution order (outer → inner):
-    #   SecurityHeaders → RequestSize → Auth → TelemetryAdmission →
-    #   ReadThrottle → CORS → router
-    # Starlette's add_middleware is last-added-outermost, so TelemetryAdmission
-    # and ReadThrottle are added AFTER Auth here to run INSIDE it — their
-    # identities are derived from request.state that Auth populates.
-    # (Previously the order was inverted and every authenticated sender
-    # bucketed as "open-dev" in the rate limiter.)
+    #   SecurityHeaders → RequestSize → Auth → RequestBudget →
+    #   TelemetryAdmission → ReadThrottle → CORS → router
+    # Starlette's add_middleware is last-added-outermost, so RequestBudget,
+    # TelemetryAdmission and ReadThrottle are added AFTER Auth here to run
+    # INSIDE it: their identities are derived from request.state that Auth
+    # populates. (Previously the order was inverted and every authenticated
+    # sender bucketed as "open-dev" in the rate limiter.)
     from .middleware.read_throttle import ReadThrottle, ReadThrottleMiddleware
 
     app.add_middleware(ReadThrottleMiddleware, throttle=ReadThrottle())
     app.add_middleware(TelemetryAdmissionMiddleware, controller=admission_controller)
+
+    # Aggregate request budget: the two limiters above cap specific heavy
+    # reads and telemetry writes, but nothing bounded total request rate
+    # until this global-plus-per-identity backstop. Own controller so
+    # budget charges never drain the telemetry admission buckets.
+    from dataclasses import replace
+
+    from .middleware.request_budget import (
+        RequestBudgetMiddleware,
+        load_request_budget_limits,
+    )
+
+    request_budget_limits = load_request_budget_limits()
+    if (
+        request_budget_limits.identity is not None
+        or request_budget_limits.global_requests is not None
+    ):
+        telemetry_defaults = load_telemetry_admission_limits()
+        # A disabled dimension keeps the telemetry default because the
+        # budget middleware never consults that field of the controller.
+        budget_admission_limits = replace(
+            telemetry_defaults,
+            requests=(
+                request_budget_limits.identity
+                if request_budget_limits.identity is not None
+                else telemetry_defaults.requests
+            ),
+            global_requests=(
+                request_budget_limits.global_requests
+                if request_budget_limits.global_requests is not None
+                else telemetry_defaults.global_requests
+            ),
+        )
+        app.add_middleware(
+            RequestBudgetMiddleware,
+            controller=TelemetryAdmissionController(budget_admission_limits),
+            limits=request_budget_limits,
+        )
+
     app.add_middleware(AuthMiddleware)
     app.add_middleware(
         RequestSizeMiddleware, otlp_limits=transport_limits, body_limits=body_limits
