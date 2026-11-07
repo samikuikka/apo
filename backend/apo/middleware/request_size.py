@@ -199,19 +199,7 @@ async def _enforce_byte_limit(
             break
 
     body_bytes = bytes(body)
-
-    # Replay the pre-read body; a client that disconnected mid-body still
-    # surfaces the disconnect to the downstream handler, as before.
-    sent_body = False
-
-    async def replay_receive() -> Message:
-        nonlocal sent_body
-        if not sent_body:
-            sent_body = True
-            return {"type": "http.request", "body": body_bytes, "more_body": False}
-        return {"type": "http.disconnect"}
-
-    request._receive = replay_receive  # type: ignore[attr-defined]
+    _install_body_replay(request, body_bytes)
     return await call_next(request)
 
 
@@ -271,20 +259,31 @@ async def _enforce_otlp_limits(
 
     body_bytes = bytes(body)
     setattr(request.state, "telemetry_received_bytes", len(body_bytes))
-
-    # Replay the pre-read body for the downstream route handler. The body is
-    # fully within limits, so the route gets the complete payload in one shot.
-    done = False
-
-    async def replay_receive() -> Message:
-        nonlocal done
-        if not done:
-            done = True
-            return {"type": "http.request", "body": body_bytes, "more_body": False}
-        return {"type": "http.disconnect"}
-
-    request._receive = replay_receive  # type: ignore[attr-defined]
+    _install_body_replay(request, body_bytes)
     return await call_next(request)
+
+
+def _install_body_replay(request: Request, body: bytes) -> None:
+    """Replay a pre-read body once, then forward later reads to the connection.
+
+    Later reads must reach the real receive. Starlette 1.0's BaseHTTPMiddleware
+    polls receive again after the body arrives; a synthetic http.disconnect
+    there reads as a dead client and cancels the response mid-stream, which
+    truncated streamed downloads on capped write paths to their opening
+    chunks with a 200 status. Forwarding also keeps a genuine mid-body
+    disconnect surfacing to the downstream handler.
+    """
+    underlying = request.receive
+    sent = False
+
+    async def replay() -> Message:
+        nonlocal sent
+        if not sent:
+            sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        return await underlying()
+
+    request._receive = replay  # type: ignore[attr-defined]
 
 
 def _limit_for(request: Request, limited_paths: tuple[_LimitedPath, ...]) -> int | None:
