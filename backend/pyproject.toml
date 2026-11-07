@@ -31,6 +31,7 @@ dev = [
   "pyyaml>=6.0.3",
   "pytest-codspeed>=4.0",
   "pytest-xdist>=3.8.0",
+  "hypothesis>=6.170.15",
 ]
 
 [tool.pytest.ini_options]
