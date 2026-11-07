@@ -25,6 +25,7 @@ from sqlmodel import Session
 
 from ..db import get_session
 from ..models.schemas import AgentTaskRunConfiguration
+from ..models.execution import ExecutionPhase
 from ..models.db import (
     AgentTaskBatchRunDB,
     AgentTaskRunDB,
@@ -464,7 +465,7 @@ async def attempt_start_v2(
 
 
 class AttemptHeartbeatRequest(BaseModel):
-    phase: str | None = None
+    phase: ExecutionPhase | None = None
 
 
 @router.post("/attempts/{attempt_id}/heartbeat")
