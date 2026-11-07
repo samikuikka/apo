@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, col, select
 
 from ..db import get_session
+from ..params import SqliteRowId
 from ..models.pricing import (
     MatchResponse,
     ModelDocument,
@@ -277,7 +278,7 @@ async def match_model_route(
 @router.get("/api/v1/models/{model_id}", response_model=ModelDocument)
 async def get_model(
     request: Request,
-    model_id: int,
+    model_id: SqliteRowId,
     session: Session = Depends(get_session),
 ) -> ModelDocument:
     """Return one model document with its full tier/price graph.
@@ -331,7 +332,7 @@ async def create_model(
 @router.put("/api/v1/models/{model_id}", response_model=ModelDocument)
 async def replace_model(
     http_request: Request,
-    model_id: int,
+    model_id: SqliteRowId,
     request: ModelDocumentCreate,
     session: Session = Depends(get_session),
 ) -> ModelDocument:
@@ -375,7 +376,7 @@ async def replace_model(
 @router.delete("/api/v1/models/{model_id}", status_code=204)
 async def delete_model(
     http_request: Request,
-    model_id: int,
+    model_id: SqliteRowId,
     session: Session = Depends(get_session),
 ) -> None:
     """Delete a model and its tier/price graph. Project admin only; 204.
