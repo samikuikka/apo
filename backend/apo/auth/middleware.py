@@ -21,6 +21,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from ..db import engine
+from ..middleware.telemetry_admission import is_protected_telemetry_route
 from ..models.db import UserDB
 from . import AUTH_SECRET, decode_nextauth_token
 from .api_key_auth import (
@@ -226,6 +227,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if auth_method == "service_token" and not _service_token_allows_request(request):
             return _forbidden()
         if auth_method == "attempt_token" and not _attempt_token_allows_request(request):
+            return _forbidden()
+        if (
+            auth_method == "api_key"
+            and user_info.get("api_key_scope") == "ingest"
+            and not _ingest_key_allows_request(request)
+        ):
             return _forbidden()
         if auth_method == "cookie" and not _cookie_origin_allowed(request):
             return JSONResponse(
@@ -607,6 +614,21 @@ def _service_token_allows_request(request: Request) -> bool:
     if method == "POST" and _TASK_RUN_RESULT_RE.match(path) is not None:
         return True
     return False
+
+
+def _ingest_key_allows_request(request: Request) -> bool:
+    """Ingest-scoped API keys are write-only telemetry credentials.
+
+    Route-level ``require_api_key_scope("full")`` guards are opt-in, and
+    product routes without one still authorized an ingest key through the
+    ordinary Project policy, granting member-level read and write to a
+    credential whose documented purpose is telemetry ingestion. This gate
+    inverts the default: an ingest key reaches exactly the protected
+    telemetry write routes (the same registry the admission middleware
+    rate-limits) and nothing else. A future telemetry route that forgets
+    to register itself fails closed here (403), never open.
+    """
+    return is_protected_telemetry_route(request.method, request.url.path)
 
 
 def _attempt_token_allows_request(request: Request) -> bool:
