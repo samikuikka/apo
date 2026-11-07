@@ -523,7 +523,7 @@ async def delete_agent_task_run(
     (rows and stored objects), execution attempt, and trace. The parent Batch's
     rollups are recomputed from the remaining runs; an emptied Batch is removed
     together with its Revision bundles. Requires project admin. Terminal or
-    cancelled runs only — cancel a live run first.
+    cancelled runs only; cancel a live run first.
     """
     task_run = session.get(AgentTaskRunDB, task_run_id)
     if task_run is None:

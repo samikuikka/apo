@@ -9,7 +9,10 @@ from __future__ import annotations
 # again (barring a manual rerun, which creates a new run).
 TASK_RUN_TERMINAL: frozenset[str] = frozenset({"passed", "failed", "error"})
 
-# Batch Run terminal statuses.
+# Batch Run terminal statuses. No production writer ever sets "cancelled" on a
+# run or batch (a cancelled run ends "error", a fully cancelled batch ends
+# "completed"); the value is tolerated so a row that somehow holds it still
+# counts as settled for the destructive guards and repair sweeps.
 BATCH_RUN_TERMINAL: frozenset[str] = frozenset({"completed", "error", "cancelled"})
 
 
