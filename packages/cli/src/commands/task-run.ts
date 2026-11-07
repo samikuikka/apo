@@ -5,8 +5,9 @@ import { labelsFromFlags, type RunLabels } from "../lib/run-labels.ts";
 import { resolveConfig, type Config } from "../lib/config.ts";
 import { apiGet, isBackendReachable } from "../lib/api.ts";
 import { discoverTaskMeta, findTaskMetaById } from "../lib/task-meta.ts";
-import { bold, dim, formatJson, red, runVerdict, verdictExitCode } from "../lib/format.ts";
+import { bold, dim, formatJson, red, runVerdict } from "../lib/format.ts";
 import type { CheckResult } from "../lib/agent-task-types.ts";
+import { isVerdictTerminal, localVerdictStatus, verdictExitCode } from "../lib/run-status.ts";
 import { NO_VERDICT_MESSAGE_PREFIX, formatChecks, isNoVerdict, secondJudgeSummary } from "../lib/checks-format.ts";
 import { NO_CHECKS_REGISTERED_MESSAGE } from "@apo-ai/sdk/agent-task";
 import { walkWorkspaceForRevision } from "../lib/task-revision.ts";
@@ -193,7 +194,7 @@ async function runLocally(
   }
 
   observeVerdict?.(summary.noVerdict === true);
-  return verdictExitCode(summary.pass, summary.noVerdict === true);
+  return verdictExitCode(localVerdictStatus(summary.pass, summary.noVerdict === true));
 }
 
 /**
@@ -765,8 +766,11 @@ function renderRecordedResult(
     console.log(`Inspect: ${dim(`apo runs show ${taskRunId}`)}`);
   }
   observeVerdict?.(summary.noVerdict === true);
-  if (summary.recordedError !== undefined) return 2;
-  return verdictExitCode(summary.pass, summary.noVerdict === true);
+  return verdictExitCode(
+    summary.recordedError !== undefined
+      ? "error"
+      : localVerdictStatus(summary.pass, summary.noVerdict === true),
+  );
 }
 
 /**
@@ -781,7 +785,7 @@ export function withRecordedVerdict(
   recorded: RecordedVerdict | null,
 ): LocalRunSummary {
   if (!recorded) return { ...summary, recordedVerdictUnconfirmed: true };
-  if (recorded.status === "passed" || recorded.status === "failed") {
+  if (isVerdictTerminal(recorded.status)) {
     const predatesRule =
       recorded.status === "failed" &&
       recorded.noVerdictReason === undefined &&
@@ -898,7 +902,7 @@ export async function pollRunVerdict(
         noVerdictReason: run.no_verdict_reason,
         errorMessage: run.error_message ?? null,
       });
-      if (run.status === "passed" || run.status === "failed") {
+      if (isVerdictTerminal(run.status)) {
         return recorded(run.status);
       }
       if (run.status === "error") {

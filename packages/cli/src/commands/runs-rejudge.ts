@@ -15,11 +15,12 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs, getFlagValue, getBoolFlag } from "../lib/args.ts";
 import { resolveConfig } from "../lib/config.ts";
-import { bold, dim, formatJson, runVerdict, verdictExitCode, yellow } from "../lib/format.ts";
+import { bold, dim, formatJson, runVerdict, yellow } from "../lib/format.ts";
 import { formatChecks, isNoVerdict, secondJudgeSummary } from "../lib/checks-format.ts";
 import { apiGet, apiPost } from "../lib/api.ts";
 import { resolveRunId } from "../lib/runs-resolve.ts";
 import { reportCommandError } from "../lib/command-error.ts";
+import { localVerdictStatus, verdictExitCode } from "../lib/run-status.ts";
 import type { RejudgeOutcome } from "@apo-ai/sdk/agent-task";
 
 const MAX_SAMPLES = 50;
@@ -158,7 +159,7 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   if (exitStatus) {
-    return verdictExitCode(outcome.pass, isNoVerdict(outcome.checks));
+    return verdictExitCode(localVerdictStatus(outcome.pass, isNoVerdict(outcome.checks)));
   }
   return 0;
 }

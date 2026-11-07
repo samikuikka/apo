@@ -14,6 +14,7 @@ import { bold, dim, formatJson, passFail } from "../lib/format.ts";
 import { apiPost } from "../lib/api.ts";
 import { resolveRunId } from "../lib/runs-resolve.ts";
 import { reportCommandError } from "../lib/command-error.ts";
+import type { AgentTaskRunStatus } from "../lib/run-status.ts";
 
 type CorrectedTestResult = {
   test_id: string;
@@ -31,7 +32,7 @@ type CorrectedTestResult = {
   } | null;
   /** `error` + null `run_pass_result`: only judge-errored checks are left
    * non-passing, so the run has no verdict (issue #323). */
-  run_status: "passed" | "failed" | "error";
+  run_status: AgentTaskRunStatus;
   run_pass_result: boolean | null;
   /** Why the run has no verdict; absent on backends that predate it. */
   run_no_verdict_reason?: "judge" | "generations" | "executor" | null;
