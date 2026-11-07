@@ -95,6 +95,8 @@ services:
       # Per-key daily span quota default (0 = no quota). Per-key overrides
       # live in the app; see the ingest-guardrails docs.
       - APO_DEFAULT_DAILY_SPAN_QUOTA=${APO_DEFAULT_DAILY_SPAN_QUOTA:-0}
+      # Account-level daily span cap summed across a user's keys (0 = off).
+      - APO_USER_DAILY_SPAN_QUOTA=${APO_USER_DAILY_SPAN_QUOTA:-0}
       # --- Email delivery (optional) ---
       # Unset EMAIL_TRANSPORT_URL keeps the log-only fallback: invitations
       # become copy-link and password-reset links go to the backend logs.
