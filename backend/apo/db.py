@@ -237,6 +237,62 @@ def _enforce_single_task_trace(conn: Connection) -> None:
     )
 
 
+def _reconcile_model_columns() -> None:
+    """Run the boot-time column reconcile on the configured engine."""
+    with engine.begin() as conn:
+        _reconcile_model_columns_on(conn)
+
+
+def _reconcile_model_columns_on(conn: Connection) -> None:
+    """Repair model columns missing from live tables, at every boot.
+
+    A schema_migrations stamp can run ahead of the DDL that earned it
+    (observed on a stale dev database stamped through v50 whose tables never
+    gained the v48/v50 columns, most plausibly WAL or file-copy drift).
+    create_all only creates missing tables and never adds columns to
+    existing ones, and the ladder trusts the stamps and skips stamped
+    versions, so the first full-row ORM load on such a database dies with
+    "no such column". This pass walks the model metadata against the live
+    schema and adds whatever is missing, closing the gap at every boot.
+
+    Two deliberate limits: repaired columns are added nullable, so old rows
+    carry no value beyond the server default (fresh databases keep getting
+    the ladder's own NOT NULL constraints), and indexes on repaired columns
+    are not recreated, which costs performance only.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    for table in SQLModel.metadata.sorted_tables:
+        existing = _get_column_names(conn, table.name)
+        if not existing:
+            continue
+        for column in table.columns:
+            if column.name in existing or column.primary_key:
+                continue
+            type_ddl = column.type.compile(conn.dialect)
+            # Carry a text server default (e.g. text("0")) into the repair so
+            # pre-existing rows read the default instead of NULL. Other
+            # default shapes (python-side, sequences) cannot run in an ALTER.
+            default_text = getattr(
+                getattr(column.server_default, "arg", None), "text", None
+            )
+            default_clause = (
+                f" DEFAULT {default_text}" if isinstance(default_text, str) else ""
+            )
+            if_not_exists = "" if _is_sqlite_conn(conn) else " IF NOT EXISTS"
+            conn.exec_driver_sql(
+                f'ALTER TABLE "{table.name}" ADD COLUMN{if_not_exists} '
+                f'"{column.name}" {type_ddl}{default_clause}'
+            )
+            logger.warning(
+                "repaired missing column %s.%s; schema_migrations stamp "
+                "was ahead of the live schema",
+                table.name,
+                column.name,
+            )
+
+
 def _migrate_task_catalog_columns():
     """Add Task Catalog columns to project_task_sources if absent.
 
@@ -286,6 +342,8 @@ def init_db():
     _free_legacy_attempt_index_names()
     SQLModel.metadata.create_all(engine)
     _run_migrations()
+    # Stamps can drift ahead of the live schema; repair what the ladder skipped.
+    _reconcile_model_columns()
     _migrate_task_catalog_columns()
     # the bundled JSON is the sole source of truth for
     # __global__ pricing.
