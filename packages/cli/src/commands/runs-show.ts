@@ -19,6 +19,7 @@ import { conciseChecks, conciseDeliverables } from "../lib/runs-truncate.ts";
 import { resolveRunId, resolveLatestRunId } from "../lib/runs-resolve.ts";
 import { reportCommandError } from "../lib/command-error.ts";
 import { formatNote, notesForRun, scopeLabel, type TaskNote } from "../lib/task-notes.ts";
+import { isRunLive, verdictExitCode } from "../lib/run-status.ts";
 
 type RunDetail = {
   id: string;
@@ -184,8 +185,13 @@ export async function run(argv: string[]): Promise<number> {
   if (exitStatus) {
     // 0 pass / 1 fail / 2 no verdict — an `error` run has none, whether the
     // judge gave none (issue #323) or the execution failed; like `task run`.
-    if (runDetail.pass_result === true) return 0;
-    return runDetail.status === "error" ? 2 : 1;
+    return verdictExitCode(
+      runDetail.pass_result === true
+        ? "passed"
+        : runDetail.status === "error"
+          ? "error"
+          : "failed",
+    );
   }
   return 0;
 }
@@ -356,10 +362,8 @@ function formatResult(run: RunDetail): string {
  */
 const HEARTBEAT_AT_RISK_MS = 90_000;
 
-const LIVE_RUN_STATUSES = new Set(["pending", "running"]);
-
 function formatHeartbeatLine(run: RunDetail): string | null {
-  if (!run.heartbeat_at || !LIVE_RUN_STATUSES.has(run.status)) return null;
+  if (!run.heartbeat_at || !isRunLive(run.status)) return null;
   const ageMs = Date.now() - Date.parse(run.heartbeat_at);
   if (!Number.isFinite(ageMs)) return null;
   const line = `  Last beat: ${formatTime(run.heartbeat_at)} (${formatAge(ageMs)} ago)`;

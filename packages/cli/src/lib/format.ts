@@ -98,12 +98,6 @@ export function runVerdict(passed: boolean, noVerdict: boolean): string {
   return noVerdict ? yellow("NO VERDICT") : passFail(passed);
 }
 
-/** Exit code for a run verdict: 0 pass, 1 fail, 2 no verdict (errored). */
-export function verdictExitCode(passed: boolean, noVerdict: boolean): number {
-  if (noVerdict) return 2;
-  return passed ? 0 : 1;
-}
-
 export type TriggerParts = {
   source: string | null;
   actor: string | null;

@@ -15,6 +15,7 @@ import { apiGet } from "../lib/api.ts";
 import { resolveBatchId } from "../lib/batch-resolve.ts";
 import { reportCommandError } from "../lib/command-error.ts";
 import { formatRunResult, isJudgeNoVerdictRun } from "../lib/checks-format.ts";
+import { isBatchLive } from "../lib/run-status.ts";
 
 type TaskRunSummary = {
   id: string;
@@ -87,7 +88,7 @@ export async function run(argv: string[]): Promise<number> {
 
     if (config.json) {
       console.log(formatJson(batch));
-      if (!watch || !["running", "queued"].includes(batch.status)) return 0;
+      if (!watch || !isBatchLive(batch.status)) return 0;
       await sleep(3000);
       continue;
     }
@@ -97,7 +98,7 @@ export async function run(argv: string[]): Promise<number> {
     }
     printBatchDetail(terminalSafeDeep(batch));
 
-    if (!watch || !["running", "queued"].includes(batch.status)) {
+    if (!watch || !isBatchLive(batch.status)) {
       return 0;
     }
     await sleep(3000);

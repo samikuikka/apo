@@ -1,3 +1,5 @@
+import type { AgentTaskBatchRunStatus, AgentTaskRunStatus } from "./run-status.ts";
+
 export type AgentTaskRunStats = {
   total_runs: number;
   /** Runs that ended without starting; outside every other count. */
@@ -8,7 +10,7 @@ export type AgentTaskRunStats = {
   pass_rate: number;
   avg_duration_ms: number | null;
   last_run_at: string | null;
-  last_run_status: string | null;
+  last_run_status: AgentTaskRunStatus | null;
   last_run_passed: boolean | null;
   total_checks: number;
   checks_pass_rate: number;
@@ -49,7 +51,7 @@ export type AgentTaskRunSummary = {
   task_id: string;
   task_path: string;
   adapter_name: string | null;
-  status: string;
+  status: AgentTaskRunStatus;
   pass_result: boolean | null;
   started_at: string | null;
   completed_at: string | null;
@@ -219,7 +221,7 @@ export type AgentTaskBatchRunSummary = {
   task_root: string | null;
   grep: string | null;
   environment: string;
-  status: string;
+  status: AgentTaskBatchRunStatus;
   total_tasks: number;
   passed_tasks: number;
   failed_tasks: number;

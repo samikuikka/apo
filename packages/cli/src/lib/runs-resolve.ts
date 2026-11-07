@@ -6,6 +6,7 @@
  */
 import type { resolveConfig } from "../lib/config.ts";
 import { apiGet } from "./api.ts";
+import { isRunLive } from "./run-status.ts";
 import {
   findByPrefix,
   formatCandidates,
@@ -103,7 +104,7 @@ export async function resolveLatestRunId(
     throw new Error("NO_RUNS");
   }
   const latest = runs.find(
-    (r) => r.started_at || r.status === "pending" || r.status === "running",
+    (r) => r.started_at || (r.status !== undefined && isRunLive(r.status)),
   );
   return (latest ?? runs[0]).id;
 }
