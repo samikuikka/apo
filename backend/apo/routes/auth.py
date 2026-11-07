@@ -54,6 +54,7 @@ from ..services.email_templates import (
     render_password_reset_email,
     render_verification_email,
 )
+from ..services.installation_admin import require_installation_admin
 
 logger = logging.getLogger(__name__)
 
@@ -183,15 +184,6 @@ async def _create_and_send_otp(user: UserDB, session: Session) -> None:
             )
         except EmailSendError:
             logger.warning("Failed to send verification email to %s", user.email)
-
-
-def _require_admin(request: Request, session: Session) -> UserDB:
-    user_id = cast(str | None, getattr(request.state, "user_id", None))
-    if user_id:
-        user = session.get(UserDB, user_id)
-        if user and user.is_admin:
-            return user
-    raise HTTPException(status_code=403, detail="Admin access required")
 
 
 def _user_to_response(user: UserDB) -> UserResponse:
@@ -631,8 +623,7 @@ def sign_out_everywhere(
 @router.get("/users", response_model=ListUsersResponse)
 def list_users(request: Request, session: Session = Depends(get_session)):
     """List all users. Admin only."""
-    admin = _require_admin(request, session)
-    _ = admin
+    _ = require_installation_admin(request, session)
     users = session.exec(
         select(UserDB).order_by(
             as_column(cast(object, UserDB.created_at))
@@ -648,7 +639,7 @@ def invite_user(
     session: Session = Depends(get_session),
 ):
     """Create a new user. Admin only."""
-    _ = _require_admin(request, session)
+    _ = require_installation_admin(request, session)
 
     error = validate_password_strength(body.password)
     if error:
@@ -683,7 +674,7 @@ def update_user(
     session: Session = Depends(get_session),
 ):
     """Update user role/name/active status. Admin only."""
-    admin = _require_admin(request, session)
+    admin = require_installation_admin(request, session)
 
     user = session.get(UserDB, user_id)
     if not user:
@@ -703,6 +694,10 @@ def update_user(
 
     session.add(user)
     session.commit()
+    if body.is_active is False:
+        # Deactivation through PATCH must kill existing sessions exactly
+        # like the DELETE route does.
+        invalidate_user_sessions(session, user_id)
     session.refresh(user)
     return _user_to_response(user)
 
@@ -714,7 +709,7 @@ def deactivate_user(
     session: Session = Depends(get_session),
 ):
     """Deactivate a user (soft delete). Admin only. Cannot deactivate self."""
-    admin = _require_admin(request, session)
+    admin = require_installation_admin(request, session)
 
     if user_id == admin.id:
         raise HTTPException(

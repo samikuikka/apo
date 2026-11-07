@@ -1,16 +1,16 @@
 """Installation Administrator guard.
 
-Extracts the private ``auth.py::_require_admin`` semantics into a shared
-request-aware helper: only an authenticated, active ``UserDB.is_admin``
-User may perform installation-level operations such as managing Hosted
-Access Invitations.
+The canonical guard for installation-administrator surfaces: the
+``/auth/users`` management routes (list, invite, update, deactivate)
+and Hosted Access Invitation administration. Only an authenticated,
+active ``UserDB.is_admin`` User may perform these operations.
 
 Authority rules:
 
 - **browser session** authority is accepted;
 - **Project API keys** and executor capability credentials
   (``service_token`` / ``attempt_token``) are rejected even when their
-  creator is an administrator — installation authority never rides on a
+  creator is an administrator: installation authority never rides on a
   Project-scoped credential;
 - the guard never produces Project membership or Project access.
 """

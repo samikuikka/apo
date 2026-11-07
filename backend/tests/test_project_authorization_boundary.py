@@ -1602,6 +1602,39 @@ def test_outsider_cannot_delete_or_reset_project(
     assert (tmp_path / "store" / "objects" / _BUNDLE_KEY).exists()
 
 
+def test_installation_admin_without_membership_cannot_delete_project(
+    session: Session, make_authed_client: Callable[..., TestClient]
+) -> None:
+    """An installation admin with NO Project membership cannot delete it.
+
+    ``is_admin`` is installation-maintenance authority, never Project
+    authority: Project deletion stays owner-only (the no-admin-purge
+    policy: an admin may deactivate a user, but never delete their
+    Project or data).
+    """
+    from apo.models.db import ProjectDB
+
+    _seed_http_world(session)  # Alice owns A, Bob owns B
+    session.add(
+        UserDB(
+            id="user-inst-admin",
+            email="inst-admin@test",
+            name="inst-admin",
+            password_hash="x",
+            is_admin=True,
+        )
+    )
+    session.commit()
+
+    admin_client = make_authed_client("user-inst-admin", session)
+    resp = admin_client.delete(f"/v1/projects/{_PROJECT_A}")
+    assert resp.status_code == 403, resp.text
+
+    # The Project and its data survive.
+    assert session.get(ProjectDB, _PROJECT_A) is not None
+    assert session.get(AgentTaskRunDB, _RUN_A) is not None
+
+
 # ---------------------------------------------------------------------------
 # Every runs/* mutation denies cross-Project access
 # ---------------------------------------------------------------------------
