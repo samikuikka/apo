@@ -216,6 +216,16 @@ def _otel_trace() -> dict[str, object]:
                                 "attributes": [
                                     attr("apo.task.run.id", "cap-run-001"),
                                     attr("apo.run.task_id", "real-agent/documents/document-qa"),
+                                    # Real captures embed the capture machine's
+                                    # absolute paths here (task roots, stack
+                                    # frames); the anonymous demo must never
+                                    # serve them.
+                                    attr(
+                                        "apo.run.metadata",
+                                        json.dumps(
+                                            {"task_root": f"{Path.home()}/coding/apo/.worktrees/demo-workspace"}
+                                        ),
+                                    ),
                                 ],
                             },
                             {
@@ -292,6 +302,96 @@ class TestExportMerge:
         merge_into_fixture(delta, fixture_path)
         document = json.loads(fixture_path.read_text())
         assert len(document["batches"]) == 1
+
+
+class TestLocalPathScrub:
+    """The fixture is served to anonymous visitors: no capture-machine home
+    path may survive the build, and verify must reject one that does."""
+
+    def test_merge_scrubs_capture_machine_home_paths(
+        self, capture_world: Session, tmp_path: Path
+    ) -> None:
+        delta = export_delta(capture_world, datetime(2020, 1, 1, tzinfo=timezone.utc))
+        fixture_path = tmp_path / "merged.json"
+        merge_into_fixture(delta, fixture_path)
+        text = fixture_path.read_text()
+        assert str(Path.home()) not in text
+        assert "/home/demo/coding/apo/.worktrees/demo-workspace" in text
+
+    def test_scrub_command_cleans_existing_fixture(self, tmp_path: Path) -> None:
+        from apo.dev_demo_capture import cmd_scrub
+
+        fixture_path = tmp_path / "fixture.json"
+        fixture_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "batches": [
+                        {
+                            "id": "demo-batch-001",
+                            "runs": [
+                                {
+                                    "id": "demo-run-001",
+                                    "otel_trace": {
+                                        "resourceSpans": [
+                                            {
+                                                "scopeSpans": [
+                                                    {
+                                                        "spans": [
+                                                            {
+                                                                "attributes": [
+                                                                    {
+                                                                        "key": "apo.metadata",
+                                                                        "value": {
+                                                                            "stringValue": f"{Path.home()}/coding/apo-evals/tasks/dabstep"
+                                                                        },
+                                                                    }
+                                                                ]
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+        )
+
+        assert cmd_scrub(fixture_path) == 0
+
+        text = fixture_path.read_text()
+        assert str(Path.home()) not in text
+        assert "/home/demo/coding/apo-evals/tasks/dabstep" in text
+
+    def test_verify_rejects_fixture_leaking_home_paths(
+        self, capture_world: Session, tmp_path: Path, capsys
+    ) -> None:
+        from apo.dev_demo_capture import cmd_verify
+
+        delta = export_delta(capture_world, datetime(2020, 1, 1, tzinfo=timezone.utc))
+        fixture_path = tmp_path / "merged.json"
+        merge_into_fixture(delta, fixture_path)
+
+        # Re-introduce a leak by hand, as a stale un-scrubbed fixture would have.
+        document = json.loads(fixture_path.read_text())
+        spans = document["batches"][0]["runs"][0]["otel_trace"]["resourceSpans"][0][
+            "scopeSpans"
+        ][0]["spans"]
+        spans[0]["attributes"].append(
+            {
+                "key": "apo.metadata",
+                "value": {"stringValue": f"{Path.home()}/leak"},
+            }
+        )
+        fixture_path.write_text(json.dumps(document))
+
+        assert cmd_verify(fixture_path) == 1
+        assert "home" in capsys.readouterr().out
 
 
 class TestVerifyChecklist:
