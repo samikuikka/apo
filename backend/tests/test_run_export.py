@@ -248,6 +248,17 @@ class TestRunExport:
         assert resp.status_code == 200
         assert len(resp.json()["trace"]["spans"]) == 1
 
+    def test_export_fails_past_byte_budget(
+        self, client: TestClient, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A tiny budget must trip on the opening sections, before any
+        # artifact or trace read, and answer with operator guidance.
+        _seed_export_run(session)
+        monkeypatch.setenv("APO_RUN_EXPORT_MAX_BYTES", "64")
+        resp = client.get("/v1/agent-task-runs/r-ex/export")
+        assert resp.status_code == 413
+        assert "APO_RUN_EXPORT_MAX_BYTES" in resp.json()["detail"]
+
     def test_unknown_run_is_404(self, client: TestClient) -> None:
         assert client.get("/v1/agent-task-runs/nope/export").status_code == 404
 

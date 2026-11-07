@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import asc, desc, func, or_
 from sqlalchemy.orm import defer
@@ -1148,26 +1148,53 @@ async def export_agent_task_run(
                 raise HTTPException(status_code=404, detail="Task run not found") from exc
             raise
 
-    from apo.services.run_export import build_run_export_bundle
+    from apo.services.export_budget import (
+        ExportBudgetExceeded,
+        load_export_byte_limits,
+        render_json_object_async,
+    )
+    from apo.services.run_export import iter_run_export_sections
 
-    bundle = await build_run_export_bundle(
-        session,
-        task_run,
-        include_spans=bool(include and "spans" in include),
+    limits = load_export_byte_limits()
+
+    async def _sections():
+        async for key, value in iter_run_export_sections(
+            session,
+            task_run,
+            include_spans=bool(include and "spans" in include),
+        ):
+            yield key, value
+        # The verdict section reuses the detail projection so exports and
+        # the dashboard can never disagree about what a run's verdict was.
+        trigger = _load_batch_triggers(session, [task_run.batch_run_id]).get(
+            task_run.batch_run_id
+        )
+        yield "run", _build_task_run_detail(
+            session,
+            task_run,
+            trigger=trigger,
+            include_transcript=True,
+            deliverables_json=await derive_deliverables_json(session, task_run),
+        ).model_dump(mode="json")
+
+    try:
+        body = await render_json_object_async(
+            _sections(),
+            limit=limits.run_export_max_bytes,
+            guidance=(
+                "retry without ?include=spans, or raise APO_RUN_EXPORT_MAX_BYTES "
+                "if the deployment's memory limit allows"
+            ),
+        )
+    except ExportBudgetExceeded as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="task_run_{task_run_id}_export.json"'
+        },
     )
-    # The verdict section reuses the detail projection so exports and the
-    # dashboard can never disagree about what a run's verdict was.
-    trigger = _load_batch_triggers(session, [task_run.batch_run_id]).get(
-        task_run.batch_run_id
-    )
-    bundle["run"] = _build_task_run_detail(
-        session,
-        task_run,
-        trigger=trigger,
-        include_transcript=True,
-        deliverables_json=await derive_deliverables_json(session, task_run),
-    ).model_dump(mode="json")
-    return bundle
 
 
 @router.post(

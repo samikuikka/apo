@@ -6,19 +6,21 @@ The route handler owns HTTP concerns (format dispatch, download headers).
 Everything from the DB fetch through the per-run serialization lives here
 so it is testable without going through FastAPI.
 
-Two bounds keep one export from exhausting a memory-capped shared
-backend (issue #230 G2): the request caps `run_ids` (Pydantic 422
-beyond), and the render produces the file body exactly once — no
-pre-serialized copy nested inside a JSON envelope (~3–4× resident) —
-with a byte budget that fails the export instead of buffering without
-bound. The response is a buffered download (Content-Disposition), not a
-StreamingResponse: the request-size middleware pre-reads and replays
-capped write bodies, which drops streamed response bodies under nested
-BaseHTTPMiddleware.
+Three bounds keep one export from exhausting a memory-capped shared
+backend (issue #230 G2): the request caps ``run_ids`` (Pydantic 422
+beyond), items are fetched ONE RUN AT A TIME (the render holds a single
+run's rows regardless of how many ids were requested), and both renders
+run under a byte budget (``APO_BULK_EXPORT_MAX_BYTES``) that fails the
+export with a 413 instead of buffering without bound.
+
+The response stays a buffered download (Content-Disposition): the budget
+check must finish before the body exists and the serialize-as-fetched
+shape assumes one pass.
 """
 
 import csv
 import json
+from collections.abc import Iterator
 from io import StringIO
 from typing import cast
 
@@ -38,6 +40,11 @@ from ...models.columns import (
     RUN_METRIC_RUN_ID_COL,
     RUN_PROJECT_COL,
 )
+from ...services.export_budget import (
+    ExportBudgetExceeded,
+    load_export_byte_limits,
+    render_json_array,
+)
 
 _CSV_COLUMNS = [
     "Run ID",
@@ -56,11 +63,7 @@ _CSV_COLUMNS = [
 
 MAX_EXPORT_RUN_IDS = 200
 
-# Semantic ceiling on one export's rendered size: a handful of very large
-# agentic traces within the run-id cap can still overflow a memory-limited
-# backend, so past this budget the export fails with a clear error instead
-# of buffering without bound. Roughly an hour of today's largest traces.
-MAX_EXPORT_BYTES = 128 * 1024 * 1024
+_OVER_BUDGET_GUIDANCE = "narrow the selection and export in smaller batches"
 
 
 class BulkExportRequest(BaseModel):
@@ -81,48 +84,64 @@ def export_runs(
             media_type="application/json",
         )
 
-    runs_data = collect_runs_for_export(session, run_ids, project)
-    if fmt == "csv":
-        return _render_csv(runs_data, len(run_ids))
-    return _render_json(runs_data, len(run_ids))
+    limits = load_export_byte_limits()
+    items = iter_export_run_items(session, run_ids, project)
+    try:
+        if fmt == "csv":
+            return _render_csv(items, len(run_ids), limits.bulk_export_max_bytes)
+        body = render_json_array(
+            items,
+            limit=limits.bulk_export_max_bytes,
+            guidance=_OVER_BUDGET_GUIDANCE,
+        )
+    except ExportBudgetExceeded as exc:
+        return Response(
+            status_code=413,
+            content=json.dumps({"detail": str(exc)}),
+            media_type="application/json",
+        )
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="runs_export_{len(run_ids)}_runs.json"'
+        },
+    )
 
 
-def collect_runs_for_export(
+def iter_export_run_items(
     session: Session,
     run_ids: list[str],
     project: str,
-) -> list[dict[str, object]]:
-    """Fetch runs + related metrics/calls and serialize to export dicts.
+) -> Iterator[dict[str, object]]:
+    """Yield one serialized export item per requested run id, in order.
 
-    Runs are returned in the order of ``run_ids``; ids not found in the
-    database (or outside ``project``) are silently skipped — matching the
-    original route handler's behaviour.
+    Ids not found in the database (or outside ``project``) are silently
+    skipped, matching the original single-query behavior. Runs are
+    fetched one at a time so only one run's rows (including full call
+    payloads) are resident while the render serializes.
     """
-    runs_in_db = session.exec(
-        select(RunDB).where(RUN_ID_COL.in_(run_ids), RUN_PROJECT_COL == project)
-    ).all()
-    run_id_map = {r.id: r for r in runs_in_db}
-    export_run_ids = [rid for rid in run_ids if rid in run_id_map]
-
-    metrics_by_run = _load_metrics_by_run(session, export_run_ids, project)
-    calls_by_run = _load_calls_by_run(session, export_run_ids, project)
-
-    return [
-        {
-            "run": Run.model_validate(run_id_map[rid]).model_dump(by_alias=True),
+    for rid in run_ids:
+        run = session.exec(
+            select(RunDB).where(RUN_ID_COL == rid, RUN_PROJECT_COL == project)
+        ).first()
+        if run is None:
+            continue
+        metrics = _load_metrics_by_run(session, [rid], project).get(rid, [])
+        calls = _load_calls_by_run(session, [rid], project).get(rid, [])
+        yield {
+            "run": Run.model_validate(run).model_dump(by_alias=True),
             "metrics": [
                 RunMetric.model_validate(m).model_dump(by_alias=True)
-                for m in metrics_by_run.get(rid, [])
+                for m in metrics
             ],
             "calls": [
                 LoggedCall.model_validate(c, from_attributes=True).model_dump(
                     by_alias=True
                 )
-                for c in calls_by_run.get(rid, [])
+                for c in calls
             ],
         }
-        for rid in export_run_ids
-    ]
 
 
 def _load_metrics_by_run(
@@ -167,35 +186,16 @@ def _load_calls_by_run(
 
 
 def _render_csv(
-    runs_data: list[dict[str, object]], count: int
+    items: Iterator[dict[str, object]], count: int, limit: int
 ) -> Response:
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow(_CSV_COLUMNS)
 
-    for run_item in runs_data:
-        run = cast(dict[str, object], run_item["run"])
-        metrics = cast(list[object], run_item["metrics"])
-        tags_value = run.get("tags")
-        tags: list[object] = (
-            cast(list[object], tags_value) if isinstance(tags_value, list) else []
-        )
-        writer.writerow(
-            [
-                run.get("id"),
-                run.get("project"),
-                run.get("flow_name") or "",
-                run.get("task_id") or "",
-                run.get("version") or "",
-                run.get("environment") or "",
-                run.get("created_at") or "",
-                run.get("completed_at") or "",
-                run.get("duration_ms") or "",
-                run.get("call_count") or 0,
-                ",".join(str(tag) for tag in tags),
-                len(metrics),
-            ]
-        )
+    for run_item in items:
+        writer.writerow(_csv_row(run_item))
+        if output.tell() > limit:
+            raise ExportBudgetExceeded(limit, _OVER_BUDGET_GUIDANCE)
 
     return Response(
         content=output.getvalue(),
@@ -206,44 +206,24 @@ def _render_csv(
     )
 
 
-def _render_json(
-    runs_data: list[dict[str, object]], count: int
-) -> Response:
-    """Render the export JSON exactly once, under a byte budget.
-
-    Each run serializes independently so the budget check can fail the
-    export before the final join; dropping the dict as it serializes keeps
-    peak memory at roughly one copy of the data instead of the ~3–4× of
-    the old envelope render.
-    """
-    parts = ["["]
-    total = 1
-    for i, run_item in enumerate(runs_data):
-        chunk = json.dumps(run_item, default=str)
-        if i > 0:
-            chunk = ",\n" + chunk
-        total += len(chunk)
-        if total > MAX_EXPORT_BYTES:
-            return Response(
-                status_code=413,
-                content=json.dumps(
-                    {
-                        "detail": (
-                            f"Export exceeds the {MAX_EXPORT_BYTES} byte budget; "
-                            "narrow the selection and export in smaller batches"
-                        )
-                    }
-                ),
-                media_type="application/json",
-            )
-        parts.append(chunk)
-        runs_data[i] = {}  # free the serialized dict
-    parts.append("]")
-
-    return Response(
-        content="".join(parts),
-        media_type="application/json",
-        headers={
-            "Content-Disposition": f'attachment; filename="runs_export_{count}_runs.json"'
-        },
+def _csv_row(run_item: dict[str, object]) -> list[object]:
+    run = cast(dict[str, object], run_item["run"])
+    metrics = cast(list[object], run_item["metrics"])
+    tags_value = run.get("tags")
+    tags: list[object] = (
+        cast(list[object], tags_value) if isinstance(tags_value, list) else []
     )
+    return [
+        run.get("id"),
+        run.get("project"),
+        run.get("flow_name") or "",
+        run.get("task_id") or "",
+        run.get("version") or "",
+        run.get("environment") or "",
+        run.get("created_at") or "",
+        run.get("completed_at") or "",
+        run.get("duration_ms") or "",
+        run.get("call_count") or 0,
+        ",".join(str(tag) for tag in tags),
+        len(metrics),
+    ]

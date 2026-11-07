@@ -10,11 +10,17 @@ diagnostics, and the trace (calls, optionally raw OTel spans).
 Everything is embedded, not referenced: after evidence expiry the bundle
 still fully explains the run. The CLI writes it to a file
 (``apo runs export``); the dashboard can reuse the endpoint later.
+
+Sections are yielded lazily so the route renders them one at a time
+under a byte budget (``services/export_budget.py``): a run too large to
+export inside the memory-capped backend fails with a 413 instead of
+OOM-killing the worker.
 """
 
 from __future__ import annotations
 
 import base64
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import Any
 
@@ -42,24 +48,25 @@ BUNDLE_VERSION = 2
 # key — the typed columns are the canonical form. No consumer read it.
 
 
-async def build_run_export_bundle(
+async def iter_run_export_sections(
     session: Session,
     task_run: AgentTaskRunDB,
     *,
     include_spans: bool = False,
-) -> dict[str, Any]:
-    """Everything a run holds, embedded. Caller has authorized the read.
+) -> AsyncIterator[tuple[str, Any]]:
+    """Yield ``(key, value)`` sections of the export bundle, in order.
+
+    Everything a run holds, embedded. Caller has authorized the read.
+    Each section materializes only when pulled, so the render can
+    serialize and free one section at a time under the byte budget.
 
     ``include_spans`` adds the canonical raw OTel spans (largest section —
     the calls projection is usually enough and is always included).
     """
-    bundle: dict[str, Any] = {
-        "bundle_version": BUNDLE_VERSION,
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "run_id": task_run.id,
-    }
-
-    bundle["corrections"] = [
+    yield "bundle_version", BUNDLE_VERSION
+    yield "exported_at", datetime.now(timezone.utc).isoformat()
+    yield "run_id", task_run.id
+    yield "corrections", [
         row.model_dump(mode="json")
         for row in session.exec(
             select(AgentTaskTestResultCorrectionDB).where(
@@ -67,7 +74,7 @@ async def build_run_export_bundle(
             )
         ).all()
     ]
-    bundle["judgments"] = [
+    yield "judgments", [
         row.model_dump(mode="json")
         for row in session.exec(
             select(AgentTaskJudgmentDB).where(
@@ -75,20 +82,15 @@ async def build_run_export_bundle(
             )
         ).all()
     ]
-    bundle["deliverables"] = await _deliverables_section(session, task_run)
+    yield "deliverables", await _deliverables_section(session, task_run)
     attempt = session.exec(
         select(TaskExecutionAttemptDB).where(
             TaskExecutionAttemptDB.task_run_id == task_run.id
         )
     ).first()
-    bundle["attempt"] = (
-        attempt.model_dump(mode="json") if attempt is not None else None
-    )
-    bundle["task_definition_source"] = _task_definition_source(session, task_run)
-    bundle["trace"] = _trace_section(
-        session, task_run, include_spans=include_spans
-    )
-    return bundle
+    yield "attempt", attempt.model_dump(mode="json") if attempt is not None else None
+    yield "task_definition_source", _task_definition_source(session, task_run)
+    yield "trace", _trace_section(session, task_run, include_spans=include_spans)
 
 
 def _task_definition_source(

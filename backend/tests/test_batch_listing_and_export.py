@@ -13,7 +13,7 @@ import pytest
 from sqlmodel import Session
 
 from apo.models.db import AgentTaskBatchRunDB, AgentTaskRunDB, RunDB, RunMetricDB, LoggedCallDB
-from apo.routes.runs.bulk_export import collect_runs_for_export
+from apo.routes.runs.bulk_export import iter_export_run_items
 from apo.services.agent_task_batch_listing import (
     BatchRunListFilters,
     BatchRunListPagination,
@@ -475,28 +475,28 @@ def test_collect_runs_for_export_serializes_run_metrics_calls(session: Session):
     )
     session.commit()
 
-    data = collect_runs_for_export(session, ["r1"], "p")
+    data = list(iter_export_run_items(session, ["r1"], "p"))
     assert len(data) == 1
     assert data[0]["run"]["id"] == "r1"  # pyright: ignore[reportIndexIssue]
     assert len(data[0]["metrics"]) == 1  # pyright: ignore[reportArgumentType]
     assert len(data[0]["calls"]) == 1  # pyright: ignore[reportArgumentType]
 
 
-def test_collect_runs_for_export_skips_unknown_ids(session: Session):
+def test_iter_export_run_items_skips_unknown_ids(session: Session):
     session.add(RunDB(id="r1", project="p", task_id="t", created_at=_NOW, call_count=0))
     session.commit()
 
-    data = collect_runs_for_export(session, ["r1", "nonexistent"], "p")
+    data = list(iter_export_run_items(session, ["r1", "nonexistent"], "p"))
     assert len(data) == 1
     assert data[0]["run"]["id"] == "r1"  # pyright: ignore[reportIndexIssue]
 
 
-def test_collect_runs_for_export_respects_project_scope(session: Session):
+def test_iter_export_run_items_respects_project_scope(session: Session):
     session.add(RunDB(id="r1", project="proj-a", task_id="t", created_at=_NOW, call_count=0))
     session.add(RunDB(id="r2", project="proj-b", task_id="t", created_at=_NOW, call_count=0))
     session.commit()
 
-    data = collect_runs_for_export(session, ["r1", "r2"], "proj-a")
+    data = list(iter_export_run_items(session, ["r1", "r2"], "proj-a"))
     assert len(data) == 1
     assert data[0]["run"]["id"] == "r1"  # pyright: ignore[reportIndexIssue]
 
@@ -542,14 +542,25 @@ class TestBulkExportRoute:
     def test_json_export_fails_past_byte_budget(
         self, session: Session, client, monkeypatch: pytest.MonkeyPatch
     ):
-        import apo.routes.runs.bulk_export as bulk_export_module
-
-        monkeypatch.setattr(bulk_export_module, "MAX_EXPORT_BYTES", 8)
+        monkeypatch.setenv("APO_BULK_EXPORT_MAX_BYTES", "8")
         _seed_exportable_run(session)
         resp = client.post(
             "/v1/runs/bulk-export",
             params={"project": "p"},
             json={"run_ids": ["r1"], "format": "json"},
+        )
+        assert resp.status_code == 413
+        assert "budget" in resp.json()["detail"]
+
+    def test_csv_export_fails_past_byte_budget(
+        self, session: Session, client, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setenv("APO_BULK_EXPORT_MAX_BYTES", "8")
+        _seed_exportable_run(session)
+        resp = client.post(
+            "/v1/runs/bulk-export",
+            params={"project": "p"},
+            json={"run_ids": ["r1"], "format": "csv"},
         )
         assert resp.status_code == 413
         assert "budget" in resp.json()["detail"]
