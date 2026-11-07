@@ -121,7 +121,7 @@ Callers may also attach labels in `run_metadata.labels`, one per caller-defined
 dimension, so runs can be filtered by what they ran against:
 
 ```json
-{ "run_metadata": { "labels": { "customer": { "id": "c-123", "name": "Acme" } } } }
+{ "run_metadata": { "labels": { "team": { "id": "platforms", "name": "Platforms" } } } }
 ```
 
 - Keys match `[A-Za-z0-9_-]{1,64}`; at most 32 keys per run.
