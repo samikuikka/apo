@@ -510,6 +510,13 @@ def _authenticate_basic(public_key: str, secret_key: str) -> AuthContext | None:
         if _is_expired(api_key.expires_at):
             return None
 
+        # Creator status must be a fresh read, not a cached field: the key
+        # cache's sliding TTL would let a hot key outlive its creator's
+        # deactivation in another worker.
+        creator = session.get(UserDB, api_key.created_by)
+        if creator is None or not creator.is_active:
+            return None
+
         return {
             "project": api_key.project,
             "user_id": api_key.created_by,
@@ -566,6 +573,13 @@ def _authenticate_bearer(token: str) -> AuthContext | None:
             return None
 
         if _is_expired(api_key.expires_at):
+            return None
+
+        # Creator status must be a fresh read, not a cached field: the key
+        # cache's sliding TTL would let a hot key outlive its creator's
+        # deactivation in another worker.
+        creator = session.get(UserDB, api_key.created_by)
+        if creator is None or not creator.is_active:
             return None
 
         return {

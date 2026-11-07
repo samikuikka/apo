@@ -58,7 +58,7 @@ def otel_server():
     import apo.services.trace_ingestion_queue as queue_module
     from apo.api import app
     from apo.db import attach_sqlite_pragmas, get_session
-    from apo.models.db import ApiKeyDB, OtlpIngestBatchDB, OtlpSpanDB  # noqa: F401
+    from apo.models.db import ApiKeyDB, OtlpIngestBatchDB, OtlpSpanDB, UserDB  # noqa: F401
     from sqlmodel import SQLModel, Session, create_engine
     from sqlalchemy.pool import NullPool
     from apo.auth import middleware as auth_middleware
@@ -89,6 +89,17 @@ def otel_server():
     _PUBLIC_KEY = "pk-e2e-full"
     _SECRET_KEY = "sk-e2e-full"
     with Session(test_engine) as session:
+        # The middleware fails closed when a key's creator is missing or
+        # inactive, so the seeded key needs a live creator user row.
+        session.add(
+            UserDB(
+                id="e2e-test",
+                email="e2e@test.local",
+                name="e2e",
+                password_hash="x",
+                is_active=True,
+            )
+        )
         session.add(
             ApiKeyDB(
                 public_key=_PUBLIC_KEY,
@@ -457,15 +468,23 @@ class TestSkillObservationEndToEnd:
 
         with Session(otel_server["engine"]) as session:
             if session.get(ProjectDB, otel_server["project"]) is None:
-                session.add(
-                    ProjectDB(id=otel_server["project"], name="e2e-skill")
-                )
+                session.add(ProjectDB(id=otel_server["project"], name="e2e-skill"))
             if session.get(UserDB, "e2e-test") is None:
                 session.add(UserDB(id="e2e-test", email="e2e@test", password_hash="x"))
-                # Flush the parent rows first: the membership's FKs are
-                # enforced (production PRAGMAs run on this engine), and the
-                # unit of work has no mapped relationship to order them.
-                session.flush()
+            # Flush the parent rows first: the membership's FKs are
+            # enforced (production PRAGMAs run on this engine), and the
+            # unit of work has no mapped relationship to order them.
+            session.flush()
+            already_member = (
+                session.exec(
+                    select(ProjectMembershipDB).where(
+                        ProjectMembershipDB.project_id == otel_server["project"],
+                        ProjectMembershipDB.user_id == "e2e-test",
+                    )
+                ).first()
+                is not None
+            )
+            if not already_member:
                 session.add(
                     ProjectMembershipDB(
                         project_id=otel_server["project"],
