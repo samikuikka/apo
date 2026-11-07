@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
@@ -323,6 +324,18 @@ class TestDefinitionSource:
         assert body["task_id"] == "demo"
         assert body["files"][0]["path"] == "demo.eval.ts"
         assert "task('demo'" in body["files"][0]["content"]
+
+    def test_definition_source_fails_past_byte_cap(
+        self,
+        client: TestClient,
+        session: Session,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        run = _seed_run(session)
+        monkeypatch.setattr("apo.routes.agent_task_judgments.MAX_DEFINITION_BYTES", 8)
+        response = client.get(f"/v1/agent-task-runs/{run.id}/definition-source")
+        assert response.status_code == 413
+        assert "byte cap" in response.json()["detail"]
 
     def test_explicit_revision_for_same_task(
         self, client: TestClient, session: Session

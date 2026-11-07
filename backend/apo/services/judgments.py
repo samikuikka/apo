@@ -14,6 +14,7 @@ from __future__ import annotations
 from sqlmodel import Session, col, select
 
 from apo.models.db import AgentTaskJudgmentDB, AgentTaskRunDB
+from apo.models.columns import JUDGMENT_LIGHT
 from apo.models.schemas import AgentTaskJudgmentSummary
 from apo.services.check_report_storage import (
     derive_check_outcome,
@@ -77,10 +78,16 @@ def count_judgments(session: Session, task_run_id: str) -> int:
 
 
 def list_judgment_rows(session: Session, task_run_id: str) -> list[AgentTaskJudgmentDB]:
-    """Stored rejudge judgments, newest first."""
+    """Stored rejudge judgments, newest first.
+
+    Evidence columns load lazily: summary paths never materialize them,
+    and the single-judgment evidence read pays one column fetch for its
+    one row.
+    """
     return list(
         session.exec(
             select(AgentTaskJudgmentDB)
+            .options(*JUDGMENT_LIGHT)
             .where(col(AgentTaskJudgmentDB.task_run_id) == task_run_id)
             .order_by(col(AgentTaskJudgmentDB.created_at).desc())
         ).all()

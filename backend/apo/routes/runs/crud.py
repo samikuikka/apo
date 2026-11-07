@@ -6,7 +6,7 @@ from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import asc, delete
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import defer
@@ -700,8 +700,14 @@ def set_corrected_output(
     return {"id": call.id, "corrected_output": call.corrected_output}
 
 
+# Mirrors the bulk-export request cap: bounds one delete's id list (and
+# the ORM rows it loads) without limiting any realistic dashboard
+# selection.
+MAX_BULK_DELETE_RUN_IDS = 1000
+
+
 class BulkDeleteRequest(BaseModel):
-    run_ids: list[str]
+    run_ids: list[str] = Field(max_length=MAX_BULK_DELETE_RUN_IDS)
 
 
 @router.post("/bulk-delete")

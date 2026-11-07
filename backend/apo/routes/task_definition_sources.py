@@ -9,6 +9,8 @@ Check evidence. Authorization is Project-bound through the Run's Batch.
 
 from __future__ import annotations
 
+from typing import cast
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlmodel import Session
 
@@ -16,7 +18,10 @@ from ..auth.deps import require_api_key_scope
 from ..db import get_session
 from ..models.db import AgentTaskBatchRunDB, AgentTaskRunDB
 from ..services.project_memberships import enforce_project_role_from_request
-from ..services.task_definition_revisions import read_definition_source
+from ..services.task_definition_revisions import (
+    MAX_DEFINITION_BYTES,
+    read_definition_source,
+)
 
 router = APIRouter(prefix="/v1", tags=["task-definitions"])
 
@@ -54,6 +59,17 @@ async def get_task_definition_source(
     result = read_definition_source(session, task_run_id=task_run_id, file_path=file_path)
     if result is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail={"kind": "definition_source_not_found"})
+
+    if cast(int, result["size_bytes"]) > MAX_DEFINITION_BYTES:
+        # Write-time validation caps revisions at the same bound, so this
+        # only trips on legacy or unvalidated rows; serve a clean 413
+        # instead of an unbounded file body.
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=(
+                f"Definition source file exceeds the {MAX_DEFINITION_BYTES} byte cap"
+            ),
+        )
 
     return result
 

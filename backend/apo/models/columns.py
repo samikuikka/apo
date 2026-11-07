@@ -21,6 +21,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from ..db_helpers import as_column
 from .db import (
     AgentTaskBatchRunDB,
+    AgentTaskJudgmentDB,
     AgentTaskRunDB,
     LoggedCallDB,
     RunDB,
@@ -111,4 +112,12 @@ CALL_LIGHT = (
 # run-status fields. Lazy-loaded on access.
 TASK_RUN_LIGHT = (
     defer(AgentTaskRunDB.transcript_json),
+)
+
+# Defer per-judgment evidence on list paths that read only summary
+# scalars (counts, labels, models). Lazy-loaded on access, so the
+# single-judgment evidence read costs one extra column fetch for one row.
+JUDGMENT_LIGHT = (
+    defer(AgentTaskJudgmentDB.checks_json),
+    defer(AgentTaskJudgmentDB.stability_json),
 )

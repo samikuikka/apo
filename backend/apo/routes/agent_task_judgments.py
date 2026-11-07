@@ -38,7 +38,10 @@ from ..services.judgments import (
     list_judgments,
     synthesize_original_judgment,
 )
-from ..services.task_definition_revisions import get_definition_for_run
+from ..services.task_definition_revisions import (
+    MAX_DEFINITION_BYTES,
+    get_definition_for_run,
+)
 
 router = APIRouter(prefix="/v1", tags=["agent-tasks"])
 
@@ -282,13 +285,27 @@ async def get_run_definition_source(
             )
 
     files: list[dict[str, object]] = []
+    total_bytes = 0
     for file in rev_row.source_files_json or []:
         content = str(file.get("content", ""))
+        size_bytes = len(content.encode("utf-8"))
+        total_bytes += size_bytes
+        if total_bytes > MAX_DEFINITION_BYTES:
+            # Write-time validation caps revisions at the same bound, so
+            # this only trips on legacy or unvalidated rows; serve a clean
+            # 413 instead of buffering an unbounded response.
+            raise HTTPException(
+                status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=(
+                    f"Definition source exceeds the {MAX_DEFINITION_BYTES} byte cap "
+                    f"for revision {rev_row.id}"
+                ),
+            )
         files.append(
             {
                 "path": str(file.get("path", "")),
                 "content": content,
-                "size_bytes": len(content.encode("utf-8")),
+                "size_bytes": size_bytes,
             }
         )
     return {
