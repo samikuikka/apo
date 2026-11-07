@@ -179,6 +179,12 @@ EMAIL_FROM_NAME=apo
 
 Turning it on instantly lights up all senders: invitation emails, verification codes (set `AUTH_EMAIL_VERIFICATION_REQUIRED=true` if you want to require them), password-reset links, and hosted-access admission emails. Without email configured, hosted-access invitations still work — the admin settings page shows a one-time copyable `/join` link to share privately.
 
+**Disposable email domains are refused.** Every admission path (hosted-access invitations, project invitations, admin user creation) rejects throwaway inbox domains like mailinator or 10minutemail with a 422, using a blocklist bundled with the backend. If it wrongly blocks a domain you consider legitimate, allow it explicitly and restart the backend (the value is read once at startup):
+
+```bash
+APO_DISPOSABLE_DOMAIN_ALLOWLIST=example-you-trust.com,another.example
+```
+
 **Deliverability:** to land in inboxes rather than spam, send from a domain you own and add the SPF/DKIM/DMARC records your provider generates. A quick free option is [Resend](https://resend.com) (3,000 emails/month, 100/day free) — sign up, verify your domain, and point `EMAIL_TRANSPORT_URL` at its SMTP relay.
 
 ## Readiness endpoint

@@ -352,6 +352,13 @@ def init_db():
     with Session(engine) as session:
         _ = load_default_prices(session)
 
+    # Prime the disposable-domain blocklist the same way: a malformed
+    # bundled file or allowlist env value must fail startup, not surface
+    # later as a surprise 500 during admission.
+    from .services.email_admission import get_disposable_domain_matcher
+
+    get_disposable_domain_matcher()
+
 
 def reset_apo_file_db() -> None:
     """Drop every table on the configured engine and re-run ``init_db``.
