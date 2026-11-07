@@ -4231,7 +4231,42 @@ def _migrate_to_v62() -> None:
                 )
 
 
-LATEST_SCHEMA_VERSION = 62
+def _create_user_usage_table(conn: Connection) -> None:
+    """Conn-taking seam: per-account daily usage rollup."""
+    if "user_daily_usage" in _get_table_names(conn):
+        return
+    timestamp_type = "DATETIME" if is_sqlite() else "TIMESTAMPTZ"
+    conn.exec_driver_sql(
+        f"""
+        CREATE TABLE user_daily_usage (
+            user_id VARCHAR(36) NOT NULL REFERENCES users(id),
+            day VARCHAR(10) NOT NULL,
+            span_count INTEGER NOT NULL DEFAULT 0,
+            byte_count INTEGER NOT NULL DEFAULT 0,
+            request_count INTEGER NOT NULL DEFAULT 0,
+            updated_at {timestamp_type} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, day)
+        )
+        """
+    )
+
+
+def _migrate_to_v63() -> None:
+    """Version 63: per-account ingest usage rollup.
+
+    ``user_daily_usage`` sums accepted spans per user across every key
+    they minted, one row per (user, UTC day), so the account-level quota
+    (APO_USER_DAILY_SPAN_QUOTA) can bound what one admitted user's whole
+    key fleet ingests; per-key caps alone multiply by key count. Additive
+    and no backfill: aggregate accounting starts counting at deploy, so
+    the first UTC day after enabling it can under-count accepted spans.
+    The per-key rows remain the exact per-key record.
+    """
+    with engine.begin() as conn:
+        _create_user_usage_table(conn)
+
+
+LATEST_SCHEMA_VERSION = 63
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -4296,6 +4331,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     60: _migrate_to_v60,
     61: _migrate_to_v61,
     62: _migrate_to_v62,
+    63: _migrate_to_v63,
 }
 
 

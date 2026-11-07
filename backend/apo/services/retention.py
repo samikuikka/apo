@@ -410,22 +410,28 @@ def usage_retention_days() -> int:
 
 
 def reap_old_usage_rows(session: Session, cutoff_day: str) -> int:
-    """Delete per-key usage rollup rows older than the retention window.
+    """Delete usage rollup rows older than the retention window.
 
-    Rows are tiny; 0 = keep forever (matching apo's other retention-knob
+    Covers both grains: per-key (api_key_daily_usage) and per-account
+    (user_daily_usage), which must reap on the same schedule or the
+    aggregate table outlives the exact record it summarizes. Rows are
+    tiny; 0 = keep forever (matching apo's other retention-knob
     semantics). Days are compared as YYYY-MM-DD strings — lexicographic
     order equals chronological order for zero-padded ISO dates.
     """
-    if not table_exists(session, "api_key_daily_usage"):
-        return 0
-    result = cast(
-        CursorResult[Any],
-        session.execute(
-            text("DELETE FROM api_key_daily_usage WHERE day < :c"),
-            {"c": cutoff_day},
-        ),
-    )
-    return result.rowcount or 0
+    deleted = 0
+    for table in ("api_key_daily_usage", "user_daily_usage"):
+        if not table_exists(session, table):
+            continue
+        result = cast(
+            CursorResult[Any],
+            session.execute(
+                text(f"DELETE FROM {table} WHERE day < :c"),
+                {"c": cutoff_day},
+            ),
+        )
+        deleted += result.rowcount or 0
+    return deleted
 
 
 # Grace window before an unreferenced Task Definition Revision is reaped.
