@@ -262,7 +262,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 function CopyLine({ label, code, language }: { label: string; code: string; language: string }) {
   const [copied, setCopied] = useState(false)
   return (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">{label}</span>
         <Button
@@ -280,7 +280,7 @@ function CopyLine({ label, code, language }: { label: string; code: string; lang
           {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         </Button>
       </div>
-      <ShikiCodeBlock code={code} language={language} />
+      <ShikiCodeBlock code={code} language={language} defaultWrapped />
     </div>
   )
 }
