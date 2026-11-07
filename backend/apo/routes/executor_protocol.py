@@ -26,7 +26,7 @@ from apo.models.db import (
     TaskExecutionAttemptDB,
 )
 from apo.models.schemas import AgentTaskRunConfiguration
-from apo.models.execution import EXECUTOR_PROTOCOL_VERSION
+from apo.models.execution import EXECUTOR_PROTOCOL_VERSION, ExecutionPhase
 from apo.services.execution_finalization import (
     AttemptFailureBody,
     CompletionConflict,
@@ -57,7 +57,7 @@ class StartRequest(BaseModel):
 
 
 class AttemptHeartbeatRequest(BaseModel):
-    phase: str
+    phase: ExecutionPhase
 
 
 class ResultRequest(BaseModel):

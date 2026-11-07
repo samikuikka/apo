@@ -291,3 +291,37 @@ def test_open_dev_caller_batch_names_no_requester(
     batch = session.get(AgentTaskBatchRunDB, r.json()["batch_run_id"])
     assert batch is not None and batch.requested_by_user_id is None
     _assert_requested_by(client, r.json(), None)
+
+
+def test_heartbeat_rejects_unknown_phase(
+    client: object, session: Session, auth_secret: str
+) -> None:
+    """The phase column holds executor progress, not free text.
+
+    An unvalidated phase would be stored raw and later fail the read-side
+    cast to ExecutionPhase, so the boundary rejects unknown values.
+    """
+    _seed_project(session)
+    r = client.post("/v1/agent-task-batch-runs/caller", json=_caller_body())  # type: ignore[attr-defined]
+    assert r.status_code == 201, r.text
+    body = r.json()
+    att_headers = {"Authorization": f"Bearer {body['attempt_jwt']}"}
+    r = client.post(  # type: ignore[attr-defined]
+        f"/v1/executor-protocol/v1/attempts/{body['attempt_id']}/start",
+        json={"driver_kind": "caller", "runtime": {}}, headers=att_headers,
+    )
+    assert r.status_code == 200, r.text
+
+    r = client.post(  # type: ignore[attr-defined]
+        f"/v1/executor-protocol/v1/attempts/{body['attempt_id']}/heartbeat",
+        json={"phase": "banana"}, headers=att_headers,
+    )
+    assert r.status_code == 422, r.text
+
+    r = client.post(  # type: ignore[attr-defined]
+        f"/v1/executor-protocol/v1/attempts/{body['attempt_id']}/heartbeat",
+        json={"phase": "uploading"}, headers=att_headers,
+    )
+    assert r.status_code == 200, r.text
+    att = session.get(TaskExecutionAttemptDB, body["attempt_id"])
+    assert att is not None and att.phase == "uploading"
