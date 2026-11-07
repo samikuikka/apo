@@ -527,6 +527,37 @@ Rules:
 - other product surfaces should reuse the shared trace components from the traces page, not invent parallel trace UIs
 - legacy optimization should not remain in the main shell navigation; keep it as a direct-route compatibility surface only until deletion is safe
 
+### Attempt Lifecycle
+
+Execution Attempt status is an explicit state machine.
+`ATTEMPT_STATUS_TRANSITIONS` in `backend/apo/services/execution_leases.py`
+is the single table of legal moves, and every in-process writer goes through
+`transition_attempt()`, which rejects an illegal move with
+`LeaseError("state_mismatch")` at the write site instead of corrupting state:
+
+- `queued -> leased` happens only through the atomic claim (a conditional
+  UPDATE that re-checks the status under the executor row lock), never
+  through the ORM
+- `leased -> running` on `/start`; `running -> succeeded | failed | cancelled`
+  on `/result` and `/failure`, idempotent by completion id
+- the reaper moves expired rows: `leased -> queued` before start,
+  `running -> lost` after start (never auto-retried), and queue-TTL expiry
+  `queued -> failed(executor_unavailable)`
+- cancellation, executor revocation, and bundled-execution retirement end
+  non-terminal attempts; revoking a started attempt also finalizes its Task
+  Run, so no run is left `running` with nothing left to recover it
+- `phase` is executor-reported progress, validated against the
+  `ExecutionPhase` literal at both executor-protocol boundaries
+
+Task Run (`pending -> running -> passed | failed | error`) and Batch Run
+(`queued -> running -> completed | error`) statuses are derived layers: runs
+end through the shared finalizers, and a batch rolls up from its runs. A
+cancelled run ends `error` with a `no_verdict_reason`; a fully cancelled
+batch ends `completed` (see `backend/apo/services/lifecycle.py` for why the
+terminal sets still tolerate a `cancelled` value). The CLI keeps the same
+vocabulary typed in `packages/cli/src/lib/run-status.ts`, and the dashboard's
+live/terminal sets live in `apps/dashboard/src/lib/run-liveness.ts`.
+
 ### Canonical Trace Shell
 
 The dashboard should have one canonical trace shell and multiple entry points into it.

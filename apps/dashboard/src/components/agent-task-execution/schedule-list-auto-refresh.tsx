@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useRunEvents } from "@/hooks/use-run-events";
 import type { AgentTaskScheduleSummary } from "@/lib/agent-task-api";
+import { isBatchRunLive } from "@/lib/run-liveness";
 
 interface ScheduleListAutoRefreshProps {
   project: string;
@@ -18,7 +19,7 @@ function collectPendingBatchRunIds(
   for (const s of schedules) {
     const batch = s.last_batch;
     if (!batch) continue;
-    if (batch.status !== "running" && batch.status !== "queued") continue;
+    if (!isBatchRunLive(batch.status)) continue;
     hasPending = true;
     const ids = [s.last_batch_run_id, batch.id].filter(
       (v): v is string => typeof v === "string" && v.length > 0

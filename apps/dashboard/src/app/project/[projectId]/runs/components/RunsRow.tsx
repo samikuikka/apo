@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { formatCostMicro, formatTokenTotal } from "@/lib/format";
 import { formatBatchExecution } from "@/lib/run-configuration";
 import { providerLabels } from "@/lib/agent-task-api";
+import { isBatchRunLive } from "@/lib/run-liveness";
 import { HostLabelsCell } from "@/components/task-run-list";
 
 import { InlineTaskRunRow } from "./InlineTaskRunRow";
@@ -68,7 +69,7 @@ export function RunsRow({
   });
   const checkTotal = Math.max(batch.total_checks, 1);
   const passRate = Math.round((batch.passed_checks / checkTotal) * 100);
-  const isRunning = batch.status === "running" || batch.status === "queued";
+  const isRunning = isBatchRunLive(batch.status);
   const showRate = batch.total_checks > 0 || !isRunning;
   const triggerLabel = formatTrigger(batch.trigger);
   const SourceIcon = getSourceIcon(batch.trigger?.source ?? null);
@@ -138,7 +139,7 @@ export function RunsRow({
     const prev = prevSummaryRef.current;
     if (prev.key === summaryKey) return;
     prevSummaryRef.current = { key: summaryKey, status: batch.status };
-    const wasPending = prev.status === "running" || prev.status === "queued";
+    const wasPending = isBatchRunLive(prev.status);
     if (!wasPending && !isRunning) return;
     if (expanded) {
       void loadTaskRuns(taskRuns !== null);

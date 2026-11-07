@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useRunEvents, type RunEvent } from "@/hooks/use-run-events";
 import type { AgentTaskBatchRunSummary } from "@/lib/agent-task-api";
+import { isBatchRunLive } from "@/lib/run-liveness";
 
 /**
  * Coalesce SSE-triggered refreshes: a busy batch emits bursts (concurrent
@@ -19,8 +20,7 @@ const TASK_PROGRESS_EVENTS = new Set([
   "task_run.error",
 ]);
 
-const isPending = (b: AgentTaskBatchRunSummary): boolean =>
-  b.status === "running" || b.status === "queued";
+const isPending = (b: AgentTaskBatchRunSummary): boolean => isBatchRunLive(b.status);
 
 interface RunsListAutoRefreshProps {
   project: string;

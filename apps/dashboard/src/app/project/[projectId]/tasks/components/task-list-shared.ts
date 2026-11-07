@@ -1,5 +1,6 @@
 import type { AgentTaskSummary } from "@/lib/agent-task-api";
 import { TASK_STATUS_FILTERS } from "@/lib/filter-status";
+import { isTaskRunLive } from "@/lib/run-liveness";
 
 export type FolderNode = {
   id: string;
@@ -32,7 +33,7 @@ export function taskFilterStatus(task: AgentTaskSummary): TaskStatus {
   const stats = task.run_stats;
   if (!stats || !stats.last_run_status) return "idle";
   if (stats.last_run_status === "error") return stats.last_run_no_verdict ? "no_verdict" : "errored";
-  if (stats.last_run_status === "running" || stats.last_run_status === "pending") return "running";
+  if (isTaskRunLive(stats.last_run_status)) return "running";
   if (stats.last_run_passed === true) return "passed";
   return "failed";
 }
