@@ -1899,6 +1899,25 @@ def test_task_definition_source_denies_ingest_scope_key(
     assert denied.status_code == 403
 
 
+def test_task_definition_source_fails_past_byte_cap(
+    session: Session,
+    make_api_key_client: Callable[..., TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A revision row beyond the byte cap serves a clean 413 instead of an
+    unbounded file body."""
+    _seed_definition_source_world(session)
+    monkeypatch.setattr("apo.routes.task_definition_sources.MAX_DEFINITION_BYTES", 8)
+
+    full_key = make_api_key_client(_USER_ALICE, _PROJECT_A, session, scope="full")
+    resp = full_key.get(
+        "/v1/task-definition-source",
+        params={"task_run_id": _RUN_A, "file_path": "task.py"},
+    )
+    assert resp.status_code == 413
+    assert "byte cap" in resp.json()["detail"]
+
+
 def test_session_score_create_derives_project_from_target(
     session: Session, make_authed_client: Callable[..., TestClient]
 ) -> None:

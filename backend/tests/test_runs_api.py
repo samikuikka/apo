@@ -505,6 +505,15 @@ def test_api_key_reads_only_its_bound_project(session: Session):
     assert error.detail == "API key is not bound to this project"
 
 
+def test_bulk_delete_rejects_more_than_max_run_ids(client: TestClient) -> None:
+    resp = client.post(
+        "/v1/runs/bulk-delete",
+        params={"project": "p"},
+        json={"run_ids": [f"r{i}" for i in range(1001)]},
+    )
+    assert resp.status_code == 422
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
