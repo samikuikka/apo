@@ -2017,6 +2017,26 @@ class UserDailyUsageDB(SQLModel, table=True):
     )
 
 
+class ProjectDailyUsageDB(SQLModel, table=True):
+    """Per-project daily storage usage: accepted Deliverable and
+    result-evidence upload obligations (declared bytes at intent time),
+    summed across every run in the project. One row per (project, UTC
+    day); backs APO_PROJECT_DAILY_STORAGE_QUOTA. Retention bounds the
+    stored stock; this bounds the daily flow. Reaped by the same
+    maintenance pass as the other usage rows."""
+
+    __tablename__: ClassVar[str] = "project_daily_usage"
+
+    project_id: str = Field(foreign_key="projects.id", primary_key=True)
+    day: str = Field(primary_key=True)  # "YYYY-MM-DD" (UTC)
+    byte_count: int = Field(default=0)
+    request_count: int = Field(default=0)
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(UTCDateTime, server_default=func.now()),
+    )
+
+
 class OtlpIngestBatchDB(SQLModel, table=True):
     """Durable inbox record for a received OTLP batch.
 

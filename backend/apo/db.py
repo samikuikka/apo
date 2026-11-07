@@ -4266,7 +4266,41 @@ def _migrate_to_v63() -> None:
         _create_user_usage_table(conn)
 
 
-LATEST_SCHEMA_VERSION = 63
+def _create_project_usage_table(conn: Connection) -> None:
+    """Conn-taking seam: per-project daily storage usage rollup."""
+    if "project_daily_usage" in _get_table_names(conn):
+        return
+    timestamp_type = "DATETIME" if is_sqlite() else "TIMESTAMPTZ"
+    conn.exec_driver_sql(
+        f"""
+        CREATE TABLE project_daily_usage (
+            project_id VARCHAR(36) NOT NULL REFERENCES projects(id),
+            day VARCHAR(10) NOT NULL,
+            byte_count INTEGER NOT NULL DEFAULT 0,
+            request_count INTEGER NOT NULL DEFAULT 0,
+            updated_at {timestamp_type} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (project_id, day)
+        )
+        """
+    )
+
+
+def _migrate_to_v64() -> None:
+    """Version 64: per-project daily storage usage rollup.
+
+    ``project_daily_usage`` counts accepted Deliverable and
+    result-evidence upload obligations (declared bytes at intent time)
+    per project per UTC day, so APO_PROJECT_DAILY_STORAGE_QUOTA can
+    bound the daily storage FLOW into a project; existing caps are per
+    item/run/attempt and never bound the sum across runs. Additive, no
+    backfill: the first UTC day after enabling it can under-count
+    obligations accepted before deploy.
+    """
+    with engine.begin() as conn:
+        _create_project_usage_table(conn)
+
+
+LATEST_SCHEMA_VERSION = 64
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -4332,6 +4366,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     61: _migrate_to_v61,
     62: _migrate_to_v62,
     63: _migrate_to_v63,
+    64: _migrate_to_v64,
 }
 
 

@@ -97,6 +97,9 @@ services:
       - APO_DEFAULT_DAILY_SPAN_QUOTA=${APO_DEFAULT_DAILY_SPAN_QUOTA:-0}
       # Account-level daily span cap summed across a user's keys (0 = off).
       - APO_USER_DAILY_SPAN_QUOTA=${APO_USER_DAILY_SPAN_QUOTA:-0}
+      # Project-level daily bytes accepted for deliverable/evidence
+      # uploads (0 = off).
+      - APO_PROJECT_DAILY_STORAGE_QUOTA=${APO_PROJECT_DAILY_STORAGE_QUOTA:-0}
       # --- Email delivery (optional) ---
       # Unset EMAIL_TRANSPORT_URL keeps the log-only fallback: invitations
       # become copy-link and password-reset links go to the backend logs.
