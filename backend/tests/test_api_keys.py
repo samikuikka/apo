@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -79,6 +80,41 @@ class TestCreateApiKey:
         assert "created_at" in data
         # secret_key must not be stored in plaintext
         assert data["secret_key"] != data.get("display_secret_key")
+
+    def test_create_inherits_env_default_quota(
+        self,
+        client: TestClient,
+        session: Session,
+        make_authed_client: Any,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("APO_DEFAULT_DAILY_SPAN_QUOTA", "4242")
+        authed = _setup_and_get_authed_client(client, session, make_authed_client)
+        resp = authed.post(
+            "/v1/api-keys",
+            json={"name": "EnvDefault", "project": "example-service"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["daily_span_quota"] == 4242
+        db_key = session.exec(select(ApiKeyDB)).first()
+        assert db_key is not None
+        assert db_key.daily_span_quota == 4242
+
+    def test_create_without_env_default_is_unlimited(
+        self,
+        client: TestClient,
+        session: Session,
+        make_authed_client: Any,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("APO_DEFAULT_DAILY_SPAN_QUOTA", raising=False)
+        authed = _setup_and_get_authed_client(client, session, make_authed_client)
+        resp = authed.post(
+            "/v1/api-keys",
+            json={"name": "NoDefault", "project": "example-service"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["daily_span_quota"] is None
 
     def test_create_hashes_secret_key_in_storage(
         self, client: TestClient, session: Session, make_authed_client: Any
@@ -411,6 +447,42 @@ class TestBootstrapApiKey:
         validated = validate_api_key(data["key"], session)
         assert validated is not None
         assert validated.id == data["id"]
+
+    def test_bootstrap_mint_inherits_env_default_quota(
+        self, client: TestClient, session: Session, monkeypatch: MonkeyPatch
+    ) -> None:
+        # apo login mints through bootstrap; the deployment default must
+        # cover that path too or CLI-onboarded keys ship unlimited.
+        monkeypatch.setenv("APO_DEFAULT_DAILY_SPAN_QUOTA", "4242")
+        self._setup_user_and_project(client, session)
+
+        resp = client.post(
+            "/v1/api-keys/bootstrap",
+            json={
+                "email": _TEST_EMAIL,
+                "password": _TEST_PASSWORD,
+                "project": TEST_PROJECT_ID,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["daily_span_quota"] == 4242
+
+    def test_bootstrap_mint_without_env_default_is_unlimited(
+        self, client: TestClient, session: Session, monkeypatch: MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("APO_DEFAULT_DAILY_SPAN_QUOTA", raising=False)
+        self._setup_user_and_project(client, session)
+
+        resp = client.post(
+            "/v1/api-keys/bootstrap",
+            json={
+                "email": _TEST_EMAIL,
+                "password": _TEST_PASSWORD,
+                "project": TEST_PROJECT_ID,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["daily_span_quota"] is None
 
     def test_bootstrap_with_wrong_password_returns_401(
         self, client: TestClient
