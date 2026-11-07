@@ -34,7 +34,7 @@ from apo.models.db import (
     UserDB,
 )
 from apo.models.execution import SUPPORTED_EXECUTOR_PROTOCOL_VERSIONS
-from apo.services.execution_leases import transition_attempt
+from apo.services.execution_leases import finalize_recovered_run, transition_attempt
 from apo.services.execution_pools import PoolError, set_default_pool
 from apo.services.executor_auth import generate_enrollment_token
 from apo.services.project_memberships import enforce_project_role_from_request
@@ -558,7 +558,12 @@ async def revoke_executor_route(
     request: Request,
     session: Session = Depends(get_session),
 ) -> dict[str, object]:
-    """Revoke an Executor: fence running (lost) + requeue pre-start."""
+    """Revoke an Executor: fence running (lost) + requeue pre-start.
+
+    A fenced post-start Attempt also ends its logical Run (error, executor
+    no-verdict) and rolls its Batch up; without that the Run would sit in
+    ``running`` forever with nothing left to recover it.
+    """
     _ = enforce_project_role_from_request(request, session, project_id, minimum_role="admin")
     ex = session.get(ExecutorDB, executor_id)
     if ex is None or ex.project != project_id:
@@ -584,6 +589,11 @@ async def revoke_executor_route(
             transition_attempt(att, "lost")
             att.failure_kind = "executor_revoked"
             att.completed_at = now
+            finalize_recovered_run(
+                session,
+                att,
+                error_message="Executor revoked while the task was running; outcome is unknown",
+            )
         session.add(att)
     session.commit()
     return {"ok": True, "revoked": executor_id}

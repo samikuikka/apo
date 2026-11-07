@@ -16,6 +16,7 @@ from apo.models.db import (
     TaskExecutionAttemptDB,
     TaskRevisionDB,
 )
+from apo.services.lifecycle import BATCH_RUN_TERMINAL
 from sqlmodel import Session
 
 
@@ -362,3 +363,29 @@ def test_cross_project_pool_operations_opaque(client: object, session: Session) 
 def select_tokens():
     from sqlmodel import select as _s
     return _s(ExecutorEnrollmentTokenDB)
+
+
+# ── executor revoke ───────────────────────────────────────────────────────
+
+
+def test_revoke_ends_the_run_of_a_fenced_running_attempt(client: object, session: Session) -> None:
+    """Revoking mid-run must not leave the Task Run stuck in running.
+
+    The attempt is fenced lost, and the run ends as an executor no-verdict
+    error with its batch rolled up to a terminal state.
+    """
+    _seed_project(session)
+    pool = _seed_pool(session, "proj-m", "p1")
+    _seed_executor(session, pool.id, "proj-m", "ex1")
+    att = _seed_attempt(session, pool_id=pool.id, executor_id="ex1", status="running")
+    r = client.post("/v1/projects/proj-m/executors/ex1/revoke")  # type: ignore[attr-defined]
+    assert r.status_code == 200, r.text
+    fenced = session.get(TaskExecutionAttemptDB, att.id)
+    task_run = session.get(AgentTaskRunDB, att.task_run_id)
+    batch = session.get(AgentTaskBatchRunDB, att.batch_run_id)
+    assert fenced is not None and fenced.status == "lost"
+    assert fenced.failure_kind == "executor_revoked"
+    assert task_run is not None and task_run.status == "error"
+    assert task_run.no_verdict_reason == "executor"
+    assert task_run.completed_at is not None
+    assert batch is not None and batch.status in BATCH_RUN_TERMINAL
