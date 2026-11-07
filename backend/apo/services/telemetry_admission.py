@@ -25,14 +25,25 @@ from .telemetry_limits import TelemetryAdmissionLimits, TokenBucketPolicy
 
 AdmissionResource = Literal["requests", "bytes", "units", "concurrency"]
 
+# Which dimension rejected: the caller's own bucket or the installation-wide
+# aggregate. Rate-limit responses expose it so clients can tell a personal
+# quota from a saturated backend.
+AdmissionScope = Literal["identity", "global"]
+
 
 @dataclass(frozen=True)
 class AdmissionRejection:
-    """Why a request was rejected and when the caller may retry."""
+    """Why a request was rejected and when the caller may retry.
+
+    ``scope`` names the bucket that ran dry: the per-identity bucket or the
+    global one. Defaults to ``"identity"`` because a rejection without an
+    explicit scope is always a single caller's own bucket.
+    """
 
     resource: AdmissionResource
     retry_after_seconds: int
     limit: int
+    scope: AdmissionScope = "identity"
 
 
 class IngestionLease:
@@ -122,6 +133,59 @@ class TelemetryAdmissionController:
             self._limits.global_requests,
         )
 
+    def consume_request_identity(self, identity: str) -> AdmissionRejection | None:
+        """Consume one request token from the identity bucket only.
+
+        The mirror of :meth:`consume_request_global`, for deployments that
+        cap each caller but disable the installation-wide aggregate: the
+        paired consume would still charge the global bucket (left at its
+        telemetry default), silently reintroducing the cap the operator
+        turned off.
+        """
+        with self._lock:
+            now = self._now()
+            ident = self._get_or_create_identity(identity, now)
+            self._refill(ident.requests, self._limits.requests, now)
+            if ident.requests.tokens < 1:
+                return AdmissionRejection(
+                    "requests",
+                    self._retry_after(
+                        1,
+                        ident.requests.tokens,
+                        self._limits.requests.tokens_per_minute,
+                    ),
+                    self._limits.requests.burst,
+                    scope="identity",
+                )
+            ident.requests.tokens -= 1
+            return None
+
+    def consume_request_global(self) -> AdmissionRejection | None:
+        """Consume one request token from the global bucket only.
+
+        Used for callers without a derived identity (unauthenticated
+        traffic) and when the caller's own dimension is disabled: the
+        installation-wide aggregate must still be charged, but there is no
+        identity bucket to pair with. Takes the same lock and applies the
+        same refill and retry-after discipline as ``consume_request``.
+        """
+        with self._lock:
+            now = self._now()
+            self._refill(self._global_requests, self._limits.global_requests, now)
+            if self._global_requests.tokens < 1:
+                return AdmissionRejection(
+                    "requests",
+                    self._retry_after(
+                        1,
+                        self._global_requests.tokens,
+                        self._limits.global_requests.tokens_per_minute,
+                    ),
+                    self._limits.global_requests.burst,
+                    scope="global",
+                )
+            self._global_requests.tokens -= 1
+            return None
+
     def consume_bytes(self, identity: str, amount: int) -> AdmissionRejection | None:
         return self._consume_paired(
             identity,
@@ -167,7 +231,11 @@ class TelemetryAdmissionController:
         with self._lock:
             if self._concurrency >= self._limits.max_concurrent_requests:
                 return AdmissionRejection(
-                    "concurrency", 1, self._limits.max_concurrent_requests
+                    "concurrency",
+                    1,
+                    self._limits.max_concurrent_requests,
+                    # Concurrency is installation-wide, never per caller.
+                    scope="global",
                 )
             self._concurrency += 1
 
@@ -209,14 +277,16 @@ class TelemetryAdmissionController:
                     resource,
                     self._retry_after(amount, ident_bucket.tokens, ident_policy.tokens_per_minute),
                     ident_policy.burst,
+                    scope="identity",
                 )
             if global_bucket.tokens < amount:
                 return AdmissionRejection(
                     resource,
                     self._retry_after(amount, global_bucket.tokens, global_policy.tokens_per_minute),
                     global_policy.burst,
+                    scope="global",
                 )
-            # Both passed — consume.
+            # Both passed: consume.
             ident_bucket.tokens -= amount
             global_bucket.tokens -= amount
             return None
