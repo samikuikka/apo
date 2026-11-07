@@ -14,6 +14,7 @@ import { listProjects, type Project } from "@/lib/projects-api"
 import { ApiKeyRevealDialog, type ApiKeyRevealPayload } from "@/components/api-key-created-dialog"
 import { ApiKeyCreateDialog } from "@/components/admin/api-key-create-dialog"
 import { ApiKeyRow } from "@/components/admin/api-key-row"
+import { ShikiCodeBlock } from "@/components/shiki-code-block"
 import { Check, Copy, KeyRound, Loader2, Plus, RefreshCw, ChevronDown } from "lucide-react"
 
 type RevealState = { payload: ApiKeyRevealPayload; action: "created" | "rotated" } | null
@@ -258,7 +259,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 }
 
 
-function CopyLine({ label, code }: { label: string; code: string }) {
+function CopyLine({ label, code, language }: { label: string; code: string; language: string }) {
   const [copied, setCopied] = useState(false)
   return (
     <div className="space-y-1">
@@ -279,9 +280,7 @@ function CopyLine({ label, code }: { label: string; code: string }) {
           {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         </Button>
       </div>
-      <pre className="overflow-x-auto rounded border bg-muted/50 p-2 font-mono text-xs leading-relaxed">
-        <code>{code}</code>
-      </pre>
+      <ShikiCodeBlock code={code} language={language} />
     </div>
   )
 }
@@ -299,9 +298,10 @@ function ConnectServiceCard() {
         quota is per key). Traces appear on the Traces page, no agent runs needed.
       </p>
       <div className="mt-3 grid gap-3">
-        <CopyLine label="OTLP endpoint" code={endpoint} />
+        <CopyLine label="OTLP endpoint" code={endpoint} language="text" />
         <CopyLine
           label="Python (opentelemetry-exporter-otlp-proto-http)"
+          language="python"
           code={`from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 import base64
 
@@ -310,9 +310,24 @@ exporter = OTLPSpanExporter(endpoint="${endpoint}", headers={"Authorization": au
         />
         <CopyLine
           label="curl"
-          code={`curl -u "<pk-apo-...>:<sk-apo-...>" ${endpoint} \
-  -H "Content-Type: application/json" \
-  -d '{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"my-service"}}]},"scopeSpans":[{"scope":{},"spans":[{"traceId":"<32-hex>","spanId":"<16-hex>","name":"hello"}]}]}]}'`}
+          language="bash"
+          code={`curl -u "<pk-apo-...>:<sk-apo-...>" ${endpoint} \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "resourceSpans": [{
+      "resource": {
+        "attributes": [
+          { "key": "service.name", "value": { "stringValue": "my-service" } }
+        ]
+      },
+      "scopeSpans": [{
+        "scope": {},
+        "spans": [
+          { "traceId": "<32-hex>", "spanId": "<16-hex>", "name": "hello" }
+        ]
+      }]
+    }]
+  }'`}
         />
       </div>
     </section>
