@@ -213,6 +213,20 @@ means unlimited — an invalid value fails startup.
 | `APO_ARTIFACT_UPLOAD_MAX_BODY_BYTES` | `104857600` | Max artifact upload body (100 MiB). |
 | `APO_WRITE_MAX_BODY_BYTES` | `10485760` | Max body for other member writes: executor-protocol `result`/`failure` (v1/v2), judgments, comments, and `/v1/runs` POSTs (create, custom-metrics, bulk-export, reproject). |
 
+## Export budgets
+
+Byte caps on export renders, enforced while the document is assembled:
+an export past its budget fails with `413` instead of buffering without
+bound inside the memory-capped backend. Same contract as the write caps:
+no disable flag, `0` never means unlimited. A run whose artifacts and
+trace legitimately exceed the run-export budget exports only on
+deployments that also raised the backend memory limit.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `APO_RUN_EXPORT_MAX_BYTES` | `268435456` | Max rendered size of one task-run export bundle (256 MiB), including base64 artifact bytes and the trace calls. |
+| `APO_BULK_EXPORT_MAX_BYTES` | `134217728` | Max rendered size of one `/v1/runs/bulk-export` response (128 MiB), JSON or CSV. |
+
 ## Auth and sessions
 
 | Variable | Default | Purpose |
