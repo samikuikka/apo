@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 
 import { useRunEvents, type RunEvent } from "@/hooks/use-run-events";
 import type { AgentTaskRunSummary } from "@/lib/agent-task-api";
+import { isTaskRunLive } from "@/lib/run-liveness";
 
 /** Same coalescing as the Runs list: a refresh re-runs the whole server page. */
 const REFRESH_COALESCE_MS = 1000;
 
 const TERMINAL_EVENTS = new Set(["task_run.completed", "task_run.error"]);
 
-const isUnsettled = (run: AgentTaskRunSummary): boolean =>
-  run.status === "running" || run.status === "pending";
+const isUnsettled = (run: AgentTaskRunSummary): boolean => isTaskRunLive(run.status);
 
 /**
  * Re-renders the task page when one of this task's runs starts or ends.

@@ -1,6 +1,7 @@
 import { getAgentTaskBatchRun } from "@/lib/agent-task-api";
 import { getProject } from "@/lib/projects-api";
 import { detailTitle } from "@/lib/page-title";
+import { isBatchRunLive } from "@/lib/run-liveness";
 import { getBatchName } from "../components/runs-utils";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -118,7 +119,7 @@ export default async function BatchRunDetailPage({
   });
   const selectionSummary = formatSelectionSummary(batchRun.selection_query, batchRun.total_tasks);
 
-  const isRunning = ["running", "queued"].includes(batchRun.status);
+  const isRunning = isBatchRunLive(batchRun.status);
 
   return (
     <div className="mx-auto max-w-6xl">

@@ -3,6 +3,7 @@ import type {
   AttemptWaitingReason,
   ExecutionAttemptSummary,
 } from "@/lib/agent-task-api";
+import { TERMINAL_ATTEMPT_STATUSES } from "@/lib/run-liveness";
 
 interface ExecutionAttemptPanelProps {
   attempts: ExecutionAttemptSummary[];
@@ -111,12 +112,9 @@ type Presentation = {
  */
 function hasDiagnosticValue(attempts: ExecutionAttemptSummary[]): boolean {
   if (attempts.length === 0) return false;
-  if (attempts.some((a) => !TERMINAL_ATTEMPT_STATUSES.has(a.status))) return true;
+  if (attempts.some((a) => !TERMINAL_ATTEMPT_STATUSES.includes(a.status))) return true;
   return new Set(attempts.map((a) => a.task_run_id)).size < attempts.length;
 }
-
-// Mirrors TERMINAL_STATUSES in backend/apo/services/execution_leases.py.
-const TERMINAL_ATTEMPT_STATUSES = new Set(["succeeded", "failed", "cancelled", "lost"]);
 
 // ============================================================================
 // Source-owned presentation
