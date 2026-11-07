@@ -1997,6 +1997,26 @@ class ApiKeyDailyUsageDB(SQLModel, table=True):
     )
 
 
+class UserDailyUsageDB(SQLModel, table=True):
+    """Per-account daily ingest usage, summed across every key the user
+    minted. One row per (user, UTC day), UPSERT-incremented alongside the
+    per-key row; backs the account-level aggregate quota
+    (APO_USER_DAILY_SPAN_QUOTA) so N minted keys no longer multiply the
+    per-key cap. Reaped by the same maintenance pass as per-key rows."""
+
+    __tablename__: ClassVar[str] = "user_daily_usage"
+
+    user_id: str = Field(foreign_key="users.id", primary_key=True)
+    day: str = Field(primary_key=True)  # "YYYY-MM-DD" (UTC)
+    span_count: int = Field(default=0)
+    byte_count: int = Field(default=0)
+    request_count: int = Field(default=0)
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(UTCDateTime, server_default=func.now()),
+    )
+
+
 class OtlpIngestBatchDB(SQLModel, table=True):
     """Durable inbox record for a received OTLP batch.
 
