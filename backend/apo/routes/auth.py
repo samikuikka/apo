@@ -54,6 +54,7 @@ from ..services.email_templates import (
     render_password_reset_email,
     render_verification_email,
 )
+from ..services.email_admission import require_admissible_email
 from ..services.installation_admin import require_installation_admin
 
 logger = logging.getLogger(__name__)
@@ -640,6 +641,8 @@ def invite_user(
 ):
     """Create a new user. Admin only."""
     _ = require_installation_admin(request, session)
+
+    require_admissible_email(body.email)
 
     error = validate_password_strength(body.password)
     if error:

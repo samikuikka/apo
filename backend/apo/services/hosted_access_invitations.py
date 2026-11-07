@@ -47,6 +47,7 @@ from ..models.schemas import (
     HostedAccessInvitationPreview,
     HostedAccessInvitationSummary,
 )
+from .email_admission import require_admissible_email
 from .email_templates import render_hosted_access_email
 from .invitation_tokens import (
     build_invite_url,
@@ -197,6 +198,7 @@ async def create_or_refresh_hosted_access_invitation(
         raise HTTPException(
             status_code=422, detail="A valid email address is required"
         )
+    require_admissible_email(normalized)
 
     raw_token, token_hash = generate_token()
     invite_url = build_invite_url(raw_token, _ACCEPT_PATH)
