@@ -7,10 +7,11 @@ live trace events: trace:created, span:created, span:updated, trace:completed.
 # pyright: reportCallIssue=false, reportCallInDefaultInitializer=false, reportDeprecated=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 
 from fastapi import APIRouter, Depends, Request
+from sqlalchemy.orm import defer
 from sqlmodel import Session, col, select
 
 from ..db import get_session
-from ..models.columns import LOGGED_CALL_CREATED_AT_COL
+from ..models.columns import CALL_LIGHT, LOGGED_CALL_CREATED_AT_COL
 from ..models.db import LoggedCallDB, RunDB
 from ..services.project_memberships import enforce_project_role_from_request
 from ..services.sse import format_sse_event, sse_streaming_response
@@ -96,8 +97,16 @@ def _build_initial_events(trace_id: str, project: str, session: Session) -> list
         }
         events.append(_format_sse("trace:created", trace_id, run_data))
 
+        # Initial events emit only scalar fields; deferring the payload
+        # columns keeps a long trace's I/O JSON (the quadratic agentic
+        # columns) out of the single-worker heap.
         calls = session.exec(
             select(LoggedCallDB)
+            .options(
+                *CALL_LIGHT,
+                defer(LoggedCallDB.input),  # pyright: ignore[reportArgumentType]
+                defer(LoggedCallDB.output),  # pyright: ignore[reportArgumentType]
+            )
             .where(
                 LoggedCallDB.run_id == trace_id,
                 col(LoggedCallDB.project) == project,

@@ -9,6 +9,7 @@ from sqlalchemy import ColumnElement
 from sqlmodel import Session, select
 
 from ..db import get_session
+from ..models.columns import TASK_RUN_LIGHT
 from ..models.db import AgentTaskBatchRunDB, AgentTaskRunDB
 from ..services.project_memberships import enforce_project_role_from_request
 from ..services.run_events import (
@@ -88,10 +89,12 @@ def _build_initial_events(project: str, session: Session) -> list[str]:
         # case — page navigation is slower than task startup) would never learn
         # the running task's trace_run_id and the live-trace panel would stay
         # stuck on "Waiting for spans..." until the terminal event.
+        # The replay reads only status fields; deferring transcripts keeps
+        # every live batch's full transcripts out of the heap.
         task_runs = session.exec(
-            select(AgentTaskRunDB).where(
-                AgentTaskRunDB.batch_run_id == batch.id
-            )
+            select(AgentTaskRunDB)
+            .options(*TASK_RUN_LIGHT)
+            .where(AgentTaskRunDB.batch_run_id == batch.id)
         ).all()
         for tr in task_runs:
             if tr.status == "running":
