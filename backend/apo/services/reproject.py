@@ -30,12 +30,16 @@ from .trace_projector import get_trace_projector
 logger = logging.getLogger(__name__)
 
 
-def reproject_trace(trace_id: str, project_id: str) -> int:
+def reproject_trace(
+    trace_id: str, project_id: str, cost_mode: str = "refresh"
+) -> int:
     """Re-project all canonical spans for a trace through the normalizer + projector.
 
     Args:
         trace_id: The OTel trace ID to reproject.
         project_id: The project the trace belongs to (for project isolation).
+        cost_mode: "refresh" re-runs cost calculation; "preserve" leaves
+            every stored price/cost field untouched (identity-only replay).
 
     Returns:
         The number of spans projected.
@@ -77,7 +81,7 @@ def reproject_trace(trace_id: str, project_id: str) -> int:
         seen = 0
         for span in spans:
             try:
-                projector.project(span, session)
+                projector.project(span, session, cost_mode=cost_mode)
                 count += 1
             except Exception:
                 logger.warning(
@@ -100,7 +104,9 @@ def reproject_trace(trace_id: str, project_id: str) -> int:
     return count
 
 
-def reproject_project(project_id: str, limit: int = 1000) -> int:
+def reproject_project(
+    project_id: str, limit: int = 1000, cost_mode: str = "refresh"
+) -> int:
     """Re-project all canonical spans for a project.
 
     Useful after a global mapper change. Processes traces in batches to avoid
@@ -109,6 +115,8 @@ def reproject_project(project_id: str, limit: int = 1000) -> int:
     Args:
         project_id: The project to reproject.
         limit: Maximum number of spans to process (safety valve).
+        cost_mode: "refresh" re-runs cost calculation; "preserve" leaves
+            every stored price/cost field untouched (identity-only replay).
 
     Returns:
         The number of spans projected.
@@ -130,7 +138,7 @@ def reproject_project(project_id: str, limit: int = 1000) -> int:
         seen = 0
         for span in spans:
             try:
-                projector.project(span, session)
+                projector.project(span, session, cost_mode=cost_mode)
                 count += 1
             except Exception:
                 logger.warning(

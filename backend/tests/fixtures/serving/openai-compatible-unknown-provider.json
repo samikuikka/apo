@@ -1,0 +1,33 @@
+{
+  "description": "OpenAI-compatible call to an unreported endpoint. Only instrumentation evidence exists: the instrumentation provider is visible while api provider and serving host stay unknown.",
+  "source": "serving-contract",
+  "case": "openai-compatible-unknown",
+  "input": {
+    "resourceSpans": [
+      {
+        "scopeSpans": [
+          {
+            "scope": { "name": "test" },
+            "spans": [
+              {
+                "traceId": "11111111111111111111111111111103",
+                "spanId": "cccccccccccccccc",
+                "name": "chat gengar-proxy",
+                "kind": 1,
+                "flags": 1,
+                "startTimeUnixNano": "1700000000000000000",
+                "endTimeUnixNano": "1700000001000000000",
+                "status": { "code": 1 },
+                "attributes": [
+                  { "key": "gen_ai.operation.name", "value": { "stringValue": "chat" } },
+                  { "key": "gen_ai.system", "value": { "stringValue": "openai" } },
+                  { "key": "gen_ai.request.model", "value": { "stringValue": "deepseek/deepseek-v4.1-flash" } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -264,6 +264,34 @@ class LoggedCallBase(SQLModel):
     # (gen_ai.request.model). Diverges when a gateway fallback served a
     # different model than the one requested. Null = provider reported none.
     served_model: str | None = Field(default=None)
+
+    # Observed serving identity (apo.llm.* attributes, GenAI/OpenInference
+    # conventions). ``provider`` above keeps its legacy meaning (the
+    # instrumentation's provider flavor); ``instrumentation_provider`` is the
+    # explicit identity home. ``observed_model`` is the pricing/grouping key:
+    # response model when reported, else the existing normalized model.
+    # ``serving_evidence`` records which attribute or adapter supplied each
+    # value. Null always means unknown; unknown is never a provider string.
+    instrumentation_provider: str | None = Field(default=None)
+    api_provider: str | None = Field(default=None)
+    serving_host: str | None = Field(default=None)
+    requested_service_tier: str | None = Field(default=None)
+    service_tier: str | None = Field(default=None)
+    request_model: str | None = Field(default=None)
+    response_model: str | None = Field(default=None)
+    observed_model: str | None = Field(default=None)
+    serving_evidence: dict[str, dict[str, str]] | None = None
+    # "request" | "aggregate" | None (unknown). One physical API request is a
+    # request; a multi-request wrapper (Vercel ai.generateText/streamText) is
+    # an aggregate whose per-step children carry the request evidence.
+    request_accounting: str | None = Field(default=None)
+    # Token/timing scopes for rate math: "text" | "all_output" | None.
+    output_token_scope: str | None = Field(default=None)
+    first_content_scope: str | None = Field(default=None)
+    # Estimate quality from serving-qualified pricing:
+    # "reported" | "qualified" | "model_only" | "unpriced" | "ambiguous".
+    pricing_quality: str | None = Field(default=None)
+    matched_serving: dict[str, str | None] | None = None
     latency_ms: float | None = Field(default=None, index=True)
     cost: int | None = Field(default=None, index=True)  # micro-USD int
 

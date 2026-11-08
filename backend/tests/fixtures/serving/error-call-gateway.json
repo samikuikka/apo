@@ -1,0 +1,34 @@
+{
+  "description": "Failed gateway request. Errors count toward serving groups and keep their identity, but never enter successful-call speed summaries.",
+  "source": "serving-contract",
+  "case": "error-call-gateway",
+  "input": {
+    "resourceSpans": [
+      {
+        "scopeSpans": [
+          {
+            "scope": { "name": "test" },
+            "spans": [
+              {
+                "traceId": "11111111111111111111111111111105",
+                "spanId": "ffffffffffffffff",
+                "name": "chat openrouter",
+                "kind": 1,
+                "flags": 1,
+                "startTimeUnixNano": "1700000000000000000",
+                "endTimeUnixNano": "1700000000500000000",
+                "status": { "code": 2, "message": "429 rate limited" },
+                "attributes": [
+                  { "key": "gen_ai.operation.name", "value": { "stringValue": "chat" } },
+                  { "key": "apo.llm.api_provider", "value": { "stringValue": "openrouter" } },
+                  { "key": "apo.llm.route", "value": { "stringValue": "nitro" } },
+                  { "key": "gen_ai.request.model", "value": { "stringValue": "deepseek/deepseek-v4.1-flash:nitro" } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

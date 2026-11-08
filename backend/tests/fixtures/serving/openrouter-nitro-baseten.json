@@ -1,0 +1,37 @@
+{
+  "description": "Gateway call through OpenRouter with the Nitro route executed on Baseten. Route stays an opaque label; requested model carries the :nitro variant while the response model is the served model.",
+  "source": "serving-contract",
+  "case": "openrouter-nitro-baseten",
+  "input": {
+    "resourceSpans": [
+      {
+        "scopeSpans": [
+          {
+            "scope": { "name": "test" },
+            "spans": [
+              {
+                "traceId": "11111111111111111111111111111102",
+                "spanId": "bbbbbbbbbbbbbbbb",
+                "name": "chat openrouter",
+                "kind": 1,
+                "flags": 1,
+                "startTimeUnixNano": "1700000000000000000",
+                "endTimeUnixNano": "1700000003000000000",
+                "status": { "code": 1 },
+                "attributes": [
+                  { "key": "gen_ai.operation.name", "value": { "stringValue": "chat" } },
+                  { "key": "gen_ai.provider.name", "value": { "stringValue": "openai" } },
+                  { "key": "gen_ai.request.model", "value": { "stringValue": "deepseek/deepseek-v4.1-flash:nitro" } },
+                  { "key": "gen_ai.response.model", "value": { "stringValue": "deepseek/deepseek-v4.1-flash" } },
+                  { "key": "apo.llm.api_provider", "value": { "stringValue": "openrouter" } },
+                  { "key": "apo.llm.serving_host", "value": { "stringValue": "baseten" } },
+                  { "key": "apo.llm.route", "value": { "stringValue": "openrouter:nitro->baseten" } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
