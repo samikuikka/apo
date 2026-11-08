@@ -71,5 +71,11 @@ configs, 8–10 batches across ~3–4 weeks of frozen timestamps
   filters at span level by trace id.
 - User ids are rewritten to the inert `demo-user` on export; the demo user
   has no usable credential.
+- Captured span attributes embed the capture machine's absolute home
+  paths (task roots, tool working directories, library stack frames).
+  The fixture is world-readable, so every `finish` rewrites them to the
+  neutral `/home/demo` root. Use `scrub` to apply the same rewrite to an
+  existing fixture file. `verify` rejects a fixture that still names a
+  real `/home/<user>` directory.
 - Corrections replay through the real correction service on load, so
   verdict scalars and `corrected_tests` re-derive exactly as live.

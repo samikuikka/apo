@@ -11,8 +11,11 @@ with a filesystem task source rooted at the bundled demo tree. ``finish``
 exports everything created after the watermark, merges it into
 ``apo/data/demo-workspace-v1.json`` (verbatim ids dedupe naturally; use
 ``--pin FROM=TO`` to keep guide-rail anchor ids stable across recaptures),
-and removes the watermark. ``verify`` loads the shipped fixture into a
-scratch database and asserts the surface checklist.
+scrubs the capture machine's home paths out of the merged document, and
+removes the watermark. ``scrub`` applies the same rewrite to an existing
+fixture file. ``verify`` loads the shipped fixture into a scratch database,
+rejects any local home path it still contains, and asserts the surface
+checklist.
 
 Re-capture policy: manual. Full recapture is worth it when the fixture
 schema bumps, the demo task tree changed materially, captured evidence
@@ -27,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,6 +63,12 @@ from .services.project_task_inventory import seed_demo_inventory
 CAPTURE_PROJECT_ID = "demo-capture"
 
 DEMO_USER_ID = "demo-user"
+
+# Captured span attributes embed the capture machine's absolute home paths
+# (task roots, tool working directories, library stack frames). The fixture
+# is served to anonymous visitors, so the build rewrites every one to this
+# neutral root and verify rejects any other /home/<user> reference.
+NEUTRAL_HOME = "/home/demo"
 WATERMARK_PATH = Path(__file__).resolve().parents[1] / "data" / "demo-capture-session.json"
 
 
@@ -74,7 +84,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="Rename an entity id in the exported delta (repeatable); "
                              "keeps guide-rail anchors like demo-run-001 stable")
     finish.add_argument("--out", type=Path, default=None, help="Fixture path (default: shipped)")
-    sub.add_parser("verify", help="Load the shipped fixture into a scratch DB and check it")
+    scrub = sub.add_parser("scrub", help="Scrub local home paths from an existing fixture file")
+    scrub.add_argument("--path", type=Path, default=DEFAULTS_PATH, help="Fixture path (default: shipped)")
+    verify = sub.add_parser("verify", help="Load the shipped fixture into a scratch DB and check it")
+    verify.add_argument("--path", type=Path, default=DEFAULTS_PATH, help="Fixture path (default: shipped)")
     sub.add_parser("abort", help="Discard the capture session watermark")
 
     args = parser.parse_args(argv)
@@ -82,8 +95,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_start()
     if args.command == "finish":
         return cmd_finish([p.split("=", 1) for p in args.pin], args.out or DEFAULTS_PATH, getattr(args, "project", None))
+    if args.command == "scrub":
+        return cmd_scrub(args.path)
     if args.command == "verify":
-        return cmd_verify(args.out if hasattr(args, "out") else DEFAULTS_PATH)
+        return cmd_verify(args.path)
     if args.command == "abort":
         return cmd_abort()
     return 2
@@ -160,6 +175,18 @@ def cmd_finish(pins: list[list[str]], out_path: Path, project: str | None = None
     WATERMARK_PATH.unlink()
     print(f"merged {len(delta['batches'])} batch(es) into {out_path}; session closed")
     print("Run `verify` next; reload happens on next backend boot.")
+    return 0
+
+
+def cmd_scrub(path: Path) -> int:
+    """Clean an existing fixture file in place (e.g. one captured before
+    the merge-time scrub existed)."""
+    from .services.demo_fixture import _read_fixture_bytes
+
+    document = json.loads(_read_fixture_bytes(path))
+    removed = scrub_local_paths(document, str(Path.home()))
+    _write_fixture(document, path)
+    print(f"scrubbed {removed} local path reference(s) from {path}")
     return 0
 
 
@@ -556,6 +583,39 @@ def apply_pins(delta: dict[str, Any], pin_map: dict[str, str]) -> None:
 # ---------------------------------------------------------------------------
 
 
+def scrub_local_paths(document: Any, home: str) -> int:
+    """Rewrite every ``home``-rooted path in the document to NEUTRAL_HOME.
+
+    The paths hide inside JSON blobs serialized into span attribute
+    strings (``apo.run.metadata``, ``gen_ai.input.messages``, stack
+    frames), so the rewrite walks the whole tree instead of known fields.
+    The prefix only matches on a path-component boundary, so a home like
+    ``/home/sam`` cannot corrupt ``/home/sam-two``. Returns the number of
+    references rewritten.
+    """
+    pattern = re.compile(re.escape(home) + r"(?=/|$)")
+
+    def rewrite(node: Any) -> int:
+        count = 0
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if isinstance(value, str):
+                    node[key], n = pattern.subn(NEUTRAL_HOME, value)
+                    count += n
+                else:
+                    count += rewrite(value)
+        elif isinstance(node, list):
+            for i, value in enumerate(node):
+                if isinstance(value, str):
+                    node[i], n = pattern.subn(NEUTRAL_HOME, value)
+                    count += n
+                else:
+                    count += rewrite(value)
+        return count
+
+    return rewrite(document)
+
+
 def merge_into_fixture(delta: dict[str, Any], out_path: Path) -> None:
     fixture: dict[str, Any]
     if out_path.exists():
@@ -599,7 +659,14 @@ def merge_into_fixture(delta: dict[str, Any], out_path: Path) -> None:
         cv[c["id"]] = c
     views["comparisons"] = list(cv.values())
 
-    rendered = json.dumps(fixture, indent=2, ensure_ascii=False).encode() + b"\n"
+    scrubbed = scrub_local_paths(fixture, str(Path.home()))
+    if scrubbed:
+        print(f"scrubbed {scrubbed} local path reference(s) from the fixture")
+    _write_fixture(fixture, out_path)
+
+
+def _write_fixture(document: dict[str, Any], out_path: Path) -> None:
+    rendered = json.dumps(document, indent=2, ensure_ascii=False).encode() + b"\n"
     if out_path.suffix == ".gz":
         import gzip
 
@@ -620,8 +687,17 @@ def cmd_verify(fixture_path: Path) -> int:
     from sqlmodel import SQLModel
     from sqlmodel import Session as SQLSession
 
-    from .services.demo_fixture import load_demo_fixture
+    from .services.demo_fixture import _read_fixture_bytes, load_demo_fixture
     from .services.demo_workspace import DEMO_PROJECT_ID
+
+    # The leak gate runs before the load: a fixture naming any real home
+    # directory is rejected outright, whatever machine captured it.
+    document = json.loads(_read_fixture_bytes(fixture_path))
+    leaks = find_home_references(document)
+    if leaks:
+        print("VERIFY FAILED:")
+        print(f"  - fixture leaks local home paths: {', '.join(leaks[:5])}")
+        return 1
 
     with tempfile.TemporaryDirectory() as tmp:
         db_url = f"sqlite:///{tmp}/verify.db"
@@ -642,6 +718,32 @@ def cmd_verify(fixture_path: Path) -> int:
         return 1
     print("verify: all surface checks passed")
     return 0
+
+
+def find_home_references(document: Any) -> list[str]:
+    """Every /home/<user> reference other than the neutral root, sorted.
+
+    Pattern-matched rather than keyed to the verify machine's own home:
+    the fixture is public, so a path naming ANY real user's home directory
+    is a leak no matter which machine captured or checks the file.
+    """
+    found: set[str] = set()
+    pattern = re.compile(r"/home/[A-Za-z0-9._-]+")
+
+    def scan(node: Any) -> None:
+        if isinstance(node, dict):
+            for value in node.values():
+                scan(value)
+        elif isinstance(node, list):
+            for value in node:
+                scan(value)
+        elif isinstance(node, str):
+            found.update(
+                ref for ref in pattern.findall(node) if ref != NEUTRAL_HOME
+            )
+
+    scan(document)
+    return sorted(found)
 
 
 def run_checklist(session: Any) -> list[str]:
