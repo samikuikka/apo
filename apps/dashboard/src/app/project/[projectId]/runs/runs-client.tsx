@@ -42,6 +42,12 @@ import {
   ScopeRailSheet,
   useRailVisible,
 } from "@/components/run-scope-rail";
+import {
+  EMPTY_METRIC_FILTERS,
+  isMetricFilterActive,
+  metricFilterParams,
+  parseMetricFilters,
+} from "@/lib/run-metric-filters";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { COL, computeOverlap } from "./components/runs-utils";
 import { setModelArchived } from "@/lib/agent-task-view-api";
@@ -212,6 +218,15 @@ export function RunsClient({
   const isMobile = useIsMobile();
   const [railOpen, setRailOpen] = useRailVisible();
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Stored-metric ranges (`?cost_min=&duration_max=` and friends) ride the
+  // URL exactly like the scope, so they survive reloads and sharing.
+  const metrics = useMemo(() => parseMetricFilters(searchParams), [searchParams]);
+  const setMetrics = useCallback(
+    (next: typeof EMPTY_METRIC_FILTERS) => {
+      updateUrl({ ...metricFilterParams(next), page: null });
+    },
+    [updateUrl],
+  );
 
   const selectedEfforts = useMemo(() => {
     const raw = searchParams.get("effort") ?? "";
@@ -250,7 +265,8 @@ export function RunsClient({
     selectedModels.size > 0 ||
     selectedEfforts.size > 0 ||
     selectedHosts.size > 0 ||
-    isRunScopeActive(scope);
+    isRunScopeActive(scope) ||
+    isMetricFilterActive(metrics);
 
   const clearFilters = useCallback(() => {
     // Cancel any in-flight debounced status write so it cannot resurrect a
@@ -266,6 +282,7 @@ export function RunsClient({
       since: null,
       environment: null,
       label: null,
+      ...metricFilterParams(EMPTY_METRIC_FILTERS),
       page: null,
     });
   }, [updateUrl]);
@@ -316,6 +333,8 @@ export function RunsClient({
         facets={labelFacets}
         scope={scope}
         onScopeChange={setScope}
+        metrics={metrics}
+        onMetricsChange={setMetrics}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
       />
@@ -324,6 +343,8 @@ export function RunsClient({
           facets={labelFacets}
           scope={scope}
           onScopeChange={setScope}
+          metrics={metrics}
+          onMetricsChange={setMetrics}
           onClose={() => setRailOpen(false)}
         />
       )}
@@ -348,6 +369,8 @@ export function RunsClient({
             facets={labelFacets}
             scope={scope}
             onScopeChange={setScope}
+            metrics={metrics}
+            onMetricsChange={setMetrics}
             open={isMobile ? sheetOpen : railOpen}
             onToggle={() =>
               isMobile ? setSheetOpen(!sheetOpen) : setRailOpen(!railOpen)

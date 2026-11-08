@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
@@ -20,6 +20,15 @@ import {
   toggleRunScopeValue,
   type RunScope,
 } from "@/lib/run-scope";
+import {
+  COST_PRESETS,
+  DURATION_PRESETS,
+  EMPTY_METRIC_FILTERS,
+  metricChips,
+  type MetricPreset,
+  type MetricRange,
+  type RunMetricFilters,
+} from "@/lib/run-metric-filters";
 import type { RunLabelFacets } from "@/lib/agent-task-api";
 import { cn } from "@/lib/utils";
 
@@ -41,9 +50,19 @@ export interface ScopeRailProps {
   facets: RunLabelFacets | null;
   scope: RunScope;
   onScopeChange: (next: RunScope) => void;
+  /** Stored-metric ranges (cost, duration); omitted hides those sections. */
+  metrics?: RunMetricFilters;
+  onMetricsChange?: (next: RunMetricFilters) => void;
 }
 
-export function ScopeRail({ facets, scope, onScopeChange, onClose }: ScopeRailProps & { onClose: () => void }) {
+export function ScopeRail({
+  facets,
+  scope,
+  onScopeChange,
+  metrics,
+  onMetricsChange,
+  onClose,
+}: ScopeRailProps & { onClose: () => void }) {
   return (
     <aside aria-label="Filters" className="flex w-[264px] shrink-0 flex-col border-r border-border">
       <div className="flex items-center justify-between px-4 pb-2 pt-4">
@@ -60,7 +79,13 @@ export function ScopeRail({ facets, scope, onScopeChange, onClose }: ScopeRailPr
           <PanelLeftClose className="h-4 w-4" />
         </button>
       </div>
-      <ScopeRailBody facets={facets} scope={scope} onScopeChange={onScopeChange} />
+      <ScopeRailBody
+        facets={facets}
+        scope={scope}
+        onScopeChange={onScopeChange}
+        metrics={metrics}
+        onMetricsChange={onMetricsChange}
+      />
     </aside>
   );
 }
@@ -69,6 +94,8 @@ export function ScopeRailSheet({
   facets,
   scope,
   onScopeChange,
+  metrics,
+  onMetricsChange,
   open,
   onOpenChange,
 }: ScopeRailProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -80,7 +107,13 @@ export function ScopeRailSheet({
             Filters
           </SheetTitle>
         </SheetHeader>
-        <ScopeRailBody facets={facets} scope={scope} onScopeChange={onScopeChange} />
+        <ScopeRailBody
+          facets={facets}
+          scope={scope}
+          onScopeChange={onScopeChange}
+          metrics={metrics}
+          onMetricsChange={onMetricsChange}
+        />
       </SheetContent>
     </Sheet>
   );
@@ -95,12 +128,20 @@ export function RailToggle({
   facets,
   scope,
   onScopeChange,
+  metrics,
+  onMetricsChange,
   open,
   onToggle,
 }: ScopeRailProps & { open: boolean; onToggle: () => void }) {
   const dims = useMemo(() => runScopeDimensions(facets, scope), [facets, scope]);
   const chips = runScopeChips(scope, dims);
+  const ranges = metrics !== undefined ? metricChips(metrics) : [];
+  const activeCount = chips.length + ranges.length;
   const Icon = open ? PanelLeftClose : PanelLeftOpen;
+  const clearAll = () => {
+    onScopeChange({ environments: [], labels: {} });
+    onMetricsChange?.(EMPTY_METRIC_FILTERS);
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -112,13 +153,13 @@ export function RailToggle({
         onClick={onToggle}
         className={cn(
           "flex h-7 items-center gap-1.5 border px-2 text-[12px] transition-colors",
-          open || chips.length > 0
+          open || activeCount > 0
             ? "border-foreground/30 bg-muted/60 text-foreground"
             : "border-input bg-muted/40 text-foreground hover:bg-muted/60",
         )}
       >
         <Icon className="h-3.5 w-3.5 opacity-70" />
-        <span>{chips.length > 0 ? `${chips.length} active` : `${dims.length} dimensions`}</span>
+        <span>{activeCount > 0 ? `${activeCount} active` : `${dims.length} dimensions`}</span>
       </button>
       {!open &&
         chips.map((chip) => (
@@ -129,10 +170,26 @@ export function RailToggle({
             onRemove={() => onScopeChange(toggleRunScopeValue(scope, chip.key, chip.id))}
           />
         ))}
-      {!open && chips.length > 0 && (
+      {!open &&
+        ranges.map((range) => (
+          <FilterChip
+            key={`${range.metric}:${range.text}`}
+            dimension={range.metric}
+            value={range.text}
+            onRemove={() =>
+              onMetricsChange?.({
+                ...EMPTY_METRIC_FILTERS,
+                ...(range.metric === "Cost"
+                  ? { cost: EMPTY_METRIC_FILTERS.cost }
+                  : { durationSeconds: EMPTY_METRIC_FILTERS.durationSeconds }),
+              })
+            }
+          />
+        ))}
+      {!open && activeCount > 0 && (
         <button
           type="button"
-          onClick={() => onScopeChange({ environments: [], labels: {} })}
+          onClick={clearAll}
           className="text-[12px] text-muted-foreground underline underline-offset-4 hover:text-foreground"
         >
           Clear
@@ -180,7 +237,13 @@ export function useRailVisible(): [boolean, (next: boolean) => void] {
   return [stored !== "false", setVisible];
 }
 
-function ScopeRailBody({ facets, scope, onScopeChange }: ScopeRailProps) {
+function ScopeRailBody({
+  facets,
+  scope,
+  onScopeChange,
+  metrics,
+  onMetricsChange,
+}: ScopeRailProps) {
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -211,6 +274,9 @@ function ScopeRailBody({ facets, scope, onScopeChange }: ScopeRailProps) {
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+        {metrics !== undefined && onMetricsChange !== undefined && (
+          <MetricSections metrics={metrics} onMetricsChange={onMetricsChange} />
+        )}
         {visible.length === 0 && (
           <div className="py-2 text-[12px] text-muted-foreground">
             No dimension or value matches.
@@ -274,7 +340,7 @@ function ScopeRailBody({ facets, scope, onScopeChange }: ScopeRailProps) {
             </div>
           );
         })}
-        {chips.length > 0 && (
+        {(chips.length > 0 || (metrics !== undefined && metricChips(metrics).length > 0)) && (
           <div className="mt-4 flex flex-wrap items-center gap-1.5">
             <span className="w-full text-[11px] uppercase tracking-wide text-foreground/50">
               Active
@@ -287,9 +353,28 @@ function ScopeRailBody({ facets, scope, onScopeChange }: ScopeRailProps) {
                 onRemove={() => onScopeChange(toggleRunScopeValue(scope, chip.key, chip.id))}
               />
             ))}
+            {metrics !== undefined &&
+              metricChips(metrics).map((range) => (
+                <FilterChip
+                  key={`${range.metric}:${range.text}`}
+                  dimension={range.metric}
+                  value={range.text}
+                  onRemove={() =>
+                    onMetricsChange?.({
+                      ...EMPTY_METRIC_FILTERS,
+                      ...(range.metric === "Cost"
+                        ? { cost: EMPTY_METRIC_FILTERS.cost }
+                        : { durationSeconds: EMPTY_METRIC_FILTERS.durationSeconds }),
+                    })
+                  }
+                />
+              ))}
             <button
               type="button"
-              onClick={() => onScopeChange({ environments: [], labels: {} })}
+              onClick={() => {
+                onScopeChange({ environments: [], labels: {} });
+                onMetricsChange?.(EMPTY_METRIC_FILTERS);
+              }}
               className="text-[12px] text-muted-foreground underline underline-offset-4 hover:text-foreground"
             >
               Clear All
@@ -298,6 +383,152 @@ function ScopeRailBody({ facets, scope, onScopeChange }: ScopeRailProps) {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * The two stored-metric range sections: Cost (dollars) and Duration
+ * (presets in minutes, custom bounds typed in minutes and carried as
+ * seconds). Presets apply on click; the inputs commit on blur or Enter so a
+ * half-typed number never touches the URL.
+ */
+function MetricSections({
+  metrics,
+  onMetricsChange,
+}: {
+  metrics: RunMetricFilters;
+  onMetricsChange: (next: RunMetricFilters) => void;
+}) {
+  const setCost = (cost: MetricRange) => onMetricsChange({ ...metrics, cost });
+  const setDuration = (durationSeconds: MetricRange) =>
+    onMetricsChange({ ...metrics, durationSeconds });
+  return (
+    <>
+      <MetricSection title="Cost">
+        <RangeInputs
+          ariaPrefix="Cost"
+          bounds={metrics.cost}
+          format={(value) => String(value)}
+          parse={(text) => Number(text)}
+          onChange={setCost}
+        />
+        <Presets presets={COST_PRESETS} bounds={metrics.cost} onSelect={setCost} />
+      </MetricSection>
+      <MetricSection title="Duration">
+        <RangeInputs
+          ariaPrefix="Duration"
+          bounds={metrics.durationSeconds}
+          format={(seconds) => String(seconds / 60)}
+          parse={(text) => Number(text) * 60}
+          onChange={setDuration}
+          suffix="min"
+        />
+        <Presets presets={DURATION_PRESETS} bounds={metrics.durationSeconds} onSelect={setDuration} />
+      </MetricSection>
+    </>
+  );
+}
+
+function MetricSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="border-b border-border pb-2">
+      <span className="block py-2 text-xs font-medium">{title}</span>
+      {children}
+    </div>
+  );
+}
+
+function RangeInputs({
+  ariaPrefix,
+  bounds,
+  format,
+  parse,
+  onChange,
+  suffix,
+}: {
+  ariaPrefix: string;
+  bounds: MetricRange;
+  format: (value: number) => string;
+  parse: (text: string) => number;
+  onChange: (next: MetricRange) => void;
+  suffix?: string;
+}) {
+  const [minText, setMinText] = useState(bounds.min === null ? "" : format(bounds.min));
+  const [maxText, setMaxText] = useState(bounds.max === null ? "" : format(bounds.max));
+  // External changes (a preset pick, Clear All, back/forward) re-sync the
+  // inputs during render via a prev-value compare.
+  const [prev, setPrev] = useState(bounds);
+  if (prev !== bounds) {
+    setPrev(bounds);
+    setMinText(bounds.min === null ? "" : format(bounds.min));
+    setMaxText(bounds.max === null ? "" : format(bounds.max));
+  }
+  const commit = (which: "min" | "max", text: string) => {
+    const trimmed = text.trim();
+    const value = trimmed === "" ? null : parse(trimmed);
+    const next = value !== null && Number.isFinite(value) && value >= 0 ? value : null;
+    onChange(which === "min" ? { ...bounds, min: next } : { ...bounds, max: next });
+  };
+  return (
+    <div className="flex items-center gap-1.5">
+      <input
+        value={minText}
+        onChange={(event) => setMinText(event.target.value)}
+        onBlur={() => commit("min", minText)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") commit("min", minText);
+        }}
+        aria-label={`${ariaPrefix} minimum`}
+        placeholder="min"
+        className="h-7 w-full border border-border bg-card px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/50"
+      />
+      <span className="text-[11px] text-muted-foreground">to</span>
+      <input
+        value={maxText}
+        onChange={(event) => setMaxText(event.target.value)}
+        onBlur={() => commit("max", maxText)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") commit("max", maxText);
+        }}
+        aria-label={`${ariaPrefix} maximum`}
+        placeholder={suffix ?? "max"}
+        className="h-7 w-full border border-border bg-card px-2 font-mono text-[12px] outline-none placeholder:text-muted-foreground/50"
+      />
+    </div>
+  );
+}
+
+function Presets({
+  presets,
+  bounds,
+  onSelect,
+}: {
+  presets: MetricPreset[];
+  bounds: MetricRange;
+  onSelect: (next: MetricRange) => void;
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {presets.map((preset) => {
+        const pressed = bounds.min === preset.min && bounds.max === preset.max;
+        return (
+          <button
+            key={preset.label}
+            type="button"
+            aria-pressed={pressed}
+            onClick={() => onSelect(pressed ? { min: null, max: null } : { min: preset.min, max: preset.max })}
+            className={cn(
+              "border px-1.5 py-0.5 text-[11px]",
+              pressed
+                ? "border-foreground/30 bg-muted text-foreground"
+                : "border-border text-muted-foreground hover:bg-muted/60",
+            )}
+          >
+            {preset.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
