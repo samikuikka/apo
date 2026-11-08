@@ -282,7 +282,7 @@ container required. The optional `s3` backend keeps the same server API.
 | `APO_RESULT_EVIDENCE_STALE_TTL_SECONDS` | `86400` | The daily pass reaps result-evidence staging rows (and their objects) older than this — abandoned uploads from attempts that never finalized. |
 | `APO_ARTIFACT_ORPHAN_GRACE_HOURS` | `48` | The daily pass reaps artifact-store objects no manifest row references (crash orphans). Objects younger than this grace are left alone; `staging/*.part` files are never touched. |
 | `APO_DEFAULT_DAILY_SPAN_QUOTA` | `0` | Default accepted-spans/day quota applied to NEWLY MINTED API keys, including keys minted by `apo login`. `0` = unlimited. Existing keys are untouched; edit per key (Settings → API Keys). Quota is per key (N keys = N × cap) and resets at UTC midnight; over-quota ingest gets 429. |
-| `APO_USER_DAILY_SPAN_QUOTA` | `0` | Account-level accepted-spans/day cap summed across every API key the user minted; bounds the whole key fleet of one account. `0` = off (per-key quotas alone multiply by key count). Resets at UTC midnight; over-quota ingest gets 429 with `Retry-After`, same shape as the per-key quota. |
+| `APO_USER_DAILY_SPAN_QUOTA` | `0` | Account-level accepted-spans/day cap summed across every API key the user minted; bounds the whole key fleet of one account. `0` = off (per-key quotas alone multiply by key count). Resets at UTC midnight; over-quota ingest gets 429 with `Retry-After`, same shape as the per-key quota. A per-user `daily_span_quota` value (see below) wins over this default for that one account. |
 | `APO_PROJECT_DAILY_STORAGE_QUOTA` | `0` | Project-level bytes/day cap for accepted Deliverable and result-evidence uploads (counted at upload-intent time, summed across every run in the project). `0` = off (item/run/attempt caps never bound the sum across runs). Resets at UTC midnight; over-quota intents get 429 with `Retry-After`. Complements retention, which bounds stored data by age. |
 | `APO_USAGE_RETENTION_DAYS` | `400` | Days to keep per-key daily ingest-usage rows. `0` = keep forever. |
 | `APO_S3_BUCKET` | - | Required for S3 writes. |
@@ -292,6 +292,25 @@ container required. The optional `s3` backend keeps the same server API.
 | `APO_S3_ACCESS_KEY_ID` | - | Optional; credential chain otherwise. |
 | `APO_S3_SECRET_ACCESS_KEY` | - | Paired with the access key. |
 | `APO_S3_FORCE_PATH_STYLE` | `false` | MinIO-like path-style compatibility. |
+
+### Per-user quota overrides
+
+An installation admin can cap any single account with
+`PATCH /auth/users/{user_id}`, setting `daily_span_quota`, `max_projects`,
+and `max_api_keys`. All three are stored per user; unset (NULL) means no
+per-user policy.
+
+- `daily_span_quota` resolves per account: `0` = unlimited even when
+  `APO_USER_DAILY_SPAN_QUOTA` is set, `N` = cap at N accepted spans/day
+  across all of the account's keys (429 shape unchanged), unset = inherit
+  `APO_USER_DAILY_SPAN_QUOTA` (itself off at `0`).
+- `max_projects` and `max_api_keys` count live rows (projects owned via
+  membership; minted API keys): `NULL` = unlimited, `0` = creation frozen,
+  `N` = cap. Revoking a key or deleting a project frees its slot; creation
+  past a cap gets 403 with the counts in the message.
+
+The span override applies on the next request after the PATCH; the count
+caps are checked before anything is written.
 
 Readiness (`/health/ready`) fails when the selected write backend is unusable.
 Rows persist `storage_backend` so changing the write backend never reinterprets
