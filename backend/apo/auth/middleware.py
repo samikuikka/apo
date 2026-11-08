@@ -527,10 +527,14 @@ def _authenticate_basic(public_key: str, secret_key: str) -> AuthContext | None:
             "auth_method": "api_key",
             "api_key_scope": api_key.scope,
             "api_key_id": api_key.id,
-            # Ingest guardrails — read from the cached row so the
+            # Ingest guardrails, read from the cached row so the
             # existing key-cache invalidation covers quota/pause edits.
             "api_key_daily_quota": api_key.daily_span_quota,
             "api_key_ingest_paused": api_key.ingest_paused,
+            # Account-level span quota override, read from the fresh
+            # creator row above, so an admin PATCH applies on the next
+            # request with no extra query.
+            "user_daily_span_quota": creator.daily_span_quota,
         }
 
 
@@ -592,10 +596,14 @@ def _authenticate_bearer(token: str) -> AuthContext | None:
             "auth_method": "api_key",
             "api_key_scope": api_key.scope,
             "api_key_id": api_key.id,
-            # Ingest guardrails — read from the cached row so the
+            # Ingest guardrails, read from the cached row so the
             # existing key-cache invalidation covers quota/pause edits.
             "api_key_daily_quota": api_key.daily_span_quota,
             "api_key_ingest_paused": api_key.ingest_paused,
+            # Account-level span quota override, read from the fresh
+            # creator row above, so an admin PATCH applies on the next
+            # request with no extra query.
+            "user_daily_span_quota": creator.daily_span_quota,
         }
 
 

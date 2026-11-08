@@ -6,7 +6,10 @@ a paused key gets 403 (collectors must not retry), an over-quota key or
 account gets 429 with Retry-After to UTC midnight. The per-key quota and
 pause read straight off ``request.state`` (populated by the auth
 middleware from the cached key row, so PATCH invalidation applies
-immediately); the account cap reads the environment at call time. Both
+immediately); the account cap resolves the per-user override off
+``request.state`` (the middleware's fresh creator read, so an admin
+PATCH applies on the next request) against the
+APO_USER_DAILY_SPAN_QUOTA environment default. Both
 read today's counts from the usage tables through short-lived
 in-process caches.
 
@@ -38,8 +41,7 @@ from fastapi import HTTPException, Request
 from sqlalchemy import text
 from sqlmodel import Session
 
-from ..models.db import ApiKeyDB
-from .user_quotas import user_daily_span_quota
+from .user_quotas import effective_daily_span_quota
 
 logger = logging.getLogger(__name__)
 
@@ -141,8 +143,10 @@ def enforce_ingest_guardrails(
         )
 
     key_quota = getattr(request.state, "api_key_daily_quota", None) or 0
-    account_quota = user_daily_span_quota()
-    if key_quota <= 0 and account_quota <= 0:
+    account_quota = effective_daily_span_quota(
+        getattr(request.state, "user_daily_span_quota", None)
+    )
+    if key_quota <= 0 and account_quota is None:
         return
 
     day, reset_at = _utc_day()
@@ -156,9 +160,8 @@ def enforce_ingest_guardrails(
                 message="daily span quota exceeded for this API key",
             )
 
-    if account_quota > 0:
-        key_row = session.get(ApiKeyDB, api_key_id)
-        user_id = key_row.created_by if key_row else None
+    if account_quota is not None:
+        user_id = getattr(request.state, "user_id", None)
         if user_id:
             used = _today_user_spans(session, user_id, day)
             if used + pending_spans > account_quota:
