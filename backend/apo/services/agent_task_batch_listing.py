@@ -10,9 +10,12 @@ parses query params and delegates; everything from the base
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime
+from typing import cast
 
 from pydantic import BaseModel
 from sqlalchemy import and_, desc, func, or_
+from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, col, select
 from sqlmodel.sql.expression import SelectOfScalar
 
@@ -34,6 +37,7 @@ from ..services.agent_task_projection import (
 from ..services.archived_models import load_archived_models
 from ..services.human_actor import user_labels
 from ..services.trace_backend import parse_model_providers, provider_labels
+from ..db import is_sqlite
 from ..services.run_labels import batch_scope_conditions
 from ..services.view_runs import since_cutoff
 
@@ -87,6 +91,13 @@ class BatchRunListFilters:
     environments: list[str] = field(default_factory=list)
     # ``run_metadata.labels`` ids per key: OR within a key, AND across keys.
     labels: dict[str, list[str]] = field(default_factory=dict)
+    # Rolled-up cost in dollars: sum of the batch's child-run costs.
+    cost_min: float | None = None
+    cost_max: float | None = None
+    # Wall-clock duration in seconds (completed_at - started_at); batches
+    # without both timestamps never match a duration filter.
+    duration_min_s: float | None = None
+    duration_max_s: float | None = None
 
 
 @dataclass
@@ -120,6 +131,7 @@ def list_batch_run_summaries(
         provider_facets = _compute_provider_facets(session, base)
     filtered = _apply_config_filters(base, filters.models, filters.efforts)
     filtered = _apply_provider_filter(filtered, filters.providers)
+    filtered = _apply_metric_filters(filtered, filters)
 
     total_count = session.exec(
         select(func.count()).select_from(filtered.subquery())
@@ -443,3 +455,58 @@ def _hydrate_batch_summaries(
         )
         for br in batches
     ]
+
+
+def _apply_metric_filters(
+    base: SelectOfScalar[AgentTaskBatchRunDB],
+    filters: BatchRunListFilters,
+) -> SelectOfScalar[AgentTaskBatchRunDB]:
+    """Range filters over stored run metrics.
+
+    Cost is the batch's child-run sum (the rollup the page shows), so the
+    filter subquery aggregates the same way the hydration does. Duration is
+    the wall-clock span of the batch itself; a batch that never started or
+    never completed has no duration and never matches a duration filter.
+    """
+    started = col(AgentTaskBatchRunDB.started_at)
+    completed = col(AgentTaskBatchRunDB.completed_at)
+    if any((filters.duration_min_s, filters.duration_max_s)):
+        base = base.where(started.is_not(None), completed.is_not(None))
+        if filters.duration_min_s is not None:
+            base = base.where(_duration_seconds(completed, started) >= filters.duration_min_s)
+        if filters.duration_max_s is not None:
+            base = base.where(_duration_seconds(completed, started) <= filters.duration_max_s)
+    if filters.cost_min is not None or filters.cost_max is not None:
+        child_cost = (
+            select(
+                col(AgentTaskRunDB.batch_run_id).label("batch_run_id"),
+                func.sum(func.coalesce(col(AgentTaskRunDB.total_cost), 0.0)).label("cost"),
+            )
+            .group_by(col(AgentTaskRunDB.batch_run_id))
+            .subquery()
+        )
+        cost_col = col(child_cost.c.cost)
+        base = base.where(
+            col(AgentTaskBatchRunDB.id) == col(child_cost.c.batch_run_id),
+        )
+        if filters.cost_min is not None:
+            base = base.where(cost_col >= filters.cost_min)
+        if filters.cost_max is not None:
+            base = base.where(cost_col <= filters.cost_max)
+    return base
+
+
+def _duration_seconds(
+    completed: ColumnElement[datetime],
+    started: ColumnElement[datetime],
+) -> ColumnElement[float]:
+    """completed - started in seconds, on either dialect: SQLite stores the
+    UTCDateTime column as an ISO string, so julianday() carries the math;
+    Postgres subtracts timestamptz into an interval extractable to epoch.
+    """
+    if is_sqlite():
+        return (func.julianday(completed) - func.julianday(started)) * 86400.0
+    return cast(
+        ColumnElement[float],
+        func.extract("epoch", completed - started),
+    )

@@ -137,6 +137,9 @@ these and on the batch's `environment`; a task run matches through its batch.
 - `environment=prod,staging`: any of the listed environments.
 - `label=<key>:<id>`, repeatable: OR within a key, AND across keys. The id is
   everything after the first `:`.
+- `cost_min`/`cost_max` (dollars) bound the batch's child-run cost sum;
+  `duration_min`/`duration_max` (seconds) bound its wall-clock span, and a
+  batch without both timestamps never matches a duration filter.
 
 `GET /v1/projects/{project_id}/agent-task-run-label-facets` returns the filter
 options: the project's distinct environments, and per label key the distinct

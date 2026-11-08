@@ -298,6 +298,21 @@ describe("Runs page environment and label filters", () => {
     });
   });
 
+  it("carries metric ranges, shows them in the rail, and clears them with the rest", async () => {
+    const user = userEvent.setup();
+    renderRuns("cost_min=0.25&duration_max=120");
+
+    expect(screen.getByLabelText("Cost minimum")).toHaveValue("0.25");
+    // The rail is open, so the active range is a chip in the Active block.
+    expect(screen.getByRole("button", { name: "Remove Cost over $0.25" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear All" })).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("runs-clear-filters"));
+    expect(replace).toHaveBeenCalledWith("/project/acme/runs", {
+      scroll: false,
+    });
+  });
+
   it("unchecks a value through the rail and writes the remaining scope to the URL", async () => {
     const user = userEvent.setup();
     renderRuns("label=customer:c-1&label=customer:c-2");

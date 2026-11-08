@@ -8,6 +8,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RailToggle, ScopeRail, useRailVisible } from "@/components/run-scope-rail";
+import { EMPTY_METRIC_FILTERS, type RunMetricFilters } from "@/lib/run-metric-filters";
 import type { RunLabelFacets } from "@/lib/agent-task-api";
 import { EMPTY_RUN_SCOPE, parseRunScope, type RunScope } from "@/lib/run-scope";
 
@@ -176,5 +177,98 @@ describe("useRailVisible", () => {
     unmount();
     render(<Harness />);
     expect(screen.getByRole("button", { name: "hidden" })).toBeInTheDocument();
+  });
+});
+
+describe("metric sections", () => {
+  const metrics: RunMetricFilters = {
+    cost: { min: null, max: null },
+    durationSeconds: { min: null, max: null },
+  };
+
+  function renderRail(
+    overrides: Partial<RunMetricFilters> = {},
+    onScopeChange: (next: RunScope) => void = vi.fn(),
+  ) {
+    const onMetricsChange = vi.fn();
+    render(
+      <ScopeRail
+        facets={facets}
+        scope={EMPTY_RUN_SCOPE}
+        onScopeChange={onScopeChange}
+        metrics={{ ...metrics, ...overrides }}
+        onMetricsChange={onMetricsChange}
+        onClose={vi.fn()}
+      />,
+    );
+    return onMetricsChange;
+  }
+
+  it("renders Cost and Duration sections with presets", () => {
+    renderRail();
+    expect(screen.getByText("Cost")).toBeInTheDocument();
+    expect(screen.getByText("Duration")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Under $0.10" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 to 5 min" })).toBeInTheDocument();
+  });
+
+  it("a cost preset applies dollars bounds", () => {
+    const onMetricsChange = renderRail();
+    fireEvent.click(screen.getByRole("button", { name: "$0.10 to 0.50" }));
+    expect(onMetricsChange).toHaveBeenCalledWith({
+      cost: { min: 0.1, max: 0.5 },
+      durationSeconds: { min: null, max: null },
+    });
+  });
+
+  it("a duration preset applies second bounds", () => {
+    const onMetricsChange = renderRail();
+    fireEvent.click(screen.getByRole("button", { name: "Over 5 min" }));
+    expect(onMetricsChange).toHaveBeenCalledWith({
+      cost: { min: null, max: null },
+      durationSeconds: { min: 300, max: null },
+    });
+  });
+
+  it("clicking the pressed preset clears the range", () => {
+    const onMetricsChange = renderRail({ durationSeconds: { min: 300, max: null } });
+    const preset = screen.getByRole("button", { name: "Over 5 min" });
+    expect(preset.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(preset);
+    expect(onMetricsChange).toHaveBeenCalledWith(EMPTY_METRIC_FILTERS);
+  });
+
+  it("a typed duration bound commits in seconds on blur", () => {
+    const onMetricsChange = renderRail();
+    fireEvent.change(screen.getByLabelText("Duration minimum"), { target: { value: "2" } });
+    fireEvent.blur(screen.getByLabelText("Duration minimum"));
+    expect(onMetricsChange).toHaveBeenCalledWith({
+      cost: { min: null, max: null },
+      durationSeconds: { min: 120, max: null },
+    });
+  });
+
+  it("Clear All clears the metrics with the scope", () => {
+    const onScopeChange = vi.fn();
+    const onMetricsChange = renderRail({ cost: { min: 0.1, max: null } }, onScopeChange);
+    fireEvent.click(screen.getByRole("button", { name: "Clear All" }));
+    expect(onScopeChange).toHaveBeenCalledWith(EMPTY_RUN_SCOPE);
+    expect(onMetricsChange).toHaveBeenCalledWith(EMPTY_METRIC_FILTERS);
+  });
+
+  it("the closed toggle shows metric chips and counts them as active", () => {
+    render(
+      <RailToggle
+        facets={facets}
+        scope={EMPTY_RUN_SCOPE}
+        onScopeChange={vi.fn()}
+        metrics={{ cost: { min: 0.1, max: 0.5 }, durationSeconds: { min: null, max: null } }}
+        onMetricsChange={vi.fn()}
+        open={false}
+        onToggle={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Show filters" })).toHaveTextContent("1 active");
+    expect(screen.getByRole("button", { name: "Remove Cost $0.1 to 0.5" })).toBeInTheDocument();
   });
 });
