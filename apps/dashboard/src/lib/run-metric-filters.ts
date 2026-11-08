@@ -50,6 +50,21 @@ export function metricFilterParams(
   };
 }
 
+/** The ranges as list-API query options (`listAgentTaskBatchRuns`). */
+export function metricQuery(metrics: RunMetricFilters): {
+  cost_min?: number;
+  cost_max?: number;
+  duration_min?: number;
+  duration_max?: number;
+} {
+  return {
+    cost_min: metrics.cost.min ?? undefined,
+    cost_max: metrics.cost.max ?? undefined,
+    duration_min: metrics.durationSeconds.min ?? undefined,
+    duration_max: metrics.durationSeconds.max ?? undefined,
+  };
+}
+
 export function isMetricFilterActive(metrics: RunMetricFilters): boolean {
   return (
     metrics.cost.min !== null ||

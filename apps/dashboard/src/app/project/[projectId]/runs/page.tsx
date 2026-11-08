@@ -6,6 +6,7 @@ import {
   type ProviderFacetOption,
 } from "@/lib/agent-task-api";
 import { parseRunScope, runScopeQuery } from "@/lib/run-scope";
+import { metricQuery, parseMetricFilters } from "@/lib/run-metric-filters";
 import { getProject, type ProjectTaskSource } from "@/lib/projects-api";
 import { Suspense } from "react";
 import { RunsClient } from "./runs-client";
@@ -41,6 +42,7 @@ export default async function RunsPage({
   const providerParam = typeof query.provider === "string" ? query.provider : undefined;
   const providers = providerParam ? providerParam.split(",").filter(Boolean) : undefined;
   const scope = parseRunScope(query);
+  const metrics = parseMetricFilters(query);
 
   let batchRuns: AgentTaskBatchRunSummary[] = [];
   let totalCount = 0;
@@ -65,6 +67,7 @@ export default async function RunsPage({
       effort: efforts,
       provider: providers,
       ...runScopeQuery(scope),
+      ...metricQuery(metrics),
       page,
       page_size: pageSize,
     });
