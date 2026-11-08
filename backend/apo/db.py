@@ -1,5 +1,6 @@
 # pyright: reportAny=false, reportImplicitStringConcatenation=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedFunction=false
 
+import logging
 import os
 import re
 from collections.abc import Callable, Iterator
@@ -15,6 +16,8 @@ from sqlmodel import JSON, SQLModel, create_engine, Session
 # DATA_DIR lives in the artifact-stores leaf so registry can resolve the
 # default artifact root without importing this module (engine creation).
 from .services.artifact_stores.paths import DATA_DIR  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
@@ -51,10 +54,16 @@ engine = create_engine(DATABASE_URL, **_get_engine_kwargs())
 # Production-hardening PRAGMAs applied to every new SQLite connection.
 # WAL mode lets concurrent readers coexist with the single writer (the
 # request thread plus the batch-runner and scheduler background threads),
-# so reads never block writes and vice-versa. busy_timeout makes locked
-# writes retry instead of raising SQLITE_BUSY immediately. foreign_keys
-# enforces declared FK constraints. synchronous=NORMAL is safe under WAL
-# and dramatically faster than the default FULL fsync-per-commit.
+# so reads never block writes and vice-versa. busy_timeout makes writers
+# QUEUE for the single write lock instead of raising SQLITE_BUSY at the
+# first bump — it must cover several multi-second projection batches
+# draining back to back, because WAL readers never wait and only writers
+# pay it. foreign_keys enforces declared FK constraints.
+# synchronous=NORMAL is safe under WAL and dramatically faster than the
+# default FULL fsync-per-commit.
+SQLITE_BUSY_TIMEOUT_MS = 30_000
+
+
 def attach_sqlite_pragmas(target_engine: object) -> None:
     """Register the per-connection PRAGMA hook on a SQLite engine.
 
@@ -69,7 +78,7 @@ def attach_sqlite_pragmas(target_engine: object) -> None:
     def _set_sqlite_pragmas(dbapi_conn, _connection_record):
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA synchronous=NORMAL")
         # max_page_count is a PER-CONNECTION limit (the database file does not
@@ -88,11 +97,44 @@ def attach_sqlite_pragmas(target_engine: object) -> None:
 if is_sqlite():
     # VACUUM rebuilds the database through temp storage; by default that is
     # /tmp (the container's writable layer), not the data volume. Point
-    # SQLite's temp dir at DATA_DIR so a reclaim needs free space where
-    # the operator actually sized it. setdefault — an explicit operator choice
+    # SQLite's temp dir at DATA_DIR so a reclaim needs free space where the
+    # operator actually sized it. setdefault — an explicit operator choice
     # wins.
     os.environ.setdefault("SQLITE_TMPDIR", DATA_DIR)
     attach_sqlite_pragmas(engine)
+
+
+def begin_immediate(session: Session) -> None:
+    """Take SQLite's write lock NOW, before this transaction reads anything.
+
+    A DEFERRED transaction (what SAVEPOINT and pysqlite's implicit BEGIN
+    open) that reads and then writes needs a WAL snapshot upgrade when
+    another writer committed in between. SQLite refuses that upgrade
+    INSTANTLY with SQLITE_BUSY_SNAPSHOT and never consults busy_timeout —
+    waiting cannot help, the snapshot is stale. Concurrent OTLP ingest and
+    projection batches hit exactly that shape (per-span savepoints do
+    run/call lookups before their writes) and lost accepted spans to it.
+
+    BEGIN IMMEDIATE acquires the write lock at transaction start: reads
+    inside the transaction are protected, competing writers queue on
+    busy_timeout, and lock exhaustion surfaces at the BEGIN — before any
+    work, where retrying the whole transaction is cheap.
+
+    Call as the FIRST statement of a write transaction. No-op on other
+    databases. On SQLite the call is also a no-op when the connection is
+    already inside a transaction (demo seeding replays batches inside one):
+    such callers keep the snapshot hazard, so the warning names them.
+    """
+    if session.get_bind().dialect.name != "sqlite":
+        return
+    connection = session.connection()
+    if connection.connection.in_transaction:
+        logger.warning(
+            "begin_immediate skipped: session already holds an open SQLite "
+            "transaction, so its writes keep the snapshot-upgrade hazard"
+        )
+        return
+    connection.exec_driver_sql("BEGIN IMMEDIATE")
 
 
 def _is_sqlite_conn(conn) -> bool:

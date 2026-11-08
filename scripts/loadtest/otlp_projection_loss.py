@@ -46,12 +46,18 @@ REPO = Path(__file__).resolve().parent.parent.parent
 BACKEND = REPO / "backend"
 PROJECT_ID = "loadtest"
 EMAIL = "load@test.local"
-DRAIN_TIMEOUT_S = 240
+DRAIN_TIMEOUT_S = 600
 
 # Set from argv in main(); defaults mirror the collector sidecar's real
 # batch shape (hundreds of spans per OTLP request).
 TRACES_PER_WORKER = 4
 SPANS_PER_TRACE = 256
+
+# OTLP-client retry posture: SQLite has ONE writer, so a request can queue
+# minutes deep behind other large batches. Real exporters retry timeouts
+# and 5xx with backoff; ingest dedups by (project, trace, span), so a
+# retry is always safe.
+MAX_ATTEMPTS_PER_TRACE = 5
 
 # Raised admission limits so the test measures SQLite lock behavior, not the
 # rate limiter. Concurrency cap comfortably above the highest level tested.
@@ -234,34 +240,52 @@ def worker_run(
     accepted: dict[str, int],
     lock: threading.Lock,
 ) -> None:
+    """Send this worker's traces with OTLP-client retry semantics.
+
+    Timeouts and 5xx/429 answers are retried with backoff, exactly like a
+    real exporter (the collector's queue, apo's own tooling): under SQLite's
+    single writer a request can queue minutes deep, and a retry is safe
+    because ingest dedups by (project, trace, span). Each trace's spans
+    count toward 'accepted' once, on its first 2xx.
+    """
     url = f"http://127.0.0.1:{port}/api/public/otel/v1/traces"
     for seq in range(TRACES_PER_WORKER):
         body = payload_for(make_trace(worker, seq))
-        req = urllib.request.Request(
-            url,
-            data=body,
-            headers={
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=120) as r:
-                n = int(r.headers.get("X-Otlp-Accepted", "0"))
+        for attempt in range(MAX_ATTEMPTS_PER_TRACE):
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=240) as r:
+                    n = int(r.headers.get("X-Otlp-Accepted", "0"))
+                    with lock:
+                        accepted["ok"] += n
+                        if r.status != 200:
+                            accepted["non200"] += 1
+                    break
+            except urllib.error.HTTPError as e:
+                detail = e.read().decode(errors="replace")[:200]
+                if e.code in (429, 500, 502, 503, 504) and attempt + 1 < MAX_ATTEMPTS_PER_TRACE:
+                    time.sleep(min(30.0, 5.0 * (attempt + 1)))
+                    continue
                 with lock:
-                    accepted["ok"] += n
-                    if r.status != 200:
-                        accepted["non200"] += 1
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode(errors="replace")[:200]
-            with lock:
-                accepted["http_error"] += 1
-            print(f"    worker {worker}: HTTP {e.code} {detail}", flush=True)
-        except OSError as e:
-            with lock:
-                accepted["conn_error"] += 1
-            print(f"    worker {worker}: {e}", flush=True)
+                    accepted["http_error"] += 1
+                print(f"    worker {worker}: HTTP {e.code} {detail}", flush=True)
+                break
+            except OSError as e:
+                if attempt + 1 < MAX_ATTEMPTS_PER_TRACE:
+                    time.sleep(min(30.0, 5.0 * (attempt + 1)))
+                    continue
+                with lock:
+                    accepted["conn_error"] += 1
+                print(f"    worker {worker}: {e}", flush=True)
+                break
 
 
 def read_counts(db_path: Path) -> dict[str, object]:
