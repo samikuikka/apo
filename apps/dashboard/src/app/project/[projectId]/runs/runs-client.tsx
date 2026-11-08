@@ -12,7 +12,6 @@ import {
 import {
   isRunScopeActive,
   parseRunScope,
-  runScopeFacets,
   runScopeLabelParams,
   type RunScope,
 } from "@/lib/run-scope";
@@ -26,6 +25,7 @@ import {
 } from "@/components/ui/table";
 
 import { useProjectId } from "@/lib/project-router";
+import { cn } from "@/lib/utils";
 import { useClientNow } from "@/hooks/use-client-now";
 import { BATCH_RUN_STATUS_FILTERS } from "@/lib/filter-status";
 import { RunsModelFilter, type ModelOption } from "./runs-model-filter";
@@ -36,6 +36,13 @@ import { ListPagination } from "@/components/table";
 import { RunsListAutoRefresh } from "@/components/agent-task-execution/runs-list-auto-refresh";
 import { RunsRow } from "./components/RunsRow";
 import { RunsToolbar } from "./components/RunsToolbar";
+import {
+  RailToggle,
+  ScopeRail,
+  ScopeRailSheet,
+  useRailVisible,
+} from "@/components/run-scope-rail";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { COL, computeOverlap } from "./components/runs-utils";
 import { setModelArchived } from "@/lib/agent-task-view-api";
 import { toast } from "sonner";
@@ -199,10 +206,12 @@ export function RunsClient({
     },
     [updateUrl],
   );
-  const scopeFilters = useMemo(
-    () => runScopeFacets(labelFacets, scope, setScope),
-    [labelFacets, scope, setScope],
-  );
+  // The scope rail: visible on desktop while remembered open, a sheet on
+  // mobile. RailToggle in the filter row drives both and shows the active
+  // chips whenever no rail is on screen.
+  const isMobile = useIsMobile();
+  const [railOpen, setRailOpen] = useRailVisible();
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const selectedEfforts = useMemo(() => {
     const raw = searchParams.get("effort") ?? "";
@@ -302,7 +311,23 @@ export function RunsClient({
   );
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className={cn("flex h-full w-full", !isMobile && railOpen ? "flex-row" : "flex-col")}>
+      <ScopeRailSheet
+        facets={labelFacets}
+        scope={scope}
+        onScopeChange={setScope}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
+      {!isMobile && railOpen && (
+        <ScopeRail
+          facets={labelFacets}
+          scope={scope}
+          onScopeChange={setScope}
+          onClose={() => setRailOpen(false)}
+        />
+      )}
+      <div className="flex h-full min-w-0 flex-1 flex-col">
       <RunsListAutoRefresh
         project={projectId}
         batchRuns={batchRuns}
@@ -318,7 +343,17 @@ export function RunsClient({
         selectedEfforts={selectedEfforts}
         modelOptions={modelOptions}
         effortOptions={effortOptions}
-        scopeFilters={scopeFilters}
+        scopeSlot={
+          <RailToggle
+            facets={labelFacets}
+            scope={scope}
+            onScopeChange={setScope}
+            open={isMobile ? sheetOpen : railOpen}
+            onToggle={() =>
+              isMobile ? setSheetOpen(!sheetOpen) : setRailOpen(!railOpen)
+            }
+          />
+        }
         totalCount={totalCount}
         hasActiveFilters={hasActiveFilters}
         updateUrl={updateUrl}
@@ -416,6 +451,7 @@ export function RunsClient({
           onClearCompare={clearCompare}
         />
       )}
+      </div>
     </div>
   );
 }

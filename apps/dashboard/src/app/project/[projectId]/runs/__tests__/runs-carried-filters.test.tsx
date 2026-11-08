@@ -256,24 +256,35 @@ describe("Runs page environment and label filters", () => {
 
   it("shows a carried label by its name while filtering by its id", () => {
     renderRuns("label=customer:c-2&environment=prod");
-    expect(screen.getByRole("combobox", { name: "customer filter" })).toHaveTextContent("Globex");
-    expect(screen.getByRole("combobox", { name: "Environment filter" })).toHaveTextContent("prod");
+    // The rail's Active chip resolves the id to the facets' newest name...
+    expect(screen.getByRole("button", { name: "Remove customer Globex" })).toBeInTheDocument();
+    // ...and the value itself is the checked row under its dimension.
+    expect(screen.getByRole("checkbox", { name: "customer Globex" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("checkbox", { name: "Environment prod" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   });
 
   it("keeps a carried filter visible when the facets could not be loaded", () => {
     renderRuns("label=customer:c-9&environment=qa", facets, null);
-    expect(screen.getByRole("combobox", { name: "customer filter" })).toHaveTextContent("c-9");
-    expect(screen.getByRole("combobox", { name: "Environment filter" })).toHaveTextContent("qa");
+    // No facets: the raw id stays on screen so the filter is still clearable.
+    expect(screen.getByRole("button", { name: "Remove customer c-9" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove Environment qa" })).toBeInTheDocument();
   });
 
-  it("shows several carried ids of one key as one clearable selection", () => {
+  it("shows several carried ids of one key as one clearable selection each", () => {
     renderRuns("label=customer:c-1&label=customer:c-2");
-    expect(screen.getByRole("combobox", { name: "customer filter" })).toHaveTextContent("2 selected");
+    expect(screen.getByRole("button", { name: "Remove customer Acme" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove customer Globex" })).toBeInTheDocument();
   });
 
-  it("offers no environment picker while a project has only one environment", () => {
+  it("offers no environment dimension while a project has only one environment", () => {
     renderRuns("", facets, { environments: [{ value: "prod", count: 2 }], labels: [] });
-    expect(screen.queryByRole("combobox", { name: "Environment filter" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /Environment/ })).toBeNull();
   });
 
   it("clears environment and labels with the other filters", async () => {
@@ -282,6 +293,19 @@ describe("Runs page environment and label filters", () => {
 
     await user.click(screen.getByTestId("runs-clear-filters"));
 
-    expect(replace).toHaveBeenCalledWith("/project/acme/runs", { scroll: false });
+    expect(replace).toHaveBeenCalledWith("/project/acme/runs", {
+      scroll: false,
+    });
+  });
+
+  it("unchecks a value through the rail and writes the remaining scope to the URL", async () => {
+    const user = userEvent.setup();
+    renderRuns("label=customer:c-1&label=customer:c-2");
+
+    await user.click(screen.getByRole("button", { name: "Remove customer Acme" }));
+
+    expect(replace).toHaveBeenCalledWith("/project/acme/runs?label=customer%3Ac-2", {
+      scroll: false,
+    });
   });
 });

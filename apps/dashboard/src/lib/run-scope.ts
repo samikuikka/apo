@@ -152,3 +152,118 @@ export function runScopeFacets(
   }
   return result;
 }
+
+// ============================================================================
+// Scope dimensions for the Runs filter rail
+// ============================================================================
+
+/** `@` cannot appear in a label key, so this dimension key cannot collide. */
+export const ENVIRONMENT_DIMENSION = "@environment";
+
+/** One filterable dimension: the environment, or one label key. */
+export interface RunScopeDimension {
+  key: string;
+  label: string;
+  values: { id: string; name: string; count: number }[];
+}
+
+/** A selected value, resolved to its display name for chips. */
+export interface RunScopeChip {
+  key: string;
+  label: string;
+  id: string;
+  name: string;
+}
+
+/**
+ * The dimensions a project's runs actually carry, in rail order: Environment
+ * first, then label keys alphabetically. The Environment dimension appears
+ * only once it is worth filtering (more than one value, or one already
+ * selected), matching the pickers it replaces. A value the URL selects stays
+ * listed even when no recent batch carries it, so a shared link never leaves
+ * a filter applied but invisible.
+ */
+export function runScopeDimensions(
+  facets: RunLabelFacets | null,
+  scope: RunScope,
+): RunScopeDimension[] {
+  const dims: RunScopeDimension[] = [];
+  const environments = (facets?.environments ?? []).map((bucket) => ({
+    id: bucket.value,
+    name: bucket.value,
+    count: bucket.count,
+  }));
+  if (environments.length > 1 || scope.environments.length > 0) {
+    dims.push(
+      withCarried(
+        { key: ENVIRONMENT_DIMENSION, label: "Environment", values: environments },
+        scope.environments,
+      ),
+    );
+  }
+  for (const facet of facets?.labels ?? []) {
+    dims.push(
+      withCarried(
+        { key: facet.key, label: facet.key, values: facet.values },
+        scope.labels[facet.key] ?? [],
+      ),
+    );
+  }
+  for (const [key, ids] of Object.entries(scope.labels)) {
+    if (!dims.some((dim) => dim.key === key)) {
+      dims.push(withCarried({ key, label: key, values: [] }, ids));
+    }
+  }
+  return dims;
+}
+
+/** The scope with one value added or removed. */
+export function toggleRunScopeValue(scope: RunScope, key: string, id: string): RunScope {
+  const current =
+    key === ENVIRONMENT_DIMENSION ? scope.environments : (scope.labels[key] ?? []);
+  const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+  if (key === ENVIRONMENT_DIMENSION) return { ...scope, environments: next };
+  const labels = { ...scope.labels };
+  if (next.length > 0) labels[key] = next;
+  else delete labels[key];
+  return { ...scope, labels };
+}
+
+/** Every selected value across dimensions, newest dimension first is not
+ * tracked; chips simply follow the dimension order. */
+export function runScopeChips(scope: RunScope, dims: RunScopeDimension[]): RunScopeChip[] {
+  return dims.flatMap((dim) =>
+    scopeValuesOf(scope, dim.key).map((id) => ({
+      key: dim.key,
+      label: dim.label,
+      id,
+      name: dim.values.find((value) => value.id === id)?.name ?? id,
+    })),
+  );
+}
+
+/** Dimensions narrowed to a search: a matching key keeps all its values,
+ * otherwise only matching values survive. */
+export function filterRunScopeDimensions(
+  dims: RunScopeDimension[],
+  query: string,
+): RunScopeDimension[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return dims;
+  return dims.flatMap((dim) => {
+    if (dim.label.toLowerCase().includes(q)) return [dim];
+    const values = dim.values.filter((value) => value.name.toLowerCase().includes(q));
+    return values.length > 0 ? [{ ...dim, values }] : [];
+  });
+}
+
+function scopeValuesOf(scope: RunScope, key: string): string[] {
+  return key === ENVIRONMENT_DIMENSION ? scope.environments : (scope.labels[key] ?? []);
+}
+
+function withCarried(dim: RunScopeDimension, selected: string[]): RunScopeDimension {
+  const missing = selected
+    .filter((id) => !dim.values.some((value) => value.id === id))
+    .map((id) => ({ id, name: id, count: 0 }));
+  return missing.length > 0 ? { ...dim, values: [...dim.values, ...missing] } : dim;
+}

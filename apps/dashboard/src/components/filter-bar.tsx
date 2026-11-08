@@ -85,6 +85,9 @@ export interface FilterBarProps {
   onEffortChange: (effort: string | null) => void;
   /** Extra single-select dimensions, rendered after Effort. */
   facets?: FilterBarFacet[];
+  /** Page-specific content inside the bar, rendered where the facet pickers
+   * sit (e.g. the Runs page's scope rail toggle). */
+  filterSlot?: ReactNode;
   /** Omit to hide the date control (e.g. demo projects have no cohort scoping). */
   since?: string | null;
   onSinceChange?: (since: string | null) => void;
@@ -175,6 +178,8 @@ export function FilterBar(props: FilterBarProps) {
           onChange={(v) => facet.onChange(v === ANY_VALUE ? null : v)}
         />
       ))}
+
+      {props.filterSlot}
 
       {props.since !== undefined && props.onSinceChange && (
         <FilterPicker
