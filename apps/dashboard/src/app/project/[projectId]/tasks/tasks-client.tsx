@@ -21,6 +21,7 @@ import { FolderList } from "./components/FolderList";
 import { OnboardingPanel } from "./components/OnboardingPanel";
 import type { OnboardingSignals } from "./components/onboarding-steps";
 import { SelectionActionBar } from "./components/SelectionActionBar";
+import { RunLabelsDialog } from "./components/RunLabelsDialog";
 import { TasksToolbar } from "./components/TasksToolbar";
 import { useEvidenceViews } from "./components/use-evidence-views";
 import { fetchTaskHostFacets } from "@/lib/agent-task-view-api";
@@ -280,6 +281,13 @@ export function AgentTasksClient({
     canRunTasks && !isDemoProject && selected.size > 0,
   );
 
+  // Run goes through the labels dialog: it shows the selection size and the
+  // optional labels that make the runs filterable later.
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const openRunDialog = useCallback(() => {
+    if (selected.size > 0 && !isDemoProject) setRunDialogOpen(true);
+  }, [selected.size, isDemoProject]);
+
   const visibleFolderIds = listFolders.map((folder) => folder.id);
   const expanded = new Set(visibleFolderIds.filter((id) => !collapsed.has(id)));
   const allExpanded =
@@ -317,7 +325,7 @@ export function AgentTasksClient({
             selectedCount={selected.size}
             runRunning={runState.running}
             onSync={handleSync}
-            onRun={handleRun}
+            onRun={openRunDialog}
           />
           {tasks.length > 0 && (
             <EvidenceViewsBar
@@ -465,12 +473,24 @@ export function AgentTasksClient({
             ...(activeView.model !== null ? [{ model: null as string | null, label: "All models" }] : []),
           ]}
           onClear={() => setSelected(new Set())}
-          onRun={handleRun}
+          onRun={openRunDialog}
           onCompare={handleCompare}
         />
       )}
         </>
       )}
+
+      <RunLabelsDialog
+        open={runDialogOpen}
+        onOpenChange={setRunDialogOpen}
+        projectId={projectId}
+        selectedCount={selected.size}
+        running={runState.running}
+        onStart={(labels) => {
+          setRunDialogOpen(false);
+          void handleRun(labels);
+        }}
+      />
     </div>
   );
 }
