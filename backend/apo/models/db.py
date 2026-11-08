@@ -390,6 +390,12 @@ class LoggedCallDB(LoggedCallBase, table=True):
     raw_usage: dict[str, int] | None = Field(
         default=None, sa_column=Column("raw_usage", JSON)
     )
+    serving_evidence: dict[str, dict[str, str]] | None = Field(
+        default=None, sa_column=Column("serving_evidence", JSON)
+    )
+    matched_serving: dict[str, str | None] | None = Field(
+        default=None, sa_column=Column("matched_serving", JSON)
+    )
     matched_tier_id: int | None = Field(default=None)
     matched_tier_name: str | None = Field(default=None)
     cost_provenance: str | None = Field(default=None)

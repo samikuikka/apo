@@ -1,0 +1,38 @@
+{
+  "description": "Malformed optional serving telemetry: oversized and control-character identity strings, non-finite and negative offsets, an unknown scope, and an invalid request kind. Every malformed value becomes null with a diagnostic; ingestion never fails.",
+  "source": "serving-contract",
+  "case": "invalid-telemetry",
+  "input": {
+    "resourceSpans": [
+      {
+        "scopeSpans": [
+          {
+            "scope": { "name": "test" },
+            "spans": [
+              {
+                "traceId": "11111111111111111111111111111106",
+                "spanId": "abcabcabcabcabc1",
+                "name": "chat malformed",
+                "kind": 1,
+                "flags": 1,
+                "startTimeUnixNano": "1700000000000000000",
+                "endTimeUnixNano": "1700000001000000000",
+                "status": { "code": 1 },
+                "attributes": [
+                  { "key": "gen_ai.operation.name", "value": { "stringValue": "chat" } },
+                  { "key": "apo.llm.api_provider", "value": { "stringValue": "custom-provider" } },
+                  { "key": "apo.llm.serving_host", "value": { "stringValue": "bad\u0007host" } },
+                  { "key": "apo.llm.route", "value": { "stringValue": "x" } },
+                  { "key": "apo.llm.first_content_offset_ms", "value": { "doubleValue": -5.0 } },
+                  { "key": "apo.llm.output_token_scope", "value": { "stringValue": "sometimes" } },
+                  { "key": "apo.llm.request_kind", "value": { "stringValue": "both" } },
+                  { "key": "gen_ai.response.model", "value": { "stringValue": "m-256-bytes-of-model-identity-past-the-bound-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

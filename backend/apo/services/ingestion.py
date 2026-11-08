@@ -140,6 +140,97 @@ def _apply_ingestion_cost(
     )
 
 
+_SERVING_STR_FIELDS = (
+    "instrumentation_provider",
+    "serving_host",
+    "requested_service_tier",
+    "service_tier",
+    "request_model",
+    "response_model",
+)
+
+
+def _apply_legacy_serving(call: LoggedCallDB, body: dict[str, object]) -> None:
+    """Populate observed serving identity from an optional ``serving`` body
+    object, the legacy-ingestion equivalent of the canonical span attributes.
+
+    Every field passes the same validation as span extraction: malformed
+    values become null instead of failing ingestion.
+    """
+    from .otel_normalization._serving import (
+        _clean_identity,
+        _clean_provider,
+        _extract_offset_ms,
+        _extract_scope,
+    )
+    from ..models.serving import IDENTITY_MAX_BYTES, MODEL_ID_MAX_BYTES
+
+    raw = body.get("serving")
+    if not isinstance(raw, dict):
+        return
+    diagnostics: list[str] = []
+
+    def _field(name: str, max_bytes: int = IDENTITY_MAX_BYTES) -> str | None:
+        value = raw.get(name)
+        return _clean_identity(
+            value if isinstance(value, str) else None,
+            max_bytes,
+            name,
+            diagnostics,
+        )
+
+    for name in _SERVING_STR_FIELDS:
+        max_bytes = (
+            MODEL_ID_MAX_BYTES
+            if name in ("request_model", "response_model")
+            else IDENTITY_MAX_BYTES
+        )
+        setattr(call, name, _field(name, max_bytes))
+    api_provider_raw = raw.get("api_provider")
+    call.api_provider = _clean_provider(
+        api_provider_raw if isinstance(api_provider_raw, str) else None,
+        diagnostics,
+    )
+    call.observed_model = call.response_model or (call.model or None)
+
+    route_raw = raw.get("route")
+    call.route = _clean_identity(
+        route_raw if isinstance(route_raw, str) else None,
+        IDENTITY_MAX_BYTES,
+        "route",
+        diagnostics,
+    )
+
+    request_kind = raw.get("request_kind")
+    cleaned_kind = (
+        request_kind.strip().lower()
+        if isinstance(request_kind, str) and request_kind.strip().lower() in ("request", "aggregate")
+        else None
+    )
+    call.request_accounting = cleaned_kind
+
+    scope_attrs = {
+        "apo.llm.output_token_scope": raw.get("output_token_scope")
+        if isinstance(raw.get("output_token_scope"), str)
+        else None,
+        "apo.llm.first_content_scope": raw.get("first_content_scope")
+        if isinstance(raw.get("first_content_scope"), str)
+        else None,
+    }
+    call.output_token_scope = _extract_scope(scope_attrs, "apo.llm.output_token_scope", diagnostics)
+    call.first_content_scope = _extract_scope(scope_attrs, "apo.llm.first_content_scope", diagnostics)
+
+    offset = _extract_offset_ms(
+        {"apo.llm.first_content_offset_ms": raw.get("first_content_offset_ms")},
+        diagnostics,
+    )
+    if offset is not None:
+        call.time_to_first_token_ms = offset
+
+    if diagnostics:
+        logger.warning("Legacy serving payload diagnostics: %s", diagnostics)
+
+
 
 async def process_call_create(body: dict[str, object], session: Session) -> None:
     """Process a call-create event."""
@@ -223,6 +314,10 @@ async def process_call_create(body: dict[str, object], session: Session) -> None
         user_id=_get_optional_str(body, "user_id"),
         meta=_get_optional_json_map(body, "metadata"),
     )
+
+    # Observed serving identity, when the legacy body carries the optional
+    # ``serving`` object (equivalent evidence to the canonical attributes).
+    _apply_legacy_serving(call, body)
 
     # normalize usage + freeze cost (shared seam with the
     # canonical projector). Provided cost wins verbatim; else compute.
@@ -331,6 +426,11 @@ async def process_call_update(body: dict[str, object], session: Session) -> None
         call.environment = _get_str(body, "environment", call.environment)
     if "tags" in body:
         call.tags = _get_string_list(body, "tags")
+
+    # A serving patch refreshes identity the same way the create path does;
+    # absence of the object leaves stored identity untouched (sparse patch).
+    if "serving" in body:
+        _apply_legacy_serving(call, body)
 
     # re-normalize usage + re-freeze cost on update when
     # the call is a priced GENERATION. Provided cost still wins verbatim. A

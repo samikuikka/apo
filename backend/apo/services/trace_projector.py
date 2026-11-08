@@ -76,6 +76,7 @@ class TraceProjector:
         span: OtlpSpanDB,
         session: Session,
         context: TraceIngestionContext | None = None,
+        cost_mode: str = "refresh",
     ) -> None:
         """Project one canonical span into the product tables.
 
@@ -125,8 +126,13 @@ class TraceProjector:
         # Ensure the run exists
         self._upsert_run(session, span, normalized, is_root, context, repo)
 
-        # Upsert the call (applies cost + tokens inside)
-        call, io = self._upsert_call(session, span, normalized, repo)
+        # Upsert the call (applies cost + tokens inside). ``cost_mode`` of
+        # "preserve" keeps every stored price/cost field untouched, for
+        # identity-only replay where refreshing derived metadata must never
+        # reprice history.
+        call, io = self._upsert_call(
+            session, span, normalized, repo, cost_mode=cost_mode
+        )
 
         # A completed root may arrive before its children, and replay updates
         # calls on a run that was already complete. Refresh after every span
@@ -317,6 +323,7 @@ class TraceProjector:
         span: OtlpSpanDB,
         normalized: NormalizedSpan,
         repo: NativeTraceRepository | None = None,
+        cost_mode: str = "refresh",
     ) -> tuple[LoggedCallDB, ResolvedCallIO]:
         """Upsert a LoggedCallDB row from the normalized span.
 
@@ -414,6 +421,11 @@ class TraceProjector:
                 - span.start_time.replace(tzinfo=None)
             ).total_seconds() * 1000
 
+        # Observed serving identity. Written fresh on every projection from
+        # the current canonical span (reprojection clears stale values),
+        # unlike the legacy provider/route fields above which are first-wins.
+        _apply_serving(call, span, normalized)
+
         # Error
         if normalized.error_message:
             call.level = "ERROR"
@@ -422,7 +434,10 @@ class TraceProjector:
         # Server-side cost calculation. The legacy
         # ingestion path calls calculate_cost_for_model on every call; the
         # canonical projector must too, or projected rows lose cost data.
-        _apply_cost(session, call, span)
+        # "preserve" skips it entirely: identity-only replay must never
+        # reprice history.
+        if cost_mode != "preserve":
+            _apply_cost(session, call, span)
 
         session.add(call)
         return call, io
@@ -519,6 +534,42 @@ def _is_truthy(value: object) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in ("true", "1", "yes")
     return False
+
+
+def _apply_serving(
+    call: LoggedCallDB, span: OtlpSpanDB, normalized: NormalizedSpan
+) -> None:
+    """Write observed serving identity and timing evidence onto a call.
+
+    Derived deterministically from the current canonical span on every
+    projection, so a reprojection with changed attributes clears stale
+    identity values. Validated first-content timing overrides the legacy
+    time-to-first-token derivation only when the emitter reported an
+    explicit offset; a role-only first chunk or HTTP first byte is not
+    generated content, and emitters that cannot report it simply omit the
+    attribute.
+    """
+    from .otel_normalization._serving import extract_serving
+
+    serving = extract_serving(span.attributes or {}, span.span_name or "")
+    identity = serving.identity
+    call.instrumentation_provider = identity.instrumentation_provider
+    call.api_provider = identity.api_provider
+    call.serving_host = identity.serving_host
+    call.requested_service_tier = identity.requested_service_tier
+    call.service_tier = identity.service_tier
+    call.request_model = identity.request_model
+    call.response_model = identity.response_model
+    call.observed_model = identity.response_model or normalized.model
+    call.serving_evidence = (
+        {field: ev.model_dump() for field, ev in identity.evidence.items()}
+        or None
+    )
+    call.request_accounting = serving.request_kind
+    call.output_token_scope = serving.output_token_scope
+    call.first_content_scope = serving.first_content_scope
+    if serving.first_content_offset_ms is not None:
+        call.time_to_first_token_ms = serving.first_content_offset_ms
 
 
 def _apply_cost(session: Session, call: LoggedCallDB, span: OtlpSpanDB) -> None:

@@ -1,0 +1,42 @@
+{
+  "description": "Direct Fireworks call requesting and serving the Priority tier. Explicit apo.llm identity attributes; gen_ai.request/response.model pair preserved. Sanitized synthetic contract fixture.",
+  "source": "serving-contract",
+  "case": "direct-fireworks-priority",
+  "input": {
+    "resourceSpans": [
+      {
+        "scopeSpans": [
+          {
+            "scope": { "name": "test" },
+            "spans": [
+              {
+                "traceId": "11111111111111111111111111111101",
+                "spanId": "aaaaaaaaaaaaaaaa",
+                "name": "chat fireworks",
+                "kind": 1,
+                "flags": 1,
+                "startTimeUnixNano": "1700000000000000000",
+                "endTimeUnixNano": "1700000002000000000",
+                "status": { "code": 1 },
+                "attributes": [
+                  { "key": "gen_ai.operation.name", "value": { "stringValue": "chat" } },
+                  { "key": "gen_ai.provider.name", "value": { "stringValue": "fireworks-ai" } },
+                  { "key": "gen_ai.request.model", "value": { "stringValue": "accounts/fireworks/models/deepseek-v4-1-flash" } },
+                  { "key": "gen_ai.response.model", "value": { "stringValue": "accounts/fireworks/models/deepseek-v4-1-flash" } },
+                  { "key": "apo.llm.api_provider", "value": { "stringValue": "Fireworks-AI" } },
+                  { "key": "apo.llm.serving_host", "value": { "stringValue": "fireworks_ai" } },
+                  { "key": "apo.llm.requested_service_tier", "value": { "stringValue": "priority" } },
+                  { "key": "apo.llm.service_tier", "value": { "stringValue": "priority" } },
+                  { "key": "apo.llm.request_kind", "value": { "stringValue": "request" } },
+                  { "key": "apo.llm.first_content_offset_ms", "value": { "doubleValue": 500.0 } },
+                  { "key": "apo.llm.output_token_scope", "value": { "stringValue": "all_output" } },
+                  { "key": "apo.llm.first_content_scope", "value": { "stringValue": "all_output" } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
