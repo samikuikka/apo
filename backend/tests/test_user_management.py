@@ -171,6 +171,22 @@ class TestUpdateUser:
         assert resp.status_code == 403
         assert "own admin role" in resp.json()["detail"]
 
+    def test_self_deactivation_via_patch_blocked(
+        self, client: TestClient, session: Session, make_authed_client: Any
+    ) -> None:
+        authed, admin_id = _setup_admin_authed(client, session, make_authed_client)
+        resp = authed.patch(
+            f"/auth/users/{admin_id}",
+            json={"is_active": False},
+        )
+        assert resp.status_code == 403
+        assert "own account" in resp.json()["detail"]
+
+        session.expire_all()
+        row = session.get(UserDB, admin_id)
+        assert row is not None
+        assert row.is_active is True
+
     def test_update_nonexistent_returns_404(
         self, client: TestClient, session: Session, make_authed_client: Any
     ) -> None:

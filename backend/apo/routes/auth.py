@@ -685,6 +685,11 @@ def update_user(
             status_code=403, detail="Cannot remove your own admin role"
         )
 
+    if body.is_active is False and user.id == admin.id:
+        raise HTTPException(
+            status_code=403, detail="Cannot deactivate your own account"
+        )
+
     if body.name is not None:
         user.name = body.name
     if body.is_admin is not None:
