@@ -31,6 +31,11 @@ export interface CreateSpanParams {
    * actually known (vendor SDK or baseURL) — never guessed from the model
    * id; the backend renders absent as unknown. */
   provider?: string;
+  /** The service the harness actually calls (vendor or gateway name
+   * resolved from the client's baseURL), emitted as `apo.llm.api_provider`.
+   * Distinct from the serving host: traffic through a gateway reports the
+   * gateway here and the host only when the response names it. */
+  api_provider?: string;
   /** Finer-grained serving route (e.g. a custom gateway host), emitted as
    * `apo.llm.route`. */
   route?: string;
@@ -71,6 +76,10 @@ export interface EndSpanParams {
    * response headers), emitted as `gen_ai.provider.name`. Set at end time
    * when the gateway reports it — more truthful than any baseURL guess. */
   provider?: string;
+  /** The host that executed inference, learned from the response (gateway
+   * metadata/headers), emitted as `apo.llm.serving_host`. Never copied
+   * from the API provider: gateways make that implication unsafe. */
+  serving_host?: string;
   /** Finer-grained serving route learned from the response (e.g. a LiteLLM
    * deployment id), emitted as `apo.llm.route`. */
   route?: string;

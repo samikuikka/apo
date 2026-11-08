@@ -117,6 +117,7 @@ export function createApoAnthropic<T extends AnthropicClientLike>(
       taskId,
       turnNumber,
       ...serving,
+      apiProvider: serving.provider,
     });
 
     try {

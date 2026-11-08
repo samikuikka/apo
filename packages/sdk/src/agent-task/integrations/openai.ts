@@ -168,6 +168,7 @@ export function createApoOpenAI<T extends OpenAIClientLike>(
       taskId,
       turnNumber,
       ...serving,
+      apiProvider: serving.provider,
     });
 
     try {
