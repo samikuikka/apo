@@ -1036,6 +1036,12 @@ export const listAgentTaskBatchRuns = (
     environment?: string[];
     /** `<key>:<id>` label filters: OR within a key, AND across keys. */
     label?: string[];
+    /** Batch cost-sum bounds in dollars. */
+    cost_min?: number;
+    cost_max?: number;
+    /** Batch wall-clock bounds in seconds. */
+    duration_min?: number;
+    duration_max?: number;
     page?: number;
     page_size?: number;
   },
@@ -1046,6 +1052,10 @@ export const listAgentTaskBatchRuns = (
       project,
       status: opts?.status,
       q: opts?.q,
+      cost_min: opts?.cost_min,
+      cost_max: opts?.cost_max,
+      duration_min: opts?.duration_min,
+      duration_max: opts?.duration_max,
       model: opts?.model?.join(",") || undefined,
       effort: opts?.effort?.join(",") || undefined,
       provider: opts?.provider?.join(",") || undefined,
