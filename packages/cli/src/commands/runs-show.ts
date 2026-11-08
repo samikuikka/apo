@@ -20,6 +20,12 @@ import { resolveRunId, resolveLatestRunId } from "../lib/runs-resolve.ts";
 import { reportCommandError } from "../lib/command-error.ts";
 import { formatNote, notesForRun, scopeLabel, type TaskNote } from "../lib/task-notes.ts";
 import { isRunLive, verdictExitCode } from "../lib/run-status.ts";
+import type {
+  CostCoverage,
+  ServingGroup,
+  ServingIdentity,
+  ServingSummary,
+} from "../lib/serving-types.ts";
 
 type RunDetail = {
   id: string;
@@ -39,6 +45,9 @@ type RunDetail = {
   generation_usage?: GenerationUsage | null;
   /** (model, provider/route) pairs the trace served through (issue #307). */
   model_providers?: ModelProviderPair[];
+  /** Observed serving summary (issue #307): identity groups, rate medians,
+   * and cost coverage. Null when the response predates the feature. */
+  serving?: ServingSummary | null;
   total_tokens: number | null;
   /** Issue #309: reasoning + per-call timing rollups. Null reasoning = no
    * call reported the reasoning usage dimension (unknown, not zero). */
@@ -221,6 +230,9 @@ function printRunDetail(run: RunDetail, verbose: boolean): void {
     console.log(
       `  Speed:    ${formatTokPerS(run.generation_usage.median_output_tok_s)} median ${dim(`(${calls} measured call${calls === 1 ? "" : "s"})`)}`,
     );
+  }
+  for (const line of formatServingSection(run.serving)) {
+    console.log(line);
   }
   console.log(`  Status:   ${run.status}`);
   const beatLine = formatHeartbeatLine(run);
@@ -410,6 +422,89 @@ function formatHosts(pairs: ModelProviderPair[] | undefined): string {
 
 function formatTokPerS(value: number): string {
   return `${value < 100 ? value.toFixed(1) : Math.round(value)} tok/s`;
+}
+
+/** The observed-serving block (issue #307): state with call/error/unknown
+ * coverage, one indented line per identity group with its rate medians,
+ * and the cost-coverage classification. Empty when the backend attached
+ * no serving summary, so older payloads render as before. */
+function formatServingSection(serving: ServingSummary | null | undefined): string[] {
+  if (!serving) return [];
+  const notes: string[] = [];
+  if (serving.errored_calls > 0) notes.push(`${serving.errored_calls} errored`);
+  if (serving.unknown_provider_calls > 0) {
+    notes.push(`${serving.unknown_provider_calls} unknown provider`);
+  }
+  if (serving.unknown_host_calls > 0) {
+    notes.push(`${serving.unknown_host_calls} unknown host`);
+  }
+  const notePart = notes.length > 0 ? ` (${notes.join(", ")})` : "";
+  const truncatedPart = serving.groups_truncated
+    ? dim(` · ${serving.total_groups} setups, showing first ${serving.groups.length}`)
+    : "";
+  const lines = [
+    `  Serving:  ${serving.state} · ${serving.calls} call${serving.calls === 1 ? "" : "s"}${notePart}${truncatedPart}`,
+  ];
+  for (const group of serving.groups) {
+    const erroredPart =
+      group.errored_calls > 0 ? ` (${group.errored_calls} errored)` : "";
+    lines.push(`    ${groupIdentityLine(group.identity)} ×${group.calls}${erroredPart}`);
+    const rates = formatGroupRates(group);
+    if (rates) lines.push(`      ${rates}`);
+  }
+  const coverage = formatCostCoverage(serving.cost_coverage);
+  if (coverage) lines.push(`    Coverage: ${coverage}`);
+  return lines;
+}
+
+/** "model · provider · host · route · tier" with null parts skipped;
+ * "unknown" when the group carries no identity at all. */
+function groupIdentityLine(identity: ServingIdentity): string {
+  const parts = [
+    identity.model,
+    identity.api_provider,
+    identity.serving_host,
+    identity.route,
+    identity.service_tier,
+  ].filter((part): part is string => !!part);
+  return parts.length > 0 ? parts.join(" · ") : "unknown";
+}
+
+/** Whole-call and streaming medians with their sample counts; a median is
+ * only shown when the backend computed one (failures and partial streams
+ * never enter it). */
+function formatGroupRates(group: ServingGroup): string | null {
+  const parts: string[] = [];
+  const whole = group.whole_call_rate;
+  if (whole.median != null) {
+    parts.push(`whole-call ${formatTokPerS(whole.median)} median of ${whole.samples}`);
+  }
+  const streaming = group.streaming_rate;
+  if (streaming.median != null) {
+    parts.push(
+      `streaming ${formatTokPerS(streaming.median)} median of ${streaming.samples}`,
+    );
+  }
+  return parts.length > 0 ? parts.join(dim(" · ")) : null;
+}
+
+/** Cost totals classified by estimate quality (issue #307): reported sums
+ * first, then estimates, then unpriced/ambiguous counts; the partial flag
+ * marks totals that cannot reconcile with the run's effective cost. Null
+ * when there is nothing priced, unpriced, or ambiguous to say. */
+function formatCostCoverage(coverage: CostCoverage): string | null {
+  const parts: string[] = [];
+  if (coverage.reported != null) parts.push(`${formatCost(coverage.reported)} reported`);
+  if (coverage.qualified_estimate != null) {
+    parts.push(`${formatCost(coverage.qualified_estimate)} qualified estimate`);
+  }
+  if (coverage.model_only_estimate != null) {
+    parts.push(`${formatCost(coverage.model_only_estimate)} model-only estimate`);
+  }
+  if (coverage.unpriced_calls > 0) parts.push(`${coverage.unpriced_calls} unpriced`);
+  if (coverage.ambiguous_calls > 0) parts.push(`${coverage.ambiguous_calls} ambiguous`);
+  if (parts.length === 0) return coverage.partial ? dim("partial") : null;
+  return parts.join(" · ") + (coverage.partial ? ` ${dim("partial")}` : "");
 }
 
 function printTranscript(transcript: Record<string, unknown>): void {  const turns = transcript.turns ?? transcript.messages ?? transcript;

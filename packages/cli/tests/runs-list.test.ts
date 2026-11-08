@@ -235,3 +235,224 @@ describe("runs list --limit", () => {
     expect(parsed).toHaveLength(2);
   });
 });
+
+// Observed-serving filters and the Serving column (issue #307): repeated
+// values OR within a dimension, dimensions AND on one request.
+describe("runs list serving filters and column (issue #307)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("encodes the serving filters as repeated query params", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(mockResponse([]));
+    const { logs, restore } = captureLog();
+
+    await run([
+      "--backend", "http://backend.test",
+      "--observed-model", "glm-4.7",
+      "--observed-model", "kimi-k2.5",
+      "--provider", "openrouter",
+      "--host", "baseten",
+      "--route", "nitro",
+      "--service-tier", "priority",
+      "--serving-unknown", "host",
+      "--serving-mode", "only",
+    ]);
+    restore();
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain("observed_model=glm-4.7");
+    expect(url).toContain("observed_model=kimi-k2.5");
+    expect(url).toContain("provider=openrouter");
+    expect(url).toContain("host=baseten");
+    expect(url).toContain("route=nitro");
+    expect(url).toContain("service_tier=priority");
+    expect(url).toContain("serving_unknown=host");
+    expect(url).toContain("serving_mode=only");
+    expect(logs.join("\n")).toContain("No runs found");
+  });
+
+  it("splits a comma-joined --serving-unknown into repeated params", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(mockResponse([]));
+    await run([
+      "--backend", "http://backend.test",
+      "--serving-unknown", "model,host",
+    ]);
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain("serving_unknown=model");
+    expect(url).toContain("serving_unknown=host");
+  });
+
+  it("exits 2 on an invalid --serving-unknown before making the request", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const { errors, restore } = captureError();
+
+    const code = await run(["--backend", "http://backend.test", "--serving-unknown", "tier"]);
+    restore();
+
+    expect(code).toBe(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(errors.join("\n")).toContain("--serving-unknown must be one of model, provider, host, route, service_tier");
+  });
+
+  it("exits 2 on an invalid --serving-mode before making the request", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const { errors, restore } = captureError();
+
+    const code = await run(["--backend", "http://backend.test", "--serving-mode", "exclusive"]);
+    restore();
+
+    expect(code).toBe(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(errors.join("\n")).toContain("--serving-mode must be contains or only");
+  });
+
+  it("renders the Serving column: identity for uniform, mixed count, dash when absent", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse([
+        makeRun({
+          serving: {
+            state: "uniform",
+            calls: 4,
+            errored_calls: 0,
+            unknown_provider_calls: 0,
+            unknown_host_calls: 0,
+            aggregate_observations: 0,
+            groups: [
+              {
+                identity: {
+                  model: "glm-4.7",
+                  api_provider: "fireworks",
+                  serving_host: null,
+                  route: null,
+                  service_tier: "priority",
+                },
+                calls: 4,
+                errored_calls: 0,
+                whole_call_rate: { median: 120, samples: 4 },
+                streaming_rate: { median: null, samples: 0 },
+                rate_scopes: [],
+              },
+            ],
+            total_groups: 1,
+            groups_truncated: false,
+            task_runs_with_evidence: 1,
+            task_runs_total: 1,
+            cost_coverage: {
+              reported: null,
+              qualified_estimate: null,
+              model_only_estimate: null,
+              unpriced_calls: 0,
+              ambiguous_calls: 0,
+              excluded_error_calls: 0,
+              aggregate_charge_observations: 0,
+              partial: false,
+            },
+          },
+        }),
+        makeRun({
+          id: "mixed-run-00000000000000000000000a",
+          serving: {
+            state: "mixed",
+            calls: 9,
+            errored_calls: 0,
+            unknown_provider_calls: 0,
+            unknown_host_calls: 0,
+            aggregate_observations: 0,
+            groups: [],
+            total_groups: 3,
+            groups_truncated: false,
+            task_runs_with_evidence: 1,
+            task_runs_total: 1,
+            cost_coverage: {
+              reported: null,
+              qualified_estimate: null,
+              model_only_estimate: null,
+              unpriced_calls: 0,
+              ambiguous_calls: 0,
+              excluded_error_calls: 0,
+              aggregate_charge_observations: 0,
+              partial: false,
+            },
+          },
+        }),
+        makeRun({ id: "legacy-run-0000000000000000000000b", serving: null }),
+      ]),
+    );
+    const { logs, restore } = captureLog();
+
+    await run(["--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain("Serving");
+    expect(out).toContain("fireworks · priority");
+    expect(out).toContain("mixed · 3");
+  });
+
+  it("omits the Serving column when no run carries serving data", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse([makeRun()]));
+    const { logs, restore } = captureLog();
+
+    await run(["--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).not.toContain("Serving");
+  });
+
+  it("passes the serving objects through untouched in --json", async () => {
+    const serving = {
+      state: "partial",
+      calls: 2,
+      errored_calls: 0,
+      unknown_provider_calls: 1,
+      unknown_host_calls: 2,
+      aggregate_observations: 0,
+      groups: [],
+      total_groups: 0,
+      groups_truncated: false,
+      task_runs_with_evidence: 1,
+      task_runs_total: 1,
+      cost_coverage: {
+        reported: 1000,
+        qualified_estimate: null,
+        model_only_estimate: null,
+        unpriced_calls: 1,
+        ambiguous_calls: 0,
+        excluded_error_calls: 0,
+        aggregate_charge_observations: 0,
+        partial: true,
+      },
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse([makeRun({ serving })]),
+    );
+    const { logs, restore } = captureLog();
+
+    const code = await run(["--backend", "http://backend.test", "--json"]);
+    restore();
+
+    expect(code).toBe(0);
+    const parsed = JSON.parse(logs.join("\n")) as { serving?: unknown }[];
+    expect(parsed[0]?.serving).toEqual(serving);
+  });
+
+  it("surfaces a backend 422 (malformed filter) as an error with exit 2", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse({ detail: "invalid serving filter" }, 422),
+    );
+    const { errors, restore } = captureError();
+
+    const code = await run(["--backend", "http://backend.test", "--host", "baseten"]);
+    restore();
+
+    expect(code).toBe(2);
+    expect(errors.join("\n")).toContain("Backend error 422");
+  });
+});
