@@ -3,7 +3,11 @@
 import { useReducer, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { createAgentTaskBatchRun, type AgentTaskSummary } from "@/lib/agent-task-api";
+import {
+  createAgentTaskBatchRun,
+  type AgentTaskSummary,
+  type RunLabels,
+} from "@/lib/agent-task-api";
 import { createTaskViewComparison, type TaskViewConfig } from "@/lib/agent-task-view-api";
 import {
   type ProjectTaskSource,
@@ -65,9 +69,10 @@ export function useTaskRunActions({
     }
   };
 
-  const handleRun = async () => {
+  const handleRun = async (labels?: RunLabels) => {
     if (selected.size === 0 || isDemoProject) return;
     dispatchRun({ type: "START" });
+    const hasLabels = labels !== undefined && Object.keys(labels).length > 0;
     try {
       const selectedTasks = tasks.filter((t) => selected.has(t.id));
       const taskIds = selectedTasks.map((t) => t.id);
@@ -81,6 +86,9 @@ export function useTaskRunActions({
             entrypoint: "/tasks",
             initiated_at: new Date().toISOString(),
           },
+          // Labels ride in run_metadata only when set: the no-label request
+          // stays byte-identical to the pre-labels one.
+          ...(hasLabels ? { labels } : {}),
         },
       });
       window.location.href = `/project/${projectId}/runs/${result.id}`;

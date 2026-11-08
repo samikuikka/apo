@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AgentTasksClient } from "@/app/project/[projectId]/tasks/tasks-client";
@@ -18,6 +18,9 @@ vi.mock("@/lib/agent-task-api", async () => {
     ...actual,
     createAgentTaskBatchRun: vi.fn(),
     getConnectedExecutorStatus: vi.fn().mockResolvedValue({ state: "ready" }),
+    // The labels dialog reads value suggestions on open; empty facets keep
+    // the dialog free of suggestion rows in these scenes.
+    fetchRunLabelFacets: vi.fn().mockResolvedValue({ environments: [], labels: [] }),
   };
 });
 
@@ -127,6 +130,10 @@ describe("AgentTasksClient — native source-owned Run", () => {
     const runButtons = screen.getAllByRole("button", { name: /Run/i });
     await user.click(runButtons[0]);
 
+    // Run now goes through the labels dialog; confirm to start the batch.
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Run 2 tasks" }));
+
     await waitFor(() => {
       expect(createAgentTaskBatchRun).toHaveBeenCalledTimes(1);
     });
@@ -136,6 +143,39 @@ describe("AgentTasksClient — native source-owned Run", () => {
     // whole request — `selection_type` and `execution_target` are derived
     // server-side and must not be sent.
     expect(Object.keys(call).sort()).toEqual(["project", "run_metadata", "task_ids"]);
+    // No labels picked: run_metadata stays the trigger alone.
+    expect(Object.keys(call.run_metadata ?? {}).sort()).toEqual(["trigger"]);
+  });
+
+  it("carries labels added in the run dialog into run_metadata", async () => {
+    const user = userEvent.setup();
+    vi.mocked(createAgentTaskBatchRun).mockResolvedValueOnce({
+      id: "batch-1",
+    } as Awaited<ReturnType<typeof createAgentTaskBatchRun>>);
+    render(
+      <AgentTasksClient
+        tasks={[task()]}
+        error={null}
+        taskSource={taskSource}
+        isDemo={false}
+      />,
+    );
+    await user.click(screen.getAllByRole("checkbox")[0]);
+    await user.click(screen.getAllByRole("button", { name: /Run/i })[0]);
+
+    await user.type(screen.getByLabelText("Label key"), "team");
+    await user.type(screen.getByLabelText("Label value"), "platforms");
+    await user.click(screen.getByRole("button", { name: "Add Label" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Run 1 task" }));
+
+    await waitFor(() => {
+      expect(createAgentTaskBatchRun).toHaveBeenCalledTimes(1);
+    });
+    const call = vi.mocked(createAgentTaskBatchRun).mock.calls[0][0];
+    expect(call.run_metadata).toMatchObject({
+      labels: { team: { id: "platforms", name: "platforms" } },
+    });
   });
 });
 
