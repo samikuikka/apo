@@ -7,6 +7,7 @@ import {
 } from "@/lib/agent-task-api";
 import { parseRunScope, runScopeQuery } from "@/lib/run-scope";
 import { metricQuery, parseMetricFilters } from "@/lib/run-metric-filters";
+import { parseServingFilterValues } from "@/lib/serving-types";
 import { getProject, type ProjectTaskSource } from "@/lib/projects-api";
 import { Suspense } from "react";
 import { RunsClient } from "./runs-client";
@@ -41,6 +42,11 @@ export default async function RunsPage({
   const efforts = effortParam ? effortParam.split(",").filter(Boolean) : undefined;
   const providerParam = typeof query.provider === "string" ? query.provider : undefined;
   const providers = providerParam ? providerParam.split(",").filter(Boolean) : undefined;
+  // Same-request serving dimensions (issue #307): free-text comma-joined
+  // values the toolbar's Host/Route/Tier inputs write.
+  const servingHost = parseServingFilterValues(typeof query.host === "string" ? query.host : null);
+  const servingRoute = parseServingFilterValues(typeof query.route === "string" ? query.route : null);
+  const servingTier = parseServingFilterValues(typeof query.tier === "string" ? query.tier : null);
   const scope = parseRunScope(query);
   const metrics = parseMetricFilters(query);
 
@@ -66,6 +72,11 @@ export default async function RunsPage({
       model: models,
       effort: efforts,
       provider: providers,
+      serving: {
+        host: servingHost,
+        route: servingRoute,
+        serviceTier: servingTier,
+      },
       ...runScopeQuery(scope),
       ...metricQuery(metrics),
       page,

@@ -256,6 +256,21 @@ class TestRequestAccounting:
         )
         assert result.request_kind == "request"
 
+    def test_non_generation_observations_have_no_request_role(self) -> None:
+        for span_name in ("task.load", "adapter.initialize", "ai.toolCall"):
+            result = extract_serving(_attrs(), span_name, observation_type="SPAN")
+            assert result.request_kind is None, span_name
+        tool = extract_serving(_attrs(), "ai.toolCall", observation_type="TOOL")
+        assert tool.request_kind is None
+
+    def test_explicit_kind_beats_the_type_default(self) -> None:
+        result = extract_serving(
+            _attrs(**{"apo.llm.request_kind": "request"}),
+            "ai.generateText",
+            observation_type="GENERATION",
+        )
+        assert result.request_kind == "request"
+
 
 _FIXTURE_EXPECTATIONS: dict[str, dict[str, Any]] = {
     "direct-fireworks-priority-request": {

@@ -21,6 +21,8 @@ interface RunsToolbarProps {
   effortOptions: EffortFacetOption[];
   /** The scope rail's toggle (Filters button and chips), inside the filter row. */
   scopeSlot?: ReactNode;
+  /** Same-request serving filters (Host/Route/Tier), inside the filter row. */
+  servingSlot?: ReactNode;
   totalCount: number;
   /** Any filter dimension in play — typed here or carried in from Tasks. */
   hasActiveFilters: boolean;
@@ -50,6 +52,7 @@ export function RunsToolbar({
   onClearFilters,
   onSetArchived,
   scopeSlot,
+  servingSlot,
 }: RunsToolbarProps) {
   const [searchInput, setSearchInput] = useState(urlQ);
   // Follow ?q changes that did not come from our own typing (initial load,
@@ -99,7 +102,12 @@ export function RunsToolbar({
           }))}
           effort={selectedEffort}
           onEffortChange={(effort) => updateUrl({ effort, page: null })}
-          filterSlot={scopeSlot}
+          filterSlot={
+            <>
+              {scopeSlot}
+              {servingSlot}
+            </>
+          }
           since={urlSince}
           onSinceChange={(since) => updateUrl({ since, page: null })}
           query={searchInput}

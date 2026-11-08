@@ -146,8 +146,12 @@ def resolve_model_era_qualified(
     )
 
     def _selector_compatible(row: ModelRowDB) -> bool:
+        # Selector values compare as anchored full matches: plain ids match
+        # themselves, and migrated regex wildcards (legacy provider_pattern
+        # semantics) keep working.
         for key, value in _row_selectors(row).items():
-            if observed.get(key) != value:
+            observed_value = observed.get(key)
+            if observed_value is None or not _fullmatch(value, observed_value):
                 return False
         return True
 

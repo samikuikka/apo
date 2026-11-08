@@ -36,6 +36,9 @@ export interface CreateSpanParams {
    * Distinct from the serving host: traffic through a gateway reports the
    * gateway here and the host only when the response names it. */
   api_provider?: string;
+  /** Start-time serving-host evidence (e.g. declared through the AI SDK's
+   * telemetry metadata), emitted as `apo.llm.serving_host`. */
+  serving_host?: string;
   /** Finer-grained serving route (e.g. a custom gateway host), emitted as
    * `apo.llm.route`. */
   route?: string;
@@ -80,6 +83,11 @@ export interface EndSpanParams {
    * metadata/headers), emitted as `apo.llm.serving_host`. Never copied
    * from the API provider: gateways make that implication unsafe. */
   serving_host?: string;
+  /** The service the harness calls, learned from a child step span's
+   * telemetry metadata (the AI SDK puts base telemetry attributes on
+   * doGenerate/doStream children, not the parent wrapper), emitted as
+   * `apo.llm.api_provider`. */
+  api_provider?: string;
   /** Finer-grained serving route learned from the response (e.g. a LiteLLM
    * deployment id), emitted as `apo.llm.route`. */
   route?: string;

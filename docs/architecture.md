@@ -325,6 +325,43 @@ prefix → generic). Detection only picks the token-split heuristic — the
 rolled up per run as (model, provider/route) pairs. Spans without the
 attributes show no host, never a guessed one (issue #307).
 
+### Serving Identity (issue #307)
+
+Beyond the usage decoder, every generation carries an **observed serving
+identity**: the API provider the harness called (`apo.llm.api_provider`), the
+host that actually executed inference (`apo.llm.serving_host`, also via
+OpenInference `llm.provider` with convention provenance), the route
+(`apo.llm.route`, opaque), and the requested/served tiers. Extraction
+(`otel_normalization/_serving.py`) never guesses from model names, never
+copies the API provider into the host, and turns malformed telemetry into
+null plus a diagnostic rather than a failed ingestion. The instrumentation
+provider (`gen_ai.provider.name`) stays evidence about the trace convention,
+not proof of the serving host.
+
+**Request accounting**: one physical provider request is `request`
+(`apo.llm.request_kind`), a multi-request Vercel wrapper is `aggregate`, and
+unknown wrapper-only evidence is never counted as several calls. Usage and
+cost rollups keep their existing accounting level (the wrapper's totals stay
+aggregate charges); serving summaries select request evidence, including
+errors, once per call.
+
+**Replay vs repricing**: reprojection recomputes identity from the current
+canonical span and may clear stale values, but `cost_mode="preserve"`
+(`reproject` / `python -m apo.services.serving_backfill`) snapshots every
+price/cost field unchanged. Historical charges change only through explicit
+repricing, which resolves with the observed serving identity.
+
+**Price precedence**: price rows carry serving selectors
+(`serving_match`: api provider, host, route, tier; null = wildcard). Era
+identity is `(project, match_pattern, selector tuple, start_date)`. A
+concrete selector never matches an unknown observation; among matching rows
+the strict-superset-most selector wins; two incomparable maximal selectors
+are **ambiguous** (null cost, deterministic candidates) rather than broken by
+row order; a wildcard rate remains a labeled `model_only` estimate; provided
+cost is always `reported`. Project rows shadow globals per selector slot,
+scoped before era filtering so an override's date gap never silently falls
+back to a global rate.
+
 **Single compute function** (`services/pricing/compute.py:compute_cost`): used
 by ingestion, re-pricing, and the match endpoint. Resolves era → tier → prices,
 then `breakdown[k] = round(price × tokens / 1e6)` per dimension (micro-USD int);

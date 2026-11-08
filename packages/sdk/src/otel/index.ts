@@ -323,24 +323,29 @@ export async function configureApoTelemetry(
   if (options.environment) resourceAttrs[SEMRESATTRS_DEPLOYMENT_ENVIRONMENT] = options.environment;
   const resource = resourceFromAttributes(resourceAttrs);
 
+  // If an ApoSpanProcessor was registered via registerApoTracing(), add it to
+  // this provider so GenAI spans from SDKs (Vercel AI, OpenAI, etc.) are fed
+  // into the projection-tee for local assertions AND exported via OTLP.
+  // It must run BEFORE the exporting processor: it enriches spans with
+  // serving-identity attributes in onEnd, and enrichment after the export
+  // read is lost.
+  const apoProcessor = getRegisteredApoProcessor();
+
   // Official OTLP/HTTP trace exporter — standard OTLP wire format, no custom
   // serializer. Headers carry the auth the apo receiver validates.
   // The standalone path owns this provider. Host-owned providers compose with
   // createApoSpanProcessor() at their own construction boundary.
-  const spanProcessors: SpanProcessor[] = [createApoSpanProcessor({
-    endpoint,
-    headers,
-    processor: options.processor,
-    scheduledDelayMillis: options.scheduledDelayMillis,
-  })];
-
-  // If an ApoSpanProcessor was registered via registerApoTracing(), add it to
-  // this provider so GenAI spans from SDKs (Vercel AI, OpenAI, etc.) are fed
-  // into the projection-tee for local assertions AND exported via OTLP.
-  const apoProcessor = getRegisteredApoProcessor();
-  if (apoProcessor) {
-    spanProcessors.push(apoProcessor as unknown as SpanProcessor);
-  }
+  const spanProcessors: SpanProcessor[] = [
+    ...(apoProcessor
+      ? [apoProcessor as unknown as SpanProcessor]
+      : []),
+    createApoSpanProcessor({
+      endpoint,
+      headers,
+      processor: options.processor,
+      scheduledDelayMillis: options.scheduledDelayMillis,
+    }),
+  ];
 
   const provider = new BasicTracerProvider({
     resource,

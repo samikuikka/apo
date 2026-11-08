@@ -297,7 +297,7 @@ def to_batch_run_detail(
             # A child without a linked trace reports no_data, not null:
             # null means the projection was built without trace access.
             serving=(
-                run_servings.get(tr.trace_run_id, empty_serving_summary())
+                run_servings.get(tr.trace_run_id or "", empty_serving_summary())
                 if run_servings is not None
                 else None
             ),

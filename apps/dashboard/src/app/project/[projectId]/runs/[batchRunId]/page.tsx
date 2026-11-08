@@ -16,6 +16,7 @@ import { formatCostMicro } from "@/lib/format";
 import { formatBatchExecution } from "@/lib/run-configuration";
 import { RequestedByInline, TriggerInline } from "@/components/trigger-badge";
 import { RunScopeInline } from "@/components/run-scope-inline";
+import { ServingSummary } from "@/components/serving/ServingSummary";
 import { DeleteRunButton } from "@/components/runs/DeleteRunButton";
 import { BatchTaskRunsTable } from "./batch-task-runs-table";
 import { BatchRunAutoRefresh } from "@/components/agent-task-execution/batch-run-auto-refresh";
@@ -219,6 +220,15 @@ export default async function BatchRunDetailPage({
             breakdown={batchRun.failure_breakdown}
             totalTasks={batchRun.total_tasks}
           />
+          {/* Observed serving summary over every child Task Run (issue #307):
+           * setups, speed, cost coverage, and how many children carried
+           * serving evidence. Null on old backends renders nothing. */}
+          {batchRun.serving != null && (
+            <div className="border-t border-border px-6 py-4">
+              <h2 className="mb-2 text-sm font-semibold">Serving</h2>
+              <ServingSummary summary={batchRun.serving} />
+            </div>
+          )}
           <ExecutionAttemptPanel
             attempts={batchRun.attempts}
             poolName={batchRun.executor_pool_name}

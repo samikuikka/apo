@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatDuration, formatRelativeTime, runDurationMs, formatCostMicro, tokenFormat, formatTokenTotal } from "@/lib/format";
 import { formatBatchExecution, shortModel } from "@/lib/run-configuration";
+import { servingCompactLabel, type ServingSummary as ServingSummaryData } from "@/lib/serving-types";
 import { useUrlParam, useUrlParamSet } from "@/hooks/use-url-state";
 import { conclusionStyle } from "@/components/run-outcome";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -299,6 +300,14 @@ function BatchSlot({
         {batch.trigger?.branch && (
           <span className="font-mono text-[11px] text-muted-foreground/60">{batch.trigger.branch}</span>
         )}
+        {/* Observed serving setup over this side's child runs (issue #307):
+         * the honest "same model, different host" comparison dimension.
+         * Null (old backend) renders nothing. */}
+        {batch.serving != null && (
+          <span className="font-mono text-[11px] text-muted-foreground/80">
+            Serving: {servingCompactLabel(batch.serving)}
+          </span>
+        )}
       </div>
 
       <div className="mt-3 flex items-center gap-3">
@@ -495,9 +504,20 @@ function VerdictSentence({
   );
 }
 
+/** The Serving cell for the Summary totals grid: the compact label with the
+ * child-evidence count a batch comparison needs ("which of this run's task
+ * runs actually reported serving"). Em dash when the side has none. */
+function servingTotalsCell(summary: ServingSummaryData | null): string {
+  if (summary == null) return "\u2014";
+  const label = servingCompactLabel(summary);
+  if (summary.task_runs_total > 1) {
+    return `${label} \u00b7 ${summary.task_runs_with_evidence}/${summary.task_runs_total} runs`;
+  }
+  return label;
+}
+
 /** Everything a metric row needs from one side of the comparison. */
-function batchStats(batch: AgentTaskBatchRunDetail) {
-  const checkTotal = Math.max(batch.total_checks, 1);
+function batchStats(batch: AgentTaskBatchRunDetail) {  const checkTotal = Math.max(batch.total_checks, 1);
   return {
     passRate: batch.total_checks > 0 ? Math.round((batch.passed_checks / checkTotal) * 100) : null,
     checks: batch.total_checks > 0 ? `${batch.passed_checks}/${batch.total_checks}` : "—",
@@ -742,6 +762,18 @@ function SummaryView({
                 b: batchB.total_model_time_ms != null ? formatDuration(batchB.total_model_time_ms) : "—",
                 delta: ratio(batchA.total_model_time_ms ?? null, batchB.total_model_time_ms ?? null) ?? null,
               },
+              // Observed serving setup per side (issue #307). Counts, not a
+              // delta: a mixed run's speed groups by host, but its verdict
+              // and wall time are not host outcomes. Hidden when neither
+              // side carries serving (old backends).
+              ...(batchA.serving != null || batchB.serving != null
+                ? [{
+                    label: "serving",
+                    a: servingTotalsCell(batchA.serving ?? null),
+                    b: servingTotalsCell(batchB.serving ?? null),
+                    delta: null,
+                  }]
+                : []),
             ] as const
           ).map((row) => (
             <div

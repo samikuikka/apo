@@ -9,6 +9,7 @@
 
 import { createContext, use, useMemo, useCallback, useRef, useState, ReactNode } from "react";
 import { computeCumulativeMetrics, type CumulativeMetrics } from "@/lib/cumulative-metrics";
+import type { GenerationRates, ServingIdentity } from "@/lib/serving-types";
 
 export interface TraceMetric {
   metric_name: string;
@@ -107,6 +108,31 @@ export interface LoggedCall {
 
   // Corrected output for diff view
   corrected_output?: string | null;
+
+  // Observed serving identity (issue #307), as the observation detail API
+  // carries it additively. Flat fields on every response; a nested
+  // serving/rates object is the forward contract for when the backend
+  // ships precomputed rate evidence on calls. All absent on old backends.
+  instrumentation_provider?: string | null;
+  api_provider?: string | null;
+  serving_host?: string | null;
+  requested_service_tier?: string | null;
+  service_tier?: string | null;
+  request_model?: string | null;
+  response_model?: string | null;
+  observed_model?: string | null;
+  serving_evidence?: Record<string, { source: string; kind: string }> | null;
+  /** "request" = one physical API request; "aggregate" = a multi-request
+   * wrapper; null/absent = unknown. */
+  request_accounting?: "request" | "aggregate" | "unknown" | null;
+  /** Token scope for rate math: "text" excludes reasoning, "all_output"
+   * includes it; null/absent = unknown. */
+  output_token_scope?: "text" | "all_output" | null;
+  /** Estimate quality from serving-qualified pricing (issue #307). */
+  pricing_quality?: "reported" | "qualified" | "model_only" | "unpriced" | "ambiguous" | null;
+  matched_serving?: Record<string, string | null> | null;
+  serving?: ServingIdentity | null;
+  rates?: GenerationRates | null;
 }
 
 export type TraceObservation = LoggedCall;

@@ -28,6 +28,16 @@ function getClient() {
   });
 }
 
+/**
+ * This app calls OpenRouter (the baseURL default above). Declaring it in
+ * telemetry metadata lets apo record the true API provider per generation
+ * instead of leaving it unknown: the AI SDK flattens metadata onto spans
+ * as `ai.telemetry.metadata.*` and apo's translator reads the
+ * `apo.llm.api_provider` key. The executing host stays unknown unless the
+ * response reports it, which is the honest state for gateway traffic.
+ */
+const SERVING_TELEMETRY_METADATA = { "apo.llm.api_provider": "openrouter" };
+
 function getModel() {
   return process.env.OPENROUTER_MODEL ?? "deepseek/deepseek-v4.1-flash";
 }
@@ -269,7 +279,10 @@ export async function runSteerableChat(
       tools,
       stopWhen: stepCountIs(1),
       ...(effort ? { providerOptions: { openai: { reasoningEffort: effort } } } : {}),
-      experimental_telemetry: { isEnabled: telemetryEnabled },
+      experimental_telemetry: {
+        isEnabled: telemetryEnabled,
+        metadata: SERVING_TELEMETRY_METADATA,
+      },
     });
 
     messages.push(...(result.response.messages as ModelMessage[]));
@@ -318,7 +331,10 @@ export async function runSteerableChat(
             "Do not call any more tools — synthesize everything you found into a clear, complete response.",
         } satisfies ModelMessage,
       ],
-      experimental_telemetry: { isEnabled: telemetryEnabled },
+      experimental_telemetry: {
+        isEnabled: telemetryEnabled,
+        metadata: SERVING_TELEMETRY_METADATA,
+      },
     });
     responseText = synthesis.text;
     opts.onProgress({ kind: "assistant_reply" });
@@ -377,7 +393,10 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     tools,
     stopWhen: stepCountIs(request.maxSteps ?? 8),
     ...(effort ? { providerOptions: { openai: { reasoningEffort: effort } } } : {}),
-    experimental_telemetry: { isEnabled: telemetryEnabled },
+    experimental_telemetry: {
+      isEnabled: telemetryEnabled,
+      metadata: SERVING_TELEMETRY_METADATA,
+    },
   });
 
   // Recover text when the model ends on a tool call or hits the step limit —
@@ -399,7 +418,10 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
             "Do not call any more tools — synthesize everything you found into a clear, complete response.",
         } satisfies ModelMessage,
       ],
-      experimental_telemetry: { isEnabled: telemetryEnabled },
+      experimental_telemetry: {
+        isEnabled: telemetryEnabled,
+        metadata: SERVING_TELEMETRY_METADATA,
+      },
     });
     responseText = synthesis.text;
   }

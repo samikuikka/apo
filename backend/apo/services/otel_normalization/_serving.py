@@ -88,7 +88,25 @@ class NormalizedServing:
         self.diagnostics = diagnostics or []
 
 
-def extract_serving(attrs: dict[str, Any], span_name: str = "") -> NormalizedServing:
+# The AI SDK's telemetry metadata channel: an app that knows who it calls
+# declares it once per call site and the AI SDK flattens it onto spans as
+# ``ai.telemetry.metadata.apo.llm.<field>``. A documented convention source
+# for identity, with convention provenance.
+_AI_SDK_METADATA_PREFIX = "ai.telemetry.metadata.apo.llm."
+
+
+def _metadata_str(
+    attrs: dict[str, Any], field: str
+) -> str | None:
+    value = attrs.get(_AI_SDK_METADATA_PREFIX + field)
+    if isinstance(value, str) and value.strip():
+        return value
+    return None
+
+
+def extract_serving(
+    attrs: dict[str, Any], span_name: str = "", observation_type: str = "GENERATION"
+) -> NormalizedServing:
     """Extract serving identity, timing evidence, and request accounting."""
     diagnostics: list[str] = []
     identity = ServingIdentity()
@@ -110,21 +128,34 @@ def extract_serving(attrs: dict[str, Any], span_name: str = "") -> NormalizedSer
         )
 
     identity.api_provider = _clean_provider(
-        _first_str(attrs, "apo.llm.api_provider"), diagnostics
+        _first_str(attrs, "apo.llm.api_provider")
+        or _metadata_str(attrs, "api_provider"),
+        diagnostics,
     )
     if identity.api_provider is not None:
+        explicit_api = _first_str(attrs, "apo.llm.api_provider") is not None
         identity.evidence["api_provider"] = IdentityEvidence(
-            source="apo.llm.api_provider", kind="reported"
+            source=(
+                "apo.llm.api_provider"
+                if explicit_api
+                else "ai.telemetry.metadata.apo.llm.api_provider"
+            ),
+            kind="reported" if explicit_api else "convention",
         )
 
     identity.serving_host = _extract_serving_host(attrs, diagnostics, identity)
 
     identity.route = _clean_identity(
-        _first_str(attrs, "apo.llm.route"), IDENTITY_MAX_BYTES, "route", diagnostics
+        _first_str(attrs, "apo.llm.route") or _metadata_str(attrs, "route"),
+        IDENTITY_MAX_BYTES,
+        "route",
+        diagnostics,
     )
     if identity.route is not None:
+        explicit_route = _first_str(attrs, "apo.llm.route") is not None
         identity.evidence["route"] = IdentityEvidence(
-            source="apo.llm.route", kind="reported"
+            source="apo.llm.route" if explicit_route else "ai.telemetry.metadata.apo.llm.route",
+            kind="reported" if explicit_route else "convention",
         )
 
     identity.requested_service_tier = _clean_identity(
@@ -139,14 +170,21 @@ def extract_serving(attrs: dict[str, Any], span_name: str = "") -> NormalizedSer
         )
 
     identity.service_tier = _clean_identity(
-        _first_str(attrs, "apo.llm.service_tier"),
+        _first_str(attrs, "apo.llm.service_tier")
+        or _metadata_str(attrs, "service_tier"),
         IDENTITY_MAX_BYTES,
         "service_tier",
         diagnostics,
     )
     if identity.service_tier is not None:
+        explicit_tier = _first_str(attrs, "apo.llm.service_tier") is not None
         identity.evidence["service_tier"] = IdentityEvidence(
-            source="apo.llm.service_tier", kind="reported"
+            source=(
+                "apo.llm.service_tier"
+                if explicit_tier
+                else "ai.telemetry.metadata.apo.llm.service_tier"
+            ),
+            kind="reported" if explicit_tier else "convention",
         )
 
     identity.request_model = _clean_identity(
@@ -176,7 +214,7 @@ def extract_serving(attrs: dict[str, Any], span_name: str = "") -> NormalizedSer
         first_content_offset_ms=_extract_offset_ms(attrs, diagnostics),
         output_token_scope=_extract_scope(attrs, "apo.llm.output_token_scope", diagnostics),
         first_content_scope=_extract_scope(attrs, "apo.llm.first_content_scope", diagnostics),
-        request_kind=_request_kind(attrs, span_name),
+        request_kind=_request_kind(attrs, span_name, observation_type),
         diagnostics=diagnostics,
     )
 
@@ -203,16 +241,18 @@ def _extract_serving_host(
     return None
 
 
-def _request_kind(attrs: dict[str, Any], span_name: str) -> str | None:
+def _request_kind(
+    attrs: dict[str, Any], span_name: str, observation_type: str
+) -> str | None:
     """Classify the span's role in request accounting.
 
     An explicit ``apo.llm.request_kind`` wins. Otherwise a Vercel per-step
     child span (``ai.generateText.doGenerate`` / ``ai.streamText.doStream``)
     is one physical request, a Vercel wrapper span is an aggregate of its
-    children, and any other recognized generation convention is a single
-    request. A wrapper with no child evidence is unknown, never several
-    invented physical calls; the aggregate classification itself is decided
-    at rollup time from the surrounding span tree.
+    children, and any other GENERATION is a single request. Non-generation
+    observations (tools, chains, bookkeeping spans) carry no request role at
+    all: None keeps them out of serving rollups entirely. A wrapper with no
+    child evidence is unknown, never several invented physical calls.
     """
     explicit = _first_str(attrs, "apo.llm.request_kind")
     if explicit is not None:
@@ -221,6 +261,8 @@ def _request_kind(attrs: dict[str, Any], span_name: str) -> str | None:
             return cleaned
         return None
 
+    if observation_type != "GENERATION":
+        return None
     if span_name in _VERCEL_REQUEST_CHILD_NAMES:
         return "request"
     if span_name in ("ai.generateText", "ai.streamText"):

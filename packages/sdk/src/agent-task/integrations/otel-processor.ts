@@ -22,6 +22,7 @@
 import { getActiveApoRun } from "./run-context.ts";
 import {
   translateOtelSpan,
+  servingFromTelemetryMetadata,
   round3,
   monotonicNowMs,
   type TranslatedSpan,
@@ -109,6 +110,15 @@ function servedModelFrom(
 export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
   private spanMap = new Map<string, TrackedSpan>();
   private servedModelByParent = new Map<string, string>();
+  private servingByParent = new Map<
+    string,
+    {
+      apiProvider?: string;
+      servingHost?: string;
+      route?: string;
+      serviceTier?: string;
+    }
+  >();
 
   onStart(span: OTelSpan, _parentContext: OTelContext): void {
     const run = getActiveApoRun();
@@ -133,6 +143,13 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
       step_name: translated.stepName,
       model: translated.model ?? translated.stepName,
       observation_type: translated.observationType,
+      ...(translated.serving?.apiProvider
+        ? { api_provider: translated.serving.apiProvider }
+        : {}),
+      ...(translated.serving?.servingHost
+        ? { serving_host: translated.serving.servingHost }
+        : {}),
+      ...(translated.serving?.route ? { route: translated.serving.route } : {}),
       ...(translated.input ? { input: translated.input } : {}),
       metadata: {
         ...(run.taskId ? { taskId: run.taskId } : {}),
@@ -158,6 +175,13 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
     if (parentOtelId && served) {
       this.servedModelByParent.set(parentOtelId, served);
     }
+    // Same inheritance for serving identity: the AI SDK puts base telemetry
+    // attributes (including the app-declared apo.llm.* metadata) on the
+    // doGenerate/doStream children, not the wrapper the processor tracks.
+    const declaredServing = servingFromTelemetryMetadata(span.attributes ?? {});
+    if (parentOtelId && declaredServing) {
+      this.servingByParent.set(parentOtelId, declaredServing);
+    }
 
     // Own report first, then what a child reported for this span. A span
     // ends once, so claim its slot here: the processor is a singleton that
@@ -165,6 +189,9 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
     // outside its run's context would never be removed.
     const servedForThis = served ?? this.servedModelByParent.get(otelId);
     this.servedModelByParent.delete(otelId);
+    const servingForThis =
+      declaredServing ?? this.servingByParent.get(otelId);
+    this.servingByParent.delete(otelId);
 
     const tracked = this.spanMap.get(otelId);
     if (!tracked) return; // wasn't tracked (not load-bearing or outside run)
@@ -181,10 +208,43 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
 
     const latency = round3(monotonicNowMs() - tracked.startedAt);
 
+    // The backend projects from the RAW exported span, so identity must
+    // live on this span itself, not only the in-process apo view. Setting
+    // attributes in onEnd is the sanctioned processor hook to enrich a
+    // span before export.
+    if (servingForThis) {
+      const raw = span as OTelReadableSpan & {
+        setAttribute?: (key: string, value: string) => void;
+      };
+      if (servingForThis.apiProvider) {
+        raw.setAttribute?.("apo.llm.api_provider", servingForThis.apiProvider);
+      }
+      if (servingForThis.servingHost) {
+        raw.setAttribute?.("apo.llm.serving_host", servingForThis.servingHost);
+      }
+      if (servingForThis.route) {
+        raw.setAttribute?.("apo.llm.route", servingForThis.route);
+      }
+      if (servingForThis.serviceTier) {
+        raw.setAttribute?.("apo.llm.service_tier", servingForThis.serviceTier);
+      }
+      // A wrapper generation is one logical operation; its children are
+      // the physical requests. The backend's rollups read this marker.
+      if (tracked.otelSpanName === "ai.generateText" || tracked.otelSpanName === "ai.streamText") {
+        raw.setAttribute?.("apo.llm.request_kind", "aggregate");
+      }
+    }
+
     run.trace.endSpan(tracked.apoSpanId, {
       latency_ms: latency,
       ...buildEndParams(translated),
       ...(servedForThis ? { served_model: servedForThis } : {}),
+      ...(servingForThis?.apiProvider
+        ? { api_provider: servingForThis.apiProvider }
+        : {}),
+      ...(servingForThis?.servingHost
+        ? { serving_host: servingForThis.servingHost }
+        : {}),
     });
   }
 
@@ -195,6 +255,7 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
   shutdown(): Promise<void> {
     this.spanMap.clear();
     this.servedModelByParent.clear();
+    this.servingByParent.clear();
     return Promise.resolve();
   }
 
@@ -202,6 +263,7 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
   reset(): void {
     this.spanMap.clear();
     this.servedModelByParent.clear();
+    this.servingByParent.clear();
   }
 }
 

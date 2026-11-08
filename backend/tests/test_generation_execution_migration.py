@@ -15,7 +15,9 @@ from apo.db import (
 
 
 def test_v29_is_registered() -> None:
-    assert LATEST_SCHEMA_VERSION == 66
+    # Serving identity, price selectors, and the saved serving filter took
+    # v67-v69 after this migration's era; the registration itself is stable.
+    assert LATEST_SCHEMA_VERSION == 69
     assert _SCHEMA_MIGRATIONS[29].__name__ == "_migrate_to_v29"
 
 
