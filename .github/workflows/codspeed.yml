@@ -14,6 +14,11 @@
 # write` permission on each job is what mints the short-lived credential.
 #
 # Path-filtered so docs-only PRs don't burn runs.
+#
+# Both jobs pin ubuntu-24.04: ubuntu-latest is mid-rollout to 26.04 and the
+# CodSpeed runner rejects that image with "Unsupported system"
+# (CodSpeedHQ/codspeed#544). Re-pin to ubuntu-latest only after that issue
+# closes.
 
 name: CodSpeed
 
@@ -51,7 +56,7 @@ permissions:
 jobs:
   backend:
     name: Backend benchmarks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read # required for actions/checkout
@@ -76,7 +81,7 @@ jobs:
 
   sdk:
     name: SDK benchmarks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read # required for actions/checkout
