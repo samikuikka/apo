@@ -29,7 +29,6 @@ can ingest per day.
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -40,6 +39,7 @@ from sqlalchemy import text
 from sqlmodel import Session
 
 from ..models.db import ApiKeyDB
+from .user_quotas import user_daily_span_quota
 
 logger = logging.getLogger(__name__)
 
@@ -77,19 +77,6 @@ class _QuotaExceeded(HTTPException):
                 "X-RateLimit-Reset": reset_at.isoformat(),
             },
         )
-
-
-def user_daily_span_quota() -> int:
-    """Account-level daily span cap; 0/unset = off.
-
-    Read per call (not import time) so operators can flip it with a
-    restart-free env change on the next request and tests can monkeypatch
-    it without module reloads.
-    """
-    try:
-        return int(os.environ.get("APO_USER_DAILY_SPAN_QUOTA", "0"))
-    except ValueError:
-        return 0
 
 
 def _utc_day(now: datetime | None = None) -> tuple[str, datetime]:
