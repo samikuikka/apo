@@ -30,6 +30,7 @@ from .api_key_auth import (
     validate_legacy_bearer,
 )
 from .api_key_tracker import api_key_usage_tracker
+from .client_ip import get_client_ip
 from .rate_limit import LoginRateLimiter
 from ..services.installation_secrets import auth_secret_problem
 from .service_tokens import decode_service_token
@@ -179,7 +180,10 @@ def _authenticate_anonymous_demo(request: Request) -> AuthContext | JSONResponse
     # live (like the profile check) — never from the import-time binding.
     if auth_secret_problem(os.environ.get("AUTH_SECRET", ""), required=True) is not None:
         return None
-    client_ip = request.client.host if request.client else "unknown"
+    # get_client_ip, not the raw socket peer: behind the ingress proxy
+    # (Caddy/Next rewrites/cloudflared) the peer is the proxy for everyone,
+    # and keying on it gives all anonymous visitors one shared bucket.
+    client_ip = get_client_ip(request)
     if not _anonymous_demo_limiter.is_allowed(client_ip):
         return JSONResponse(
             status_code=429,
