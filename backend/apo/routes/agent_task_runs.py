@@ -9,9 +9,9 @@ Provides endpoints for managing batch runs and inspecting individual task runs.
 import os
 from collections.abc import Sequence
 from datetime import datetime, timezone
-from typing import cast
+from typing import Literal, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import Response, APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import asc, desc, func, or_
 from sqlalchemy.orm import defer
@@ -41,7 +41,12 @@ from ..models.schemas import (
     as_task_run_status,
     as_trace_persistence_status,
 )
-from ..models.columns import CALL_LIGHT
+from ..models.serving import (
+    ServingBreakdownPage,
+    ServingFilter,
+    ServingSummary,
+)
+from ..models.columns import AGENT_TASK_RUN_STARTED_AT_COL, CALL_LIGHT
 from ..services.agent_task_configuration import configuration_from_row
 from ..services.agent_task_batch_listing import (
     BatchRunListFilters,
@@ -75,8 +80,91 @@ from ..services.project_memberships import (
     enforce_project_role_from_request,
     readable_project_ids_for_request,
 )
+from ..services.serving import (
+    has_serving_evidence,
+    load_call_rows,
+    run_matches_filter,
+    serving_groups,
+    summarize_calls,
+)
 
 router = APIRouter(prefix="/v1", tags=["agent-tasks"])
+
+# Repeatable same-request serving-filter dimensions (issue #307). The
+# ``unknown`` operator selects null inside its dimension.
+ServingUnknownDimension = Literal["model", "provider", "host", "route", "service_tier"]
+
+
+def _split_repeated(raw: list[str] | None) -> list[str]:
+    """Accept both repeated params and the comma-joined form, like every
+    other multi-value dimension."""
+    return [value.strip() for item in raw or [] for value in item.split(",") if value.strip()]
+
+
+def _parse_serving_filter(
+    *,
+    observed_model: list[str] | None,
+    provider: list[str] | None,
+    host: list[str] | None,
+    route: list[str] | None,
+    service_tier: list[str] | None,
+    serving_unknown: list[ServingUnknownDimension] | None,
+    serving_mode: Literal["contains", "only"] | None,
+) -> ServingFilter | None:
+    """Build the same-request serving filter from the repeatable params.
+
+    Returns None when no serving dimension is engaged so untouched
+    requests pay nothing. When a new dimension (observed model, host,
+    route, tier, unknown operator, or mode) is present, ``provider``
+    values join the filter's providers dimension and the legacy
+    provider-or-route SQL predicate is replaced by this one coherent
+    same-request predicate. ``provider`` alone keeps the legacy behavior.
+    """
+    engaged = any(
+        (
+            observed_model,
+            host,
+            route,
+            service_tier,
+            serving_unknown,
+            serving_mode,
+        )
+    )
+    if not engaged:
+        return None
+    return ServingFilter(
+        observed_models=_split_repeated(observed_model),
+        providers=_split_repeated(provider),
+        hosts=_split_repeated(host),
+        routes=_split_repeated(route),
+        service_tiers=_split_repeated(service_tier),
+        unknown=list(serving_unknown or []),
+        mode=serving_mode or "contains",
+    )
+
+
+def _serving_calls_for_task_runs(
+    session: Session,
+    task_runs: Sequence[AgentTaskRunDB],
+) -> dict[str, list[LoggedCallDB]]:
+    """Call rows for the given runs' traces, keyed by trace run id.
+
+    One batched query per distinct project (a trace id may collide across
+    projects; the trace's project is its batch's). Never per-run.
+    """
+    batches = _load_batches(session, [task_run.batch_run_id for task_run in task_runs])
+    trace_ids_by_project: dict[str, list[str]] = {}
+    for task_run in task_runs:
+        if task_run.trace_run_id is None:
+            continue
+        batch = batches.get(task_run.batch_run_id)
+        if batch is None:
+            continue
+        trace_ids_by_project.setdefault(batch.project, []).append(task_run.trace_run_id)
+    calls: dict[str, list[LoggedCallDB]] = {}
+    for project, trace_ids in trace_ids_by_project.items():
+        calls.update(load_call_rows(session, project=project, run_ids=trace_ids))
+    return calls
 
 
 # Defer the heavy JSON columns on list/summary paths that only read scalars.
@@ -260,6 +348,7 @@ def _build_task_run_detail(
     task_definition: dict[str, object] | None = None,
     deliverables_json: dict[str, object] | None = None,
     include_requester: bool = True,
+    serving: ServingSummary | None = None,
 ) -> AgentTaskRunDetail:
     # Callers have already loaded the Batch, so this hits the identity map.
     batch = session.get(AgentTaskBatchRunDB, task_run.batch_run_id)
@@ -339,6 +428,7 @@ def _build_task_run_detail(
                 col(TaskExecutionAttemptDB.task_run_id) == task_run.id
             )
         ).first(),
+        serving=serving,
     )
 
 
@@ -756,21 +846,33 @@ def list_agent_task_batch_runs(
         default=None,
         description="Comma-separated serving host filter; matches the observed provider or route on a child run's trace (issue #307)",
     ),
+    observed_model: list[str] | None = Query(
+        default=None,
+        description="Repeatable observed serving-model filter (same-request predicate; issue #307)",
+    ),
+    host: list[str] | None = Query(
+        default=None,
+        description="Repeatable serving-host filter (same-request predicate; issue #307)",
+    ),
+    route: list[str] | None = Query(
+        default=None,
+        description="Repeatable serving-route filter (same-request predicate; issue #307)",
+    ),
+    service_tier: list[str] | None = Query(
+        default=None,
+        description="Repeatable served-tier filter (same-request predicate; issue #307)",
+    ),
+    serving_unknown: list[ServingUnknownDimension] | None = Query(
+        default=None,
+        description="Repeatable unknown-operator dimension; selects null inside that dimension",
+    ),
+    serving_mode: Literal["contains", "only"] | None = Query(
+        default=None,
+        description="contains: a child run needs one matching request; only: every request on one child run must match",
+    ),
     since: str | None = Query(default=None),
     environment: str | None = Query(default=None),
     label: list[str] | None = Query(default=None),
-    cost_min: float | None = Query(
-        default=None, ge=0, description="Keep batches whose child-run cost sum is at least this many dollars"
-    ),
-    cost_max: float | None = Query(
-        default=None, ge=0, description="Keep batches whose child-run cost sum is at most this many dollars"
-    ),
-    duration_min: float | None = Query(
-        default=None, ge=0, description="Keep batches that ran at least this many seconds (wall clock)"
-    ),
-    duration_max: float | None = Query(
-        default=None, ge=0, description="Keep batches that ran at most this many seconds (wall clock)"
-    ),
     page: int = Query(0, ge=0),
     page_size: int = Query(20, ge=1, le=100),
     session: Session = Depends(get_session),
@@ -787,10 +889,15 @@ def list_agent_task_batch_runs(
 
     ``environment`` is comma-separated (values OR). ``label`` is repeatable
     ``<key>:<id>`` over ``run_metadata.labels``: ids OR within a key, keys
-    AND. Labels match on id only, never on the display name. ``cost_min``/
-    ``cost_max`` bound the batch's child-run cost sum in dollars;
-    ``duration_min``/``duration_max`` bound its wall-clock seconds, and a
-    batch without both timestamps never matches a duration filter.
+    AND. Labels match on id only, never on the display name.
+
+    Serving filters (issue #307) select batches containing at least one
+    child Task Run whose requests satisfy the same-request predicate:
+    repeated values OR within a dimension, dimensions AND on one request,
+    ``serving_unknown`` selects null, ``serving_mode=only`` demands the
+    complete request set. When any serving dimension beyond ``provider``
+    is present, the provider values join that predicate; ``provider``
+    alone keeps the legacy provider-or-route host behavior.
     """
     labels = _label_filters_or_422(label)
     if project:
@@ -808,6 +915,22 @@ def list_agent_task_batch_runs(
         [s.strip().lower() for s in status.split(",") if s.strip()] if status else []
     )
 
+    serving_filter = _parse_serving_filter(
+        observed_model=observed_model,
+        provider=[provider] if provider else None,
+        host=host,
+        route=route,
+        service_tier=service_tier,
+        serving_unknown=serving_unknown,
+        serving_mode=serving_mode,
+    )
+    if serving_filter is not None:
+        legacy_providers: list[str] = []
+    else:
+        legacy_providers = (
+            [p.strip() for p in provider.split(",") if p.strip()] if provider else []
+        )
+
     return list_batch_run_summaries(
         session,
         BatchRunListFilters(
@@ -818,17 +941,10 @@ def list_agent_task_batch_runs(
             since=since,
             models=model_list,
             efforts=effort_list,
-            providers=(
-                [p.strip() for p in provider.split(",") if p.strip()]
-                if provider
-                else []
-            ),
+            providers=legacy_providers,
+            serving_filter=serving_filter,
             environments=split_csv_param(environment),
             labels=labels,
-            cost_min=cost_min,
-            cost_max=cost_max,
-            duration_min_s=duration_min,
-            duration_max_s=duration_max,
         ),
         BatchRunListPagination(page=page, page_size=page_size),
     )
@@ -892,6 +1008,15 @@ async def get_agent_task_batch_run(
     if isinstance(pool_id, str):
         pool = session.get(ExecutorPoolDB, pool_id)
         pool_name = pool.name if pool is not None else None
+    calls_by_trace = _serving_calls_for_task_runs(session, task_runs)
+    trace_ids = [tr.trace_run_id for tr in task_runs if tr.trace_run_id]
+    batch_serving = summarize_calls(
+        [call for tid in trace_ids for call in calls_by_trace.get(tid, [])],
+        task_runs_total=len(task_runs),
+        task_runs_with_evidence=sum(
+            1 for tid in trace_ids if has_serving_evidence(calls_by_trace.get(tid, []))
+        ),
+    )
     return to_batch_run_detail(
         batch,
         task_runs,
@@ -901,6 +1026,10 @@ async def get_agent_task_batch_run(
         executor_names=executor_names,
         executor_pool_name=pool_name,
         requested_by_label=user_label(session, batch.requested_by_user_id),
+        serving=batch_serving,
+        run_servings={
+            tid: summarize_calls(calls_by_trace.get(tid, [])) for tid in trace_ids
+        },
     )
 
 
@@ -921,6 +1050,30 @@ def list_agent_task_runs(
     provider: list[str] | None = Query(
         default=None,
         description="Repeatable serving provider/route filter; matches the observed provider or route on the run's trace calls (issue #307)",
+    ),
+    observed_model: list[str] | None = Query(
+        default=None,
+        description="Repeatable observed serving-model filter (same-request predicate; issue #307)",
+    ),
+    host: list[str] | None = Query(
+        default=None,
+        description="Repeatable serving-host filter (same-request predicate; issue #307)",
+    ),
+    route: list[str] | None = Query(
+        default=None,
+        description="Repeatable serving-route filter (same-request predicate; issue #307)",
+    ),
+    service_tier: list[str] | None = Query(
+        default=None,
+        description="Repeatable served-tier filter (same-request predicate; issue #307)",
+    ),
+    serving_unknown: list[ServingUnknownDimension] | None = Query(
+        default=None,
+        description="Repeatable unknown-operator dimension; selects null inside that dimension",
+    ),
+    serving_mode: Literal["contains", "only"] | None = Query(
+        default=None,
+        description="contains: the run needs one matching request; only: every request on the run must match",
     ),
     since: str | None = Query(default=None),
     id_prefix: str | None = Query(
@@ -974,12 +1127,31 @@ def list_agent_task_runs(
     Batch list's semantics: environments OR (repeated or comma-joined),
     ``label=<key>:<id>`` ids OR within a key and AND across keys, matching
     the label id only.
+
+    Serving filters (issue #307) are a same-request predicate: repeated
+    values OR within a dimension, dimensions AND on one request, and
+    ``serving_unknown=<dim>`` selects null inside that dimension.
+    ``serving_mode=only`` demands that every request on the run matches
+    with one identical identity tuple. When any serving dimension beyond
+    ``provider`` is present, the provider values join this predicate;
+    ``provider`` alone keeps its legacy provider-or-route behavior. Each
+    item carries a bounded ``serving`` summary.
     """
     labels = _label_filters_or_422(label)
     environments = [
         e.strip() for raw in environment or [] for e in raw.split(",") if e.strip()
     ]
     batch_scope = batch_scope_conditions(environments, labels)
+
+    serving_filter = _parse_serving_filter(
+        observed_model=observed_model,
+        provider=provider,
+        host=host,
+        route=route,
+        service_tier=service_tier,
+        serving_unknown=serving_unknown,
+        serving_mode=serving_mode,
+    )
 
     # Derive the Project scope.
     if project:
@@ -1022,13 +1194,14 @@ def list_agent_task_runs(
                 [e.lower() for e in effort]
             )
         )
-    if provider:
+    if provider and serving_filter is None:
         # Observed serving host, unlike model/effort which filter the
         # adapter-reported configuration. Resolved through the linked
         # trace's calls so the JSON rollup stays display-only (issue #307).
         # Project-scoped because trace ids may collide across projects
-        # (surrogate-PK design) — another project's copy of a trace must
-        # not satisfy this one's filter.
+        # (surrogate-PK design). Replaced by the full same-request serving
+        # filter when that is engaged (provider values then join its
+        # providers dimension).
         provider_values = [
             p.lower() for raw in provider for p in raw.split(",") if p.strip()
         ]
@@ -1066,19 +1239,44 @@ def list_agent_task_runs(
     # executor pool died long ago shows nothing but expired rows once they
     # reach the limit, while its real history stays invisible. Within the
     # started runs, NULLS FIRST keeps a live queued run at the top (it is the
-    # latest); spelling NULLS out makes SQLite and Postgres agree.
+    # latest); spelling NULLs out makes SQLite and Postgres agree.
     query = query.order_by(
         asc(not_started_run()),
-        desc(as_column(cast(object, AgentTaskRunDB.started_at))).nulls_first(),
+        desc(AGENT_TASK_RUN_STARTED_AT_COL).nulls_first(),
     )
-    query = query.limit(limit)
-    task_runs = session.exec(query).all()
+    if serving_filter is not None:
+        # The same-request predicate needs per-run call rows, so it cannot
+        # live in SQL: candidates come from the existing filters (without
+        # the limit, so the newest-N answer stays true after narrowing),
+        # one batched call query per project narrows them, and the limit
+        # applies last.
+        candidates = session.exec(query).all()
+        calls_by_trace = _serving_calls_for_task_runs(session, candidates)
+        task_runs = [
+            task_run
+            for task_run in candidates
+            if task_run.trace_run_id is not None
+            and run_matches_filter(
+                calls_by_trace.get(task_run.trace_run_id, []),
+                serving_filter,
+                serving_filter.mode,
+            )
+        ][:limit]
+    else:
+        query = query.limit(limit)
+        task_runs = session.exec(query).all()
+        calls_by_trace = _serving_calls_for_task_runs(session, task_runs)
     batches = _load_batches(session, [tr.batch_run_id for tr in task_runs])
+    serving_by_trace = {
+        trace_id: summarize_calls(calls)
+        for trace_id, calls in calls_by_trace.items()
+    }
     summaries: list[AgentTaskRunSummary] = []
     for tr in task_runs:
         batch = batches.get(tr.batch_run_id)
+        serving = serving_by_trace.get(tr.trace_run_id) if tr.trace_run_id else None
         if batch is None:
-            summaries.append(to_task_run_summary(tr))
+            summaries.append(to_task_run_summary(tr, serving=serving))
             continue
         summaries.append(
             to_task_run_summary(
@@ -1086,6 +1284,7 @@ def list_agent_task_runs(
                 parse_trigger(batch.run_metadata),
                 environment=batch.environment,
                 labels=run_labels_from_metadata(batch.run_metadata),
+                serving=serving,
             )
         )
     return summaries
@@ -1133,10 +1332,109 @@ async def get_agent_task_run(
         include_transcript=bool(include and "transcript" in include),
         task_definition=task_definition_summary,
         deliverables_json=await derive_deliverables_json(session, task_run),
+        # A run with no linked trace reports no_data rather than null:
+        # null is reserved for projections built without trace access.
+        serving=(
+            summarize_calls(
+                load_call_rows(
+                    session, project=batch.project, run_ids=[task_run.trace_run_id or ""]
+                ).get(task_run.trace_run_id or "", [])
+            )
+            if batch is not None
+            else None
+        ),
     )
     if batch is not None:
         detail.task_notes = notes_for_run(session, project=batch.project, task_run=task_run)
     return detail
+
+
+@router.get("/agent-task-runs/{task_run_id}/serving", response_model=ServingBreakdownPage)
+def get_agent_task_run_serving(
+    request: Request,
+    task_run_id: str,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=100),
+    session: Session = Depends(get_session),
+) -> ServingBreakdownPage:
+    """Page the complete observed-serving group set for one Task Run.
+
+    Inline summaries cap their groups at 20; this endpoint pages every
+    group in the same order (calls descending, then identity tuple with
+    nulls first). Authorization mirrors the run detail read: the run is
+    resolved first and cross-Project access denies with an opaque 404.
+    """
+    task_run = session.get(AgentTaskRunDB, task_run_id)
+    if task_run is None:
+        raise HTTPException(status_code=404, detail="Task run not found")
+    batch = session.get(AgentTaskBatchRunDB, task_run.batch_run_id)
+    if batch is not None:
+        try:
+            authorize_project_request(request, session, batch.project, minimum_role="viewer")
+        except HTTPException as exc:
+            if exc.status_code == 403:
+                raise HTTPException(status_code=404, detail="Task run not found") from exc
+            raise
+
+    calls: list[LoggedCallDB] = []
+    if batch is not None and task_run.trace_run_id:
+        calls = load_call_rows(
+            session, project=batch.project, run_ids=[task_run.trace_run_id]
+        ).get(task_run.trace_run_id, [])
+    groups = serving_groups(calls)
+    return ServingBreakdownPage(
+        groups=groups[offset : offset + limit],
+        total_groups=len(groups),
+        offset=offset,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/agent-task-batch-runs/{batch_run_id}/serving",
+    response_model=ServingBreakdownPage,
+)
+def get_agent_task_batch_run_serving(
+    request: Request,
+    batch_run_id: str,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=100),
+    session: Session = Depends(get_session),
+) -> ServingBreakdownPage:
+    """Page the complete serving group set over a Batch's child Task Runs.
+
+    Groups derive from every child's traces (the batch union, not a
+    filtered subset). Authorization mirrors the batch detail read.
+    """
+    batch = session.get(AgentTaskBatchRunDB, batch_run_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Batch run not found")
+    try:
+        authorize_project_request(request, session, batch.project, minimum_role="viewer")
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            raise HTTPException(status_code=404, detail="Batch run not found") from exc
+        raise
+
+    task_runs = session.exec(
+        select(AgentTaskRunDB)
+        .options(*_TASK_RUN_LIGHT)
+        .where(AgentTaskRunDB.batch_run_id == batch_run_id)
+    ).all()
+    calls_by_trace = _serving_calls_for_task_runs(session, task_runs)
+    all_calls = [
+        call
+        for task_run in task_runs
+        if task_run.trace_run_id
+        for call in calls_by_trace.get(task_run.trace_run_id, [])
+    ]
+    groups = serving_groups(all_calls)
+    return ServingBreakdownPage(
+        groups=groups[offset : offset + limit],
+        total_groups=len(groups),
+        offset=offset,
+        limit=limit,
+    )
 
 
 @router.get("/agent-task-runs/{task_run_id}/export")

@@ -30,6 +30,7 @@ from ..models.schemas import (
     as_no_verdict_reason,
     as_task_run_status,
 )
+from ..models.serving import ServingFilter
 from ..services.agent_task_run_details import load_task_run_details, load_task_run_summaries
 from ..services.project_memberships import enforce_project_read_from_request
 from ..services.lifecycle import TASK_RUN_TERMINAL
@@ -61,6 +62,11 @@ def _to_response(row: TaskViewDB) -> TaskViewResponse:
         effort=row.effort,
         since=row.since,
         provider=row.provider,
+        serving_filter=(
+            ServingFilter.model_validate(row.serving_filter_json)
+            if row.serving_filter_json is not None
+            else None
+        ),
     )
 
 
@@ -306,6 +312,9 @@ async def create_task_view(
         effort=body.effort,
         since=body.since,
         provider=body.provider,
+        serving_filter_json=(
+            body.serving_filter.model_dump() if body.serving_filter is not None else None
+        ),
     )
     session.add(row)
     session.commit()
@@ -335,6 +344,12 @@ async def update_task_view(
     for field in ("model", "effort", "since", "provider"):
         if field in body.model_fields_set:
             setattr(row, field, getattr(body, field))
+    # Explicit null clears the saved serving filter, like the other
+    # nullable dimensions; omission leaves it untouched.
+    if "serving_filter" in body.model_fields_set:
+        row.serving_filter_json = (
+            body.serving_filter.model_dump() if body.serving_filter is not None else None
+        )
     row.updated_at = datetime.now(timezone.utc)
     session.add(row)
     session.commit()

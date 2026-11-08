@@ -16,12 +16,14 @@ gate (see ``_comparison_state``).
 from __future__ import annotations
 
 import secrets
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, cast
 
-from sqlmodel import Session
+from sqlmodel import Session, col, select
 
 from ..models.db import (
+    AgentTaskRunDB,
     TaskViewComparisonDB,
 )
 from ..models.schemas import (
@@ -30,7 +32,9 @@ from ..models.schemas import (
     TaskViewConfig,
     as_no_verdict_reason,
 )
+from ..models.serving import ServingSummary
 from .lifecycle import is_never_started_run
+from .serving import load_call_rows, summarize_calls
 from .view_runs import ViewRun, runs_in_view
 
 # Status that means "the run did not complete" (no usable verdict). Mirrors
@@ -119,6 +123,37 @@ def _resolve_side(
     }
 
 
+def _run_serving_summaries(
+    session: Session,
+    project_id: str,
+    run_ids: Sequence[str],
+) -> Mapping[str, ServingSummary]:
+    """Bounded serving summaries for the resolved runs, keyed by run id.
+
+    One query for the runs' trace links plus one batched call-row query —
+    the comparison size never multiplies database reads. A resolved run
+    without a linked trace freezes as ``no_data``, which is the honest
+    statement about its (absent) evidence.
+    """
+    unique_ids = list(dict.fromkeys(run_ids))
+    if not unique_ids:
+        return {}
+    rows = session.exec(
+        select(AgentTaskRunDB.id, AgentTaskRunDB.trace_run_id).where(
+            col(AgentTaskRunDB.id).in_(unique_ids)
+        )
+    ).all()
+    trace_by_run = {run_id: trace_id for run_id, trace_id in rows}
+    trace_ids = [trace_id for trace_id in trace_by_run.values() if trace_id]
+    calls_by_trace = load_call_rows(session, project=project_id, run_ids=trace_ids)
+    return {
+        run_id: summarize_calls(
+            calls_by_trace.get(trace_id, []) if trace_id else []
+        )
+        for run_id, trace_id in trace_by_run.items()
+    }
+
+
 def _comparison_state(
     a: _ResolvedRun | None, b: _ResolvedRun | None
 ) -> Literal["aligned", "different_definition", "not_run"]:
@@ -169,6 +204,16 @@ def create_comparison(
     side_a = _resolve_side(session, project_id, task_ids, view_a, exclude_model=exclude_from_a)
     side_b = _resolve_side(session, project_id, task_ids, view_b, exclude_model=exclude_from_b)
 
+    # Frozen observed-serving evidence (issue #307): each resolved side's
+    # bounded summary (with its cost coverage) captured now, so late spans
+    # or repricing never rewrite what the snapshot shows. The per-side
+    # serving filter rides along in the frozen view configs.
+    run_serving = _run_serving_summaries(
+        session,
+        project_id,
+        [run.run_id for side in (side_a, side_b) for run in side.values()],
+    )
+
     resolved: list[ResolvedComparisonCell] = []
     both_run = 0
     aligned_count = 0
@@ -202,6 +247,8 @@ def create_comparison(
                 b_errored_checks=b.errored_checks if b else None,
                 b_corrected_tests=b.corrected_tests if b else None,
                 b_no_verdict_reason=as_no_verdict_reason(b.no_verdict_reason) if b else None,
+                a_serving=run_serving.get(a.run_id) if a else None,
+                b_serving=run_serving.get(b.run_id) if b else None,
             )
         )
 

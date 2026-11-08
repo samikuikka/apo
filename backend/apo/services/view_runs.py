@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
 from sqlalchemy import and_, desc, exists, or_, select as sa_select
 from sqlalchemy.sql.elements import ColumnElement
@@ -61,6 +62,8 @@ from ..models.columns import (
 from ..db_helpers import as_column
 from ..models.db import AgentTaskBatchRunDB, TaskExecutionAttemptDB
 from ..models.schemas import TaskViewConfig
+from ..models.serving import ServingFilter
+from .serving import load_call_rows, run_matches_filter
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +93,9 @@ class ViewRun:
     # What the judge no-verdict gate reads (issue #323) — two small scalars.
     failed_checks: int = 0
     no_verdict_reason: str | None = None
+    # The run's linked trace, when one was persisted. Serving evidence
+    # lives on the trace's calls, so the serving filter reads it here.
+    trace_run_id: str | None = None
     # Queued or running in a batch young enough to still be live; see live_run.
     live: bool = False
 
@@ -118,10 +124,20 @@ def since_cutoff(since: str | None) -> datetime | None:
 # lease, a pending/running row there is a stuck leftover, not live work.
 LIVE_BATCH_WINDOW = timedelta(seconds=DEFAULT_QUEUE_TTL_SECONDS + ATTEMPT_LEASE_SECONDS)
 
-_ATTEMPT_RUN_ID = as_column(TaskExecutionAttemptDB.task_run_id)
-_ATTEMPT_STATUS = as_column(TaskExecutionAttemptDB.status)
-_ATTEMPT_QUEUE_EXPIRES = as_column(TaskExecutionAttemptDB.queue_expires_at)
-_ATTEMPT_LEASE_EXPIRES = as_column(TaskExecutionAttemptDB.lease_expires_at)
+# Annotated so the generic ``as_column`` helper resolves its column type
+# from context instead of degrading to ColumnElement[Unknown].
+_ATTEMPT_RUN_ID: ColumnElement[str] = as_column(
+    cast(object, TaskExecutionAttemptDB.task_run_id)
+)
+_ATTEMPT_STATUS: ColumnElement[str] = as_column(
+    cast(object, TaskExecutionAttemptDB.status)
+)
+_ATTEMPT_QUEUE_EXPIRES: ColumnElement[datetime] = as_column(
+    cast(object, TaskExecutionAttemptDB.queue_expires_at)
+)
+_ATTEMPT_LEASE_EXPIRES: ColumnElement[datetime | None] = as_column(
+    cast(object, TaskExecutionAttemptDB.lease_expires_at)
+)
 
 
 def live_run() -> ColumnElement[bool]:
@@ -262,8 +278,12 @@ def runs_in_view(
         from ..models.db import LoggedCallDB
 
         value = view.provider.lower()
-        call_run_col = as_column(LoggedCallDB.run_id)
-        call_project_col = as_column(LoggedCallDB.project)
+        call_run_col: ColumnElement[str | None] = as_column(
+            cast(object, LoggedCallDB.run_id)
+        )
+        call_project_col: ColumnElement[str] = as_column(
+            cast(object, LoggedCallDB.project)
+        )
         matching_traces = sa_select(call_run_col).where(
             call_run_col == AGENT_TASK_RUN_TRACE_RUN_ID_COL,
             call_project_col == AGENT_TASK_BATCH_PROJECT_COL,
@@ -283,6 +303,7 @@ def runs_in_view(
             AGENT_TASK_RUN_ID_COL,
             AGENT_TASK_RUN_TASK_ID_COL,
             AGENT_TASK_RUN_STATUS_COL,
+            AGENT_TASK_RUN_TRACE_RUN_ID_COL,
             AGENT_TASK_RUN_STARTED_AT_COL,
             AGENT_TASK_RUN_COMPLETED_AT_COL,
             AGENT_TASK_RUN_TOTAL_COST_COL,
@@ -314,6 +335,7 @@ def runs_in_view(
         run_id,
         task_id,
         status,
+        trace_run_id,
         started_at,
         completed_at,
         total_cost,
@@ -332,6 +354,7 @@ def runs_in_view(
                 run_id=run_id,
                 task_id=task_id,
                 status=status,
+                trace_run_id=trace_run_id,
                 started_at=started_at,
                 completed_at=completed_at,
                 total_cost=total_cost,
@@ -346,4 +369,32 @@ def runs_in_view(
                 live=bool(live),
             )
         )
+    if view.serving_filter is not None:
+        return _narrow_by_serving(session, project_id, runs, view.serving_filter)
     return runs
+
+
+def _narrow_by_serving(
+    session: Session,
+    project_id: str,
+    runs: list[ViewRun],
+    serving_filter: ServingFilter,
+) -> list[ViewRun]:
+    """Keep only the cohort runs whose traces satisfy the same-request
+    serving predicate (issue #307).
+
+    One batched call-row query for the whole cohort; a run with no linked
+    trace has no requests and never matches.
+    """
+    trace_ids = [run.trace_run_id for run in runs if run.trace_run_id]
+    calls_by_trace = load_call_rows(session, project=project_id, run_ids=trace_ids)
+    return [
+        run
+        for run in runs
+        if run.trace_run_id is not None
+        and run_matches_filter(
+            calls_by_trace.get(run.trace_run_id, []),
+            serving_filter,
+            serving_filter.mode,
+        )
+    ]

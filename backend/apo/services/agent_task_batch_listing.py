@@ -9,9 +9,10 @@ parses query params and delegates; everything from the base
 ``select(AgentTaskBatchRunDB)`` onward lives here.
 """
 
+from collections.abc import Sequence
+from typing import cast
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import cast
 
 from pydantic import BaseModel
 from sqlalchemy import and_, desc, func, or_
@@ -29,6 +30,8 @@ from ..models.columns import (
     AGENT_TASK_BATCH_CREATED_AT_COL,
     TASK_RUN_LIGHT,
 )
+from ..db import is_sqlite
+from ..models.serving import ServingFilter, ServingSummary
 from ..services.agent_task_projection import (
     child_task_ids,
     group_batch_configuration_summaries,
@@ -36,8 +39,13 @@ from ..services.agent_task_projection import (
 )
 from ..services.archived_models import load_archived_models
 from ..services.human_actor import user_labels
+from ..services.serving import (
+    has_serving_evidence,
+    load_call_rows,
+    run_matches_filter,
+    summarize_calls,
+)
 from ..services.trace_backend import parse_model_providers, provider_labels
-from ..db import is_sqlite
 from ..services.run_labels import batch_scope_conditions
 from ..services.view_runs import since_cutoff
 
@@ -88,6 +96,10 @@ class BatchRunListFilters:
     efforts: list[str] = field(default_factory=list)
     # Observed serving hosts (provider or route; issue #307).
     providers: list[str] = field(default_factory=list)
+    # Full same-request serving filter (issue #307). When set it replaces
+    # the legacy provider/route host filter: provider values are folded
+    # into its providers dimension so one coherent predicate applies.
+    serving_filter: ServingFilter | None = None
     environments: list[str] = field(default_factory=list)
     # ``run_metadata.labels`` ids per key: OR within a key, AND across keys.
     labels: dict[str, list[str]] = field(default_factory=dict)
@@ -130,7 +142,10 @@ def list_batch_run_summaries(
         model_facets = _compute_model_facets(session, base, _single_project(filters))
         provider_facets = _compute_provider_facets(session, base)
     filtered = _apply_config_filters(base, filters.models, filters.efforts)
-    filtered = _apply_provider_filter(filtered, filters.providers)
+    if filters.serving_filter is not None:
+        filtered = _apply_serving_filter(session, filtered, filters.serving_filter)
+    else:
+        filtered = _apply_provider_filter(filtered, filters.providers)
     filtered = _apply_metric_filters(filtered, filters)
 
     total_count = session.exec(
@@ -226,6 +241,111 @@ def _apply_config_filters(
         matching = matching.where(col(AgentTaskRunDB.configured_model).in_(models))
     if efforts:
         matching = matching.where(col(AgentTaskRunDB.configured_effort).in_(efforts))
+    return base.where(col(AgentTaskBatchRunDB.id).in_(matching))
+
+
+def _apply_metric_filters(
+    base: SelectOfScalar[AgentTaskBatchRunDB],
+    filters: BatchRunListFilters,
+) -> SelectOfScalar[AgentTaskBatchRunDB]:
+    """Range filters over stored run metrics.
+
+    Cost is the batch's child-run sum (the rollup the page shows), so the
+    filter subquery aggregates the same way the hydration does. Duration is
+    the wall-clock span of the batch itself; a batch that never started or
+    never completed has no duration and never matches a duration filter.
+    """
+    started = col(AgentTaskBatchRunDB.started_at)
+    completed = col(AgentTaskBatchRunDB.completed_at)
+    # `is not None`, not truthiness: a 0-second or $0 bound is a real filter.
+    if filters.duration_min_s is not None or filters.duration_max_s is not None:
+        base = base.where(started.is_not(None), completed.is_not(None))
+        if filters.duration_min_s is not None:
+            base = base.where(_duration_seconds(completed, started) >= filters.duration_min_s)
+        if filters.duration_max_s is not None:
+            base = base.where(_duration_seconds(completed, started) <= filters.duration_max_s)
+    if filters.cost_min is not None or filters.cost_max is not None:
+        child_cost = (
+            select(
+                col(AgentTaskRunDB.batch_run_id).label("batch_run_id"),
+                func.sum(func.coalesce(col(AgentTaskRunDB.total_cost), 0.0)).label("cost"),
+            )
+            .group_by(col(AgentTaskRunDB.batch_run_id))
+            .subquery()
+        )
+        cost_col = col(child_cost.c.cost)
+        base = base.where(
+            col(AgentTaskBatchRunDB.id) == col(child_cost.c.batch_run_id),
+        )
+        if filters.cost_min is not None:
+            base = base.where(cost_col >= filters.cost_min)
+        if filters.cost_max is not None:
+            base = base.where(cost_col <= filters.cost_max)
+    return base
+
+
+def _duration_seconds(
+    completed: ColumnElement[datetime],
+    started: ColumnElement[datetime],
+) -> ColumnElement[float]:
+    """completed - started in seconds, on either dialect: SQLite stores the
+    UTCDateTime column as an ISO string, so julianday() carries the math;
+    Postgres subtracts timestamptz into an interval extractable to epoch.
+    """
+    if is_sqlite():
+        return (func.julianday(completed) - func.julianday(started)) * 86400.0
+    return cast(
+        ColumnElement[float],
+        func.extract("epoch", completed - started),
+    )
+
+
+def _apply_serving_filter(
+    session: Session,
+    base: SelectOfScalar[AgentTaskBatchRunDB],
+    serving_filter: ServingFilter,
+) -> SelectOfScalar[AgentTaskBatchRunDB]:
+    """Keep batches containing at least one child Task Run that satisfies
+    the same-request serving filter (issue #307).
+
+    The predicate needs each child's call rows, so it cannot live in SQL:
+    candidate batches come from the existing filtered query, then one
+    batched call-row query per project narrows them. ``only`` mode applies
+    to each child's complete request set, never to the batch's unfiltered
+    union of children.
+    """
+    candidate_ids = base.with_only_columns(col(AgentTaskBatchRunDB.id))
+    children = session.exec(
+        select(
+            col(AgentTaskRunDB.batch_run_id),
+            col(AgentTaskRunDB.trace_run_id),
+            col(AgentTaskBatchRunDB.project),
+        )
+        .join(
+            AgentTaskBatchRunDB,
+            col(AgentTaskBatchRunDB.id) == col(AgentTaskRunDB.batch_run_id),
+        )
+        .where(
+            col(AgentTaskRunDB.batch_run_id).in_(candidate_ids),
+            col(AgentTaskRunDB.trace_run_id).isnot(None),
+        )
+    ).all()
+
+    trace_ids_by_project: dict[str, list[str]] = {}
+    for _batch_id, trace_run_id, project in children:
+        if trace_run_id is not None:
+            trace_ids_by_project.setdefault(project, []).append(trace_run_id)
+    calls_by_trace: dict[str, list[LoggedCallDB]] = {}
+    for project, trace_ids in trace_ids_by_project.items():
+        calls_by_trace.update(load_call_rows(session, project=project, run_ids=trace_ids))
+
+    mode = serving_filter.mode
+    matching = {
+        batch_id
+        for batch_id, trace_run_id, _project in children
+        if trace_run_id is not None
+        and run_matches_filter(calls_by_trace.get(trace_run_id, []), serving_filter, mode)
+    }
     return base.where(col(AgentTaskBatchRunDB.id).in_(matching))
 
 
@@ -428,6 +548,8 @@ def _hydrate_batch_summaries(
         for bid in batch_ids
     }
 
+    serving_by_batch = _batch_serving_summaries(session, batches, all_task_runs)
+
     return [
         to_batch_run_summary(
             br,
@@ -452,62 +574,58 @@ def _hydrate_batch_summaries(
                 else None
             ),
             providers=providers_by_batch.get(br.id, []),
+            serving=serving_by_batch.get(br.id),
         )
         for br in batches
     ]
 
 
-def _apply_metric_filters(
-    base: SelectOfScalar[AgentTaskBatchRunDB],
-    filters: BatchRunListFilters,
-) -> SelectOfScalar[AgentTaskBatchRunDB]:
-    """Range filters over stored run metrics.
+def _batch_serving_summaries(
+    session: Session,
+    batches: Sequence[AgentTaskBatchRunDB],
+    all_task_runs: Sequence[AgentTaskRunDB],
+) -> dict[str, ServingSummary]:
+    """One bounded serving summary per batch, derived from the children's
+    traces in a single call-row query per project (no per-batch N+1).
 
-    Cost is the batch's child-run sum (the rollup the page shows), so the
-    filter subquery aggregates the same way the hydration does. Duration is
-    the wall-clock span of the batch itself; a batch that never started or
-    never completed has no duration and never matches a duration filter.
+    The batch summary describes ALL children, matching filter or not;
+    ``task_runs_with_evidence`` carries the coverage distinction.
     """
-    started = col(AgentTaskBatchRunDB.started_at)
-    completed = col(AgentTaskBatchRunDB.completed_at)
-    # `is not None`, not truthiness: a 0-second or $0 bound is a real filter.
-    if filters.duration_min_s is not None or filters.duration_max_s is not None:
-        base = base.where(started.is_not(None), completed.is_not(None))
-        if filters.duration_min_s is not None:
-            base = base.where(_duration_seconds(completed, started) >= filters.duration_min_s)
-        if filters.duration_max_s is not None:
-            base = base.where(_duration_seconds(completed, started) <= filters.duration_max_s)
-    if filters.cost_min is not None or filters.cost_max is not None:
-        child_cost = (
-            select(
-                col(AgentTaskRunDB.batch_run_id).label("batch_run_id"),
-                func.sum(func.coalesce(col(AgentTaskRunDB.total_cost), 0.0)).label("cost"),
-            )
-            .group_by(col(AgentTaskRunDB.batch_run_id))
-            .subquery()
-        )
-        cost_col = col(child_cost.c.cost)
-        base = base.where(
-            col(AgentTaskBatchRunDB.id) == col(child_cost.c.batch_run_id),
-        )
-        if filters.cost_min is not None:
-            base = base.where(cost_col >= filters.cost_min)
-        if filters.cost_max is not None:
-            base = base.where(cost_col <= filters.cost_max)
-    return base
+    project_by_batch = {batch.id: batch.project for batch in batches}
+    runs_by_batch: dict[str, list[AgentTaskRunDB]] = {}
+    trace_ids_by_project: dict[str, list[str]] = {}
+    for task_run in all_task_runs:
+        runs_by_batch.setdefault(task_run.batch_run_id, []).append(task_run)
+        if task_run.trace_run_id is not None:
+            project = project_by_batch.get(task_run.batch_run_id)
+            if project is not None:
+                trace_ids_by_project.setdefault(project, []).append(
+                    task_run.trace_run_id
+                )
 
+    calls_by_trace: dict[str, list[LoggedCallDB]] = {}
+    for project, trace_ids in trace_ids_by_project.items():
+        calls_by_trace.update(load_call_rows(session, project=project, run_ids=trace_ids))
 
-def _duration_seconds(
-    completed: ColumnElement[datetime],
-    started: ColumnElement[datetime],
-) -> ColumnElement[float]:
-    """completed - started in seconds, on either dialect: SQLite stores the
-    UTCDateTime column as an ISO string, so julianday() carries the math;
-    Postgres subtracts timestamptz into an interval extractable to epoch.
-    """
-    if is_sqlite():
-        return (func.julianday(completed) - func.julianday(started)) * 86400.0
-    return cast(
-        ColumnElement[float],
-        func.extract("epoch", completed - started),
-    )
+    summaries: dict[str, ServingSummary] = {}
+    for batch in batches:
+        children = runs_by_batch.get(batch.id, [])
+        trace_ids = [
+            task_run.trace_run_id
+            for task_run in children
+            if task_run.trace_run_id is not None
+        ]
+        all_calls = [
+            call for trace_id in trace_ids for call in calls_by_trace.get(trace_id, [])
+        ]
+        with_evidence = sum(
+            1
+            for trace_id in trace_ids
+            if has_serving_evidence(calls_by_trace.get(trace_id, []))
+        )
+        summaries[batch.id] = summarize_calls(
+            all_calls,
+            task_runs_total=len(children),
+            task_runs_with_evidence=with_evidence,
+        )
+    return summaries
