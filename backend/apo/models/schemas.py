@@ -15,6 +15,7 @@ from .execution import (
     ExecutionTarget,
     TaskRevisionSummary,
 )
+from .serving import ServingFilter, ServingSummary
 
 type JsonMap = dict[str, object]
 type MessageList = list[JsonMap]
@@ -479,6 +480,10 @@ class TaskViewConfig(SQLModel):
     # Observed serving host (issue #307): matches the run's trace provider
     # or route. The fourth evidence-view dimension.
     provider: str | None = None
+    # Full observed-serving filter (issue #307): same-request predicate over
+    # provider/host/route/tier/model with an unknown operator and
+    # contains/only mode. Composes with the dimensions above.
+    serving_filter: ServingFilter | None = None
 
 
 class TaskViewCreateRequest(SQLModel):
@@ -487,6 +492,7 @@ class TaskViewCreateRequest(SQLModel):
     effort: str | None = None
     since: str | None = None
     provider: str | None = None
+    serving_filter: ServingFilter | None = None
 
 
 class TaskViewUpdateRequest(SQLModel):
@@ -495,6 +501,7 @@ class TaskViewUpdateRequest(SQLModel):
     effort: str | None = None
     since: str | None = None
     provider: str | None = None
+    serving_filter: ServingFilter | None = None
 
 
 class TaskViewResponse(SQLModel):
@@ -505,6 +512,7 @@ class TaskViewResponse(SQLModel):
     effort: str | None = None
     since: str | None = None
     provider: str | None = None
+    serving_filter: ServingFilter | None = None
 
 
 class TaskViewComparisonRequest(SQLModel):
@@ -549,6 +557,12 @@ class ResolvedComparisonCell(SQLModel):
     b_errored_checks: int | None = None
     b_corrected_tests: int | None = None
     b_no_verdict_reason: NoVerdictReason | None = None
+    # Frozen observed-serving evidence (issue #307): each side's bounded
+    # serving summary (which carries its own cost coverage) captured at
+    # snapshot creation. Null on snapshots taken before the feature; reads
+    # never backfill it from current evidence.
+    a_serving: ServingSummary | None = None
+    b_serving: ServingSummary | None = None
 
 
 class TaskViewComparisonSnapshot(SQLModel):
@@ -1050,6 +1064,10 @@ class AgentTaskRunSummary(SQLModel):
     run_configuration: AgentTaskRunConfiguration | None = None
     # Tests whose effective result differs from the recorded one.
     corrected_tests: int = 0
+    # Observed serving summary (issue #307), derived on read from the
+    # linked trace's calls. Null only when the caller built the summary
+    # without trace access; ``no_data`` means the trace has no evidence.
+    serving: ServingSummary | None = None
 
 
 # ── Task Notes ──────────────────────────────────────────────────────
@@ -1170,6 +1188,8 @@ class AgentTaskRunDetail(SQLModel):
     # run is terminal. Surfaces "no beat for N seconds" on `runs show`
     # instead of leaving `batch show --json` as the only window.
     heartbeat_at: datetime | None = None
+    # Observed serving summary (issue #307); same shape as the summary.
+    serving: ServingSummary | None = None
 
 
 class CreateAgentTaskJudgmentRequest(SQLModel):
@@ -1328,6 +1348,10 @@ class AgentTaskBatchRunSummary(SQLModel):
             state="unknown"
         )
     )
+    # Observed serving summary over every child Task Run's traces
+    # (issue #307), derived on read. Describes ALL children, matching
+    # filter or not; ``task_runs_with_evidence`` labels the coverage.
+    serving: ServingSummary | None = None
 
 
 class AgentTaskBatchRunDetail(SQLModel):
@@ -1380,6 +1404,9 @@ class AgentTaskBatchRunDetail(SQLModel):
             state="unknown"
         )
     )
+    # Observed serving summary over the child Task Runs' traces
+    # (issue #307); same shape and semantics as the list summary.
+    serving: ServingSummary | None = None
 
 
 class CreateAgentTaskBatchRunRequest(SQLModel):

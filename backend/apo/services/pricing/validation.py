@@ -1,3 +1,5 @@
+# pyright: reportAny=false, reportExplicitAny=false, reportUnknownArgumentType=false, reportUnusedParameter=false
+
 """Tickets 04/05: tier-graph + era validation.
 
 Enforces write-time invariants so the resolution/compute layers can assume
@@ -18,6 +20,7 @@ from datetime import datetime
 from sqlmodel import Session, select
 
 from ...models.pricing import ModelDocumentCreate, ModelRowDB
+from ...models.serving import ServingMatch
 from ._timeutils import naive
 
 
@@ -79,22 +82,46 @@ def validate_era_no_overlap(
     start_date: datetime | None,
     end_date: datetime | None,
     provider_pattern: str | None = None,
+    serving_match: "ServingMatch | None" = None,
     exclude_model_id: int | None = None,
 ) -> None:
-    """Reject overlapping eras in the same (project, match_pattern,
-    provider_pattern) slot (ticket 04; provider slot per issue #307).
+    """Reject overlapping eras in the same (project, match_pattern, serving
+    selector) slot (ticket 04; selector slot per issue #307).
 
-    One-era-active-per-slot is a data invariant: the era-resolution query
-    relies on at most one row matching any given ``at_time`` within a slot.
-    A provider-qualified era may overlap the provider-agnostic era of the
-    same model — that is the "same model, two hosts, each at its rate"
-    configuration, and resolution orders qualified over agnostic.
+    One-era-active-per-slot is a data invariant: dominance resolution relies
+    on at most one era per selector slot being active at any ``at_time``. A
+    selector-qualified era may overlap the wildcard era of the same model —
+    that is the "same model, two serving setups, each at its rate"
+    configuration, and resolution orders the more specific selector first.
     """
+    from sqlmodel import col
+
     stmt = select(ModelRowDB).where(
         ModelRowDB.project == project,
         ModelRowDB.match_pattern == match_pattern,
-        ModelRowDB.provider_pattern == provider_pattern,
     )
+    selector_values = (
+        (
+            serving_match.api_provider if serving_match is not None else None,
+            serving_match.serving_host if serving_match is not None else None,
+            serving_match.route if serving_match is not None else None,
+            serving_match.service_tier if serving_match is not None else None,
+        ),
+    )
+    for column, value in zip(
+        (
+            ModelRowDB.match_api_provider,
+            ModelRowDB.match_serving_host,
+            ModelRowDB.match_route,
+            ModelRowDB.match_service_tier,
+        ),
+        selector_values[0],
+        strict=True,
+    ):
+        if value is None:
+            stmt = stmt.where(col(column).is_(None))
+        else:
+            stmt = stmt.where(col(column) == value)
     if exclude_model_id is not None:
         stmt = stmt.where(ModelRowDB.id != exclude_model_id)
     existing = list(session.exec(stmt).all())
@@ -103,11 +130,22 @@ def validate_era_no_overlap(
 
     for other in existing:
         if _eras_overlap(start_date, end_date, other.start_date, other.end_date):
-            slot = f" (provider {provider_pattern!r})" if provider_pattern else ""
+            slot = _slot_label(selector_values[0])
             raise TierValidationError(
                 f"era window overlaps an existing era for {match_pattern!r}{slot} in "
                 + f"project {project!r} (existing {other.start_date}..{other.end_date})"
             )
+
+
+def _slot_label(selectors: tuple[str | None, ...]) -> str:
+    parts = [
+        f"{name}={value!r}"
+        for name, value in zip(
+            ("provider", "host", "route", "tier"), selectors, strict=True
+        )
+        if value is not None
+    ]
+    return f" ({', '.join(parts)})" if parts else ""
 
 
 def _eras_overlap(

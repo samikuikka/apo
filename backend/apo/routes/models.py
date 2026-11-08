@@ -30,6 +30,7 @@ from ..models.pricing import (
     TierCondition,
     TierDocument,
 )
+from ..models.serving import ServingMatch
 from ..services.pricing.compute import compute_cost
 from ..services.pricing.validation import (
     TierValidationError,
@@ -90,6 +91,12 @@ def _build_document(session: Session, model: ModelRowDB) -> ModelDocument:
         match_pattern=model.match_pattern,
         provider=model.provider,
         provider_pattern=model.provider_pattern,
+        serving_match=ServingMatch(
+            api_provider=model.match_api_provider,
+            serving_host=model.match_serving_host,
+            route=model.match_route,
+            service_tier=model.match_service_tier,
+        ),
         display_name=model.display_name,
         start_date=model.start_date,
         end_date=model.end_date,
@@ -127,6 +134,19 @@ def _parse_conditions(conditions_json: str) -> list[TierCondition]:
     return out
 
 
+def _doc_selectors(doc: ModelDocumentCreate) -> tuple[str | None, ...]:
+    """The create payload's serving selector tuple in column order."""
+    match = doc.serving_match
+    if match is None:
+        return (None, None, None, None)
+    return (
+        match.api_provider,
+        match.serving_host,
+        match.route,
+        match.service_tier,
+    )
+
+
 def _upsert_model_graph(
     session: Session,
     doc: ModelDocumentCreate,
@@ -140,11 +160,16 @@ def _upsert_model_graph(
     if model_id is not None:
         _delete_model_graph(session, model_id)
 
+    selectors = _doc_selectors(doc)
     model = ModelRowDB(
         project=doc.project,
         match_pattern=doc.match_pattern,
         provider=doc.provider,
         provider_pattern=doc.provider_pattern,
+        match_api_provider=selectors[0],
+        match_serving_host=selectors[1],
+        match_route=selectors[2],
+        match_service_tier=selectors[3],
         display_name=doc.display_name,
         start_date=doc.start_date,
         end_date=doc.end_date,
@@ -241,6 +266,14 @@ async def match_model_route(
         default="{}",
         description='JSON object: canonical usage_key -> token count, e.g. {"input":1000,"output":500}',
     ),
+    serving: str = Query(
+        default="",
+        description=(
+            "Optional JSON object of observed serving identity: "
+            '{"api_provider":"openrouter","serving_host":"baseten",'
+            '"route":"nitro","service_tier":"priority"}'
+        ),
+    ),
     start_time: datetime = Query(default_factory=lambda: datetime.now(timezone.utc)),
     project: str = Query(default=GLOBAL_PROJECT),
     session: Session = Depends(get_session),
@@ -250,7 +283,10 @@ async def match_model_route(
     Same compute pipeline as ingestion (compute_cost). Era selected by
     ``start_time``. ``usage`` is a JSON-encoded canonical-key -> token-count map
     (dict query params are not supported by FastAPI, so the map is passed as a
-    JSON string).
+    JSON string). ``serving`` is the same shape of JSON for the observed
+    serving identity; it qualifies price-row selection and the response
+    reports the pricing quality and the matched selector. Ambiguous
+    selections return ``matched=False`` with a reason and candidate ids.
     """
     # Per-project overrides require member read; globals are open.
     if project != GLOBAL_PROJECT:
@@ -261,9 +297,33 @@ async def match_model_route(
         raise HTTPException(status_code=422, detail=f"invalid usage JSON: {exc}") from exc
     usage_map = {k: int(v) for k, v in usage_map_raw.items()} if isinstance(usage_map_raw, dict) else {}
 
-    result = compute_cost(session, model, usage_map, project, start_time)
+    serving_match: ServingMatch | None = None
+    if serving:
+        try:
+            serving_raw = json.loads(serving)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail=f"invalid serving JSON: {exc}") from exc
+        if not isinstance(serving_raw, dict):
+            raise HTTPException(status_code=422, detail="serving must be a JSON object")
+        serving_match = ServingMatch(
+            **{
+                key: value
+                for key, value in serving_raw.items()
+                if key in ("api_provider", "serving_host", "route", "service_tier")
+                and isinstance(value, str)
+            }
+        )
+
+    result = compute_cost(session, model, usage_map, project, start_time, serving=serving_match)
     if result is None:
-        return MatchResponse(matched=False)
+        return MatchResponse(matched=False, pricing_quality="unpriced")
+    if result.pricing_quality == "ambiguous":
+        return MatchResponse(
+            matched=False,
+            pricing_quality="ambiguous",
+            reason=result.reason,
+            candidate_model_ids=result.candidate_model_ids,
+        )
     return MatchResponse(
         matched=True,
         model_id=result.model_id,
@@ -272,6 +332,8 @@ async def match_model_route(
         matched_tier_name=result.tier_name,
         cost_breakdown=result.breakdown or None,
         total_cost=result.total,
+        pricing_quality=result.pricing_quality,
+        matched_serving=result.matched_serving,
     )
 
 
@@ -319,6 +381,7 @@ async def create_model(
             start_date=request.start_date,
             end_date=request.end_date,
             provider_pattern=request.provider_pattern,
+            serving_match=request.serving_match,
         )
     except TierValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -362,6 +425,7 @@ async def replace_model(
             start_date=request.start_date,
             end_date=request.end_date,
             provider_pattern=request.provider_pattern,
+            serving_match=request.serving_match,
             exclude_model_id=model_id,
         )
     except TierValidationError as exc:

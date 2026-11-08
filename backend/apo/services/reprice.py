@@ -32,6 +32,7 @@ from sqlmodel import Session, col, select
 
 from ..metrics.aggregate import calculate_and_store_aggregate_metrics
 from ..models.db import LoggedCallDB, RunMetricDB
+from ..models.serving import ServingMatch
 from .pricing.compute import compute_cost
 
 logger = logging.getLogger(__name__)
@@ -103,14 +104,25 @@ def reprice_calls(
                 old_cost = call.cost or 0
                 result = compute_cost(
                     session,
-                    call.model,
+                    call.observed_model or call.served_model or call.model,
                     call.raw_usage,
                     call.project,
                     call.created_at or datetime.now(),
                     provider=call.provider,
+                    serving=ServingMatch(
+                        api_provider=call.api_provider,
+                        serving_host=call.serving_host,
+                        route=call.route,
+                        service_tier=call.service_tier,
+                    ),
                 )
-                if result is None:
+                if result is None or result.pricing_quality == "ambiguous":
                     skipped_no_match += 1
+                    if not dry_run:
+                        call.pricing_quality = (
+                            "ambiguous" if result is not None else "unpriced"
+                        )
+                        session.add(call)
                     continue
 
                 new_cost = result.total
@@ -125,6 +137,12 @@ def reprice_calls(
                     # A previously-unpriced call that now resolves becomes
                     # computed; a computed call stays computed.
                     call.cost_provenance = "computed"
+                    call.pricing_quality = result.pricing_quality
+                    call.matched_serving = (
+                        result.matched_serving.model_dump(exclude_none=True)
+                        if result.matched_serving is not None
+                        else None
+                    )
                     session.add(call)
                     if call.run_id:
                         affected_runs.add((call.run_id, call.project))

@@ -15,12 +15,13 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime
 
 from sqlmodel import Session, col, select
 
 from ...models.pricing import ModelRowDB, PriceDB, PricingTierDB
+from ...models.serving import ServingMatch
 from ...models.usage_keys import UsageKey
 from ._timeutils import naive
 
@@ -52,6 +53,168 @@ def _fullmatch(pattern: str, name: str) -> bool:
         return pattern.lower() == name.lower()
 
 
+# Serving-selector columns on ModelRowDB, in ServingMatch field order.
+_SELECTOR_COLUMNS = (
+    "match_api_provider",
+    "match_serving_host",
+    "match_route",
+    "match_service_tier",
+)
+_SELECTOR_KEYS = ("api_provider", "serving_host", "route", "service_tier")
+
+
+@dataclass
+class EraResolution:
+    """Outcome of serving-qualified model-era resolution.
+
+    ``row`` is the winning era or None. ``quality`` is "qualified" (the row
+    carries at least one serving selector that matched the observation),
+    "model_only" (a wildcard rate as an estimate), "ambiguous" (two
+    incomparable maximal selectors; no winner, null cost), or "unpriced"
+    (nothing matched).
+    """
+
+    row: ModelRowDB | None
+    quality: str
+    reason: str | None = None
+    candidate_model_ids: list[int] = dataclass_field(default_factory=list)
+
+    @property
+    def matched_serving(self) -> "ServingMatch | None":
+        if self.row is None or not _row_selectors(self.row):
+            return None
+        values = _row_selectors(self.row)
+        return ServingMatch(
+            api_provider=values.get("api_provider"),
+            serving_host=values.get("serving_host"),
+            route=values.get("route"),
+            service_tier=values.get("service_tier"),
+        )
+
+
+def _row_selectors(row: ModelRowDB) -> dict[str, str]:
+    return {
+        key: getattr(row, column)
+        for key, column in zip(_SELECTOR_KEYS, _SELECTOR_COLUMNS, strict=True)
+        if getattr(row, column) is not None
+    }
+
+
+def _dominates(a: ModelRowDB, b: ModelRowDB) -> bool:
+    """True when a's non-null selectors are a strict superset of b's with the
+    same values. The wildcard row dominates nothing."""
+    sa, sb = _row_selectors(a), _row_selectors(b)
+    if not sa:
+        return False
+    return set(sa) > set(sb) and all(sa.get(k) == v for k, v in sb.items())
+
+
+def resolve_model_era_qualified(
+    session: Session,
+    model_name: str,
+    project: str,
+    at_time: datetime,
+    serving: "ServingMatch | None" = None,
+) -> EraResolution:
+    """Resolve the era with serving selectors, ambiguity over guesswork.
+
+    Pipeline: pattern full-match on the observed model, selector
+    compatibility (a concrete selector never matches an unknown observation),
+    era containment, project-over-global shadowing scoped per
+    (match_pattern, selector tuple) BEFORE era filtering (so an override's
+    date gap never silently falls back to global pricing), then
+    strict-superset dominance among the survivors. Two incomparable maximal
+    candidates are ambiguous: no winner, deterministic candidate ids, never
+    a choice by row order.
+    """
+    stmt = select(ModelRowDB).where(
+        col(ModelRowDB.project).in_([project, GLOBAL_PROJECT]),
+    )
+    candidates = list(session.exec(stmt).all())
+    if not candidates:
+        return EraResolution(None, "unpriced", "no pricing rows in scope")
+
+    observed = (
+        {
+            "api_provider": serving.api_provider,
+            "serving_host": serving.serving_host,
+            "route": serving.route,
+            "service_tier": serving.service_tier,
+        }
+        if serving is not None
+        else {}
+    )
+
+    def _selector_compatible(row: ModelRowDB) -> bool:
+        for key, value in _row_selectors(row).items():
+            if observed.get(key) != value:
+                return False
+        return True
+
+    def _in_era(row: ModelRowDB) -> bool:
+        if row.start_date is not None and naive(row.start_date) > naive(at_time):
+            return False
+        if row.end_date is not None and naive(row.end_date) <= naive(at_time):
+            return False
+        return True
+
+    matching = [
+        c
+        for c in candidates
+        if _fullmatch(c.match_pattern, model_name) and _selector_compatible(c)
+    ]
+    if not matching:
+        return EraResolution(
+            None,
+            "unpriced",
+            f"no era matches model {model_name!r} with the observed serving identity",
+        )
+
+    # Project shadowing per (match_pattern, selector tuple), scoped BEFORE the
+    # era filter: a project override hides the global row in the same slot for
+    # its whole series, and an override's date gap must not fall back to the
+    # global row in that same slot.
+    project_slots = {
+        (c.match_pattern, tuple(sorted(_row_selectors(c).items())))
+        for c in matching
+        if c.project == project
+    }
+    visible = [
+        c
+        for c in matching
+        if c.project == project
+        or (c.match_pattern, tuple(sorted(_row_selectors(c).items())))
+        not in project_slots
+    ]
+
+    in_era = [c for c in visible if _in_era(c)]
+    if not in_era:
+        return EraResolution(
+            None,
+            "unpriced",
+            f"no era for model {model_name!r} covers {at_time.isoformat()}",
+            sorted({c.id for c in visible if c.id is not None}),
+        )
+
+    # Maximal under strict-superset dominance: a candidate no other
+    # candidate dominates. Two incomparable maximal candidates = ambiguous.
+    winners = [
+        c
+        for c in in_era
+        if not any(_dominates(o, c) for o in in_era if o is not c)
+    ]
+    if len(winners) > 1:
+        return EraResolution(
+            None,
+            "ambiguous",
+            "two incomparable serving selectors both match",
+            sorted({c.id for c in winners if c.id is not None}),
+        )
+    winner = winners[0]
+    quality = "qualified" if _row_selectors(winner) else "model_only"
+    return EraResolution(winner, quality)
+
+
 def resolve_model_era(
     session: Session,
     model_name: str,
@@ -59,92 +222,17 @@ def resolve_model_era(
     at_time: datetime,
     provider: str | None = None,
 ) -> ModelRowDB | None:
-    """Find the active model-era row for (model_name, project) at ``at_time``.
+    """Back-compat wrapper: the winning row for (model, project, time).
 
-    Loads rows where ``project IN (project, "__global__")`` AND
-    ``match_pattern`` full-matches ``model_name``. Among matches, selects the
-    era whose ``[start_date, end_date)`` contains ``at_time``
-    (``start_date IS NULL`` matches any time, for legacy seed rows).
-
-    Project overrides shadow globals per ``match_pattern``.
-
-    ``provider`` (issue #307) is the call's *observed* serving provider —
-    never a guess from the model name. A row with a non-empty
-    ``provider_pattern`` matches only when that pattern full-matches it;
-    rows without one match any provider. Resolution precedence among rows
-    that match the model and are active at ``at_time``:
-
-      1. provider-qualified (pattern matches the observed provider)
-      2. provider-agnostic
-
-    so the same model served by two hosts bills at each host's rate, and a
-    call whose provider has no qualified era — or whose qualified era's
-    time window doesn't cover it — falls back to the agnostic rate instead
-    of going unpriced. Project rows shadow globals *per slot*: a project's
-    ``(match_pattern, provider_pattern)`` era hides the global era in that
-    same slot, but never the global fallback in the other slot (a project
-    adding a per-host rate keeps the global base rate for its other hosts).
+    ``provider`` (the observed serving provider) maps onto the api-provider
+    selector; a None observation resolves against wildcard rows. Callers that
+    need the quality/reason/candidates use
+    :func:`resolve_model_era_qualified`.
     """
-    stmt = select(ModelRowDB).where(
-        col(ModelRowDB.project).in_([project, GLOBAL_PROJECT]),
-    )
-    candidates = list(session.exec(stmt).all())
-    if not candidates:
-        return None
-
-    # Project rows shadow globals per (match_pattern, provider_pattern) slot.
-    project_slots = {
-        (c.match_pattern, c.provider_pattern) for c in candidates if c.project == project
-    }
-    visible = [
-        c
-        for c in candidates
-        if c.project == project or (c.match_pattern, c.provider_pattern) not in project_slots
-    ]
-
-    # Filter to full-matching patterns.
-    matching = [c for c in visible if _fullmatch(c.match_pattern, model_name)]
-    if not matching:
-        return None
-
-    # Filter to the era whose [start_date, end_date) contains at_time.
-    # start_date IS NULL -> matches any lower bound (legacy seed rows).
-    def _in_era(row: ModelRowDB) -> bool:
-        if row.start_date is not None:
-            if naive(row.start_date) > naive(at_time):
-                return False
-        if row.end_date is not None:
-            if naive(row.end_date) <= naive(at_time):
-                return False
-        return True
-
-    # Provider qualification (issue #307) applies AFTER the era filter: a
-    # qualified row competes only when its pattern matches the observed
-    # provider AND its window covers the call; otherwise the call falls
-    # back to the agnostic rows rather than resolving to nothing (which
-    # would mark history unpriced the moment a per-host era appears).
-    def _qualified(row: ModelRowDB) -> bool:
-        return bool(
-            row.provider_pattern
-            and provider
-            and _fullmatch(row.provider_pattern, provider)
-        )
-
-    qualified_in_era = [c for c in matching if _qualified(c) and _in_era(c)]
-    if qualified_in_era:
-        in_era = qualified_in_era
-    else:
-        in_era = [c for c in matching if not c.provider_pattern and _in_era(c)]
-    if not in_era:
-        return None
-
-    # Exactly one era should be active (overlap invariant, ticket 04). If a
-    # data bug ever yields two, prefer the project row then the latest start.
-    in_era.sort(
-        key=lambda r: (r.project == project, r.start_date or datetime.min.replace(tzinfo=None)),
-        reverse=True,
-    )
-    return in_era[0]
+    serving = ServingMatch(api_provider=provider) if provider else None
+    return resolve_model_era_qualified(
+        session, model_name, project, at_time, serving=serving
+    ).row
 
 
 def match_tier(
