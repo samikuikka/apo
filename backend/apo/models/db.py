@@ -1242,6 +1242,14 @@ class UserDB(SQLModel, table=True):
     is_active: bool = Field(default=True, index=True)
     email_verified_at: datetime | None = Field(default=None)
     token_invalid_before: datetime | None = Field(default=None)
+    # Per-user caps an installation admin sets (PATCH /auth/users/{id}).
+    # NULL = no per-user policy: the span quota inherits
+    # APO_USER_DAILY_SPAN_QUOTA and the counts are unlimited.
+    # daily_span_quota 0 = unlimited even when the env cap is set;
+    # max_projects / max_api_keys 0 = creation frozen, N = cap.
+    daily_span_quota: int | None = Field(default=None)
+    max_projects: int | None = Field(default=None)
+    max_api_keys: int | None = Field(default=None)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(UTCDateTime, server_default=func.now()),

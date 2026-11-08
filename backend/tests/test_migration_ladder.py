@@ -465,6 +465,10 @@ _DROPPED_COLUMNS: list[tuple[str, str]] = [
     ("automations", "was_breached"),
     ("automations", "last_evaluated_at"),
     ("automations", "last_evaluated_value"),
+    # v65
+    ("users", "daily_span_quota"),
+    ("users", "max_projects"),
+    ("users", "max_api_keys"),
     # Constrained columns: dropped on Postgres only (see ``_drop_column``).
     ("run_metrics", "project"),  # v9
     ("agent_task_batch_runs", "requested_by_user_id"),  # v16
@@ -652,7 +656,9 @@ def _climbed_state(engine: Engine) -> dict[str, object]:
             "automations": rows(
                 "SELECT id, trigger_kind, was_breached, last_evaluated_at FROM automations"
             ),
-            "users": rows("SELECT id, is_active FROM users"),
+            "users": rows(
+                "SELECT id, is_active, daily_span_quota, max_projects, max_api_keys FROM users"
+            ),
             "memberships": rows(
                 "SELECT project_id, user_id, role FROM project_memberships"
             ),
@@ -711,7 +717,7 @@ def test_old_database_climbs_the_whole_ladder(ladder_engine: Engine) -> None:
     assert state["pools"] == [("pool-1", False)]
     assert state["keys"] == [("key-1", False)]
     assert state["automations"] == [("auto-1", "event", False, None)]  # v51
-    assert state["users"] == [("u1", True)]
+    assert state["users"] == [("u1", True, None, None, None)]  # v65: NULL = no policy
     assert state["memberships"] == [("p1", "u1", "owner")]  # v1 owner backfill
     with ladder_engine.connect() as conn:
         membership_id = conn.exec_driver_sql("SELECT id FROM project_memberships").scalar_one()
