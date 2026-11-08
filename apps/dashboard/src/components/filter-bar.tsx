@@ -85,8 +85,8 @@ export interface FilterBarProps {
   onEffortChange: (effort: string | null) => void;
   /** Extra single-select dimensions, rendered after Effort. */
   facets?: FilterBarFacet[];
-  /** Page-specific content inside the bar, rendered where the facet pickers
-   * sit (e.g. the Runs page's scope rail toggle). */
+  /** Page-specific content at the very start of the bar, before the search
+   * box (e.g. the Runs page's scope rail toggle, which opens the sidebar). */
   filterSlot?: ReactNode;
   /** Omit to hide the date control (e.g. demo projects have no cohort scoping). */
   since?: string | null;
@@ -116,6 +116,8 @@ export function FilterBar(props: FilterBarProps) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {props.filterSlot}
+
       {props.onQueryChange && (
         <div className="relative min-w-[200px] flex-1 max-w-sm">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
@@ -178,8 +180,6 @@ export function FilterBar(props: FilterBarProps) {
           onChange={(v) => facet.onChange(v === ANY_VALUE ? null : v)}
         />
       ))}
-
-      {props.filterSlot}
 
       {props.since !== undefined && props.onSinceChange && (
         <FilterPicker
