@@ -38,6 +38,7 @@ from ..models.schemas import (
     ApiKeyUsageDay,
 )
 from ..services.demo_workspace import require_project_not_demo
+from ..services.user_quotas import enforce_api_key_count_limit
 from ..services.project_memberships import (
     enforce_project_role_from_request,
     list_projects_with_minimum_role,
@@ -88,7 +89,10 @@ def mint_legacy_key(
     to the caller exactly once). The env default quota applies here too:
     a mint through ``apo login`` is a newly minted key like any other, and
     the CLI onboarding path is exactly where hosted guardrails must bite.
+    Enforces the creator's max_api_keys cap so every mint path shares one
+    check.
     """
+    enforce_api_key_count_limit(session, user_id)
     full_key, prefix, hashed_key = _generate_legacy_api_key()
     api_key = ApiKeyDB(
         name=name,
@@ -177,6 +181,10 @@ def create_api_key(
     _ = enforce_project_role_from_request(
         request, session, body.project, minimum_role="admin"
     )
+
+    # After the authorization checks, before the insert: a denied mint
+    # writes nothing.
+    enforce_api_key_count_limit(session, user_id)
 
     public_key, secret_key, hashed_secret_key, display_secret_key = generate_key_pair()
 
