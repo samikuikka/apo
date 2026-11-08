@@ -106,6 +106,8 @@ This is the canonical alpha deploy path. It assumes Docker and Docker Compose on
 
 After the first user exists, all further onboarding goes through normal account creation + project invite (see Settings → Members). Invitations are copy-link by default — no email setup needed (see [Email delivery](#email-delivery-optional)). Do not rotate `INIT_USER_*` to provision additional users — that path is closed by the idempotency check.
 
+Administrators list and deactivate accounts from Settings → Users. Deactivating an account signs that user out everywhere and stops their API keys immediately; reactivating it restores access. Accounts are never deleted, and an administrator cannot delete another user's data: only a project's owner can delete that project.
+
 ## Publish the Server Profile
 
 Point a hostname such as `apo.example.com` at the Docker host, allow inbound

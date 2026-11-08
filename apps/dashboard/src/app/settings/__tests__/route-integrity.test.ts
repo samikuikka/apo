@@ -96,4 +96,12 @@ describe("settings route integrity", () => {
     expect(entry, "INSTANCE_ITEMS must include hosted-access").toBeDefined();
     expect(entry?.adminOnly).toBe(true);
   });
+
+  // Users is where administrators lock and unlock accounts on the
+  // installation, so it must stay reachable for administrators only.
+  it("users is an admin-only instance entry", () => {
+    const entry = INSTANCE_ITEMS.find((i) => i.segment === "users");
+    expect(entry, "INSTANCE_ITEMS must include users").toBeDefined();
+    expect(entry?.adminOnly).toBe(true);
+  });
 });
