@@ -25,6 +25,7 @@ from sqlalchemy import Column, DateTime
 from sqlalchemy.sql import func
 from sqlmodel import Field, SQLModel
 
+from .serving import ServingMatch
 from .usage_keys import UsageKey
 
 # The set of operators a TierCondition may use (ticket 05: threshold-only;
@@ -57,7 +58,18 @@ class ModelRowDB(SQLModel, table=True):
     # matches only calls whose observed provider full-matches this pattern;
     # NULL matches any provider. This is the match key for "same model, two
     # hosts, each at its own rate" — ``provider`` above stays display-only.
+    # Superseded by the four serving selectors below (the api-provider slot
+    # was migrated into ``match_api_provider``); kept for read compatibility.
     provider_pattern: str | None = Field(default=None, index=True)
+    # Serving selectors (issue #307): null = wildcard. A concrete selector
+    # never matches an unknown observation. Era identity is
+    # (project, match_pattern, selector tuple, start_date); dominance is
+    # strict-superset of non-null selector assignments, and two incomparable
+    # maximal candidates are ambiguous rather than order-broken.
+    match_api_provider: str | None = Field(default=None, index=True)
+    match_serving_host: str | None = Field(default=None)
+    match_route: str | None = Field(default=None)
+    match_service_tier: str | None = Field(default=None)
     display_name: str = Field(default="")
 
     # Time-window (ticket 04). Half-open [start_date, end_date); NULL end = open.
@@ -177,6 +189,9 @@ class ModelDocumentCreate(SQLModel):
     # Optional provider qualifier (issue #307): restricts the era to calls
     # served by a matching provider. Null/omitted = any provider.
     provider_pattern: str | None = None
+    # Serving selectors (issue #307). Omitted or all-null = wildcard. A
+    # concrete selector never matches an unknown observation.
+    serving_match: "ServingMatch | None" = None
     display_name: str = ""
     start_date: datetime | None = None
     end_date: datetime | None = None
@@ -195,6 +210,10 @@ class MatchResponse(SQLModel):
 
     ``cost_breakdown`` is keyed by UsageKey value -> micro-USD int (same as
     stored on a call). ``matched=False`` when no model-era resolves.
+    ``pricing_quality`` classifies the outcome: "qualified" (non-empty
+    serving selector matched), "model_only" (wildcard rate as an estimate),
+    "ambiguous" (two incomparable maximal selectors; null cost), or
+    "unpriced". ``reason`` and ``candidate_model_ids`` explain non-matches.
     """
 
     matched: bool = False
@@ -206,3 +225,7 @@ class MatchResponse(SQLModel):
     matched_tier_name: str | None = None
     cost_breakdown: dict[str, int] | None = None
     total_cost: int | None = None  # micro-USD int
+    pricing_quality: str | None = None
+    matched_serving: "ServingMatch | None" = None
+    reason: str | None = None
+    candidate_model_ids: list[int] = Field(default_factory=list)

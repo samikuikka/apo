@@ -4414,38 +4414,78 @@ def _migrate_to_v64() -> None:
 
 
 def _migrate_to_v65() -> None:
-    """Version 65: per-user quota policy columns on ``users``.
+def _migrate_to_v67() -> None:
+    """Version 67: observed serving identity columns on logged_calls.
 
-    ``daily_span_quota`` overrides APO_USER_DAILY_SPAN_QUOTA for one
-    account (NULL inherits the env value, 0 lifts the cap entirely, so a
-    trusted account stays unlimited under an installation-wide cap);
-    ``max_projects`` and ``max_api_keys`` cap how many projects and keys
-    one account may hold (NULL = unlimited, 0 = creation frozen), counted
-    over live rows so revoking a key or leaving a project frees a slot.
-    Pure ADD COLUMN, no backfill: NULL is the "no per-user policy"
-    default, so pre-existing accounts keep exactly the behavior they had.
+    Serving identity (api provider, serving host, route, tiers, request and
+    response model), per-field evidence, request accounting, rate scopes, and
+    pricing-quality markers for provider-qualified pricing. All columns are
+    nullable with no backfill: existing rows keep null identity (unknown),
+    and the preserve-cost metadata backfill
+    (``python -m apo.services.serving_backfill``) derives them from retained
+    canonical spans without touching stored costs.
     """
+    columns = (
+        ("instrumentation_provider", "VARCHAR"),
+        ("api_provider", "VARCHAR"),
+        ("serving_host", "VARCHAR"),
+        ("requested_service_tier", "VARCHAR"),
+        ("service_tier", "VARCHAR"),
+        ("request_model", "VARCHAR"),
+        ("response_model", "VARCHAR"),
+        ("observed_model", "VARCHAR"),
+        ("serving_evidence", "JSON"),
+        ("request_accounting", "VARCHAR"),
+        ("output_token_scope", "VARCHAR"),
+        ("first_content_scope", "VARCHAR"),
+        ("pricing_quality", "VARCHAR"),
+        ("matched_serving", "JSON"),
+    )
     with engine.begin() as conn:
-        _add_column_if_missing(conn, "users", "daily_span_quota", "INTEGER")
-        _add_column_if_missing(conn, "users", "max_projects", "INTEGER")
-        _add_column_if_missing(conn, "users", "max_api_keys", "INTEGER")
+        for name, col_type in columns:
+            _add_column_if_missing(conn, "logged_calls", name, col_type)
 
 
-def _migrate_to_v66() -> None:
-    """Version 66: ``logged_calls.harness``.
+def _migrate_to_v68() -> None:
+    """Version 68: serving-selector columns on the pricing models table.
 
-    True when the emitter marked the span ``apo.harness`` (a simulated
-    user, a turn-done check): the call belongs to the evaluation harness,
-    not the system under test, and model drift leaves it out. No backfill:
-    spans recorded before the attribute existed carry no marker to read.
+    Era identity becomes (project, match_pattern, selector tuple, start_date)
+    where the selector tuple is (match_api_provider, match_serving_host,
+    match_route, match_service_tier); null selectors are wildcards and
+    resolution prefers the strict-superset-most selector, with ambiguity
+    beating guesswork. Existing ``provider_pattern`` qualifiers migrate into
+    the api-provider selector so per-host rates keep working unchanged; the
+    descriptive ``provider``/``provider_pattern`` columns stay untouched.
     """
+    columns = (
+        ("match_api_provider", "VARCHAR"),
+        ("match_serving_host", "VARCHAR"),
+        ("match_route", "VARCHAR"),
+        ("match_service_tier", "VARCHAR"),
+    )
     with engine.begin() as conn:
-        _add_column_if_missing(
-            conn, "logged_calls", "harness", f"BOOLEAN NOT NULL DEFAULT {_sql_false(conn)}"
+        for name, col_type in columns:
+            _add_column_if_missing(conn, "models", name, col_type)
+        conn.exec_driver_sql(
+            "UPDATE models SET match_api_provider = provider_pattern "
+            "WHERE provider_pattern IS NOT NULL AND match_api_provider IS NULL"
         )
 
 
-LATEST_SCHEMA_VERSION = 66
+def _migrate_to_v69() -> None:
+    """Version 69: saved serving filter on task views.
+
+    ``task_view.serving_filter_json`` stores the ServingFilter wire shape
+    so a saved evidence-view tab can carry the full same-request observed
+    serving predicate (provider/host/route/tier/model dimensions, unknown
+    operator, contains/only mode). Nullable with no backfill: views saved
+    before the feature keep null and behave as before.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(conn, "task_view", "serving_filter_json", "JSON")
+
+
+LATEST_SCHEMA_VERSION = 69
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -4513,7 +4553,11 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     63: _migrate_to_v63,
     64: _migrate_to_v64,
     65: _migrate_to_v65,
+    65: _migrate_to_v65,
     66: _migrate_to_v66,
+    67: _migrate_to_v67,
+    68: _migrate_to_v68,
+    69: _migrate_to_v69,
 }
 
 

@@ -24,6 +24,7 @@ from typing import Any
 from sqlmodel import Session
 
 from ...models.db import LoggedCallDB
+from ...models.serving import ServingMatch
 from .compute import compute_cost
 
 logger = logging.getLogger(__name__)
@@ -65,8 +66,9 @@ def apply_cost_to_call(
 
     # Price what served the call, not the alias the caller sent — and
     # normalize usage under it too, since the usage attributes come from
-    # the provider that actually served.
-    effective_model = call.served_model or call.model
+    # the provider that actually served. observed_model is the response
+    # model when the provider reported one.
+    effective_model = call.observed_model or call.served_model or call.model
 
     try:
         raw_usage = normalize_usage(
@@ -83,6 +85,7 @@ def apply_cost_to_call(
     if call.provided_cost is not None:
         call.cost = call.provided_cost
         call.cost_provenance = "provided"
+        call.pricing_quality = "reported"
         return
 
     # No usage to price: on a fresh ingest this means "no cost"; on an update it
@@ -104,20 +107,31 @@ def apply_cost_to_call(
             project,
             at_time,
             provider=call.provider,
+            serving=ServingMatch(
+                api_provider=call.api_provider,
+                serving_host=call.serving_host,
+                route=call.route,
+                service_tier=call.service_tier,
+            ),
         )
     except Exception:
         logger.debug("cost compute failed for call %s; skipping cost", call.id)
         return
 
-    if result is None:
-        # No matching model-era but there IS usage: surface it instead of
-        # silently costing 0 (issue #57). Mark provenance "unpriced" so it is
-        # queryable — a run's silently-zeroed observations are now
-        # ``WHERE cost_provenance = 'unpriced'`` — and warn once per model name
-        # so a missing pricing entry gets noticed instead of hiding as a null.
+    if result is None or result.pricing_quality == "ambiguous":
+        # No unique rate but there IS usage: surface it instead of silently
+        # costing 0 (issue #57). Ambiguous selectors are unpriced with a
+        # distinct quality marker; both stay queryable — a run's
+        # silently-zeroed observations are ``WHERE cost_provenance =
+        # 'unpriced'``.
+        if result is not None:
+            call.cost_provenance = "unpriced"
+            call.pricing_quality = "ambiguous"
+            return
         model_name = (effective_model or "").strip()
         if model_name:
             call.cost_provenance = "unpriced"
+            call.pricing_quality = "unpriced"
             if model_name not in _WARNED_UNPRICED_MODELS:
                 _WARNED_UNPRICED_MODELS.add(model_name)
                 logger.warning(
@@ -136,6 +150,12 @@ def apply_cost_to_call(
     call.matched_tier_id = result.tier_id
     call.matched_tier_name = result.tier_name
     call.cost_provenance = "computed"
+    call.pricing_quality = result.pricing_quality
+    call.matched_serving = (
+        result.matched_serving.model_dump(exclude_none=True)
+        if result.matched_serving is not None
+        else None
+    )
 
 
 __all__ = ["apply_cost_to_call"]

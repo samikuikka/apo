@@ -1733,6 +1733,11 @@ class TaskViewDB(SQLModel, table=True):
     since: str | None = None
     # Observed serving host (issue #307) — the fourth view dimension.
     provider: str | None = None
+    # Full observed-serving filter (issue #307), stored as the
+    # ServingFilter wire shape; null on views saved before the feature.
+    serving_filter_json: dict[str, object] | None = Field(
+        default=None, sa_column=Column("serving_filter_json", JSON)
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(UTCDateTime, server_default=func.now()),

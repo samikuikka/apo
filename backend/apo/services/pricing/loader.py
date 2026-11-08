@@ -163,30 +163,56 @@ def _global_models(session: Session) -> list[ModelRowDB]:
     )
 
 
+def _doc_selectors(doc: ModelDocumentCreate) -> tuple[str | None, ...]:
+    """The doc's serving selector tuple in column order."""
+    match = doc.serving_match
+    if match is None:
+        return (None, None, None, None)
+    return (
+        match.api_provider,
+        match.serving_host,
+        match.route,
+        match.service_tier,
+    )
+
+
 def _era_match(model_cls: type[ModelRowDB], doc: ModelDocumentCreate) -> Any:
     """SQLAlchemy filter matching the doc's era identity (NULL-aware).
 
     Matches on start_date (NULL start_date = legacy seed era matches
-    ``start_date IS NULL``) and provider_pattern (NULL doc matches
-    ``provider_pattern IS NULL``) so a provider-qualified era and the
-    provider-agnostic era of one pattern coexist.
+    ``start_date IS NULL``) and the full serving selector tuple (NULL doc
+    selectors match NULL columns) so a qualified era and the wildcard era of
+    one pattern coexist as distinct eras.
     """
     from sqlmodel import col
 
     if doc.start_date is None:
-        start_filter = col(model_cls.start_date).is_(None)
+        combined = col(model_cls.start_date).is_(None)
     else:
-        start_filter = col(model_cls.start_date) == doc.start_date
-    if doc.provider_pattern is None:
-        return start_filter & col(model_cls.provider_pattern).is_(None)
-    return start_filter & (col(model_cls.provider_pattern) == doc.provider_pattern)
+        combined = col(model_cls.start_date) == doc.start_date
+    for column, value in zip(
+        (
+            model_cls.match_api_provider,
+            model_cls.match_serving_host,
+            model_cls.match_route,
+            model_cls.match_service_tier,
+        ),
+        _doc_selectors(doc),
+        strict=True,
+    ):
+        if value is None:
+            combined = combined & col(column).is_(None)
+        else:
+            combined = combined & (col(column) == value)
+    return combined
 
 
 def _upsert_global(session: Session, doc: ModelDocumentCreate) -> None:
     """Insert or replace the full tier/price graph for one __global__ model era.
 
-    Scoped to the era identity ``(match_pattern, start_date)`` so a new era for
-    the same pattern does not delete a sibling era (time-windowed pricing).
+    Scoped to the era identity ``(match_pattern, selector tuple, start_date)``
+    so a new era for the same pattern does not delete a sibling era
+    (time-windowed or serving-qualified pricing).
     """
     existing = session.exec(
         select(ModelRowDB).where(
@@ -198,11 +224,16 @@ def _upsert_global(session: Session, doc: ModelDocumentCreate) -> None:
     if existing is not None and existing.id is not None:
         _delete_model_cascade(session, existing.id)
 
+    selectors = _doc_selectors(doc)
     model = ModelRowDB(
         project=GLOBAL_PROJECT,
         match_pattern=doc.match_pattern,
         provider=doc.provider,
         provider_pattern=doc.provider_pattern,
+        match_api_provider=selectors[0],
+        match_serving_host=selectors[1],
+        match_route=selectors[2],
+        match_service_tier=selectors[3],
         display_name=doc.display_name,
         start_date=doc.start_date,
         end_date=doc.end_date,

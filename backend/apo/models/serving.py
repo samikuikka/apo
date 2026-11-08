@@ -121,6 +121,19 @@ class ServingSummary(SQLModel):
     cost_coverage: CostCoverage = Field(default_factory=CostCoverage)
 
 
+class ServingBreakdownPage(SQLModel):
+    """The paged complete group set for one run or batch.
+
+    Inline summaries cap their groups; this envelope pages everything, so
+    a 60-tuple run is fully inspectable.
+    """
+
+    groups: list[ServingGroup]
+    total_groups: int
+    offset: int
+    limit: int
+
+
 class ServingMatch(SQLModel):
     """Price-row selector. Null fields are wildcards."""
 
@@ -151,6 +164,7 @@ __all__ = [
     "MODEL_ID_MAX_BYTES",
     "RateSummary",
     "ScopedRates",
+    "ServingBreakdownPage",
     "ServingFilter",
     "ServingGroup",
     "ServingIdentity",
