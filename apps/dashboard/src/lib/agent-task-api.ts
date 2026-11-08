@@ -2,6 +2,7 @@ import { apiClient } from "./api-client";
 import { ApiError } from "./api-error";
 import type { DeliverableSummary } from "./agent-task-deliverables-api";
 import type { ProjectTaskSourceType } from "./projects-api";
+import { servingFilterQuery, type ServingFilterParams, type ServingSummary } from "./serving-types";
 
 // ============================================================================
 // Types
@@ -301,6 +302,9 @@ export interface AgentTaskRunSummary {
   trigger: AgentTaskRunTrigger | null;
   trace_persistence_status: TracePersistenceStatus;
   trace_error_message: string | null;
+  /** Observed serving summary (issue #307), derived on read from the run's
+   * trace. Null/absent on old backends — render nothing, not "unknown". */
+  serving?: ServingSummary | null;
   error_category: string | null;
   /** adapter-reported model/effort. Absent when not reported. */
   run_configuration: AgentTaskRunConfiguration | null;
@@ -647,6 +651,9 @@ export interface AgentTaskBatchRunSummary {
   requested_by_label?: string | null;
   trace_persistence_status: TracePersistenceStatus;
   trace_error_message: string | null;
+  /** Observed serving summary over the batch's child Task Runs (issue #307).
+   * Null/absent on old backends — render nothing, not "unknown". */
+  serving?: ServingSummary | null;
   total_cost: number | null;
   /** non-zero means total_cost is a partial sum (issue #147). */
   unpriced_call_count?: number;
@@ -1045,6 +1052,11 @@ export const listAgentTaskBatchRuns = (
     effort?: string[];
     /** Observed serving hosts (issue #307). */
     provider?: string[];
+    /** Same-request serving filters (issue #307): observed model, host,
+     * route, tier, unknown dimensions, contains/only mode. When any is set,
+     * `provider` joins the same-request predicate instead of the legacy
+     * provider-or-route one. */
+    serving?: ServingFilterParams;
     since?: string;
     environment?: string[];
     /** `<key>:<id>` label filters: OR within a key, AND across keys. */
@@ -1058,8 +1070,13 @@ export const listAgentTaskBatchRuns = (
     page?: number;
     page_size?: number;
   },
-): Promise<PaginatedBatchRunSummary> =>
-  apiClient("/v1/agent-task-batch-runs", {
+): Promise<PaginatedBatchRunSummary> => {
+  // A serving dimension engaged folds `provider` into the serving filter's
+  // providers dimension so both forms send one coherent predicate.
+  const serving: ServingFilterParams | undefined = opts?.serving
+    ? { ...opts.serving, provider: opts.serving.provider ?? opts.provider }
+    : undefined;
+  return apiClient("/v1/agent-task-batch-runs", {
     ...NO_CACHE,
     query: {
       project,
@@ -1071,7 +1088,8 @@ export const listAgentTaskBatchRuns = (
       duration_max: opts?.duration_max,
       model: opts?.model?.join(",") || undefined,
       effort: opts?.effort?.join(",") || undefined,
-      provider: opts?.provider?.join(",") || undefined,
+      provider: serving ? undefined : opts?.provider?.join(",") || undefined,
+      ...servingFilterQuery(serving),
       since: opts?.since,
       environment: opts?.environment?.join(",") || undefined,
       label: opts?.label,
@@ -1079,6 +1097,7 @@ export const listAgentTaskBatchRuns = (
       page_size: opts?.page_size,
     },
   });
+};
 
 /** Distinct environments and label ids recorded on a project's batches. */
 export const fetchRunLabelFacets = (projectId: string): Promise<RunLabelFacets> =>

@@ -71,6 +71,52 @@ export interface TraceProjectionUsage {
   outputTokens?: number;
 }
 
+/**
+ * Observed serving identity for one generation (issue #307). Each field is
+ * present only when the source reported it; unknown stays undefined, never a
+ * placeholder string. The provider an OpenAI-compatible call reached can
+ * differ from the host that executed inference; both survive here.
+ */
+export interface TraceProjectionServing {
+  /** Response model when reported, else the normalized model. */
+  model?: string;
+  instrumentationProvider?: string;
+  /** The service the harness called, e.g. `openrouter`. */
+  apiProvider?: string;
+  /** The organization that executed the inference, e.g. `baseten`. */
+  servingHost?: string;
+  /** The requested named selection policy, e.g. `nitro`. */
+  route?: string;
+  requestedServiceTier?: string;
+  /** The priority class actually served. */
+  serviceTier?: string;
+  requestModel?: string;
+  responseModel?: string;
+}
+
+/**
+ * Speed evidence for one generation (issue #307). Whole-call rate divides
+ * output tokens by the full request window; streaming rate divides by the
+ * decode window after first content. Absent fields were not measurable.
+ */
+export interface TraceProjectionRates {
+  /** Elapsed milliseconds from request start to first generated content. */
+  timeToFirstTokenMs?: number;
+  wholeCallOutputTokensPerSecond?: number;
+  streamingOutputTokensPerSecond?: number;
+  /** Which output-token numerator the rates describe. */
+  outputTokenScope?: "text" | "all_output" | "unknown";
+  /** Why a streaming rate is absent, when it is. */
+  streamingUnavailableReason?:
+    | "missing_timing"
+    | "invalid_timing"
+    | "missing_usage"
+    | "scope_mismatch"
+    | "unknown_scope"
+    | "incomplete_call"
+    | "aggregate_only";
+}
+
 /** One chat message reconstructed from a generation observation. */
 export interface TraceProjectionMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -102,6 +148,21 @@ export interface TraceProjectionObservation {
   messages?: readonly TraceProjectionMessage[];
   /** Token usage this observation reported. Absent when none was recorded. */
   usage?: TraceProjectionUsage;
+  /**
+   * Observed serving identity (issue #307). Optional: snapshots written
+   * before the feature carry none, and non-generation observations never
+   * carry one.
+   */
+  serving?: TraceProjectionServing;
+  /** Speed evidence (issue #307). Optional; same snapshot rules as serving. */
+  rates?: TraceProjectionRates;
+  /**
+   * Whether this observation accounts for one physical API request
+   * (`"request"`) or a multi-request wrapper (`"aggregate"`). Absent on
+   * snapshots written before the feature; unknown accounting is omitted
+   * rather than guessed.
+   */
+  requestAccounting?: "request" | "aggregate";
   metadata?: Readonly<Record<string, unknown>>;
 }
 

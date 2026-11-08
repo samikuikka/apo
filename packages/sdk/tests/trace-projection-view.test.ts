@@ -234,6 +234,77 @@ describe("TraceView", () => {
       expect(view.subagentCalls.map((s) => s.agent)).toEqual(["researcher"]);
     });
   });
+
+  describe("serving evidence (issue #307): additive transport fields", () => {
+    it("consumes an old snapshot without serving/rates/requestAccounting unchanged", () => {
+      // A pre-feature fixture: no serving, rates, or requestAccounting keys
+      // anywhere. Deserialization and every existing getter must behave
+      // exactly as before.
+      const observations: TraceProjectionObservation[] = [
+        toolObs("read_file", {
+          spanId: "t1",
+          startedAt: "2026-07-10T10:00:00Z",
+          usage: { inputTokens: 10, outputTokens: 4 },
+        }),
+        {
+          spanId: "g1",
+          type: "GENERATION",
+          name: "gen",
+          status: "ok",
+          usage: { inputTokens: 100, outputTokens: 40 },
+        },
+      ];
+      const view = new TraceView(snapshot(observations));
+      expect(view.toolNamesInOrder).toEqual(["read_file"]);
+      expect(view.snapshot.observations[1]).not.toHaveProperty("serving");
+      expect(view.snapshot.observations[1]).not.toHaveProperty("rates");
+      expect(view.snapshot.observations[1]).not.toHaveProperty("requestAccounting");
+    });
+
+    it("preserves serving, rates, and requestAccounting through the view untouched", () => {
+      const observations: TraceProjectionObservation[] = [
+        {
+          spanId: "g1",
+          type: "GENERATION",
+          name: "gen",
+          status: "ok",
+          serving: {
+            apiProvider: "openrouter",
+            servingHost: "baseten",
+            route: "nitro",
+            serviceTier: "priority",
+          },
+          rates: {
+            timeToFirstTokenMs: 500,
+            wholeCallOutputTokensPerSecond: 50,
+            outputTokenScope: "all_output",
+          },
+          requestAccounting: "request",
+        },
+        {
+          spanId: "g2",
+          type: "GENERATION",
+          name: "wrapper",
+          status: "ok",
+          serving: { apiProvider: "fireworks" },
+          rates: { streamingUnavailableReason: "aggregate_only", outputTokenScope: "unknown" },
+          requestAccounting: "aggregate",
+        },
+      ];
+      const view = new TraceView(snapshot(observations));
+      expect(view.snapshot.observations[0]?.serving).toEqual({
+        apiProvider: "openrouter",
+        servingHost: "baseten",
+        route: "nitro",
+        serviceTier: "priority",
+      });
+      expect(view.snapshot.observations[0]?.rates?.wholeCallOutputTokensPerSecond).toBe(50);
+      expect(view.snapshot.observations[0]?.requestAccounting).toBe("request");
+      expect(view.snapshot.observations[1]?.requestAccounting).toBe("aggregate");
+      // The new fields change no derived getter: usage still counts.
+      expect(view.snapshot.observations[0]?.usage).toBeUndefined();
+    });
+  });
 });
 
 // Compile-time check that EvidenceAvailability import is used (test fixtures reference it).

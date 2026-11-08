@@ -20,6 +20,7 @@ from sqlmodel import Session, SQLModel, create_engine, select, text
 
 from apo.db import engine, init_db
 from apo.models.db import LoggedCallDB, OtlpSpanDB, RunDB
+from apo.models.serving import ServingMatch
 from apo.models.pricing import ModelRowDB
 from apo.services.otel_normalization import normalize_span
 from apo.services.otel_normalization._shared import (
@@ -295,6 +296,7 @@ class TestProviderQualifiedPricing:
                 match_pattern=r"(?i)^deepseek-v4\.1-flash$",
                 provider="fireworks",
                 provider_pattern="fireworks",
+                match_api_provider="fireworks",
             )
         )
         session.commit()
@@ -339,6 +341,7 @@ class TestProviderQualifiedPricing:
                 match_pattern=r"(?i)^model-x$",
                 provider="router",
                 provider_pattern=r"(?i)openrouter:.*",
+                match_api_provider=r"(?i)openrouter:.*",
             )
         )
         session.commit()
@@ -475,6 +478,11 @@ class TestProviderQualifiedPricingFixes:
                 match_pattern=r"(?i)^model-w$",
                 provider="generic",
                 provider_pattern=provider_pattern,
+                serving_match=(
+                    ServingMatch(api_provider=provider_pattern)
+                    if provider_pattern
+                    else None
+                ),
                 pricing_tiers=[TierDocument(name="default", is_default=True)],
             )
 
@@ -490,6 +498,7 @@ class TestProviderQualifiedPricingFixes:
             start_date=None,
             end_date=None,
             provider_pattern="fireworks",
+                serving_match=ServingMatch(api_provider="fireworks"),
         )
         # A second qualified era in the SAME provider slot must still raise.
         session.add(
@@ -498,6 +507,7 @@ class TestProviderQualifiedPricingFixes:
                 match_pattern=r"(?i)^model-w$",
                 provider="fireworks",
                 provider_pattern="fireworks",
+                match_api_provider="fireworks",
             )
         )
         session.commit()
@@ -509,6 +519,7 @@ class TestProviderQualifiedPricingFixes:
                 start_date=None,
                 end_date=None,
                 provider_pattern="fireworks",
+                serving_match=ServingMatch(api_provider="fireworks"),
             )
 
     def test_call_outside_qualified_window_falls_back_to_agnostic(
@@ -531,6 +542,7 @@ class TestProviderQualifiedPricingFixes:
                 match_pattern=r"(?i)^model-y$",
                 provider="fireworks",
                 provider_pattern="fireworks",
+                match_api_provider="fireworks",
                 start_date=_dt("2026-10-01T00:00:00Z"),
                 end_date=None,
             )
@@ -573,6 +585,7 @@ class TestProviderQualifiedPricingFixes:
                 match_pattern=r"(?i)^model-z$",
                 provider="fireworks",
                 provider_pattern="fireworks",
+                match_api_provider="fireworks",
             )
         )
         session.commit()

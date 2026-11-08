@@ -57,6 +57,14 @@ export interface TranslatedSpan {
   stepName: string;
   /** Model name (for GENERATION spans). */
   model?: string;
+  /** Observed serving identity the emitter declared through the AI SDK's
+   * telemetry metadata (never guessed here; absent fields stay unknown). */
+  serving?: {
+    apiProvider?: string;
+    servingHost?: string;
+    route?: string;
+    serviceTier?: string;
+  };
   /** Tool call input (for TOOL spans). */
   input?: Record<string, unknown>;
   /** Tool call result (set on end, not start). */
@@ -69,6 +77,33 @@ export interface TranslatedSpan {
   reasoningTokens?: number;
   error?: boolean;
   errorMessage?: string;
+}
+
+/**
+ * Serving identity from the AI SDK's telemetry metadata. An app that knows
+ * who it calls declares it once per call site:
+ * `experimental_telemetry: { metadata: { "apo.llm.api_provider": "openrouter" } }`
+ * and the SDK flattens it onto every span as
+ * `ai.telemetry.metadata.apo.llm.api_provider`. String values only; every
+ * other shape stays unknown.
+ */
+export function servingFromTelemetryMetadata(
+  attributes: Record<string, unknown>,
+): TranslatedSpan["serving"] {
+  const prefix = "ai.telemetry.metadata.apo.llm.";
+  const keys = ["api_provider", "serving_host", "route", "service_tier"] as const;
+  let serving: TranslatedSpan["serving"];
+  for (const key of keys) {
+    const value = attributes[prefix + key];
+    if (typeof value === "string" && value.trim() !== "") {
+      serving ??= {};
+      if (key === "api_provider") serving.apiProvider = value;
+      else if (key === "serving_host") serving.servingHost = value;
+      else if (key === "route") serving.route = value;
+      else serving.serviceTier = value;
+    }
+  }
+  return serving;
 }
 
 /**
@@ -134,6 +169,7 @@ export function translateOtelSpan(
           attributes["ai.response.model"] ??
           "unknown",
       ),
+      serving: servingFromTelemetryMetadata(attributes),
       ...extractTokenCounts(attributes),
       error: isError,
       errorMessage,

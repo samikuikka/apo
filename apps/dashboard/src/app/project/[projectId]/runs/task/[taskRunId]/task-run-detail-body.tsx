@@ -5,8 +5,10 @@ import { useState } from "react";
 import { useUrlParam } from "@/hooks/use-url-state";
 import { ConversationTranscript } from "@/components/agent-task-execution/conversation-transcript";
 import { DeliverablesPanel } from "@/components/agent-task-execution/deliverables-panel";
+import { ServingSummary } from "@/components/serving/ServingSummary";
 import type { DeliverableSummary } from "@/lib/agent-task-deliverables-api";
 import type { CheckResult, TaskDefinitionRevisionSummary, TaskNote } from "@/lib/agent-task-api";
+import type { ServingSummary as ServingSummaryData } from "@/lib/serving-types";
 import { ChecksList } from "./checks-list";
 import { TaskNotesRail } from "./task-notes";
 import { capTestNotes, notesForRun } from "./task-notes-model";
@@ -32,6 +34,7 @@ export function TaskRunDetailBody({
   taskRunId,
   correctable = false,
   taskNotes,
+  serving = null,
 }: {
   checks: CheckResult[];
   /** Task Notes: the Notes that apply to the run's Task (absent on older backends). */
@@ -47,6 +50,8 @@ export function TaskRunDetailBody({
   taskRunId?: string | null;
   /** Terminal verdict-bearing run with recorded checks. */
   correctable?: boolean;
+  /** Observed serving summary (issue #307); null on old backends. */
+  serving?: ServingSummaryData | null;
 }) {
   // Active tab lives in the URL (?tab=) so a shared link lands the reader on
   // the same view (checks / transcript / deliverables).
@@ -101,6 +106,16 @@ export function TaskRunDetailBody({
       <div className="space-y-4 px-6 py-5">
         {tab === "checks" && (
           <>
+            {/* Observed serving evidence (issue #307): the setups this run's
+             * model calls actually served under, with speed and cost
+             * coverage. The identity rows are plain text: the traces page has
+             * no per-identity filter vocabulary to deep-link into. */}
+            {serving && (
+              <Panel>
+                <ServingSummary summary={serving} />
+              </Panel>
+            )}
+
             {checks.length > 0 && (
               <div className="flex items-center justify-between text-[12px]">
                 <div className="flex items-center gap-3">

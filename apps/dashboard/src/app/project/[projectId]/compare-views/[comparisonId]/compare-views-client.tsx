@@ -14,6 +14,11 @@ import type { ComparisonState, TaskComparisonEvidenceLoader, TaskViewComparisonS
 import { getTaskComparisonEvidence } from "@/lib/agent-task-view-api";
 import { cn } from "@/lib/utils";
 import { useUrlParam } from "@/hooks/use-url-state";
+import {
+  servingIdentityLabel,
+  type ServingFilter,
+  type ServingSummary as ServingSummaryData,
+} from "@/lib/serving-types";
 
 import { useComparison } from "../../runs/compare/use-comparison";
 import { CheckDelta } from "../../runs/compare/compare-client";
@@ -98,8 +103,18 @@ export function CompareViewsClient({
       <div className="border-b border-border bg-background px-6 py-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground">
           <span className="font-mono text-[13px] text-foreground">{viewLabel(snapshot.view_a_config)}</span>
+          {frozenServingNote(snapshot, "a") && (
+            <span className="font-mono text-[11px] text-muted-foreground/70">
+              {frozenServingNote(snapshot, "a")}
+            </span>
+          )}
           <span className="text-muted-foreground/40">vs</span>
           <span className="font-mono text-[13px] text-foreground">{viewLabel(snapshot.view_b_config)}</span>
+          {frozenServingNote(snapshot, "b") && (
+            <span className="font-mono text-[11px] text-muted-foreground/70">
+              {frozenServingNote(snapshot, "b")}
+            </span>
+          )}
           <span className="text-muted-foreground/30">·</span>
           {comparison.totalDiffers > 0 ? (
             <span>
@@ -169,5 +184,61 @@ function viewLabel(view: TaskViewConfig): string {
   const parts = [view.model ?? "All models"];
   if (view.effort) parts.push(view.effort);
   if (view.since) parts.push(view.since);
-  return parts.join(" · ");
+  const serving = servingFilterLabel(view.serving_filter ?? null);
+  if (serving) parts.push(serving);
+  return parts.join(" \u00b7 ");
+}
+
+/** The frozen serving filter as one compact label (issue #307). Values OR
+ * within a dimension, dimensions AND; the label just lists them. */
+function servingFilterLabel(filter: ServingFilter | null): string | null {
+  if (!filter) return null;
+  const dims: string[] = [];
+  if (filter.observed_models.length > 0) dims.push(filter.observed_models.join("/"));
+  if (filter.providers.length > 0) dims.push(filter.providers.join("/"));
+  if (filter.hosts.length > 0) dims.push(filter.hosts.join("/"));
+  if (filter.routes.length > 0) dims.push(filter.routes.join("/"));
+  if (filter.service_tiers.length > 0) dims.push(filter.service_tiers.join("/"));
+  const unknown = filter.unknown.length > 0 ? `unknown:${filter.unknown.join(",")}` : null;
+  if (unknown) dims.push(unknown);
+  if (dims.length === 0) return null;
+  return `serving ${dims.join(" + ")}${filter.mode === "only" ? " only" : ""}`;
+}
+
+/** One side's frozen serving evidence, as counting only (issue #307): how
+ * many of the side's resolved runs carried evidence and how many distinct
+ * setups they served under. Pure counts over the frozen summaries — no
+ * per-host verdict attribution. Null (renders nothing) when the snapshot
+ * predates the feature or the side's runs carried no evidence. */
+function frozenServingNote(
+  snapshot: TaskViewComparisonSnapshot,
+  side: "a" | "b",
+): string | null {
+  const summaries: ServingSummaryData[] = [];
+  let runs = 0;
+  for (const cell of snapshot.resolved) {
+    const runId = side === "a" ? cell.a_run_id : cell.b_run_id;
+    if (runId == null) continue;
+    runs += 1;
+    const summary = side === "a" ? cell.a_serving : cell.b_serving;
+    if (summary != null) summaries.push(summary);
+  }
+  if (summaries.length === 0) return null;
+  const setups = new Set<string>();
+  let uniform = true;
+  for (const summary of summaries) {
+    if (summary.state !== "uniform") uniform = false;
+    for (const group of summary.groups) {
+      setups.add(servingIdentityLabel(group.identity));
+    }
+  }
+  // Every run reporting the same single setup collapses to that setup's
+  // label; anything less agrees on is shown as counts.
+  const allSame = uniform && setups.size === 1 && summaries.every((s) => s.total_groups === 1);
+  if (allSame) {
+    const label = [...setups][0] ?? null;
+    if (label) return `served by ${label}`;
+  }
+  const distinct = setups.size;
+  return `${summaries.length}/${runs} runs with evidence \u00b7 ${distinct} setup${distinct === 1 ? "" : "s"}`;
 }

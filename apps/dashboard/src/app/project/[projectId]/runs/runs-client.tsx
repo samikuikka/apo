@@ -30,6 +30,7 @@ import { useClientNow } from "@/hooks/use-client-now";
 import { BATCH_RUN_STATUS_FILTERS } from "@/lib/filter-status";
 import { RunsModelFilter, type ModelOption } from "./runs-model-filter";
 import { RunsHostFilter } from "./runs-host-filter";
+import { RunsServingFilter } from "./runs-serving-filter";
 import type { ProviderFacetOption } from "@/lib/agent-task-api";
 import { RunsCompareBar } from "./components/RunsCompareBar";
 import { ListPagination } from "@/components/table";
@@ -176,6 +177,24 @@ export function RunsClient({
     updateUrl({ provider: null, page: null });
   }, [updateUrl]);
 
+  // Same-request serving filters (issue #307): free-text comma-joined
+  // dimensions (`?host=baseten&route=nitro&tier=priority`). Unlike the Hosts
+  // facet, these match on one request: provider AND host AND route AND tier
+  // must hold on the same model call.
+  const servingHostParam = searchParams.get("host") ?? "";
+  const servingRouteParam = searchParams.get("route") ?? "";
+  const servingTierParam = searchParams.get("tier") ?? "";
+  const onServingFilterChange = useCallback(
+    (updates: { host?: string | null; route?: string | null; tier?: string | null }) => {
+      updateUrl({ ...updates, page: null });
+    },
+    [updateUrl],
+  );
+
+  // The Serving column appears only when the list actually carries serving
+  // summaries, so old backends keep today's table untouched.
+  const hasServing = batchRuns.some((b) => b.serving != null);
+
   const modelOptions: ModelOption[] = useMemo(
     () =>
       modelFacets
@@ -280,6 +299,9 @@ export function RunsClient({
     selectedModels.size > 0 ||
     selectedEfforts.size > 0 ||
     selectedHosts.size > 0 ||
+    servingHostParam !== "" ||
+    servingRouteParam !== "" ||
+    servingTierParam !== "" ||
     isRunScopeActive(scope) ||
     isMetricFilterActive(metrics);
 
@@ -294,6 +316,9 @@ export function RunsClient({
       model: null,
       effort: null,
       provider: null,
+      host: null,
+      route: null,
+      tier: null,
       since: null,
       environment: null,
       label: null,
@@ -396,6 +421,14 @@ export function RunsClient({
             }
           />
         }
+        servingSlot={
+          <RunsServingFilter
+            host={servingHostParam}
+            route={servingRouteParam}
+            tier={servingTierParam}
+            onChange={onServingFilterChange}
+          />
+        }
         totalCount={totalCount}
         hasActiveFilters={hasActiveFilters}
         updateUrl={updateUrl}
@@ -450,6 +483,11 @@ export function RunsClient({
                     />
                   </span>
                 </TableHead>
+                {hasServing && (
+                  <TableHead style={{ width: COL.serving }} className="hidden xl:table-cell">
+                    Serving
+                  </TableHead>
+                )}
                 <TableHead style={{ width: COL.tasks }} className="hidden text-right sm:table-cell">Tasks {"\u00b7"} Pass rate</TableHead>
                 <TableHead style={{ width: COL.duration }} className="hidden text-right sm:table-cell">Duration</TableHead>
                 <TableHead style={{ width: COL.created }} className="text-right">Created</TableHead>
@@ -468,6 +506,7 @@ export function RunsClient({
                   modelFilter={selectedModels}
                   canDelete={canDeleteRuns}
                   taskStartTick={taskStartTicks[b.id] ?? 0}
+                  showServing={hasServing}
                 />
               ))}
             </TableBody>

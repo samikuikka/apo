@@ -551,7 +551,11 @@ def _apply_serving(
     """
     from .otel_normalization._serving import extract_serving
 
-    serving = extract_serving(span.attributes or {}, span.span_name or "")
+    serving = extract_serving(
+        span.attributes or {},
+        span.span_name or "",
+        normalized.observation_type,
+    )
     identity = serving.identity
     call.instrumentation_provider = identity.instrumentation_provider
     call.api_provider = identity.api_provider

@@ -18,6 +18,7 @@ export const COL = {
   run: "auto",
   source: 150,
   hosts: 160,
+  serving: 170,
   execution: 180,
   tasks: 180,
   duration: 110,

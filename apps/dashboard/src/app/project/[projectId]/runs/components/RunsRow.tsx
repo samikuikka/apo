@@ -20,6 +20,7 @@ import { formatBatchExecution } from "@/lib/run-configuration";
 import { providerLabels } from "@/lib/agent-task-api";
 import { isBatchRunLive } from "@/lib/run-liveness";
 import { HostLabelsCell } from "@/components/task-run-list";
+import { ServingSummary } from "@/components/serving/ServingSummary";
 
 import { InlineTaskRunRow } from "./InlineTaskRunRow";
 import { formatDuration, formatRelative, formatTrigger, getBatchName, getSourceIcon, getTaskPaths } from "./runs-utils";
@@ -36,6 +37,8 @@ interface RunsRowProps {
   canDelete: boolean;
   /** Bumped when a task of this batch starts; re-fetches expanded task runs. */
   taskStartTick?: number;
+  /** The list carries serving summaries, so the Serving column is shown. */
+  showServing?: boolean;
 }
 
 /**
@@ -53,6 +56,7 @@ export function RunsRow({
   modelFilter,
   canDelete,
   taskStartTick = 0,
+  showServing = false,
 }: RunsRowProps) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
@@ -248,7 +252,7 @@ export function RunsRow({
           </span>
         </TableCell>
 
-        {/* Hosts — the serving-host label union over this batch's child runs.
+        {/* Hosts: the serving-host label union over this batch's child runs.
          * The list payload carries it (batch.providers), so a collapsed row
          * shows hosts immediately; expanded rows recompute it from the fetched
          * children (issue #307). */}
@@ -261,6 +265,15 @@ export function RunsRow({
             }
           />
         </TableCell>
+
+        {/* Observed serving setup (issue #307): the identity tuple the run's
+         * model calls actually served under. Rendered only when the API item
+         * carries serving, so an old backend keeps today's table. */}
+        {showServing && (
+          <TableCell className="hidden max-w-[170px] xl:table-cell">
+            <ServingSummary summary={batch.serving ?? null} compact />
+          </TableCell>
+        )}
 
         <TableCell className="hidden text-right sm:table-cell">
           <div className="flex items-center justify-end gap-2 font-mono text-[13px] tabular-nums">
@@ -354,7 +367,7 @@ export function RunsRow({
         <>
           {loading && (
             <TableRow className="bg-white/10 hover:bg-transparent">
-              <TableCell colSpan={7} className="py-6">
+              <TableCell colSpan={showServing ? 8 : 7} className="py-6">
                 <div className="flex items-center justify-center gap-2 text-[12px] text-muted-foreground">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Loading task runs{"\u2026"}
@@ -364,7 +377,7 @@ export function RunsRow({
           )}
           {!loading && error && (
             <TableRow className="bg-white/10 hover:bg-transparent">
-              <TableCell colSpan={7} className="py-6 text-center text-[12px] text-destructive">{error}</TableCell>
+              <TableCell colSpan={showServing ? 8 : 7} className="py-6 text-center text-[12px] text-destructive">{error}</TableCell>
             </TableRow>
           )}
           {!loading && !error && taskRuns !== null && (() => {
@@ -377,7 +390,7 @@ export function RunsRow({
             if (visible.length === 0) {
               return (
                 <TableRow className="bg-white/10 hover:bg-transparent">
-                  <TableCell colSpan={7} className="py-6 text-center text-[12px] text-muted-foreground">
+                  <TableCell colSpan={showServing ? 8 : 7} className="py-6 text-center text-[12px] text-muted-foreground">
                     {taskRuns.length === 0
                       ? "No task runs were recorded for this run."
                       : "No task runs match the current model filter."}
@@ -392,6 +405,7 @@ export function RunsRow({
                 projectId={projectId}
                 clientNow={clientNow}
                 canDelete={canDelete}
+                showServing={showServing}
                 onDeleted={() => handleTaskRunDeleted(run.id)}
               />
             ));

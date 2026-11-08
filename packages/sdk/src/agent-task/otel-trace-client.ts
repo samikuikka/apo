@@ -154,6 +154,9 @@ export function createOtelAgentTaskTraceClient(
     if (params.api_provider) {
       span.setAttribute("apo.llm.api_provider", params.api_provider);
     }
+    if (params.serving_host) {
+      span.setAttribute("apo.llm.serving_host", params.serving_host);
+    }
     if (params.observation_type === "GENERATION") {
       // One SDK-wrapped generation is one physical provider request; the
       // backend's serving rollups key off this marker.
@@ -292,6 +295,11 @@ export function createOtelAgentTaskTraceClient(
       // The gateway's own report of who executed the inference, kept
       // separate from the API provider the harness called.
       active.span.setAttribute("apo.llm.serving_host", params.serving_host);
+    }
+    if (params.api_provider) {
+      // Declared by the harness (telemetry metadata on a child step span);
+      // inherited to the wrapper at end time.
+      active.span.setAttribute("apo.llm.api_provider", params.api_provider);
     }
     if (params.route) {
       active.span.setAttribute("apo.llm.route", params.route);

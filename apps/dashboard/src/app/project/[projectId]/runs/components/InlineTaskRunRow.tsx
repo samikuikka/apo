@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 
 import { type AgentTaskRunSummary, providerLabels } from "@/lib/agent-task-api";
 import { HostLabelsCell } from "@/components/task-run-list";
+import { ServingSummary } from "@/components/serving/ServingSummary";
 import { taskRunStatusConfig } from "@/components/task-run-list.utils";
 import { DeleteRunButton } from "@/components/runs/DeleteRunButton";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -23,6 +24,7 @@ export function InlineTaskRunRow({
   projectId,
   clientNow,
   canDelete,
+  showServing = false,
   onDeleted,
 }: {
   run: AgentTaskRunSummary;
@@ -30,6 +32,8 @@ export function InlineTaskRunRow({
   clientNow: number | null;
   /** Caller's project role allows run deletion (owner/admin). */
   canDelete: boolean;
+  /** The parent batch list carries serving summaries (Serving column shown). */
+  showServing?: boolean;
   /** Splices this row out of the parent's task-run list. */
   onDeleted: () => void;
 }) {
@@ -95,6 +99,15 @@ export function InlineTaskRunRow({
       <TableCell className="hidden max-w-[160px] xl:table-cell">
         <HostLabelsCell labels={providerLabels(run.model_providers)} />
       </TableCell>
+
+      {/* Observed serving setup (issue #307): renders content only when this
+       * run carries a summary; the cell stays (empty) while the column is
+       * shown so the grid aligns. */}
+      {showServing && (
+        <TableCell className="hidden max-w-[170px] xl:table-cell">
+          <ServingSummary summary={run.serving ?? null} compact />
+        </TableCell>
+      )}
 
       <TableCell className="hidden text-right sm:table-cell">
         <div className="flex items-center justify-end gap-2 font-mono text-[12px] tabular-nums">

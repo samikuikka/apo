@@ -873,6 +873,18 @@ def list_agent_task_batch_runs(
     since: str | None = Query(default=None),
     environment: str | None = Query(default=None),
     label: list[str] | None = Query(default=None),
+    cost_min: float | None = Query(
+        default=None, ge=0, description="Keep batches whose child-run cost sum is at least this many dollars"
+    ),
+    cost_max: float | None = Query(
+        default=None, ge=0, description="Keep batches whose child-run cost sum is at most this many dollars"
+    ),
+    duration_min: float | None = Query(
+        default=None, ge=0, description="Keep batches that ran at least this many seconds (wall clock)"
+    ),
+    duration_max: float | None = Query(
+        default=None, ge=0, description="Keep batches that ran at most this many seconds (wall clock)"
+    ),
     page: int = Query(0, ge=0),
     page_size: int = Query(20, ge=1, le=100),
     session: Session = Depends(get_session),
@@ -945,6 +957,10 @@ def list_agent_task_batch_runs(
             serving_filter=serving_filter,
             environments=split_csv_param(environment),
             labels=labels,
+            cost_min=cost_min,
+            cost_max=cost_max,
+            duration_min_s=duration_min,
+            duration_max_s=duration_max,
         ),
         BatchRunListPagination(page=page, page_size=page_size),
     )

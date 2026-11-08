@@ -8,6 +8,7 @@
 
 import { apiClient } from "./api-client";
 import type { AgentTaskRunDetail, AgentTaskRunSummary, AgentTaskRunStats } from "./agent-task-api";
+import type { ServingFilter, ServingSummary } from "./serving-types";
 
 const NO_CACHE = { cache: "no-store" } as const;
 
@@ -107,6 +108,9 @@ export interface TaskViewConfig {
   model: string | null;  // null = All models (Main)
   effort: string | null; // null = any effort
   since: string | null;  // "7d" | "30d" | "90d" | null (all time)
+  /** Full same-request serving filter (issue #307), frozen into comparison
+   * snapshots and saved views. Null on configs created before the feature. */
+  serving_filter?: ServingFilter | null;
 }
 
 export type ComparisonState = "aligned" | "different_definition" | "not_run";
@@ -118,6 +122,11 @@ export interface ResolvedComparisonCell {
   a_status: string | null;  // passed | failed | error | null (not run)
   b_status: string | null;
   state: ComparisonState;
+  /** Frozen observed-serving evidence (issue #307): each side's bounded
+   * serving summary captured at snapshot creation. Null on snapshots taken
+   * before the feature; reads never backfill from current evidence. */
+  a_serving?: ServingSummary | null;
+  b_serving?: ServingSummary | null;
 }
 
 export interface TaskViewComparisonSnapshot {
@@ -202,6 +211,8 @@ export interface SavedView {
   effort: string | null;
   since: string | null;
   provider: string | null;
+  /** Full same-request serving filter (issue #307); null on older views. */
+  serving_filter?: ServingFilter | null;
 }
 
 /** List the caller's saved evidence-view tabs for the project. */
@@ -217,6 +228,7 @@ export const createSavedView = (
     effort: string | null;
     since: string | null;
     provider?: string | null;
+    serving_filter?: ServingFilter | null;
   },
 ): Promise<SavedView> =>
   apiClient(`/v1/projects/${encodeURIComponent(projectId)}/task-views`, { method: "POST", body });
@@ -231,6 +243,7 @@ export const updateSavedView = (
     effort?: string | null;
     since?: string | null;
     provider?: string | null;
+    serving_filter?: ServingFilter | null;
   },
 ): Promise<SavedView> =>
   apiClient(`/v1/projects/${encodeURIComponent(projectId)}/task-views/${encodeURIComponent(viewId)}`, {

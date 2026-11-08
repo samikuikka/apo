@@ -14,6 +14,11 @@ import { extractOutputText } from "./call-detail-utils";
 import { extractCallContext } from "./tool-utils";
 import { useCallPayload } from "./use-call-payload";
 import { JudgmentBrief } from "./JudgmentBrief";
+import { GenerationServingDetails } from "@/components/serving/GenerationServingDetails";
+import {
+  generationRatesFromCallFields,
+  servingIdentityFromCallFields,
+} from "@/lib/serving-types";
 
 type CallTab = "preview" | "context" | "metadata";
 const VALID_CALL_TABS = new Set<string>(["preview", "context", "metadata"]);
@@ -92,6 +97,13 @@ export function CallDetailView({ call: slimCall }: { call: LoggedCall }) {
     }
   }, [runId, call]);
 
+  // Observed serving evidence (issue #307), generation calls only. The
+  // detail payload carries flat identity/timing fields today; a nested
+  // serving/rates object is the forward contract and wins when present.
+  const isGeneration = (call.observation_type ?? "").toUpperCase() === "GENERATION";
+  const servingIdentity = call.serving ?? (isGeneration ? servingIdentityFromCallFields(call) : null);
+  const servingRates = call.rates ?? (isGeneration ? generationRatesFromCallFields(call) : null);
+
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       <CallDetailHeader
@@ -101,6 +113,10 @@ export function CallDetailView({ call: slimCall }: { call: LoggedCall }) {
         selectCall={selectCall}
         commentNonce={commentNonce}
       />
+
+      {/* One generation's serving evidence (issue #307): provider, host,
+          route, tiers, and speed. Null props render nothing. */}
+      <GenerationServingDetails identity={servingIdentity} rates={servingRates} />
 
       {(payloadLoading || payloadError) && (
         <div className="flex items-center gap-2 border-b border-border bg-muted/20 px-3 py-1 text-[11px] text-muted-foreground">
