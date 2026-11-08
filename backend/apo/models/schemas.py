@@ -1667,6 +1667,10 @@ class UserResponse(SQLModel):
     name: str
     is_admin: bool
     is_active: bool
+    # Raw per-user quota policy values; NULL = no per-user policy.
+    daily_span_quota: int | None = None
+    max_projects: int | None = None
+    max_api_keys: int | None = None
     created_at: str
 
 
@@ -1684,6 +1688,13 @@ class UpdateUserRequest(SQLModel):
     name: str | None = None
     is_admin: bool | None = None
     is_active: bool | None = None
+    # Tri-state: absent = leave unchanged (detected via exclude_unset),
+    # null = clear to "no per-user policy". Then daily_span_quota 0 =
+    # unlimited even when APO_USER_DAILY_SPAN_QUOTA is set, and
+    # max_projects / max_api_keys 0 = creation frozen, N = cap.
+    daily_span_quota: int | None = None
+    max_projects: int | None = None
+    max_api_keys: int | None = None
 
 
 # ============================================================================

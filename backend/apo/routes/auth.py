@@ -194,6 +194,9 @@ def _user_to_response(user: UserDB) -> UserResponse:
         name=user.name,
         is_admin=user.is_admin,
         is_active=user.is_active,
+        daily_span_quota=user.daily_span_quota,
+        max_projects=user.max_projects,
+        max_api_keys=user.max_api_keys,
         created_at=user.created_at.isoformat() if user.created_at else "",
     )
 
@@ -676,7 +679,7 @@ def update_user(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    """Update user role/name/active status. Admin only."""
+    """Update user role/name/active status and quota policy. Admin only."""
     admin = require_installation_admin(request, session)
 
     user = session.get(UserDB, user_id)
@@ -699,6 +702,21 @@ def update_user(
         user.is_admin = body.is_admin
     if body.is_active is not None:
         user.is_active = body.is_active
+
+    # Quota fields are tri-state, so they cannot reuse the ``is not None``
+    # handling above: an explicit null must reach the column (clearing the
+    # per-user policy) while an absent field leaves it unchanged.
+    quota_updates = body.model_dump(exclude_unset=True)
+    for field in ("daily_span_quota", "max_projects", "max_api_keys"):
+        if field not in quota_updates:
+            continue
+        value = cast(int | None, quota_updates[field])
+        if value is not None and value < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field} must be null or a non-negative integer",
+            )
+        setattr(user, field, value)
 
     session.add(user)
     session.commit()
