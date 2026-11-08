@@ -29,14 +29,36 @@ from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from sqlalchemy import func
+from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select, update
 
-from ..db import engine
+from ..db import begin_immediate, engine
 from ..models.db import OtlpIngestBatchDB, OtlpSpanDB
 from .otlp_receiver import OtlpReceiver
 
 logger = logging.getLogger(__name__)
 QUEUE_LEASE_SECONDS = int(os.environ.get("APO_TRACE_QUEUE_LEASE_SECONDS", "300"))
+# After a lock-contention requeue, give the current write-lock holder time
+# to drain before this batch becomes claimable work again.
+REQUEUE_BACKOFF_SECONDS = float(
+    os.environ.get("APO_TRACE_QUEUE_REQUEUE_BACKOFF_SECONDS", "1.0")
+)
+# Spans projected between commits. Chunked commits bound how long one
+# projection batch holds SQLite's single write lock, so concurrent OTLP
+# accepts interleave instead of starving behind a whole 2048-span batch.
+PROJECTION_COMMIT_CHUNK = 32
+
+
+def _is_write_lock_contention(exc: BaseException) -> bool:
+    """True for SQLite's 'database is locked' family.
+
+    Postgres lock errors read differently ('deadlock detected', 'lock
+    timeout'), so this never matches there and the queue keeps its
+    terminal failed/partial semantics on Postgres.
+    """
+    return isinstance(exc, OperationalError) and "database is locked" in str(
+        exc
+    ).lower()
 
 
 class TraceIngestionQueue(Protocol):
@@ -76,6 +98,10 @@ class TraceIngestionQueue(Protocol):
         self, batch_id: str, rejected: int, error: str
     ) -> None:
         """Mark a batch projected with one or more derived failures."""
+        ...
+
+    async def requeue(self, batch_id: str, reason: str) -> None:
+        """Return a claimed batch to the queue for a later retry."""
         ...
 
     async def recover_stale(self) -> int:
@@ -221,6 +247,25 @@ class DbBackedQueue:
             session.add(batch)
             session.commit()
 
+    async def requeue(self, batch_id: str, reason: str) -> None:
+        """Return a claimed batch to 'queued' so a worker retries it later.
+
+        Used for transient write-lock contention: an accepted batch must
+        never terminate in a non-projected state just because another
+        writer held SQLite's write lock too long.
+        """
+        with Session(engine) as session:
+            session.exec(
+                update(OtlpIngestBatchDB)
+                .where(col(OtlpIngestBatchDB.id) == batch_id)
+                .values(
+                    status="queued",
+                    error_message=reason[:500],
+                    processing_started_at=None,
+                )
+            )
+            session.commit()
+
     async def recover_stale(self) -> int:
         """Requeue only processing batches whose worker lease expired."""
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=QUEUE_LEASE_SECONDS)
@@ -292,6 +337,27 @@ class QueueWorker:
             # is stateless and each batch owns its Session, so concurrent batches
             # are safe; SQLite serializes the commits.
             result = await asyncio.to_thread(self._process_batch, batch_id)
+        except OperationalError as exc:
+            if not _is_write_lock_contention(exc):
+                logger.error("Batch %s failed: %s", batch_id, exc, exc_info=True)
+                await self._queue.mark_failed(batch_id, str(exc))
+                return
+            # BEGIN IMMEDIATE already waited out busy_timeout for the write
+            # lock and still lost the race (chunked commits can surface this
+            # mid-batch, after partial progress). Reprojection is idempotent,
+            # so retrying later is always safe — and the alternative (marking
+            # the batch failed) loses every not-yet-projected span the
+            # receiver accepted in it, because nothing retries terminal
+            # batches.
+            logger.warning(
+                "Batch %s deferred: write lock busy after full timeout, requeued",
+                batch_id,
+            )
+            await self._queue.requeue(
+                batch_id, f"Write lock busy, deferred: {str(exc)[:200]}"
+            )
+            await asyncio.sleep(REQUEUE_BACKOFF_SECONDS)
+            return
         except Exception as exc:
             logger.error("Batch %s failed: %s", batch_id, exc, exc_info=True)
             await self._queue.mark_failed(batch_id, str(exc))
@@ -335,6 +401,12 @@ class QueueWorker:
         from .trace_projector import get_trace_projector
 
         with Session(engine) as session:
+            # This transaction writes for its whole life (per-span savepoints
+            # read run/call state, then write). Take SQLite's write lock
+            # before the first read so the savepoints can never need the WAL
+            # snapshot upgrade that fails instantly under concurrent writers
+            # (SQLITE_BUSY_SNAPSHOT bypasses busy_timeout).
+            begin_immediate(session)
             batch = session.get(OtlpIngestBatchDB, batch_id)
             if batch is None:
                 raise ValueError(f"Batch {batch_id} not found")
@@ -344,6 +416,7 @@ class QueueWorker:
                 raise ValueError(f"Batch {batch_id} has empty payload")
 
             decoded = json.loads(payload_str)
+            project_id = batch.project_id
             projector = get_trace_projector()
             projected = 0
             rejected = 0
@@ -353,11 +426,12 @@ class QueueWorker:
                 from ..models.trace_ingestion import TraceIngestionContext
 
                 context = TraceIngestionContext(
-                    project_id=batch.project_id,
+                    project_id=project_id,
                     auth_method="service_token",
                     service_task_run_id=batch.verified_task_run_id,
                 )
 
+            seen = 0
             for rs in decoded.get("resourceSpans", []):
                 for ss in rs.get("scopeSpans", []):
                     for span_data in ss.get("spans", []):
@@ -367,7 +441,7 @@ class QueueWorker:
                             continue
                         canonical = session.exec(
                             select(OtlpSpanDB).where(
-                                OtlpSpanDB.project_id == batch.project_id,
+                                OtlpSpanDB.project_id == project_id,
                                 OtlpSpanDB.trace_id == trace_id,
                                 OtlpSpanDB.span_id == span_id,
                             )
@@ -391,6 +465,16 @@ class QueueWorker:
                                 span_id,
                                 exc_info=True,
                             )
+                        seen += 1
+                        # Commit every chunk so one long projection batch
+                        # cannot monopolize SQLite's single write lock: OTLP
+                        # accepts interleave between chunks instead of timing
+                        # out behind minutes of projection work. A crash
+                        # between chunks leaves the batch on its lease, whose
+                        # expiry requeues it; re-projection is idempotent.
+                        if seen % PROJECTION_COMMIT_CHUNK == 0:
+                            session.commit()
+                            begin_immediate(session)
             session.commit()
             return BatchProjectionResult(
                 projected=projected,

@@ -232,7 +232,19 @@ The write path has explicit ownership boundaries:
 5. A verified Task Run claim is reserved in the request transaction and only
    its verified ID is retained with the batch. Raw credentials are never queued.
 6. The durable worker claims the exact batch, uses an expiring processing lease,
-   and records `projected`, `partial`, or `failed` truthfully.
+   and records `projected`, `partial`, or `failed` truthfully. On SQLite both
+   ingestion write transactions (accept and projection) open with
+   `BEGIN IMMEDIATE` (`apo.db.begin_immediate`): the per-span savepoints read
+   run/call state before writing, and a DEFERRED transaction that tries that
+   WAL snapshot upgrade under a concurrent writer fails instantly with
+   `SQLITE_BUSY_SNAPSHOT`, bypassing `busy_timeout` — the load-test proven way
+   accepted spans used to vanish into unprojected `partial` batches. The
+   projection transaction commits every 32 spans so one large batch cannot
+   monopolize the single write lock and starve concurrent accepts; a crash
+   between chunks simply rides the lease and reprojects idempotently. Write-lock
+   exhaustion after the full timeout requeues the batch instead of terminating
+   it (`scripts/loadtest/otlp_projection_loss.py` is the acceptance harness:
+   zero projection loss at 5 and 20 concurrent, 256-span requests).
 7. Projection materializes `RunDB` and `LoggedCallDB` for current product APIs.
    Public OTel IDs are preserved, while storage identity and every lookup are
    Project-scoped. Canonical OTel spans remain the replayable source of truth

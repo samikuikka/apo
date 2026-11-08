@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 from google.protobuf.json_format import MessageToDict
 from sqlmodel import Session
 
+from ..db import begin_immediate
 from ..models.db import OtlpIngestBatchDB, OtlpSpanDB
 from ..models.trace_ingestion import TraceIngestionContext
 
@@ -444,6 +445,12 @@ class OtlpReceiver:
         # before any durable write. The callback raises on rejection.
         if admission_consume_units is not None:
             admission_consume_units(span_count)
+
+        # Everything above may raise before any write; from here on this
+        # transaction writes. Take SQLite's write lock up front so the
+        # per-span savepoints below can never need the WAL snapshot
+        # upgrade that fails instantly under concurrent writers.
+        begin_immediate(session)
 
         # 3. Persist the durable inbox record with full decoded content.
         batch_id = str(uuid.uuid4())
