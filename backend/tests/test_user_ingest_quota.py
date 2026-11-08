@@ -106,6 +106,18 @@ def _seed_key(
     return key
 
 
+def _set_user_span_quota(user_id: str, quota: int | None) -> None:
+    """Direct DB write on the file engine. The middleware reads the
+    creator row fresh on every request, so the next ingest sees the new
+    value without any cache invalidation."""
+    with Session(file_engine) as s:
+        user = s.get(UserDB, user_id)
+        assert user is not None
+        user.daily_span_quota = quota
+        s.add(user)
+        s.commit()
+
+
 @pytest.fixture(autouse=True)
 def _fresh_quota_caches() -> Iterator[None]:
     ingest_quota._today_counts.clear()
@@ -264,6 +276,81 @@ class TestAccountQuotaRealAuth:
         assert resp.status_code == 429, resp.text
         message = resp.json()["detail"]["message"]
         assert "API key" in message and "account" not in message
+
+
+@pytest.mark.real_auth
+class TestPerUserSpanQuotaOverride:
+    """The users.daily_span_quota column vs the env default."""
+
+    def test_column_blocks_with_no_env(
+        self, client: TestClient, file_keys: dict[str, tuple[str, str, str, str]],
+    ) -> None:
+        # Env unset (autouse fixture); the column alone carries the cap.
+        pk_a, sk_a, _, u1 = file_keys["a"]
+        pk_b, sk_b, _, _ = file_keys["b"]
+        _set_user_span_quota(u1, 2)
+
+        assert _ingest(client, _auth(pk_a, sk_a)).status_code == 200
+        resp = _ingest(client, _auth(pk_b, sk_b))
+        assert resp.status_code == 429, resp.text
+        detail = resp.json()["detail"]
+        assert "account" in detail["message"]
+        assert detail["quota"]["limit"] == 2
+        assert detail["quota"]["used"] == 2
+
+    def test_null_falls_back_to_env(
+        self, client: TestClient, file_keys: dict[str, tuple[str, str, str, str]],
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("APO_USER_DAILY_SPAN_QUOTA", "4")
+        pk_a, sk_a, _, _ = file_keys["a"]
+        pk_b, sk_b, _, _ = file_keys["b"]
+        # Column stays NULL: the env default is the limit.
+
+        assert _ingest(client, _auth(pk_a, sk_a)).status_code == 200
+        assert _ingest(client, _auth(pk_b, sk_b)).status_code == 200
+        resp = _ingest(client, _auth(pk_a, sk_a))
+        assert resp.status_code == 429, resp.text
+        assert resp.json()["detail"]["quota"]["limit"] == 4
+
+    def test_zero_exempts_from_env(
+        self, client: TestClient, file_keys: dict[str, tuple[str, str, str, str]],
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("APO_USER_DAILY_SPAN_QUOTA", "4")
+        pk_a, sk_a, _, u1 = file_keys["a"]
+        pk_b, sk_b, _, _ = file_keys["b"]
+        _set_user_span_quota(u1, 0)
+
+        # 6 accepted spans total, past the env cap of 4: column 0 means
+        # this account is unlimited even under the env default.
+        assert _ingest(client, _auth(pk_a, sk_a)).status_code == 200
+        assert _ingest(client, _auth(pk_b, sk_b)).status_code == 200
+        assert _ingest(client, _auth(pk_a, sk_a)).status_code == 200
+
+    def test_raise_and_lower_reflect_on_next_ingest(
+        self, client: TestClient, file_keys: dict[str, tuple[str, str, str, str]],
+    ) -> None:
+        pk_a, sk_a, _, u1 = file_keys["a"]
+        pk_b, sk_b, _, _ = file_keys["b"]
+        _set_user_span_quota(u1, 2)
+
+        assert _ingest(client, _auth(pk_a, sk_a)).status_code == 200
+        assert _ingest(client, _auth(pk_b, sk_b)).status_code == 429
+
+        # Raise: the same third batch now fits (4 accepted, cap 6).
+        _set_user_span_quota(u1, 6)
+        assert _ingest(client, _auth(pk_b, sk_b)).status_code == 200
+
+        # Lower below what this next batch needs: blocked again, at the
+        # new limit. Only accepted batches count (the blocked second
+        # batch wrote nothing), so used is 4.
+        _set_user_span_quota(u1, 5)
+        resp = _ingest(client, _auth(pk_a, sk_a))
+        assert resp.status_code == 429, resp.text
+        detail = resp.json()["detail"]
+        assert detail["quota"]["limit"] == 5
+        assert detail["quota"]["used"] == 4
 
 
 # ---------------------------------------------------------------------------
