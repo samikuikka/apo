@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { type EffortFacetOption } from "@/lib/agent-task-api";
-import { FilterBar, type FilterBarFacet } from "@/components/filter-bar";
+import { FilterBar } from "@/components/filter-bar";
 import { BATCH_RUN_STATUS_FILTERS } from "@/lib/filter-status";
 
 import { type ModelOption } from "../runs-model-filter";
@@ -19,8 +19,8 @@ interface RunsToolbarProps {
   selectedEfforts: Set<string>;
   modelOptions: ModelOption[];
   effortOptions: EffortFacetOption[];
-  /** Environment and label pickers (`lib/run-scope`). */
-  scopeFilters: FilterBarFacet[];
+  /** The scope rail's toggle (Filters button and chips), inside the filter row. */
+  scopeSlot?: ReactNode;
   totalCount: number;
   /** Any filter dimension in play — typed here or carried in from Tasks. */
   hasActiveFilters: boolean;
@@ -44,12 +44,12 @@ export function RunsToolbar({
   selectedEfforts,
   modelOptions,
   effortOptions,
-  scopeFilters,
   totalCount,
   hasActiveFilters,
   updateUrl,
   onClearFilters,
   onSetArchived,
+  scopeSlot,
 }: RunsToolbarProps) {
   const [searchInput, setSearchInput] = useState(urlQ);
   // Follow ?q changes that did not come from our own typing (initial load,
@@ -99,7 +99,7 @@ export function RunsToolbar({
           }))}
           effort={selectedEffort}
           onEffortChange={(effort) => updateUrl({ effort, page: null })}
-          facets={scopeFilters}
+          filterSlot={scopeSlot}
           since={urlSince}
           onSinceChange={(since) => updateUrl({ since, page: null })}
           query={searchInput}
