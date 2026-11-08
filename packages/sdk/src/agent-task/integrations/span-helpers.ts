@@ -74,6 +74,9 @@ export function emitGenerationAndTools(
     reasoning_tokens: opts.reasoningTokens,
     served_model: opts.servedModel,
     ...(opts.servedProvider ? { provider: opts.servedProvider } : {}),
+    // The response-reported host is serving-host evidence distinct from
+    // the API provider: gateways report who executed, not who was called.
+    ...(opts.servedProvider ? { serving_host: opts.servedProvider } : {}),
     ...(opts.servedRoute ? { route: opts.servedRoute } : {}),
     output: {
       ...(opts.text !== undefined ? { text: opts.text } : {}),
@@ -233,6 +236,9 @@ export function startGeneration(
     turnNumber?: number;
     /** Serving host attributes for this generation (issue #307). */
     provider?: string;
+    /** Service the harness calls (vendor or gateway name), emitted as
+     * `apo.llm.api_provider`. */
+    apiProvider?: string;
     route?: string;
   },
 ): { spanId: string; startedAt: number } {
@@ -242,6 +248,7 @@ export function startGeneration(
     step_name: "agent.generate",
     model: opts.model,
     provider: opts.provider,
+    api_provider: opts.apiProvider,
     route: opts.route,
     observation_type: "GENERATION",
     input: {
