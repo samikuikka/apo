@@ -34,7 +34,9 @@ from ..models.schemas import (
     as_trace_persistence_status,
     run_labels_from_metadata,
 )
+from ..models.serving import ServingSummary
 from .trace_backend import parse_model_providers
+from .serving import empty_serving_summary
 from ..models.db import TaskExecutionAttemptDB
 from ..models.execution import (
     AttemptStatus,
@@ -105,6 +107,7 @@ def to_task_run_summary(
     *,
     environment: str | None = None,
     labels: Mapping[str, RunLabel] | None = None,
+    serving: ServingSummary | None = None,
 ) -> AgentTaskRunSummary:
     """Project a task run DB row to its summary view model.
 
@@ -174,6 +177,7 @@ def to_task_run_summary(
             tr.configured_model, tr.configured_effort
         ),
         corrected_tests=tr.corrected_tests,
+        serving=serving,
     )
 
 
@@ -210,6 +214,7 @@ def to_batch_run_summary(
     total_model_time_ms: float | None = None,
     providers: Sequence[str] = (),
     requested_by_label: str | None = None,
+    serving: ServingSummary | None = None,
 ) -> AgentTaskBatchRunSummary:
     """Project a batch run DB row to its summary view model.
 
@@ -257,6 +262,7 @@ def to_batch_run_summary(
         labels=run_labels_from_metadata(br.run_metadata),
         configuration=configuration
         or AgentTaskBatchRunConfigurationSummary(state="unknown"),
+        serving=serving,
     )
 
 
@@ -269,6 +275,8 @@ def to_batch_run_detail(
     executor_names: Mapping[str, str] | None = None,
     executor_pool_name: str | None = None,
     requested_by_label: str | None = None,
+    serving: ServingSummary | None = None,
+    run_servings: Mapping[str, ServingSummary] | None = None,
 ) -> AgentTaskBatchRunDetail:
     """Project a batch run DB row + its task runs to a detail view model.
 
@@ -286,6 +294,13 @@ def to_batch_run_detail(
             primary_model=model_map.get(tr.trace_run_id) if tr.trace_run_id and model_map else None,
             environment=br.environment,
             labels=labels,
+            # A child without a linked trace reports no_data, not null:
+            # null means the projection was built without trace access.
+            serving=(
+                run_servings.get(tr.trace_run_id, empty_serving_summary())
+                if run_servings is not None
+                else None
+            ),
         )
         for tr in task_runs
     ]
@@ -388,6 +403,7 @@ def to_batch_run_detail(
             for attempt in attempts
         ],
         configuration=configuration,
+        serving=serving,
     )
 
 

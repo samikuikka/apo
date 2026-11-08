@@ -4414,6 +4414,37 @@ def _migrate_to_v64() -> None:
 
 
 def _migrate_to_v65() -> None:
+    """Version 65: per-user quota policy columns on ``users``.
+
+    ``daily_span_quota`` overrides APO_USER_DAILY_SPAN_QUOTA for one
+    account (NULL inherits the env value, 0 lifts the cap entirely, so a
+    trusted account stays unlimited under an installation-wide cap);
+    ``max_projects`` and ``max_api_keys`` cap how many projects and keys
+    one account may hold (NULL = unlimited, 0 = creation frozen), counted
+    over live rows so revoking a key or leaving a project frees a slot.
+    Pure ADD COLUMN, no backfill: NULL is the "no per-user policy"
+    default, so pre-existing accounts keep exactly the behavior they had.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(conn, "users", "daily_span_quota", "INTEGER")
+        _add_column_if_missing(conn, "users", "max_projects", "INTEGER")
+        _add_column_if_missing(conn, "users", "max_api_keys", "INTEGER")
+
+
+def _migrate_to_v66() -> None:
+    """Version 66: ``logged_calls.harness``.
+
+    True when the emitter marked the span ``apo.harness`` (a simulated
+    user, a turn-done check): the call belongs to the evaluation harness,
+    not the system under test, and model drift leaves it out. No backfill:
+    spans recorded before the attribute existed carry no marker to read.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(
+            conn, "logged_calls", "harness", f"BOOLEAN NOT NULL DEFAULT {_sql_false(conn)}"
+        )
+
+
 def _migrate_to_v67() -> None:
     """Version 67: observed serving identity columns on logged_calls.
 
