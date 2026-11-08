@@ -62,6 +62,10 @@ from ..services.agent_task_stats import (
 )
 from ..services.project_deletion import delete_project_data
 from ..services.run_labels import compute_run_label_facets
+from ..services.user_quotas import (
+    enforce_api_key_count_limit,
+    enforce_project_count_limit,
+)
 from ..services.project_memberships import (
     DEMO_PROJECT_ID,
     ProjectRole,
@@ -106,6 +110,7 @@ def create_project_for_owner(
     """Insert a ``ProjectDB`` row with a random 12-hex id and grant the caller
     an ``owner`` membership. Shared by ``POST /v1/projects`` (authenticated
     create) and ``POST /v1/projects/bootstrap`` (first-project create)."""
+    enforce_project_count_limit(session, user_id)
     project = ProjectDB(
         id=uuid4().hex[:12],
         name=name,
@@ -318,6 +323,13 @@ def bootstrap_project(
             status_code=400,
             detail="'demo' is a reserved project name",
         )
+
+    # Both caps before any write: if the key cap fired only at the mint
+    # below, a denied mint would strand an already-committed orphan
+    # project. The project cap runs again inside the create funnel; the
+    # double read is cheap and keeps the funnel safe on its own.
+    enforce_project_count_limit(session, user.id)
+    enforce_api_key_count_limit(session, user.id)
 
     project = create_project_for_owner(
         session,
