@@ -4365,7 +4365,25 @@ def _migrate_to_v64() -> None:
         _create_project_usage_table(conn)
 
 
-LATEST_SCHEMA_VERSION = 64
+def _migrate_to_v65() -> None:
+    """Version 65: per-user quota policy columns on ``users``.
+
+    ``daily_span_quota`` overrides APO_USER_DAILY_SPAN_QUOTA for one
+    account (NULL inherits the env value, 0 lifts the cap entirely, so a
+    trusted account stays unlimited under an installation-wide cap);
+    ``max_projects`` and ``max_api_keys`` cap how many projects and keys
+    one account may hold (NULL = unlimited, 0 = creation frozen), counted
+    over live rows so revoking a key or leaving a project frees a slot.
+    Pure ADD COLUMN, no backfill: NULL is the "no per-user policy"
+    default, so pre-existing accounts keep exactly the behavior they had.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(conn, "users", "daily_span_quota", "INTEGER")
+        _add_column_if_missing(conn, "users", "max_projects", "INTEGER")
+        _add_column_if_missing(conn, "users", "max_api_keys", "INTEGER")
+
+
+LATEST_SCHEMA_VERSION = 65
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -4432,6 +4450,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     62: _migrate_to_v62,
     63: _migrate_to_v63,
     64: _migrate_to_v64,
+    65: _migrate_to_v65,
 }
 
 
