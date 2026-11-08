@@ -224,6 +224,118 @@ class TestUpdateUser:
         assert resp.status_code in (401, 403)
 
 
+class TestUpdateUserQuotas:
+    """Per-user quota policy through the admin PATCH (tri-state)."""
+
+    def _invite_member(
+        self, authed: TestClient
+    ) -> dict[str, Any]:
+        resp = authed.post(
+            "/auth/users",
+            json={"email": "member@test.com", "name": "Member", "password": "Pass1234"},
+        )
+        assert resp.status_code == 200
+        return resp.json()
+
+    def test_set_and_clear_all_three(
+        self, client: TestClient, session: Session, make_authed_client: Any
+    ) -> None:
+        authed, _ = _setup_admin_authed(client, session, make_authed_client)
+        member = self._invite_member(authed)
+
+        set_resp = authed.patch(
+            f"/auth/users/{member['id']}",
+            json={"daily_span_quota": 500, "max_projects": 2, "max_api_keys": 3},
+        )
+        assert set_resp.status_code == 200
+        body = set_resp.json()
+        assert body["daily_span_quota"] == 500
+        assert body["max_projects"] == 2
+        assert body["max_api_keys"] == 3
+
+        # Absent fields leave the columns unchanged (not tri-state null).
+        rename_resp = authed.patch(
+            f"/auth/users/{member['id']}", json={"name": "Renamed"}
+        )
+        assert rename_resp.status_code == 200
+        assert rename_resp.json()["daily_span_quota"] == 500
+        assert rename_resp.json()["max_projects"] == 2
+        assert rename_resp.json()["max_api_keys"] == 3
+
+        # Explicit null clears the policy; 0 is a real value (unlimited
+        # spans / frozen creation), not a clear.
+        clear_resp = authed.patch(
+            f"/auth/users/{member['id']}",
+            json={"daily_span_quota": None, "max_projects": None},
+        )
+        assert clear_resp.status_code == 200
+        assert clear_resp.json()["daily_span_quota"] is None
+        assert clear_resp.json()["max_projects"] is None
+        assert clear_resp.json()["max_api_keys"] == 3
+
+        zero_resp = authed.patch(
+            f"/auth/users/{member['id']}", json={"max_api_keys": 0}
+        )
+        assert zero_resp.status_code == 200
+        assert zero_resp.json()["max_api_keys"] == 0
+
+        row = session.get(UserDB, member["id"])
+        assert row is not None
+        assert row.daily_span_quota is None
+        assert row.max_projects is None
+        assert row.max_api_keys == 0
+
+    def test_negative_values_rejected(
+        self, client: TestClient, session: Session, make_authed_client: Any
+    ) -> None:
+        authed, _ = _setup_admin_authed(client, session, make_authed_client)
+        member = self._invite_member(authed)
+
+        for field in ("daily_span_quota", "max_projects", "max_api_keys"):
+            resp = authed.patch(
+                f"/auth/users/{member['id']}", json={field: -1}
+            )
+            assert resp.status_code == 400, field
+            assert field in resp.json()["detail"]
+
+        # The rejected PATCHes changed nothing.
+        row = session.get(UserDB, member["id"])
+        assert row is not None
+        assert row.daily_span_quota is None
+        assert row.max_projects is None
+        assert row.max_api_keys is None
+
+    def test_non_admin_patch_blocked(
+        self, client: TestClient, session: Session, make_authed_client: Any
+    ) -> None:
+        authed, _ = _setup_admin_authed(client, session, make_authed_client)
+        member = self._invite_member(authed)
+
+        member_client = make_authed_client(member["id"], session, is_admin=False)
+        resp = member_client.patch(
+            f"/auth/users/{member['id']}", json={"max_api_keys": 99}
+        )
+        assert resp.status_code == 403
+        assert "Admin access required" in resp.json()["detail"]
+
+        row = session.get(UserDB, member["id"])
+        assert row is not None
+        assert row.max_api_keys is None
+
+    def test_list_carries_quota_fields(
+        self, client: TestClient, session: Session, make_authed_client: Any
+    ) -> None:
+        authed, _ = _setup_admin_authed(client, session, make_authed_client)
+        member = self._invite_member(authed)
+        authed.patch(f"/auth/users/{member['id']}", json={"max_projects": 7})
+
+        users = authed.get("/auth/users").json()["users"]
+        by_id = {u["id"]: u for u in users}
+        assert by_id[member["id"]]["max_projects"] == 7
+        assert by_id[member["id"]]["daily_span_quota"] is None
+        assert by_id[member["id"]]["max_api_keys"] is None
+
+
 class TestDeactivateUser:
     def test_deactivate_sets_inactive(
         self, client: TestClient, session: Session, make_authed_client: Any
