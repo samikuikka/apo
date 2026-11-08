@@ -98,6 +98,23 @@ describe("per-command help", () => {
     expect(output).toContain("apo runs show de89cab");
   });
 
+  it("shows runs list help with the serving filter flags (issue #307)", async () => {
+    const { output, code } = await runCapture(["runs", "list", "--help"]);
+    expect(code).toBe(0);
+    for (const flag of [
+      "--observed-model",
+      "--provider",
+      "--host",
+      "--route",
+      "--service-tier",
+      "--serving-unknown",
+      "--serving-mode",
+    ]) {
+      expect(output).toContain(flag);
+    }
+    expect(output).toContain("Serving column");
+  });
+
 
   it("shows login help with its options", async () => {
     const { output, code } = await runCapture(["login", "--help"]);

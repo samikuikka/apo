@@ -1079,6 +1079,165 @@ describe("runs show serving host + throughput (issue #307)", () => {
   });
 });
 
+// Issue #307: observed serving identity — groups, rate medians with sample
+// counts, unknown coverage, and the cost-coverage classification.
+describe("runs show serving section (issue #307)", () => {
+  const SERVING = {
+    state: "uniform",
+    calls: 3,
+    errored_calls: 1,
+    unknown_provider_calls: 0,
+    unknown_host_calls: 2,
+    aggregate_observations: 0,
+    groups: [
+      {
+        identity: {
+          model: "example-model",
+          api_provider: "openrouter",
+          serving_host: "baseten",
+          route: "nitro",
+          service_tier: null,
+        },
+        calls: 3,
+        errored_calls: 1,
+        whole_call_rate: { median: 120, samples: 2 },
+        streaming_rate: { median: 66.7, samples: 1 },
+        rate_scopes: [],
+      },
+    ],
+    total_groups: 1,
+    groups_truncated: false,
+    task_runs_with_evidence: 1,
+    task_runs_total: 1,
+    cost_coverage: {
+      reported: 420_000,
+      qualified_estimate: 50_000,
+      model_only_estimate: null,
+      unpriced_calls: 2,
+      ambiguous_calls: 0,
+      excluded_error_calls: 1,
+      aggregate_charge_observations: 0,
+      partial: true,
+    },
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("prints state, coverage counts, group identity, medians, and cost coverage", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(makeRun({ serving: SERVING })),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain("Serving:  uniform · 3 calls (1 errored, 2 unknown host)");
+    expect(out).toContain("example-model · openrouter · baseten · nitro ×3 (1 errored)");
+    expect(out).toContain("whole-call 120 tok/s median of 2");
+    expect(out).toContain("streaming 66.7 tok/s median of 1");
+    expect(out).toContain(
+      "Coverage: $0.4200 reported · $0.0500 qualified estimate · 2 unpriced partial",
+    );
+  });
+
+  it("skips absent medians and shows only what the group measured", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(
+        makeRun({
+          serving: {
+            ...SERVING,
+            groups: [
+              {
+                identity: { model: "example-model" },
+                calls: 2,
+                errored_calls: 0,
+                whole_call_rate: { median: null, samples: 0 },
+                streaming_rate: { median: null, samples: 0 },
+                rate_scopes: [],
+              },
+            ],
+            cost_coverage: {
+              reported: null,
+              qualified_estimate: null,
+              model_only_estimate: null,
+              unpriced_calls: 0,
+              ambiguous_calls: 0,
+              excluded_error_calls: 0,
+              aggregate_charge_observations: 0,
+              partial: false,
+            },
+          },
+        }),
+      ),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain("Serving:");
+    expect(out).toContain("example-model ×2");
+    expect(out).not.toContain("whole-call");
+    expect(out).not.toContain("streaming");
+    expect(out).not.toContain("Coverage:");
+  });
+
+  it("notes when the inline groups are truncated", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(
+        makeRun({
+          serving: {
+            ...SERVING,
+            state: "mixed",
+            groups: [],
+            total_groups: 25,
+            groups_truncated: true,
+          },
+        }),
+      ),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    const out = stripAnsi(logs.join("\n"));
+    expect(out).toContain("mixed · 3 calls");
+    expect(out).toContain("25 setups, showing first 0");
+  });
+
+  it("omits the section when the backend attached no serving summary", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(makeRun({ serving: null })),
+    );
+    const { logs, restore } = captureLog();
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+    restore();
+
+    expect(stripAnsi(logs.join("\n"))).not.toContain("Serving:");
+  });
+
+  it("keeps the typed serving fields in --json", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(makeRun({ serving: SERVING })),
+    );
+    const { logs, restore } = captureLog();
+
+    const code = await run([FULL_ID, "--backend", "http://backend.test", "--json"]);
+    restore();
+
+    expect(code).toBe(0);
+    const parsed = JSON.parse(logs.join("\n")) as { serving?: unknown };
+    expect(parsed.serving).toEqual(SERVING);
+  });
+});
+
 describe("runs show --exit-status on a queued latest run", () => {
   afterEach(() => {
     vi.restoreAllMocks();

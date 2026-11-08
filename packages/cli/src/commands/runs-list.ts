@@ -6,6 +6,7 @@ import { highlightIds } from "../lib/prefix.ts";
 import { reportCommandError } from "../lib/command-error.ts";
 import { formatRunResult } from "../lib/checks-format.ts";
 import { parseLabelRef } from "../lib/run-labels.ts";
+import type { ServingIdentity, ServingSummary } from "../lib/serving-types.ts";
 
 type RunConfiguration = { model: string; effort?: string | null } | null;
 
@@ -27,6 +28,10 @@ type RunSummary = {
   no_verdict_reason?: "judge" | "generations" | "executor" | null;
   adapter_name: string;
   run_configuration?: RunConfiguration;
+  /** Observed serving summary (issue #307). Null when the backend built
+   * the item without trace access; `no_data` when the trace has no
+   * generations. */
+  serving?: ServingSummary | null;
   /** (model, provider/route) pairs the run's trace served through
    * (issue #307). Empty when no call reported a host. */
   model_providers?: ModelProviderPair[];
@@ -71,8 +76,44 @@ export async function run(argv: string[]): Promise<number> {
   if (efforts.length > 0) params.effort = efforts;
   // Serving-host filter: matches the observed provider or route on the
   // run's trace calls, so "openrouter:nitro" finds routed runs (issue #307).
+  // When any serving dimension below is present, the backend folds these
+  // values into the same-request serving predicate instead.
   const providers = getFlagValues(multiFlags, "provider");
   if (providers.length > 0) params.provider = providers;
+  // Same-request serving filters (issue #307): repeated values OR within a
+  // dimension, dimensions AND on one request. The backend splits
+  // comma-joined values itself; the unknown operator and mode are validated
+  // here so a typo fails fast with a CLI error instead of a backend 422.
+  const observedModels = getFlagValues(multiFlags, "observed-model");
+  if (observedModels.length > 0) params.observed_model = observedModels;
+  const hosts = getFlagValues(multiFlags, "host");
+  if (hosts.length > 0) params.host = hosts;
+  const routes = getFlagValues(multiFlags, "route");
+  if (routes.length > 0) params.route = routes;
+  const serviceTiers = getFlagValues(multiFlags, "service-tier");
+  if (serviceTiers.length > 0) params.service_tier = serviceTiers;
+  const unknownDimensions = splitCommaJoined(getFlagValues(multiFlags, "serving-unknown"));
+  for (const dimension of unknownDimensions) {
+    if (!SERVING_UNKNOWN_DIMENSIONS.includes(dimension)) {
+      console.error(
+        red(
+          `error: --serving-unknown must be one of ${SERVING_UNKNOWN_DIMENSIONS.join(", ")} (got '${dimension}')`,
+        ),
+      );
+      return 2;
+    }
+  }
+  if (unknownDimensions.length > 0) params.serving_unknown = unknownDimensions;
+  const servingMode = getFlagValue(flags, "serving-mode");
+  if (servingMode) {
+    if (servingMode !== "contains" && servingMode !== "only") {
+      console.error(
+        red(`error: --serving-mode must be contains or only (got '${servingMode}')`),
+      );
+      return 2;
+    }
+    params.serving_mode = servingMode;
+  }
   // Batch targeting filters: environments OR, labels OR within a key and
   // AND across keys (the backend splits each raw key:id value itself).
   const environments = getFlagValues(multiFlags, "environment");
@@ -121,24 +162,38 @@ export async function run(argv: string[]): Promise<number> {
   }
 
   const idLabels = highlightIds(runs.map((r) => r.id));
-  const rows = runs.map((r, i) => [
-    idLabels[i],
-    r.task_id,
-    r.batch_run_id.slice(0, 8),
-    r.status,
-    formatRunResult(r),
-    formatGenerationExecution(r.generation_execution),
-    formatExecution(r.run_configuration),
-    formatHosts(r.model_providers),
-    formatRunCost(r),
-    formatTime(r.started_at),
-  ]);
-  console.log(
-    formatTable(
-      ["Run ID", "Task", "Batch", "Status", "Result", "Generations", "Execution", "Hosts", "Cost", "Started"],
-      rows,
-    ),
-  );
+  // The Serving column appears only when the backend attached serving
+  // summaries, so responses without it keep the old width.
+  const showServing = runs.some((r) => r.serving != null);
+  const rows = runs.map((r, i) => {
+    const row = [
+      idLabels[i],
+      r.task_id,
+      r.batch_run_id.slice(0, 8),
+      r.status,
+      formatRunResult(r),
+      formatGenerationExecution(r.generation_execution),
+      formatExecution(r.run_configuration),
+      formatHosts(r.model_providers),
+    ];
+    if (showServing) row.push(formatServingCell(r.serving));
+    row.push(formatRunCost(r), formatTime(r.started_at));
+    return row;
+  });
+  const headers = [
+    "Run ID",
+    "Task",
+    "Batch",
+    "Status",
+    "Result",
+    "Generations",
+    "Execution",
+    "Hosts",
+    ...(showServing ? ["Serving"] : []),
+    "Cost",
+    "Started",
+  ];
+  console.log(formatTable(headers, rows));
   console.log("");
   console.log(dim(`${runs.length} run${runs.length === 1 ? "" : "s"}`));
 
@@ -175,4 +230,55 @@ function formatRunCost(run: RunSummary): string {
     (run.generation_execution?.errored ?? 0) > 0 ||
     (run.unpriced_call_count ?? 0) > 0;
   return partial ? `${cost} ${dim("partial")}` : cost;
+}
+
+/** Dimensions `--serving-unknown` accepts; each selects null inside its
+ * dimension (unknown is an operator, never a provider string). */
+const SERVING_UNKNOWN_DIMENSIONS: readonly string[] = [
+  "model",
+  "provider",
+  "host",
+  "route",
+  "service_tier",
+];
+
+/** Split repeatable flag values on commas: `--serving-unknown model,host`
+ * and two separate flags must send the same repeated params. */
+function splitCommaJoined(values: string[]): string[] {
+  return [
+    ...new Set(
+      values.flatMap((raw) => raw.split(",")).map((value) => value.trim()),
+    ),
+  ].filter((value) => value !== "");
+}
+
+/** Compact one-line Serving cell (issue #307): the identity tuple for a
+ * uniform run ("fireworks · priority"), "mixed · N" for several setups,
+ * and a dim state word when nothing definite is showable. `partial` keeps
+ * its base rendering plus the caveat so the setups stay visible. */
+function formatServingCell(serving: ServingSummary | null | undefined): string {
+  if (serving == null) return dim("-");
+  if (serving.state === "no_data") return dim("no data");
+  if (serving.state === "unknown") return dim("unknown");
+  const partialSuffix = serving.state === "partial" ? ` ${dim("partial")}` : "";
+  if (serving.total_groups <= 1) {
+    const group = serving.groups[0];
+    if (!group) return dim("partial");
+    return `${groupIdentity(group.identity)}${partialSuffix}`;
+  }
+  return `mixed · ${serving.total_groups}${partialSuffix}`;
+}
+
+/** "provider · host · route · tier" with null parts skipped; the Execution
+ * column already shows the model, so the identity stays terse. Capped like
+ * the Hosts column so long route strings cannot blow up the table. */
+function groupIdentity(identity: ServingIdentity): string {
+  const parts = [
+    identity.api_provider,
+    identity.serving_host,
+    identity.route,
+    identity.service_tier,
+  ].filter((part): part is string => !!part);
+  const joined = parts.join(" · ");
+  return joined.length > 32 ? `${joined.slice(0, 31)}…` : joined;
 }
