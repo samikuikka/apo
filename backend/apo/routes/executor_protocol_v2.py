@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from ..db import get_session
+from ..db import begin_immediate, get_session
 from ..models.schemas import AgentTaskRunConfiguration
 from ..models.execution import ExecutionPhase
 from ..models.db import (
@@ -340,6 +340,13 @@ async def source_attestation(
     """Attach an attested (non-bundled) Task Revision to the claimed Attempt."""
     if lease.attempt_id != attempt_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "attempt token not valid for this attempt")
+
+    # This request reads (lease validation, existing revision) and then
+    # writes (revision upsert, task-run re-pin) on one session while the
+    # projector commits late spans concurrently; take SQLite's write lock
+    # before the first read so the writes cannot fail instantly with
+    # SQLITE_BUSY_SNAPSHOT.
+    begin_immediate(session)
 
     attempt = session.get(TaskExecutionAttemptDB, attempt_id)
     if attempt is None:

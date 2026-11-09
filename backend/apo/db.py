@@ -122,16 +122,22 @@ def begin_immediate(session: Session) -> None:
 
     Call as the FIRST statement of a write transaction. No-op on other
     databases. On SQLite the call is also a no-op when the connection is
-    already inside a transaction (demo seeding replays batches inside one):
-    such callers keep the snapshot hazard, so the warning names them.
+    already inside a transaction: that covers both a mid-transaction caller
+    (demo seeding replays batches inside one — such a caller keeps the
+    snapshot hazard) and a legitimate nesting, where an outer function
+    already took the lock and a shared inner entry point calls again
+    (finalize_attempt_with_deliverables wraps finalize_attempt_result).
+    The two cannot be told apart from the DBAPI, so this logs at debug —
+    a warning would fire on every nested runner result submission.
     """
     if session.get_bind().dialect.name != "sqlite":
         return
     connection = session.connection()
     if connection.connection.in_transaction:
-        logger.warning(
+        logger.debug(
             "begin_immediate skipped: session already holds an open SQLite "
-            "transaction, so its writes keep the snapshot-upgrade hazard"
+            "transaction (mid-transaction caller keeps the snapshot hazard; "
+            "nested caller is already protected)"
         )
         return
     connection.exec_driver_sql("BEGIN IMMEDIATE")

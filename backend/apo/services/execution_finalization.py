@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 
 from sqlmodel import Session, select
 
+from apo.db import begin_immediate
 from apo.db_helpers import as_column
 from apo.models.db import AgentTaskBatchRunDB, AgentTaskRunDB, TaskExecutionAttemptDB
 from apo.models.schemas import AgentTaskRunConfiguration
@@ -169,6 +170,10 @@ def finalize_attempt_result(
     stored digest must match what a replay of the same request hashes —
     the wire body, not the resolved one.
     """
+    # Reads (lease, completion idempotency) then writes in one transaction;
+    # take SQLite's write lock first so a projector commit landing between
+    # them cannot fail this finalize instantly with SQLITE_BUSY_SNAPSHOT.
+    begin_immediate(session)
     attempt = _require_current(session, lease)
     digest = completion_digest or _body_digest({"kind": "result", "body": asdict(body)})
     if _check_completion_idempotency(
@@ -213,6 +218,9 @@ def finalize_attempt_failure(
     """Apply an operational failure: attempt failed, Task Run errored."""
     if body.failure_kind not in _VALID_FAILURE_KINDS:
         raise FinalizationError("bad_failure_kind", f"unknown failure kind {body.failure_kind!r}")
+    # Same reads-then-writes race as finalize_attempt_result: the projector's
+    # late-span task-run refresh commits concurrently with finalization.
+    begin_immediate(session)
     attempt = _require_current(session, lease)
     terminal_status = CANCELLED if body.failure_kind == "cancelled" else FAILED
     digest = _body_digest({"kind": "failure", "body": asdict(body)})
@@ -361,6 +369,12 @@ async def finalize_attempt_with_deliverables(
     Raises ``CompletionConflict`` / ``ResultEvidenceError`` / ``ValueError``
     / ``LeaseError`` — the caller maps these to HTTP responses.
     """
+    # The whole precheck → resolve → persist → finalize sequence reads then
+    # writes on one session; take SQLite's write lock before the first read
+    # so a concurrent projector commit cannot fail the result with
+    # SQLITE_BUSY_SNAPSHOT. The inner finalize_attempt_result re-calls
+    # begin_immediate and no-ops inside this already-immediate transaction.
+    begin_immediate(session)
     # Issue #174: the body digest and the finalization SQL are seconds of sync
     # work over multi-MB result bodies. Run them off the event loop so one
     # heavy finalize cannot freeze heartbeats and every other request behind
