@@ -9,7 +9,8 @@
  * Received) instead of only a prose message.
  */
 
-import { TraceView, type TokenKind } from "../trace-projection/view.ts";
+import { TraceView, type TokenKind, type TraceRetrieval } from "../trace-projection/view.ts";
+import type { TraceProjectionDocument } from "../trace-projection/retrieval.ts";
 import type { TraceProjectionCapabilities } from "../trace-projection/types.ts";
 import type { AssertionOutcome, SecondJudgeEvidence } from "../run/types.ts";
 import type { Recorder } from "./recorder.ts";
@@ -71,6 +72,26 @@ export type DurationBudgetOptions = {
 export type TokenBudgetOptions = {
   turn?: number;
   kind?: TokenKind;
+};
+
+/**
+ * Which retrieved document a retrieval assertion looks for. A string is a
+ * document id, matched exactly or as the parent of a chunk id (`"handbook"`
+ * matches `"handbook#p3"`). `idPrefix` covers other chunk-id schemes;
+ * `contentIncludes` covers retrievers that report no ids.
+ */
+export type DocumentMatcher =
+  | string
+  | { id: string }
+  | { idPrefix: string }
+  | { contentIncludes: string };
+
+/** Scope for retrieval assertions. */
+export type RetrievedOptions = {
+  /** The match must rank within a retrieval's first `topK` documents (retriever order). */
+  topK?: number;
+  /** Only retrievals whose query contains this text count. */
+  query?: string;
 };
 
 /**
@@ -181,6 +202,14 @@ export interface TestContext {
   maxToolCalls(n: number): void;
   /** Asserts no tool/subagent call reported an error — anti-flail. */
   noFailedActions(): void;
+  /**
+   * Asserts a retrieval returned a matching document, optionally within its
+   * first `topK` and only for retrievals whose query matches. Recall as a
+   * test: one committed expectation per assertion, no score.
+   */
+  retrieved(document: DocumentMatcher, opts?: RetrievedOptions): void;
+  /** Asserts at most `n` retrievals ran (anti-flail). */
+  maxRetrievals(n: number): void;
   /** Asserts a skill was loaded. */
   loadedSkill(skill: string): void;
   /** Asserts a subagent delegation happened. */
@@ -200,6 +229,13 @@ export interface TestContext {
   minTokens(n: number, opts?: TokenBudgetOptions): void;
   /** Escape hatch for a named predicate over the complete normalized run. */
   assert(label: string, predicate: (flow: TraceView) => boolean): void;
+  /**
+   * Negated presence assertions: `t.not.retrieved("acme-payroll")` passes
+   * when that document was not retrieved. Missing evidence stays
+   * `unsupported`, never a pass. Judged checks are not negatable; they carry
+   * their own polarity through `expect: "fail"`.
+   */
+  readonly not: NotTestContext;
 
   // ── steering  ────────────────────────────────────────────────
   /**
@@ -319,6 +355,22 @@ export interface TestContext {
 }
 
 /**
+ * The assertions `t.not` negates: presence claims, whose opposite is a clear
+ * absence claim. Budgets and the existing negations (`notCalledTool`,
+ * `usedNoTools`) already state their opposite directly.
+ */
+export type NotTestContext = Pick<
+  TestContext,
+  | "calledTool"
+  | "toolOrder"
+  | "loadedSkill"
+  | "calledSubagent"
+  | "messageIncludes"
+  | "retrieved"
+  | "check"
+>;
+
+/**
  * Canonical names of every assertion method on {@link TestContext}.
  *
  * The dashboard keeps its own copy of this list for syntax highlighting,
@@ -335,6 +387,8 @@ export const TEST_METHOD_NAMES = [
   "usedNoTools",
   "maxToolCalls",
   "noFailedActions",
+  "retrieved",
+  "maxRetrievals",
   "loadedSkill",
   "calledSubagent",
   "messageIncludes",
@@ -345,6 +399,7 @@ export const TEST_METHOD_NAMES = [
   "steerDelivered",
   "afterSteer",
   "assert",
+  "not",
   "check",
   "judge",
   "semantic",
@@ -1011,7 +1066,7 @@ export function createTraceTestContext(
   const isAvailable = (c: keyof TraceProjectionCapabilities): boolean =>
     view.requireCapability(c) === "available";
 
-  return {
+  const context: TestContext = {
     calledTool(name, opts) {
       if (!isAvailable("tools")) {
         unsupported(`calledTool(${describeName(name)})`, "tools");
@@ -1124,6 +1179,59 @@ export function createTraceTestContext(
       rec.record("noFailedActions", failed === 0, failed === 0 ? "" : `${failed} failed action(s)`, {
         expected: "0 failed actions",
         received: `${failed}`,
+      });
+    },
+
+    retrieved(document, opts) {
+      requireTopK(opts?.topK);
+      const id = `retrieved(${describeDocument(document)}${describeRetrievedOptions(opts)})`;
+      if (!isAvailable("retrieval")) {
+        unsupported(id, "retrieval");
+        return;
+      }
+      const expected = `${describeDocument(document)} retrieved${describeRetrievedOptions(opts)}`;
+      const scoped = view.retrievals.filter(
+        (r) => opts?.query === undefined || (r.query?.includes(opts.query) ?? false),
+      );
+      const hit = findRetrievedDocument(scoped, document, opts?.topK);
+      if (hit !== undefined) {
+        rec.record(id, true, "", { expected, received: hit });
+        return;
+      }
+      // A retrieval whose documents are unknown could hold the match, so
+      // absence is not shown: recording a fail here would let t.not pass on
+      // evidence nobody saw.
+      const opaque = scoped.filter((r) => r.documents === undefined).length;
+      if (opaque > 0) {
+        rec.record(
+          id,
+          false,
+          `${opaque} retrieval(s) in scope returned results in an unrecognized shape`,
+          { outcome: "unsupported", expected, received: `${opaque} unrecognized retrieval result(s)` },
+        );
+        return;
+      }
+      rec.record(
+        id,
+        false,
+        scoped.length === 0
+          ? `no retrieval ran with a query containing "${opts?.query ?? ""}"`
+          : `no retrieval returned ${describeDocument(document)}${describeRetrievedOptions(opts)}`,
+        { expected, received: summarizeRetrievals(scoped) },
+      );
+    },
+
+    maxRetrievals(n) {
+      requireBudget("maxRetrievals", n);
+      // Partial evidence still counts retrievals; only their documents are unknown.
+      if (view.requireCapability("retrieval") === "unavailable") {
+        unsupported(`maxRetrievals(${n})`, "retrieval");
+        return;
+      }
+      const count = view.retrievals.length;
+      rec.record(`maxRetrievals(${n})`, count <= n, count <= n ? "" : `expected ≤ ${n} retrievals, got ${count}`, {
+        expected: `≤ ${n} retrievals`,
+        received: `${count}`,
       });
     },
 
@@ -1246,6 +1354,26 @@ export function createTraceTestContext(
     // Like t.judge: value-plane check, no capability gating — but traced, so
     // the embeddings call shows up as an EMBEDDING observation.
     semantic: trackPending(rec, createSemanticMethod(rec, embedding, judgeScope)),
+
+    get not(): NotTestContext {
+      return createNotContext(context, rec);
+    },
+  };
+  return context;
+}
+
+/** `t.not`: each negatable assertion runs inside the recorder's negation scope. */
+function createNotContext(t: TestContext, rec: Recorder): NotTestContext {
+  return {
+    calledTool: (name, opts) => rec.negated(() => t.calledTool(name, opts)),
+    toolOrder: (names) => rec.negated(() => t.toolOrder(names)),
+    loadedSkill: (skill) => rec.negated(() => t.loadedSkill(skill)),
+    calledSubagent: (agent) => rec.negated(() => t.calledSubagent(agent)),
+    messageIncludes: (token) => rec.negated(() => t.messageIncludes(token)),
+    retrieved: (document, opts) => rec.negated(() => t.retrieved(document, opts)),
+    check(value, matcher, label) {
+      rec.negated(() => t.check(value, matcher, label));
+    },
   };
 }
 
@@ -1387,4 +1515,63 @@ function matchesTraceToolCall(
     return false;
   }
   return true;
+}
+
+/** The first in-scope document match, described for the assertion's `received`. */
+function findRetrievedDocument(
+  retrievals: readonly TraceRetrieval[],
+  document: DocumentMatcher,
+  topK: number | undefined,
+): string | undefined {
+  for (const retrieval of retrievals) {
+    const documents = retrieval.documents ?? [];
+    const limit = topK === undefined ? documents.length : Math.min(topK, documents.length);
+    for (let i = 0; i < limit; i++) {
+      if (matchesDocument(documents[i]!, document)) {
+        return `rank ${i + 1} for query "${retrieval.query ?? "(none recorded)"}"`;
+      }
+    }
+  }
+  return undefined;
+}
+
+function matchesDocument(doc: TraceProjectionDocument, matcher: DocumentMatcher): boolean {
+  if (typeof matcher === "string") {
+    return doc.id === matcher || (doc.id?.startsWith(`${matcher}#`) ?? false);
+  }
+  if ("id" in matcher) return doc.id === matcher.id;
+  if ("idPrefix" in matcher) return doc.id?.startsWith(matcher.idPrefix) ?? false;
+  return doc.content.includes(matcher.contentIncludes);
+}
+
+function describeDocument(matcher: DocumentMatcher): string {
+  if (typeof matcher === "string") return `"${matcher}"`;
+  if ("id" in matcher) return `{ id: "${matcher.id}" }`;
+  if ("idPrefix" in matcher) return `{ idPrefix: "${matcher.idPrefix}" }`;
+  return `{ contentIncludes: "${matcher.contentIncludes}" }`;
+}
+
+function describeRetrievedOptions(opts: RetrievedOptions | undefined): string {
+  const parts: string[] = [];
+  if (opts?.topK !== undefined) parts.push(`in top ${opts.topK}`);
+  if (opts?.query !== undefined) parts.push(`for query containing "${opts.query}"`);
+  return parts.length > 0 ? ` ${parts.join(" ")}` : "";
+}
+
+/** What each in-scope retrieval returned, so a failure shows the documents that came back instead. */
+function summarizeRetrievals(retrievals: readonly TraceRetrieval[]): string {
+  if (retrievals.length === 0) return "(no retrievals)";
+  return retrievals
+    .map((r) => {
+      const documents = (r.documents ?? []).map((d) => d.id ?? `"${d.content.slice(0, 40)}"`);
+      const shown = documents.slice(0, 10).join(", ") + (documents.length > 10 ? ", ..." : "");
+      return `"${r.query ?? "(none recorded)"}": [${shown}]`;
+    })
+    .join("; ");
+}
+
+function requireTopK(topK: number | undefined): void {
+  if (topK !== undefined && (!Number.isInteger(topK) || topK < 1)) {
+    throw new TypeError(`retrieved: topK must be a positive integer, got ${topK}`);
+  }
 }

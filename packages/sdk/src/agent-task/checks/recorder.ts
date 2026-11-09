@@ -18,9 +18,27 @@ export class Recorder {
   private records: AssertionResult[] = [];
   private readonly locate?: LocateFn;
   private pending: Promise<unknown>[] = [];
+  private negating = false;
 
   constructor(locate?: LocateFn) {
     this.locate = locate;
+  }
+
+  /**
+   * Run `fn` with every assertion it records negated (`t.not.*`): a pass
+   * becomes a fail and a fail becomes a pass. Outcomes that are not verdicts
+   * (`unsupported`, `error`) keep their outcome, so missing evidence can never
+   * become a pass by negation. Only synchronous assertions are negatable,
+   * which keeps the scope from leaking into a later record.
+   */
+  negated(fn: () => void): void {
+    const previous = this.negating;
+    this.negating = true;
+    try {
+      fn();
+    } finally {
+      this.negating = previous;
+    }
   }
 
   /**
@@ -76,7 +94,7 @@ export class Recorder {
     const location =
       extra?.location
         ?? (this.locate ? this.locate(new Error().stack ?? "") : undefined);
-    this.records.push({
+    const result: AssertionResult = {
       id,
       pass,
       reasoning,
@@ -87,10 +105,27 @@ export class Recorder {
       judge: extra?.judge,
       embedding: extra?.embedding,
       outcome: extra?.outcome,
-    });
+    };
+    this.records.push(this.negating ? negate(result) : result);
   }
 
   get all(): readonly AssertionResult[] {
     return this.records;
   }
+}
+
+/** The `t.not` form of one assertion result. Non-verdict outcomes keep their outcome. */
+function negate(result: AssertionResult): AssertionResult {
+  const negated: AssertionResult = {
+    ...result,
+    id: `not.${result.id}`,
+    expected: result.expected === undefined ? undefined : `not ${result.expected}`,
+  };
+  if (result.outcome === "unsupported" || result.outcome === "error") return negated;
+  return {
+    ...negated,
+    pass: !result.pass,
+    reasoning: result.pass ? `expected ${result.id} not to hold, but it did` : "",
+    outcome: result.outcome === undefined ? undefined : result.pass ? "fail" : "pass",
+  };
 }

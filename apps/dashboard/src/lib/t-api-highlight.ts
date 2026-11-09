@@ -25,8 +25,9 @@ const SORTED_BY_LEN_DESC = TEST_METHOD_NAMES.toSorted((a, b) => b.length - a.len
  *
  * The ``g`` flag is required for iterative ``exec`` use in the CodeMirror
  * decoration builder; callers must reset ``lastIndex`` between documents.
+ * The optional ``not.`` lets ``t.not.retrieved`` color as one token.
  */
-export const tApiRegex = new RegExp(`\\bt\\.(${SORTED_BY_LEN_DESC.join("|")})\\b`, "g");
+export const tApiRegex = new RegExp(`\\bt\\.(?:not\\.)?(${SORTED_BY_LEN_DESC.join("|")})\\b`, "g");
 
 /**
  * Returns the spans (``[from, to)`` offsets) of every ``t.<method>`` token in

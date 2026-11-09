@@ -57,6 +57,14 @@ describe("findTApiSpans", () => {
     expect(spans).toHaveLength(3);
   });
 
+  it("colorizes a negated assertion as one token", () => {
+    const source = `t.not.retrieved("acme-payroll")`;
+    const spans = findTApiSpans(source);
+    expect(spans).toHaveLength(1);
+    const [from, to] = spans[0]!;
+    expect(source.slice(from, to)).toBe("t.not.retrieved");
+  });
+
   it("tApiRegex is globally flagged for iterative exec use", () => {
     expect(tApiRegex.global).toBe(true);
   });
