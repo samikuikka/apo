@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import Session, select
 
 from ..auth.deps import require_api_key_scope
-from ..db import get_session
+from ..db import begin_immediate, get_session
 from ..models.db import AgentTaskRunDB, LoggedCallDB, RunDB
 from ..models.schemas import (
     BatchIngestionRequest,
@@ -65,6 +65,12 @@ async def batch_ingestion(
     from ..services.ingest_quota import enforce_ingest_guardrails, record_ingest_usage
 
     enforce_ingest_guardrails(request, session, pending_spans=len(payload.batch))
+
+    # The per-event loop reads (authorization, run/call lookups) and writes
+    # inside one transaction that commits once below; take SQLite's write
+    # lock first so a concurrent projection commit cannot make the batch's
+    # writes fail instantly with SQLITE_BUSY_SNAPSHOT.
+    begin_immediate(session)
 
     _validate_service_token_batch(request, payload)
 

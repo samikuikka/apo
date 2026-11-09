@@ -11,7 +11,9 @@ Usage::
 
 This reads canonical spans from ``OtlpSpanDB``, runs each through the normalizer
 and projector (which upserts into ``RunDB`` / ``LoggedCallDB``), and returns the
-number of spans projected.
+number of spans projected. Safe to run against a live backend: every
+transaction takes SQLite's write lock up front and commits in bounded chunks,
+so concurrent OTLP ingestion interleaves instead of failing the reproject.
 """
 
 from __future__ import annotations
@@ -20,8 +22,9 @@ import logging
 
 from sqlmodel import Session, select, text
 
-from ..db import engine
+from ..db import begin_immediate, engine
 from ..models.db import OtlpSpanDB
+from .trace_ingestion_queue import PROJECTION_COMMIT_CHUNK
 from .trace_projector import get_trace_projector
 
 logger = logging.getLogger(__name__)
@@ -51,6 +54,13 @@ def reproject_trace(trace_id: str, project_id: str) -> int:
     count = 0
 
     with Session(engine) as session:
+        # Reprojection runs on a live backend (admin preview-backfill while
+        # OTLP ingestion projects concurrently). The projector reads run/call
+        # state before each write, so take SQLite's write lock before the
+        # first read (the queue-worker pattern) or a competing commit can
+        # turn those writes into lock failures the per-span handler below
+        # would swallow as silent under-projection.
+        begin_immediate(session)
         spans = session.exec(
             select(OtlpSpanDB)
             .where(
@@ -64,6 +74,7 @@ def reproject_trace(trace_id: str, project_id: str) -> int:
             logger.info("No canonical spans found for trace %s in project %s", trace_id, project_id)
             return 0
 
+        seen = 0
         for span in spans:
             try:
                 projector.project(span, session)
@@ -74,6 +85,14 @@ def reproject_trace(trace_id: str, project_id: str) -> int:
                     span.span_id,
                     exc_info=True,
                 )
+            seen += 1
+            # Chunked commits bound how long reproject holds SQLite's single
+            # write lock, and the re-take keeps the next chunk's reads
+            # protected. Lock exhaustion surfaces HERE and propagates: the
+            # caller (per-trace admin worker) decides retry vs failure.
+            if seen % PROJECTION_COMMIT_CHUNK == 0:
+                session.commit()
+                begin_immediate(session)
 
         session.commit()
 
@@ -98,6 +117,9 @@ def reproject_project(project_id: str, limit: int = 1000) -> int:
     count = 0
 
     with Session(engine) as session:
+        # Same live-backend race as reproject_trace: per-span reads then
+        # writes, so take the write lock before the first read here too.
+        begin_immediate(session)
         spans = session.exec(
             select(OtlpSpanDB)
             .where(OtlpSpanDB.project_id == project_id)
@@ -105,6 +127,7 @@ def reproject_project(project_id: str, limit: int = 1000) -> int:
             .limit(limit)
         ).all()
 
+        seen = 0
         for span in spans:
             try:
                 projector.project(span, session)
@@ -116,6 +139,18 @@ def reproject_project(project_id: str, limit: int = 1000) -> int:
                     exc_info=True,
                 )
                 session.rollback()
+                # The rollback also released the write lock; re-take it so
+                # one bad span cannot reopen the snapshot hazard for the
+                # rest of the chunk.
+                begin_immediate(session)
+            seen += 1
+            # Chunked commits bound how long reproject holds SQLite's single
+            # write lock, and the re-take keeps the next chunk's reads
+            # protected. Lock exhaustion surfaces HERE and propagates: the
+            # caller (per-trace admin worker) decides retry vs failure.
+            if seen % PROJECTION_COMMIT_CHUNK == 0:
+                session.commit()
+                begin_immediate(session)
 
         session.commit()
 

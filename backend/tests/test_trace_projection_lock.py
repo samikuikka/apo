@@ -30,6 +30,7 @@ from sqlmodel import Session, select
 from apo.db import engine
 from apo.models.db import LoggedCallDB, OtlpIngestBatchDB, ProjectDB
 from apo.services.otlp_receiver import OtlpReceiver
+from apo.services.reproject import reproject_trace
 from apo.services.trace_ingestion_queue import QueueWorker
 
 PROJECT = "lock-repro"
@@ -38,10 +39,10 @@ BATCHES_PER_WORKER = 2
 SPANS_PER_BATCH = 128
 
 
-def _ensure_project() -> None:
+def _ensure_project(project: str = PROJECT) -> None:
     with Session(engine) as session:
-        if session.get(ProjectDB, PROJECT) is None:
-            session.add(ProjectDB(id=PROJECT, name=PROJECT))
+        if session.get(ProjectDB, project) is None:
+            session.add(ProjectDB(id=project, name=project))
             session.commit()
 
 
@@ -177,6 +178,73 @@ def test_concurrent_projection_loses_no_accepted_spans() -> None:
     assert len(calls) == total_spans, (
         f"projected calls {len(calls)} != accepted spans {total_spans} "
         "(replay must update in place, never duplicate or drop)"
+    )
+
+
+def test_concurrent_reproject_does_not_under_project() -> None:
+    """Concurrent reproject against a live writer must project every span.
+
+    reproject_trace runs a whole trace through one Session against the live
+    engine while the ingestion queue commits competing projection batches.
+    Every thread must return exactly the span count (a swallowed lock
+    failure would silently under-project) and logged_calls must stay at the
+    span count: replay updates in place, never drops or duplicates.
+    """
+    project = "reproject-lock"
+    _ensure_project(project)
+    receiver = OtlpReceiver()
+    with Session(engine) as session:
+        accepted = receiver.ingest(
+            payload=_payload(7, 7),
+            content_type="application/json",
+            project_id=project,
+            session=session,
+            project_immediately=False,
+        )
+    assert accepted.rejected == 0
+    trace_id = f"a{7:02x}{7:02x}".ljust(32, "0")[:32]
+
+    # First pass lands every span sequentially; from here all projections
+    # take the update path (SELECT the call, then UPDATE it).
+    worker = QueueWorker(receiver=OtlpReceiver())
+    sequential = worker._process_batch(accepted.batch_id)
+    assert sequential.rejected == 0, f"sequential pass rejected: {sequential.errors[:3]}"
+    assert sequential.projected == SPANS_PER_BATCH
+
+    # 3 reproject threads race 1 competing projection batch on the same
+    # trace; the barrier maximizes the read-then-write overlap window.
+    start = threading.Barrier(4)
+
+    def reproject() -> int:
+        start.wait(timeout=60)
+        return reproject_trace(trace_id, project_id=project)
+
+    def compete() -> tuple[int, int, str]:
+        start.wait(timeout=60)
+        result = worker._process_batch(accepted.batch_id)
+        return result.projected, result.rejected, "; ".join(result.errors)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        reproject_futures = [pool.submit(reproject) for _ in range(3)]
+        compete_future = pool.submit(compete)
+
+    counts = [future.result() for future in reproject_futures]
+    for count in counts:
+        assert count == SPANS_PER_BATCH, (
+            f"reproject projected {count} != {SPANS_PER_BATCH} canonical "
+            "spans (under-projection while a competing writer commits)"
+        )
+    projected, rejected, errors = compete_future.result()
+    assert rejected == 0, f"competing batch rejected spans: {errors[:300]}"
+    assert projected == SPANS_PER_BATCH
+
+    with Session(engine) as session:
+        calls = session.exec(
+            select(LoggedCallDB).where(LoggedCallDB.project == project)
+        ).all()
+    assert len(calls) == SPANS_PER_BATCH, (
+        f"projected calls {len(calls)} != accepted spans {SPANS_PER_BATCH} "
+        "(concurrent replay must update in place, never duplicate or drop)"
     )
 
 
