@@ -29,6 +29,8 @@ export interface TraceFilters {
   operation?: string;
   span_text?: string;
   span_predicates: SpanPredicate[];
+  /** Run labels (`<key>: <ids>`), matching the trace's parent run's batch. */
+  labels: Record<string, string[]>;
 }
 
 export interface SpanPredicate {
@@ -58,6 +60,7 @@ export interface FilterActions {
   setProject: (project: string | undefined) => void;
   setTaskId: (taskId: string | undefined) => void;
   setEnvironment: (env: string | undefined) => void;
+  setLabels: (labels: Record<string, string[]>) => void;
   setSessionId: (id: string | undefined) => void;
   setTags: (tags: string[]) => void;
   setModels: (models: string[]) => void;
@@ -232,6 +235,7 @@ function parseTraceFilters(searchParams: URLSearchParams): TraceFilters {
     project: searchParams.get("project") || undefined,
     task_id: searchParams.get("task_id") || undefined,
     environment: searchParams.get("environment") || undefined,
+    labels: parseLabelParams(searchParams),
     session_id: searchParams.get("session_id") || undefined,
     user_id: searchParams.get("user_id") || undefined,
     status: searchParams.get("status") || undefined,
@@ -255,6 +259,21 @@ function parseTraceFilters(searchParams: URLSearchParams): TraceFilters {
   };
 }
 
+/** Repeated `label=<key>:<id>` params into `{key: [ids]}`; malformed values
+ * are dropped (the API would 422 them). */
+function parseLabelParams(searchParams: URLSearchParams): Record<string, string[]> {
+  const labels: Record<string, string[]> = {};
+  for (const raw of searchParams.getAll("label")) {
+    const at = raw.indexOf(":");
+    if (at <= 0 || at === raw.length - 1) continue;
+    const key = raw.slice(0, at);
+    const id = raw.slice(at + 1);
+    const ids = (labels[key] ??= []);
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return labels;
+}
+
 function buildTraceQueryString(filters: TraceFilters): string {
   const params = new URLSearchParams();
 
@@ -266,6 +285,9 @@ function buildTraceQueryString(filters: TraceFilters): string {
   if (filters.project) params.set("project", filters.project);
   if (filters.task_id) params.set("task_id", filters.task_id);
   if (filters.environment) params.set("environment", filters.environment);
+  for (const [key, ids] of Object.entries(filters.labels ?? {})) {
+    for (const id of ids) params.append("label", `${key}:${id}`);
+  }
   if (filters.session_id) params.set("session_id", filters.session_id);
   if (filters.user_id) params.set("user_id", filters.user_id);
   if (filters.status) params.set("status", filters.status);
@@ -294,7 +316,7 @@ export function useFilters(): [filters: TraceFilters, actions: FilterActions] {
     parseFilters: parseTraceFilters,
     buildQueryString: buildTraceQueryString,
     basePath: "/traces",
-    clearState: { timePreset: "all", tags: [], models: [], providers: [], span_predicates: [] } as TraceFilters,
+    clearState: { timePreset: "all", tags: [], models: [], providers: [], span_predicates: [], labels: {} } as TraceFilters,
     removeFilterOverrides: (key, filters) => {
       if (key === "models") return { ...filters, models: [] };
       if (key === "providers") return { ...filters, providers: [] };
@@ -316,6 +338,7 @@ export function useFilters(): [filters: TraceFilters, actions: FilterActions] {
       setProject: (project) => core.updateFilters({ project } as Partial<TraceFilters>),
       setTaskId: (taskId) => core.updateFilters({ task_id: taskId } as Partial<TraceFilters>),
       setEnvironment: (env) => core.updateFilters({ environment: env } as Partial<TraceFilters>),
+      setLabels: (labels) => core.updateFilters({ labels } as Partial<TraceFilters>),
       setSessionId: (id) => core.updateFilters({ session_id: id } as Partial<TraceFilters>),
       setTags: (tags) => core.updateFilters({ tags } as Partial<TraceFilters>),
       setModels: (models) => core.updateFilters({ models } as Partial<TraceFilters>),
