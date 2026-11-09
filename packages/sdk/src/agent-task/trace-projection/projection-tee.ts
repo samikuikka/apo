@@ -29,6 +29,7 @@ import type {
   TraceProjectionSnapshot,
   TraceProjectionUsage,
 } from "./types.ts";
+import { documentsFromObservation, parseRetrievedDocuments } from "./retrieval.ts";
 
 function monotonicNowMs(): number {
   if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -88,6 +89,7 @@ function deriveCapabilities(
   const hasMessages = observations.some(
     (o) => o.type === "GENERATION" && o.messages && o.messages.length > 0,
   );
+  const retrievals = observations.filter((o) => o.type === "RETRIEVER");
   return {
     messages: hasMessages ? "available" : "unavailable",
     tools: hasType("TOOL") ? "available" : "unavailable",
@@ -105,6 +107,12 @@ function deriveCapabilities(
       : hierarchyAmbiguous
         ? "partial"
         : "available",
+    retrieval:
+      retrievals.length === 0
+        ? "unavailable"
+        : retrievals.some((o) => documentsFromObservation(o) !== undefined)
+          ? "available"
+          : "partial",
   };
 }
 
@@ -227,6 +235,9 @@ export function createProjectionTee(
     } else if (params?.output !== undefined) {
       obs.output = params.output;
     }
+    // A retrieval's query scopes retrieval assertions, the way a tool's
+    // parameters scope tool assertions.
+    if (p.type === "RETRIEVER" && p.input !== undefined) obs.input = p.input;
 
     if (p.type === "GENERATION" && params?.output != null) {
       const text = extractText(params.output);
@@ -390,7 +401,38 @@ export function createProjectionTee(
       }
     },
     async traceRetriever(query, fn) {
-      return real.traceRetriever(query, fn);
+      // Recorded for the same reason as traceTool: Phase 2 evaluates the
+      // frozen snapshot built from these observations, so a delegate-only
+      // retrieval exports a span yet leaves retrieval assertions without
+      // evidence.
+      const obsSpanId = recordStart({
+        step_name: "retrieve",
+        observation_type: "RETRIEVER",
+        input: { query },
+      });
+      const start = monotonicNowMs();
+      try {
+        const result = await real.traceRetriever(query, fn);
+        const documents = parseRetrievedDocuments(result);
+        complete(obsSpanId, {
+          latency_ms: round3(monotonicNowMs() - start),
+          // Recognized results are stored normalized so every reader sees one
+          // typed shape. Anything else passes through raw, and the retrieval
+          // capability derives "partial" from it.
+          output: documents !== undefined
+            ? { documents }
+            : (result as Record<string, unknown>),
+        });
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        complete(obsSpanId, {
+          latency_ms: round3(monotonicNowMs() - start),
+          status_message: message,
+          level: "ERROR",
+        });
+        throw error;
+      }
     },
     async traceChain(name, fn) {
       return real.traceChain(name, fn);

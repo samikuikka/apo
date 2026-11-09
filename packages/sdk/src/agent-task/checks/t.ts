@@ -973,6 +973,7 @@ const CAPABILITY_LABELS: Record<keyof TraceProjectionCapabilities, string> = {
   skills: "skill",
   subagents: "subagent",
   usage: "token usage",
+  retrieval: "retrieval",
 } as const;
 
 /**

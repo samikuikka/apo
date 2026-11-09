@@ -60,6 +60,13 @@ export interface TraceProjectionCapabilities {
    * was projected: absent reads as `unavailable`.
    */
   usage?: EvidenceAvailability;
+  /**
+   * Retrieved documents on `RETRIEVER` observations. Optional for snapshots
+   * written before retrieval was projected: absent reads as `unavailable`.
+   * `partial` means retrievals were observed but none returned a
+   * recognizable document list.
+   */
+  retrieval?: EvidenceAvailability;
 }
 
 /**
