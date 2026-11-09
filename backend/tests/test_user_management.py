@@ -285,6 +285,42 @@ class TestUpdateUserQuotas:
         assert row.max_projects is None
         assert row.max_api_keys == 0
 
+    def test_span_quota_raw_and_effective_pair(
+        self, client: TestClient, session: Session, make_authed_client: Any,
+        monkeypatch: Any,
+    ) -> None:
+        monkeypatch.setenv("APO_USER_DAILY_SPAN_QUOTA", "1000")
+        authed, _ = _setup_admin_authed(client, session, make_authed_client)
+        member = self._invite_member(authed)
+
+        # NULL column: the env default is the effective cap.
+        resp = authed.patch(f"/auth/users/{member['id']}", json={"name": "M2"})
+        assert resp.status_code == 200
+        assert resp.json()["daily_span_quota"] is None
+        assert resp.json()["effective_daily_span_quota"] == 1000
+
+        resp = authed.patch(
+            f"/auth/users/{member['id']}", json={"daily_span_quota": 500}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["daily_span_quota"] == 500
+        assert resp.json()["effective_daily_span_quota"] == 500
+
+        # 0 = unlimited even under the env cap; effective 0 reads as off.
+        resp = authed.patch(
+            f"/auth/users/{member['id']}", json={"daily_span_quota": 0}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["daily_span_quota"] == 0
+        assert resp.json()["effective_daily_span_quota"] == 0
+
+        resp = authed.patch(
+            f"/auth/users/{member['id']}", json={"daily_span_quota": None}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["daily_span_quota"] is None
+        assert resp.json()["effective_daily_span_quota"] == 1000
+
     def test_negative_values_rejected(
         self, client: TestClient, session: Session, make_authed_client: Any
     ) -> None:

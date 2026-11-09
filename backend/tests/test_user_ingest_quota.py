@@ -5,7 +5,7 @@
 Covers: the aggregate blocks across keys of one user while per-key
 quotas stay unlimited, isolation between users, default-off behavior,
 the per-key quota still answering first, non-fatal accounting that
-survives a missing aggregate table, and the v63 migration seam.
+survives a missing aggregate table, and the v63/v65 migration seams.
 """
 
 import hashlib
@@ -328,6 +328,46 @@ class TestPerUserSpanQuotaOverride:
         assert _ingest(client, _auth(pk_b, sk_b)).status_code == 200
         assert _ingest(client, _auth(pk_a, sk_a)).status_code == 200
 
+    def test_override_tighter_than_env(
+        self, client: TestClient, file_keys: dict[str, tuple[str, str, str, str]],
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("APO_USER_DAILY_SPAN_QUOTA", "100000")
+        pk_a, sk_a, _, u1 = file_keys["a"]
+        pk_b, sk_b, _, _ = file_keys["b"]
+        _set_user_span_quota(u1, 4)
+
+        assert _ingest(client, _auth(pk_a, sk_a)).status_code == 200
+        assert _ingest(client, _auth(pk_b, sk_b)).status_code == 200
+        resp = _ingest(client, _auth(pk_a, sk_a))
+        assert resp.status_code == 429, resp.text
+        detail = resp.json()["detail"]
+        assert "account" in detail["message"]
+        assert detail["quota"]["limit"] == 4
+        assert detail["quota"]["used"] == 4
+
+    def test_zero_exempts_while_env_caps_other_user(
+        self, client: TestClient, file_keys: dict[str, tuple[str, str, str, str]],
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("APO_USER_DAILY_SPAN_QUOTA", "4")
+        pk_a, sk_a, _, u1 = file_keys["a"]
+        pk_b, sk_b, _, _ = file_keys["b"]
+        pk_c, sk_c, _, _ = file_keys["c"]
+        _set_user_span_quota(u1, 0)
+
+        # user1: override 0 = unlimited, so the third batch passes the
+        # env cap of 4 (6 accepted spans).
+        assert _ingest(client, _auth(pk_a, sk_a)).status_code == 200
+        assert _ingest(client, _auth(pk_b, sk_b)).status_code == 200
+        assert _ingest(client, _auth(pk_a, sk_a)).status_code == 200
+
+        assert _ingest(client, _auth(pk_c, sk_c)).status_code == 200
+        assert _ingest(client, _auth(pk_c, sk_c)).status_code == 200
+        resp = _ingest(client, _auth(pk_c, sk_c))
+        assert resp.status_code == 429, resp.text
+        assert resp.json()["detail"]["quota"]["limit"] == 4
+
     def test_raise_and_lower_reflect_on_next_ingest(
         self, client: TestClient, file_keys: dict[str, tuple[str, str, str, str]],
     ) -> None:
@@ -404,3 +444,13 @@ class TestV63Seam:
         mdb.SQLModel.metadata.create_all(engine)
         _migrate_to_v63()
         _migrate_to_v63()  # must not raise
+
+
+class TestV65Seam:
+    def test_rerun_safe(self) -> None:
+        import apo.models.db as mdb
+        from apo.db import _migrate_to_v65, engine
+
+        mdb.SQLModel.metadata.create_all(engine)
+        _migrate_to_v65()
+        _migrate_to_v65()  # must not raise
