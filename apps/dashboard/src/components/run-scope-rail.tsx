@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
@@ -25,7 +25,11 @@ import {
   EMPTY_METRIC_FILTERS,
   medianLabel,
   metricChips,
+  loadSavedScopes,
   metricPresets,
+  railOwnedParams,
+  saveSavedScopes,
+  type SavedRunScope,
   type MetricPreset,
   type MetricQuantiles,
   type MetricRange,
@@ -55,6 +59,11 @@ export interface ScopeRailProps {
   /** Stored-metric ranges (cost, duration); omitted hides those sections. */
   metrics?: RunMetricFilters;
   onMetricsChange?: (next: RunMetricFilters) => void;
+  /** Applies a saved scope's raw rail params (the page supplies the URL
+   * writer); omitted hides the saved-scopes block. */
+  onApplyParams?: (params: string) => void;
+  /** The URL's current rail-owned params, for saving the active filters. */
+  currentParams?: string;
 }
 
 export function ScopeRail({
@@ -63,6 +72,8 @@ export function ScopeRail({
   onScopeChange,
   metrics,
   onMetricsChange,
+  onApplyParams,
+  currentParams,
   onClose,
 }: ScopeRailProps & { onClose: () => void }) {
   return (
@@ -87,6 +98,8 @@ export function ScopeRail({
         onScopeChange={onScopeChange}
         metrics={metrics}
         onMetricsChange={onMetricsChange}
+        onApplyParams={onApplyParams}
+        currentParams={currentParams}
       />
     </aside>
   );
@@ -98,6 +111,8 @@ export function ScopeRailSheet({
   onScopeChange,
   metrics,
   onMetricsChange,
+  onApplyParams,
+  currentParams,
   open,
   onOpenChange,
 }: ScopeRailProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -115,6 +130,8 @@ export function ScopeRailSheet({
           onScopeChange={onScopeChange}
           metrics={metrics}
           onMetricsChange={onMetricsChange}
+          onApplyParams={onApplyParams}
+          currentParams={currentParams}
         />
       </SheetContent>
     </Sheet>
@@ -268,6 +285,8 @@ function ScopeRailBody({
   onScopeChange,
   metrics,
   onMetricsChange,
+  onApplyParams,
+  currentParams,
 }: ScopeRailProps) {
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -406,8 +425,100 @@ function ScopeRailBody({
             </button>
           </div>
         )}
+        <SavedScopes onApplyParams={onApplyParams} currentParams={currentParams} />
       </div>
     </>
+  );
+}
+
+/**
+ * Named filter sets, saved per browser. A saved scope stores exactly the
+ * rail-owned params (scope + metric ranges), so applying it never touches
+ * page numbers or anyone else's filters.
+ */
+function SavedScopes({
+  onApplyParams,
+  currentParams,
+}: {
+  onApplyParams?: (params: string) => void;
+  currentParams?: string;
+}) {
+  const [entries, setEntries] = useState<SavedRunScope[]>([]);
+  const [name, setName] = useState("");
+  // localStorage is browser-only; load after mount so SSR renders nothing.
+  useEffect(() => {
+    setEntries(loadSavedScopes());
+  }, []);
+
+  if (onApplyParams === undefined || currentParams === undefined) return null;
+
+  const save = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const entry: SavedRunScope = {
+      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      name: trimmed,
+      params: currentParams,
+    };
+    const next = [...entries, entry];
+    setEntries(next);
+    saveSavedScopes(next);
+    setName("");
+  };
+
+  const remove = (id: string) => {
+    const next = entries.filter((entry) => entry.id !== id);
+    setEntries(next);
+    saveSavedScopes(next);
+  };
+
+  return (
+    <div className="mt-4 border-t border-border pt-3">
+      <span className="mb-1.5 block text-[11px] uppercase tracking-wide text-foreground/50">
+        Saved Views
+      </span>
+      <div className="flex flex-col gap-1">
+        {entries.map((entry) => (
+          <div key={entry.id} className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onApplyParams(entry.params)}
+              className="flex-1 truncate border border-border px-2 py-1 text-left text-[12px] hover:bg-muted/60"
+            >
+              {entry.name}
+            </button>
+            <button
+              type="button"
+              aria-label={`Delete ${entry.name}`}
+              onClick={() => remove(entry.id)}
+              className="flex h-6 w-6 items-center justify-center text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") save();
+          }}
+          placeholder="name this view"
+          aria-label="Saved view name"
+          className="h-7 w-full border border-border bg-card px-2 text-[12px] outline-none placeholder:text-muted-foreground/50"
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={!name.trim()}
+          className="h-7 border border-border px-2 text-[12px] text-muted-foreground hover:bg-muted/60 disabled:opacity-50"
+        >
+          Save
+        </button>
+      </div>
+    </div>
   );
 }
 

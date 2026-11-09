@@ -200,3 +200,64 @@ function minutesText(range: MetricRange): string {
   if (range.min !== null) return `over ${toMin(range.min)}`;
   return `under ${toMin(range.max ?? 0)}`;
 }
+
+// ============================================================================
+// Saved scopes (Runs page): named filter sets kept per browser
+// ============================================================================
+
+/** A named snapshot of the scope + metric params, stored as the URL's own
+ * encoding so applying is a straight param swap. */
+export interface SavedRunScope {
+  id: string;
+  name: string;
+  /** The scope/metric query string, e.g. `label=team:platforms&since=` is
+   * NOT included: only the params the rail owns. */
+  params: string;
+}
+
+const SAVED_SCOPES_KEY = "runs-saved-scopes";
+
+export function loadSavedScopes(): SavedRunScope[] {
+  try {
+    const raw = window.localStorage.getItem(SAVED_SCOPES_KEY);
+    const parsed: unknown = raw === null ? [] : JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (entry): entry is SavedRunScope =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as SavedRunScope).id === "string" &&
+        typeof (entry as SavedRunScope).name === "string" &&
+        typeof (entry as SavedRunScope).params === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveSavedScopes(entries: SavedRunScope[]): void {
+  try {
+    window.localStorage.setItem(SAVED_SCOPES_KEY, JSON.stringify(entries));
+  } catch {
+    // Storage unavailable: saved scopes simply do not persist.
+  }
+}
+
+/** The rail-owned params of a search string (scope + metric ranges),
+ * re-encoded, so saving never captures page numbers or foreign filters. */
+export function railOwnedParams(search: string): string {
+  const owned = [
+    "environment",
+    "label",
+    "cost_min",
+    "cost_max",
+    "duration_min",
+    "duration_max",
+  ];
+  const params = new URLSearchParams(search);
+  const kept = new URLSearchParams();
+  for (const key of owned) {
+    for (const value of params.getAll(key)) kept.append(key, value);
+  }
+  return kept.toString();
+}

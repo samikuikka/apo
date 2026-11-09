@@ -47,6 +47,7 @@ import {
   isMetricFilterActive,
   metricFilterParams,
   parseMetricFilters,
+  railOwnedParams,
 } from "@/lib/run-metric-filters";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { COL, computeOverlap } from "./components/runs-utils";
@@ -218,6 +219,23 @@ export function RunsClient({
   // Stored-metric ranges (`?cost_min=&duration_max=` and friends) ride the
   // URL exactly like the scope, so they survive reloads and sharing.
   const metrics = useMemo(() => parseMetricFilters(searchParams), [searchParams]);
+  // Saved views apply by swapping the rail-owned params in the URL.
+  const applyRailParams = useCallback(
+    (params: string) => {
+      updateUrl({
+        environment: null,
+        label: null,
+        ...metricFilterParams(EMPTY_METRIC_FILTERS),
+        ...(Object.fromEntries(new URLSearchParams(params)) as Record<string, string>),
+        page: null,
+      });
+    },
+    [updateUrl],
+  );
+  const railParams = useMemo(
+    () => railOwnedParams(searchParams.toString()),
+    [searchParams],
+  );
   const setMetrics = useCallback(
     (next: typeof EMPTY_METRIC_FILTERS) => {
       updateUrl({ ...metricFilterParams(next), page: null });
@@ -332,6 +350,8 @@ export function RunsClient({
         onScopeChange={setScope}
         metrics={metrics}
         onMetricsChange={setMetrics}
+        onApplyParams={applyRailParams}
+        currentParams={railParams}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
       />
@@ -342,6 +362,8 @@ export function RunsClient({
           onScopeChange={setScope}
           metrics={metrics}
           onMetricsChange={setMetrics}
+        onApplyParams={applyRailParams}
+        currentParams={railParams}
           onClose={() => setRailOpen(false)}
         />
       )}
