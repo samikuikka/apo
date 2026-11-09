@@ -21,6 +21,11 @@ const mocks = vi.hoisted(() => ({
   autoRefresh: vi.fn(),
 }));
 
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/project/acme/tasks/t/1",
+  useRouter: () => ({ replace: vi.fn(), refresh: vi.fn(), push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(""),
+}));
 vi.mock("@/lib/agent-task-api", () => ({
   getProjectAgentTask: (...args: Parameters<typeof mocks.getProjectAgentTask>) =>
     mocks.getProjectAgentTask(...args),

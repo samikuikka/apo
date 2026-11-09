@@ -217,6 +217,34 @@ function readRail(): string | null {
 }
 
 /**
+ * The sheet (mobile rail) open flag, shared in memory: the toggle and the
+ * rail can live in different components on the task-history page, and both
+ * must flip the same sheet.
+ */
+const sheetListeners = new Set<() => void>();
+let sheetOpenMemory = false;
+
+function subscribeSheet(onChange: () => void) {
+  sheetListeners.add(onChange);
+  return () => {
+    sheetListeners.delete(onChange);
+  };
+}
+
+export function useRailSheetOpen(): [boolean, (next: boolean) => void] {
+  const open = useSyncExternalStore(
+    subscribeSheet,
+    () => sheetOpenMemory,
+    () => false,
+  );
+  const setOpen = useCallback((next: boolean) => {
+    sheetOpenMemory = next;
+    sheetListeners.forEach((notify) => notify());
+  }, []);
+  return [open, setOpen];
+}
+
+/**
  * Rail visibility, remembered per browser. The external-store pattern keeps
  * the server snapshot neutral (null means visible) so hydration never
  * mismatches; storage events keep other tabs in sync.

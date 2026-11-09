@@ -10,6 +10,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const listTaskRunsMock = vi.fn().mockResolvedValue([]);
 
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/project/acme/tasks/t/1",
+  useRouter: () => ({ replace: vi.fn(), refresh: vi.fn(), push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(""),
+}));
 vi.mock("@/lib/agent-task-api", () => ({
   getProjectAgentTask: vi.fn().mockResolvedValue({
     id: "t",

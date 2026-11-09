@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { FilterBar } from "@/components/filter-bar";
+import { RailToggle, useRailSheetOpen, useRailVisible } from "@/components/run-scope-rail";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { RefreshControls, useRouterRefresh } from "@/components/refresh-controls";
 import type { RunLabelFacets } from "@/lib/agent-task-api";
 import { fetchSavedViews } from "@/lib/agent-task-view-api";
@@ -12,7 +14,6 @@ import { parseRunCohort, type RunCohort } from "@/lib/run-cohort";
 import {
   EMPTY_RUN_SCOPE,
   parseRunScope,
-  runScopeFacets,
   writeRunScope,
   type RunScope,
 } from "@/lib/run-scope";
@@ -58,6 +59,9 @@ export function TaskRunHistoryControls({
   refreshControls?: ReactNode;
 }) {
   const effortTiers = facets.find((f) => f.model === scope.model)?.efforts ?? [];
+  const [railOpen, setRailOpen] = useRailVisible();
+  const [sheetOpen, setSheetOpen] = useRailSheetOpen();
+  const isMobile = useIsMobile();
 
   return (
     <FilterBar
@@ -82,7 +86,17 @@ export function TaskRunHistoryControls({
       }
       effort={scope.effort}
       onEffortChange={(effort) => onScopeChange({ effort })}
-      facets={runScopeFacets(labelFacets, scope.runScope, (runScope) => onScopeChange({ runScope }))}
+      filterSlot={
+        <RailToggle
+          facets={labelFacets}
+          scope={scope.runScope}
+          onScopeChange={(runScope) => onScopeChange({ runScope })}
+          open={isMobile ? sheetOpen : railOpen}
+          onToggle={() =>
+            isMobile ? setSheetOpen(!sheetOpen) : setRailOpen(!railOpen)
+          }
+        />
+      }
       since={scope.since}
       onSinceChange={(since) => onScopeChange({ since })}
       onClearAll={onReset}
