@@ -39,6 +39,7 @@ const stubAdapter = defineAdapter({
   deliverables: { memo: null },
   turn: (ctx) => (ctx.transcript.length === 0 ? "write the release notes" : null),
   startSession: async () => ({
+    runConfiguration: { model: "md-stub" },
     sendUserTurn: async () => ({ response: "done" }),
   }),
   collectDeliverables: async () => ({ memo: MEMO }),

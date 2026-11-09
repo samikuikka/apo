@@ -49,6 +49,7 @@ const stubAdapter = defineAdapter({
   deliverables: { report: null },
   turn: (ctx) => (ctx.transcript.length === 0 ? "write the October report" : null),
   startSession: async () => ({
+    runConfiguration: { model: "report-stub" },
     sendUserTurn: async () => ({ response: "done" }),
   }),
   collectDeliverables: async () => ({ report: REPORT }),
