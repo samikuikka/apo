@@ -76,21 +76,67 @@ export function isMetricFilterActive(metrics: RunMetricFilters): boolean {
 
 export interface MetricPreset {
   label: string;
+  /** The cutoffs the preset stands for, shown after the label. */
+  detail: string;
   min: number | null;
   max: number | null;
 }
 
-export const COST_PRESETS: MetricPreset[] = [
-  { label: "Under $0.10", min: null, max: 0.1 },
-  { label: "$0.10 to 0.50", min: 0.1, max: 0.5 },
-  { label: "Over $0.50", min: 0.5, max: null },
-];
+/** Which stored metric a preset buckets; only the wording differs. */
+export type MetricKind = "cost" | "duration";
 
-export const DURATION_PRESETS: MetricPreset[] = [
-  { label: "Under 1 min", min: null, max: 60 },
-  { label: "1 to 5 min", min: 60, max: 300 },
-  { label: "Over 5 min", min: 300, max: null },
-];
+export interface MetricQuantiles {
+  p20: number;
+  p50: number;
+  p80: number;
+}
+
+/**
+ * Range presets from the project's own distribution: cheapest/fastest 20%,
+ * the typical middle, costliest/slowest 20%. Fixed cutoffs cannot fit every
+ * model mix (a cheap-model suite would put every run in one bucket), so the
+ * boundaries are the project's p20 and p80. No quantiles, or a degenerate
+ * spread (p20 = p80), yields no presets: the free min/max inputs remain.
+ */
+export function metricPresets(
+  quantiles: MetricQuantiles | null | undefined,
+  kind: MetricKind,
+): MetricPreset[] {
+  if (!quantiles || !(quantiles.p20 < quantiles.p80)) return [];
+  const bound = (value: number) =>
+    kind === "cost" ? `$${trimFloat(value)}` : minutesLabel(value);
+  const names =
+    kind === "cost"
+      ? { low: "Cheapest 20%", mid: "Typical", high: "Costliest 20%" }
+      : { low: "Fastest 20%", mid: "Typical", high: "Slowest 20%" };
+  return [
+    { label: names.low, detail: `under ${bound(quantiles.p20)}`, min: null, max: quantiles.p20 },
+    {
+      label: names.mid,
+      detail: `${bound(quantiles.p20)} to ${bound(quantiles.p80)}`,
+      min: quantiles.p20,
+      max: quantiles.p80,
+    },
+    { label: names.high, detail: `over ${bound(quantiles.p80)}`, min: quantiles.p80, max: null },
+  ];
+}
+
+/** One-line context under the inputs, e.g. "median $0.23". */
+export function medianLabel(quantiles: MetricQuantiles | null | undefined, kind: MetricKind): string | null {
+  if (!quantiles) return null;
+  const bound = kind === "cost" ? `$${trimFloat(quantiles.p50)}` : minutesLabel(quantiles.p50);
+  return `median ${bound}`;
+}
+
+function minutesLabel(seconds: number): string {
+  if (seconds % 60 === 0) return `${seconds / 60} min`;
+  if (seconds < 60) return `${trimFloat(seconds)} s`;
+  return `${trimFloat(seconds / 60)} min`;
+}
+
+function trimFloat(value: number): string {
+  return String(Number(value.toFixed(2)));
+}
 
 export interface MetricChip {
   /** Which metric: "Cost" or "Duration". */

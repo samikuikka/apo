@@ -61,6 +61,7 @@ from ..services.agent_task_stats import (
     compute_run_host_facets,
 )
 from ..services.project_deletion import delete_project_data
+from ..services.agent_task_stats import compute_run_metric_quantiles
 from ..services.run_labels import compute_run_label_facets
 from ..services.user_quotas import (
     enforce_api_key_count_limit,
@@ -646,7 +647,9 @@ async def list_project_agent_task_run_label_facets(
     and every environment, each with its Batch count.
     """
     _project, _role = _load_project_for_request(session, project_id, request)
-    return compute_run_label_facets(session, project_id)
+    facets = compute_run_label_facets(session, project_id)
+    facets.metrics = compute_run_metric_quantiles(session, project_id)
+    return facets
 
 
 @router.get("/{project_id}/onboarding-status")

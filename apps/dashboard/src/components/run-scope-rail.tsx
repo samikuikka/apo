@@ -21,11 +21,12 @@ import {
   type RunScope,
 } from "@/lib/run-scope";
 import {
-  COST_PRESETS,
-  DURATION_PRESETS,
   EMPTY_METRIC_FILTERS,
+  medianLabel,
   metricChips,
+  metricPresets,
   type MetricPreset,
+  type MetricQuantiles,
   type MetricRange,
   type RunMetricFilters,
 } from "@/lib/run-metric-filters";
@@ -275,7 +276,12 @@ function ScopeRailBody({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {metrics !== undefined && onMetricsChange !== undefined && (
-          <MetricSections metrics={metrics} onMetricsChange={onMetricsChange} />
+          <MetricSections
+            metrics={metrics}
+            onMetricsChange={onMetricsChange}
+            costQuantiles={facets?.metrics?.cost}
+            durationQuantiles={facets?.metrics?.duration_seconds}
+          />
         )}
         {visible.length === 0 && (
           <div className="py-2 text-[12px] text-muted-foreground">
@@ -395,16 +401,20 @@ function ScopeRailBody({
 function MetricSections({
   metrics,
   onMetricsChange,
+  costQuantiles,
+  durationQuantiles,
 }: {
   metrics: RunMetricFilters;
   onMetricsChange: (next: RunMetricFilters) => void;
+  costQuantiles: MetricQuantiles | null | undefined;
+  durationQuantiles: MetricQuantiles | null | undefined;
 }) {
   const setCost = (cost: MetricRange) => onMetricsChange({ ...metrics, cost });
   const setDuration = (durationSeconds: MetricRange) =>
     onMetricsChange({ ...metrics, durationSeconds });
   return (
     <>
-      <MetricSection title="Cost">
+      <MetricSection title="Cost" median={medianLabel(costQuantiles, "cost")}>
         <RangeInputs
           ariaPrefix="Cost"
           bounds={metrics.cost}
@@ -412,9 +422,13 @@ function MetricSections({
           parse={(text) => Number(text)}
           onChange={setCost}
         />
-        <Presets presets={COST_PRESETS} bounds={metrics.cost} onSelect={setCost} />
+        <Presets
+          presets={metricPresets(costQuantiles, "cost")}
+          bounds={metrics.cost}
+          onSelect={setCost}
+        />
       </MetricSection>
-      <MetricSection title="Duration">
+      <MetricSection title="Duration" median={medianLabel(durationQuantiles, "duration")}>
         <RangeInputs
           ariaPrefix="Duration"
           bounds={metrics.durationSeconds}
@@ -423,16 +437,35 @@ function MetricSections({
           onChange={setDuration}
           suffix="min"
         />
-        <Presets presets={DURATION_PRESETS} bounds={metrics.durationSeconds} onSelect={setDuration} />
+        <Presets
+          presets={metricPresets(durationQuantiles, "duration")}
+          bounds={metrics.durationSeconds}
+          onSelect={setDuration}
+        />
       </MetricSection>
     </>
   );
 }
 
-function MetricSection({ title, children }: { title: string; children: ReactNode }) {
+function MetricSection({
+  title,
+  median,
+  children,
+}: {
+  title: string;
+  median: string | null;
+  children: ReactNode;
+}) {
   return (
     <div className="border-b border-border pb-2">
-      <span className="block py-2 text-xs font-medium">{title}</span>
+      <span className="flex items-baseline justify-between py-2 text-xs font-medium">
+        {title}
+        {median && (
+          <span className="font-mono text-[10px] font-normal text-muted-foreground">
+            {median}
+          </span>
+        )}
+      </span>
       {children}
     </div>
   );
@@ -525,6 +558,7 @@ function Presets({
             )}
           >
             {preset.label}
+            <span className="ml-1 text-muted-foreground/70">{preset.detail}</span>
           </button>
         );
       })}

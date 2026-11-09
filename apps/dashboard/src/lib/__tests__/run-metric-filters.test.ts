@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  COST_PRESETS,
-  DURATION_PRESETS,
   EMPTY_METRIC_FILTERS,
   isMetricFilterActive,
   metricChips,
   metricFilterParams,
+  metricPresets,
   parseMetricFilters,
 } from "../run-metric-filters";
 
@@ -63,10 +62,25 @@ describe("run metric filters", () => {
     expect(metricChips(EMPTY_METRIC_FILTERS)).toEqual([]);
   });
 
-  it("presets cover their range without gaps or overlaps", () => {
-    expect(COST_PRESETS[0].max).toBe(COST_PRESETS[1].min);
-    expect(COST_PRESETS[1].max).toBe(COST_PRESETS[2].min);
-    expect(DURATION_PRESETS[0].max).toBe(DURATION_PRESETS[1].min);
-    expect(DURATION_PRESETS[1].max).toBe(DURATION_PRESETS[2].min);
+  it("builds presets from the project's own distribution", () => {
+    const presets = metricPresets({ p20: 0.08, p50: 0.23, p80: 0.61 }, "cost");
+    expect(presets).toEqual([
+      { label: "Cheapest 20%", detail: "under $0.08", min: null, max: 0.08 },
+      { label: "Typical", detail: "$0.08 to $0.61", min: 0.08, max: 0.61 },
+      { label: "Costliest 20%", detail: "over $0.61", min: 0.61, max: null },
+    ]);
+    const durations = metricPresets({ p20: 30, p50: 90, p80: 300 }, "duration");
+    expect(durations[0]).toMatchObject({
+      label: "Fastest 20%",
+      detail: "under 30 s",
+      max: 30,
+    });
+    expect(durations[2]).toMatchObject({ label: "Slowest 20%", min: 300 });
+  });
+
+  it("yields no presets without quantiles or with a degenerate spread", () => {
+    expect(metricPresets(undefined, "cost")).toEqual([]);
+    expect(metricPresets(null, "duration")).toEqual([]);
+    expect(metricPresets({ p20: 5, p50: 5, p80: 5 }, "cost")).toEqual([]);
   });
 });
