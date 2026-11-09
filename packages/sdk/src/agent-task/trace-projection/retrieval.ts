@@ -43,22 +43,27 @@ export function parseRetrievedDocuments(
   return documents;
 }
 
-/** Documents for one retrieval observation; `undefined` = shape not recognized. */
+/**
+ * Documents for one retrieval observation; `undefined` = shape not
+ * recognized. Canonical projections carry them as the tool result, the
+ * channel retrievals export on; the local tee records them as output.
+ */
 export function documentsFromObservation(
-  obs: Pick<TraceProjectionObservation, "output">,
+  obs: Pick<TraceProjectionObservation, "output" | "toolResult">,
 ): TraceProjectionDocument[] | undefined {
-  const output = obs.output;
-  if (output != null && typeof output === "object" && !Array.isArray(output)) {
-    const documents = (output as { documents?: unknown }).documents;
-    if (Array.isArray(documents)) return parseRetrievedDocuments(documents);
-  }
-  return parseRetrievedDocuments(output);
+  return parseRetrievedDocuments(obs.toolResult) ?? parseRetrievedDocuments(obs.output);
 }
 
-/** The query a retrieval observation was invoked with, when recorded. */
-export function retrievalQueryFrom(input: unknown): string | undefined {
-  if (input != null && typeof input === "object") {
-    const query = (input as { query?: unknown }).query;
+/** The query a retrieval observation ran with, when recorded. */
+export function retrievalQueryFrom(
+  obs: Pick<TraceProjectionObservation, "input" | "toolParameters">,
+): string | undefined {
+  return queryIn(obs.toolParameters) ?? queryIn(obs.input);
+}
+
+function queryIn(value: unknown): string | undefined {
+  if (value != null && typeof value === "object") {
+    const query = (value as { query?: unknown }).query;
     if (typeof query === "string") return query;
   }
   return undefined;

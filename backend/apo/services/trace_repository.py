@@ -260,7 +260,29 @@ def derive_capabilities(
             if any(_usage_for(c) is not None for c in calls)
             else EvidenceAvailability.UNAVAILABLE
         ),
+        retrieval=_retrieval_availability([c for c in calls if c.observation_type == "RETRIEVER"]),
     )
+
+
+def _retrieval_availability(retrievals: list[LoggedCallDB]) -> EvidenceAvailability:
+    """Available when a retrieval returned a recognizable document list.
+
+    Mirrors the SDK tee's derivation (projection-tee.ts) so retrieval
+    assertions behave the same on local and canonical snapshots. Only the
+    list's presence matters here; the SDK parses the documents themselves.
+    """
+    if not retrievals:
+        return EvidenceAvailability.UNAVAILABLE
+    if any(_is_document_list(c.tool_result) or _is_document_list(c.output) for c in retrievals):
+        return EvidenceAvailability.AVAILABLE
+    return EvidenceAvailability.PARTIAL
+
+
+def _is_document_list(value: object) -> bool:
+    """A bare list of documents, or a ``{"documents": [...]}`` wrapper."""
+    if isinstance(value, list):
+        return True
+    return isinstance(value, dict) and isinstance(cast(dict[str, object], value).get("documents"), list)
 
 
 class NativeTraceRepository:

@@ -479,3 +479,83 @@ class TestTokenUsage:
         }
         snap = TraceProjectionSnapshot.model_validate(legacy)
         assert snap.capabilities.usage.value == "unavailable"
+
+
+class TestRetrievalCapability:
+    """Retrieval evidence availability, mirroring the SDK tee's derivation.
+
+    Recorded runs evaluate the backend's canonical projection, so a retrieval
+    that exported its documents on the tool channels must read back as
+    available, and one whose result shape was unrecognized must read as
+    partial — never available, never silently absent.
+    """
+
+    def _capabilities(self, calls: list[LoggedCallDB], trace_id: str, project: str):
+        with Session(engine) as session:
+            session.add(_make_run(trace_id=trace_id, project=project))
+            for call in calls:
+                session.add(call)
+            session.commit()
+            snapshot = NativeTraceRepository().get_projection_snapshot(
+                session, project_id=project, trace_id=trace_id
+            )
+        assert snapshot is not None
+        return snapshot
+
+    def test_retrieval_with_documents_on_tool_channels_is_available(self):
+        snapshot = self._capabilities(
+            [
+                _make_call(
+                    span_id="r1",
+                    trace_id="t-rag-1",
+                    project="proj-rag",
+                    parent_span_id=None,
+                    observation_type="RETRIEVER",
+                    step_name="retrieve",
+                    tool_parameters={"query": "vacation days"},
+                    tool_result={
+                        "documents": [
+                            {"id": "handbook-vacation#p1", "score": 0.9, "content": "25 days"}
+                        ]
+                    },
+                )
+            ],
+            trace_id="t-rag-1",
+            project="proj-rag",
+        )
+        assert snapshot.capabilities.retrieval.value == "available"
+        (obs,) = [o for o in snapshot.observations if o.type == "RETRIEVER"]
+        assert obs.tool_parameters == {"query": "vacation days"}
+
+    def test_retrieval_with_unrecognized_result_is_partial(self):
+        snapshot = self._capabilities(
+            [
+                _make_call(
+                    span_id="r1",
+                    trace_id="t-rag-2",
+                    project="proj-rag",
+                    parent_span_id=None,
+                    observation_type="RETRIEVER",
+                    step_name="retrieve",
+                    output={"hits": 3},
+                )
+            ],
+            trace_id="t-rag-2",
+            project="proj-rag",
+        )
+        assert snapshot.capabilities.retrieval.value == "partial"
+
+    def test_trace_without_retrievals_is_unavailable(self):
+        snapshot = self._capabilities(
+            [
+                _make_call(
+                    span_id="t1",
+                    trace_id="t-rag-3",
+                    project="proj-rag",
+                    parent_span_id=None,
+                )
+            ],
+            trace_id="t-rag-3",
+            project="proj-rag",
+        )
+        assert snapshot.capabilities.retrieval.value == "unavailable"

@@ -301,7 +301,7 @@ export class TraceView {
       .filter((o) => o.type === "RETRIEVER")
       .map((o) => {
         const retrieval: TraceRetrieval = { spanId: o.spanId, status: o.status };
-        const query = retrievalQueryFrom(o.input);
+        const query = retrievalQueryFrom(o);
         if (query !== undefined) retrieval.query = query;
         const documents = documentsFromObservation(o);
         if (documents !== undefined) retrieval.documents = documents;
