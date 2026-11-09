@@ -256,9 +256,7 @@ describe("Runs page environment and label filters", () => {
 
   it("shows a carried label by its name while filtering by its id", () => {
     renderRuns("label=customer:c-2&environment=prod");
-    // The rail's Active chip resolves the id to the facets' newest name...
     expect(screen.getByRole("button", { name: "Remove customer Globex" })).toBeInTheDocument();
-    // ...and the value itself is the checked row under its dimension.
     expect(screen.getByRole("checkbox", { name: "customer Globex" })).toHaveAttribute(
       "aria-checked",
       "true",

@@ -27,10 +27,10 @@ describe("run metric filters", () => {
     });
   });
 
-  it("drops missing, empty, negative, and non-numeric bounds", () => {
-    expect(parseMetricFilters({ cost_min: "", cost_max: "abc", duration_min: "-5" })).toEqual(
-      EMPTY_METRIC_FILTERS,
-    );
+  it("drops missing, empty, whitespace, negative, and non-numeric bounds", () => {
+    expect(
+      parseMetricFilters({ cost_min: "", cost_max: "abc", duration_min: "-5", duration_max: "  " }),
+    ).toEqual(EMPTY_METRIC_FILTERS);
   });
 
   it("round-trips parse through the URL params updateUrl writes", () => {
@@ -56,8 +56,8 @@ describe("run metric filters", () => {
       durationSeconds: { min: 300, max: null },
     });
     expect(chips).toEqual([
-      { metric: "Cost", text: "$0.1 to 0.5" },
-      { metric: "Duration", text: "over 5 min" },
+      { metric: "Cost", kind: "cost", text: "$0.1 to 0.5" },
+      { metric: "Duration", kind: "duration", text: "over 5 min" },
     ]);
     expect(metricChips(EMPTY_METRIC_FILTERS)).toEqual([]);
   });

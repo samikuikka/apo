@@ -37,6 +37,12 @@ class TestGetClientIpTrustedProxy:
         req = _request("10.0.0.5", "198.51.100.7, 10.0.0.5")
         assert get_client_ip(req) == "198.51.100.7"
 
+    def test_whitespace_only_forwarded_for_falls_back_to_peer(self) -> None:
+        # An empty first hop must not collapse every such visitor onto one
+        # shared bucket key.
+        req = _request("10.0.0.5", "  ")
+        assert get_client_ip(req) == "10.0.0.5"
+
     def test_no_header_returns_socket_peer(self) -> None:
         req = _request("203.0.113.5", None)
         assert get_client_ip(req) == "203.0.113.5"

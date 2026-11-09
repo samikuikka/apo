@@ -93,8 +93,6 @@ def write_bundle(domains: list[str], snapshot: str) -> None:
     )
     # Round-trip through the production loader: if the written file were
     # rejected at startup, fail here instead, where the mistake is fixable.
-    import sys
-
     sys.path.insert(0, str(BACKEND_ROOT))
     from apo.services.email_admission import build_disposable_domain_matcher
 

@@ -116,6 +116,14 @@ def test_duration_max_excludes_batches_without_a_span(client: TestClient, sessio
     assert _ids(client, duration_max=120) == ["b-cheap"]
 
 
+def test_zero_bounds_filter_like_any_other_number(client: TestClient, session: Session) -> None:
+    seeded(session)
+    # Truthiness checks would treat 0 as "no filter" and drop the span guard.
+    assert _ids(client, duration_min=0) == ["b-pricey", "b-mid", "b-cheap"]
+    assert _ids(client, duration_max=0) == []
+    assert _ids(client, cost_max=0) == []
+
+
 def test_negative_bounds_are_rejected(client: TestClient, session: Session) -> None:
     seeded(session)
     response = client.get(

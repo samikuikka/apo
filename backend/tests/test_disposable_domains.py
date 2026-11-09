@@ -279,3 +279,134 @@ class TestAdmissionPaths:
             )
         assert exc.value.status_code == 422
         assert "permanent" in exc.value.detail
+
+
+class TestAcceptRecheck:
+    """Acceptance re-checks admissibility where the user row is created.
+
+    An invitation issued while a domain was allowlisted (or before the
+    blocklist existed) must not admit once the allowlist is gone.
+    """
+
+    def test_project_invitation_accept_refuses_legacy_disposable_email(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import asyncio
+
+        from apo.models.db import ProjectDB, ProjectMembershipDB, UserDB
+        from apo.models.schemas import CreateProjectInvitationRequest
+        from apo.services.project_invitations import (
+            accept_invitation_create_account,
+            create_or_refresh_invitation,
+        )
+
+        owner = UserDB(
+            email="owner@example.com",
+            name="Owner",
+            password_hash="x",
+            is_admin=False,
+            is_active=True,
+        )
+        session.add(owner)
+        session.commit()
+        project = ProjectDB(id="proj-legacy", name="P", created_by=owner.id)
+        session.add(project)
+        session.add(
+            ProjectMembershipDB(project_id=project.id, user_id=owner.id, role="owner")
+        )
+        session.commit()
+
+        monkeypatch.setenv(ALLOWLIST_ENV, "mailinator.com")
+        get_disposable_domain_matcher.cache_clear()
+        body = CreateProjectInvitationRequest(email="burner@mailinator.com", role="member")
+        created = asyncio.run(
+            create_or_refresh_invitation(
+                session,
+                project_id=project.id,
+                body=body,
+                invited_by_user_id=owner.id,
+                invited_by_role="owner",
+            )
+        )
+        token = (created.invite_url or "").split("token=")[-1]
+        assert token
+
+        monkeypatch.delenv(ALLOWLIST_ENV)
+        get_disposable_domain_matcher.cache_clear()
+
+        with pytest.raises(HTTPException) as exc:
+            accept_invitation_create_account(
+                session,
+                raw_token=token,
+                name="Burner",
+                password="correct horse battery staple 7",
+            )
+        assert exc.value.status_code == 422
+        assert "permanent" in exc.value.detail
+
+    def test_hosted_access_accept_refuses_legacy_disposable_email(
+        self, session: Session, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import asyncio
+
+        from apo.models.db import UserDB
+        from apo.services.hosted_access_invitations import (
+            accept_hosted_access_create_account,
+        )
+
+        admin = UserDB(
+            email="admin@example.com",
+            name="Admin",
+            password_hash="x",
+            is_admin=True,
+            is_active=True,
+        )
+        session.add(admin)
+        session.commit()
+
+        monkeypatch.setenv(ALLOWLIST_ENV, "mailinator.com")
+        get_disposable_domain_matcher.cache_clear()
+        created = asyncio.run(
+            create_or_refresh_hosted_access_invitation(
+                session, email="burner@mailinator.com", invited_by_user_id=admin.id
+            )
+        )
+        token = (created.invite_url or "").split("token=")[-1]
+        assert token
+
+        monkeypatch.delenv(ALLOWLIST_ENV)
+        get_disposable_domain_matcher.cache_clear()
+
+        with pytest.raises(HTTPException) as exc:
+            accept_hosted_access_create_account(
+                session,
+                raw_token=token,
+                name="Burner",
+                password="correct horse battery staple 7",
+                project_name="Burner Project",
+            )
+        assert exc.value.status_code == 422
+        assert "permanent" in exc.value.detail
+
+
+class TestSetupExemption:
+    def test_setup_bootstrap_accepts_a_disposable_domain(
+        self, client: Any, session: Session
+    ) -> None:
+        """Bootstrap runs before any policy exists, so the first account is
+        exempt: an operator signing up with an alias domain must not be
+        locked out of a fresh installation."""
+        from sqlmodel import select
+
+        from apo.models.db import UserDB
+
+        resp = client.post(
+            "/auth/setup",
+            json={
+                "email": "founder@yopmail.com",
+                "password": "AdminPass123",
+                "name": "Founder",
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        assert session.exec(select(UserDB)).first() is not None

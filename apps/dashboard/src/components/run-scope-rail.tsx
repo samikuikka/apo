@@ -21,6 +21,7 @@ import {
   type RunScope,
 } from "@/lib/run-scope";
 import {
+  clearMetricRange,
   EMPTY_METRIC_FILTERS,
   medianLabel,
   metricChips,
@@ -178,12 +179,7 @@ export function RailToggle({
             dimension={range.metric}
             value={range.text}
             onRemove={() =>
-              onMetricsChange?.({
-                ...EMPTY_METRIC_FILTERS,
-                ...(range.metric === "Cost"
-                  ? { cost: EMPTY_METRIC_FILTERS.cost }
-                  : { durationSeconds: EMPTY_METRIC_FILTERS.durationSeconds }),
-              })
+              onMetricsChange?.(clearMetricRange(metrics ?? EMPTY_METRIC_FILTERS, range.kind))
             }
           />
         ))}
@@ -366,12 +362,7 @@ function ScopeRailBody({
                   dimension={range.metric}
                   value={range.text}
                   onRemove={() =>
-                    onMetricsChange?.({
-                      ...EMPTY_METRIC_FILTERS,
-                      ...(range.metric === "Cost"
-                        ? { cost: EMPTY_METRIC_FILTERS.cost }
-                        : { durationSeconds: EMPTY_METRIC_FILTERS.durationSeconds }),
-                    })
+                    onMetricsChange?.(clearMetricRange(metrics, range.kind))
                   }
                 />
               ))}
@@ -500,7 +491,14 @@ function RangeInputs({
     const trimmed = text.trim();
     const value = trimmed === "" ? null : parse(trimmed);
     const next = value !== null && Number.isFinite(value) && value >= 0 ? value : null;
-    onChange(which === "min" ? { ...bounds, min: next } : { ...bounds, max: next });
+    const range = which === "min" ? { ...bounds, min: next } : { ...bounds, max: next };
+    // An inverted pair (min above max) matches nothing; commit it in order
+    // so the chip always names a real range instead of an empty list.
+    if (range.min !== null && range.max !== null && range.min > range.max) {
+      onChange({ min: range.max, max: range.min });
+      return;
+    }
+    onChange(range);
   };
   return (
     <div className="flex items-center gap-1.5">

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiClient } from "../api-client";
 import {
   getProjectAgentTask,
+  listAgentTaskBatchRuns,
   listTaskRuns,
 } from "../agent-task-api";
 
@@ -38,6 +39,44 @@ describe("listTaskRuns", () => {
       cache: "no-store",
       query: expect.objectContaining({ limit: 200 }),
     });
+  });
+});
+
+describe("listAgentTaskBatchRuns", () => {
+  beforeEach(() => {
+    vi.mocked(apiClient).mockReset();
+  });
+
+  it("forwards metric range bounds as query params", async () => {
+    vi.mocked(apiClient).mockResolvedValue({ data: [], total: 0, page: 1, page_size: 20 });
+
+    await listAgentTaskBatchRuns("project-1", {
+      cost_min: 0.25,
+      cost_max: 0.5,
+      duration_min: 120,
+      duration_max: 600,
+    });
+
+    expect(apiClient).toHaveBeenCalledWith("/v1/agent-task-batch-runs", {
+      cache: "no-store",
+      query: expect.objectContaining({
+        cost_min: 0.25,
+        cost_max: 0.5,
+        duration_min: 120,
+        duration_max: 600,
+      }),
+    });
+  });
+
+  it("sends no bound params when the URL carried none", async () => {
+    vi.mocked(apiClient).mockResolvedValue({ data: [], total: 0, page: 1, page_size: 20 });
+
+    await listAgentTaskBatchRuns("project-1");
+
+    const query = vi.mocked(apiClient).mock.calls[0][1]?.query as Record<string, unknown>;
+    for (const param of ["cost_min", "cost_max", "duration_min", "duration_max"]) {
+      expect(query[param]).toBeUndefined();
+    }
   });
 });
 

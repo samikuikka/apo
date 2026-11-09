@@ -274,6 +274,28 @@ describe("metric sections", () => {
     expect(onMetricsChange).toHaveBeenCalledWith(EMPTY_METRIC_FILTERS);
   });
 
+  it("removing one metric chip keeps the other metric's range", () => {
+    const onMetricsChange = renderRail(
+      facetsWithMetrics,
+      { cost: { min: 0.1, max: 0.5 }, durationSeconds: { min: 120, max: null } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove Cost $0.1 to 0.5" }));
+    expect(onMetricsChange).toHaveBeenCalledWith({
+      cost: { min: null, max: null },
+      durationSeconds: { min: 120, max: null },
+    });
+  });
+
+  it("an inverted typed pair commits in order", () => {
+    const onMetricsChange = renderRail(facetsWithMetrics, { cost: { min: 0.5, max: null } });
+    fireEvent.change(screen.getByLabelText("Cost maximum"), { target: { value: "0.1" } });
+    fireEvent.blur(screen.getByLabelText("Cost maximum"));
+    expect(onMetricsChange).toHaveBeenCalledWith({
+      cost: { min: 0.1, max: 0.5 },
+      durationSeconds: { min: null, max: null },
+    });
+  });
+
   it("the closed toggle shows metric chips and counts them as active", () => {
     render(
       <RailToggle
@@ -288,5 +310,25 @@ describe("metric sections", () => {
     );
     expect(screen.getByRole("button", { name: "Show filters" })).toHaveTextContent("1 active");
     expect(screen.getByRole("button", { name: "Remove Cost $0.1 to 0.5" })).toBeInTheDocument();
+  });
+
+  it("the closed toggle's metric chip removal keeps the other range", () => {
+    const onMetricsChange = vi.fn();
+    render(
+      <RailToggle
+        facets={facets}
+        scope={EMPTY_RUN_SCOPE}
+        onScopeChange={vi.fn()}
+        metrics={{ cost: { min: 0.1, max: 0.5 }, durationSeconds: { min: 120, max: null } }}
+        onMetricsChange={onMetricsChange}
+        open={false}
+        onToggle={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove Cost $0.1 to 0.5" }));
+    expect(onMetricsChange).toHaveBeenCalledWith({
+      cost: { min: null, max: null },
+      durationSeconds: { min: 120, max: null },
+    });
   });
 });

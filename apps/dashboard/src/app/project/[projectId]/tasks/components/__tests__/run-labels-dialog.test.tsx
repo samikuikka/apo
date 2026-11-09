@@ -93,14 +93,50 @@ describe("RunLabelsDialog", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/already has a value/i);
   });
 
-  it("offers the dimension's known values as fill suggestions", async () => {
-    renderDialog();
-    fireEvent.change(screen.getByLabelText("Label key"), { target: { value: "team" } });
-    await waitFor(() => {
-      expect(screen.getByText("Used for team:")).toBeInTheDocument();
+  it("adds a suggestion with the facet's own id, not a retyped name", async () => {
+    vi.mocked(fetchRunLabelFacets).mockResolvedValue({
+      environments: [],
+      labels: [
+        {
+          key: "customer",
+          // id and name differ: committing the name as a new id would
+          // fork the dimension the suggestion exists to reuse.
+          values: [{ id: "c-2", name: "Globex", count: 3 }],
+        },
+      ],
     });
-    fireEvent.click(screen.getByRole("button", { name: "ml" }));
-    expect(screen.getByLabelText("Label value")).toHaveValue("ml");
+    const onStart = renderDialog();
+    fireEvent.change(screen.getByLabelText("Label key"), { target: { value: "customer" } });
+    await waitFor(() => {
+      expect(screen.getByText("Used for customer:")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Globex" }));
+    expect(screen.getByRole("button", { name: "Remove customer Globex" })).toBeInTheDocument();
+    fireEvent.click(withinDialogRunButton(screen.getByRole("dialog")));
+    expect(onStart).toHaveBeenCalledWith({ customer: { id: "c-2", name: "Globex" } });
+  });
+
+  it("a reopened dialog starts from a clean draft", () => {
+    const onStart = vi.fn();
+    const props = {
+      onOpenChange: vi.fn(),
+      projectId: "acme",
+      selectedCount: 2,
+      running: false,
+      onStart,
+    };
+    const { rerender } = render(<RunLabelsDialog open {...props} />);
+    fireEvent.change(screen.getByLabelText("Label key"), { target: { value: "team" } });
+    fireEvent.change(screen.getByLabelText("Label value"), { target: { value: "platforms" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add Label" }));
+    expect(screen.getByRole("button", { name: "Remove team platforms" })).toBeInTheDocument();
+
+    rerender(<RunLabelsDialog open={false} {...props} />);
+    rerender(<RunLabelsDialog open {...props} />);
+
+    expect(screen.queryByRole("button", { name: "Remove team platforms" })).toBeNull();
+    fireEvent.click(withinDialogRunButton(screen.getByRole("dialog")));
+    expect(onStart).toHaveBeenCalledWith({});
   });
 
   it("Enter in the value field adds the label", () => {

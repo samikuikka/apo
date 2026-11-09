@@ -141,6 +141,8 @@ function trimFloat(value: number): string {
 export interface MetricChip {
   /** Which metric: "Cost" or "Duration". */
   metric: string;
+  /** The same metric as a stable key; chip handlers dispatch on this. */
+  kind: MetricKind;
   text: string;
 }
 
@@ -149,20 +151,32 @@ export function metricChips(metrics: RunMetricFilters): MetricChip[] {
   const chips: MetricChip[] = [];
   const { cost, durationSeconds } = metrics;
   if (cost.min !== null || cost.max !== null) {
-    chips.push({ metric: "Cost", text: dollarsText(cost) });
+    chips.push({ metric: "Cost", kind: "cost", text: dollarsText(cost) });
   }
   if (durationSeconds.min !== null || durationSeconds.max !== null) {
-    chips.push({ metric: "Duration", text: minutesText(durationSeconds) });
+    chips.push({ metric: "Duration", kind: "duration", text: minutesText(durationSeconds) });
   }
   return chips;
+}
+
+/** Clear one metric's range, keeping the other metric's range untouched. */
+export function clearMetricRange(
+  metrics: RunMetricFilters,
+  kind: MetricKind,
+): RunMetricFilters {
+  return kind === "cost"
+    ? { ...metrics, cost: EMPTY_METRIC_FILTERS.cost }
+    : { ...metrics, durationSeconds: EMPTY_METRIC_FILTERS.durationSeconds };
 }
 
 function numberOrNull(source: ParamSource, key: string): number | null {
   const raw =
     source instanceof URLSearchParams ? source.get(key) : ((source as Record<string, unknown>)[key] as unknown);
   const value = Array.isArray(raw) ? raw[0] : raw;
-  if (value === undefined || value === null || value === "") return null;
-  const parsed = Number(value);
+  if (value === undefined || value === null) return null;
+  const text = String(value).trim();
+  if (text === "") return null;
+  const parsed = Number(text);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 

@@ -70,9 +70,6 @@ export function UsersAdmin({
     }
   }, [initialUsers])
 
-  // One runner for every row action: marks the row busy, applies the
-  // returned row, and reports the outcome. Backend refusals arrive as
-  // ApiError, whose message carries the server's reason.
   async function runUserAction(
     userId: string,
     action: UserAction,
