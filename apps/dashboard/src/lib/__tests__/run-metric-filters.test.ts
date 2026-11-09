@@ -5,9 +5,37 @@ import {
   isMetricFilterActive,
   metricChips,
   metricFilterParams,
+  loadSavedScopes,
   metricPresets,
   parseMetricFilters,
+  railOwnedParams,
+  saveSavedScopes,
 } from "../run-metric-filters";
+
+// Node 25's global localStorage lacks the Storage methods; stand in memory.
+class MemoryStorage implements Storage {
+  private data = new Map<string, string>();
+  get length() {
+    return this.data.size;
+  }
+  clear() {
+    this.data.clear();
+  }
+  getItem(key: string) {
+    return this.data.get(key) ?? null;
+  }
+  key(index: number) {
+    return [...this.data.keys()][index] ?? null;
+  }
+  removeItem(key: string) {
+    this.data.delete(key);
+  }
+  setItem(key: string, value: string) {
+    this.data.set(key, String(value));
+  }
+}
+
+vi.stubGlobal("localStorage", new MemoryStorage());
 
 describe("run metric filters", () => {
   it("reads the API's own param names from either kind of search params", () => {
@@ -82,5 +110,37 @@ describe("run metric filters", () => {
     expect(metricPresets(undefined, "cost")).toEqual([]);
     expect(metricPresets(null, "duration")).toEqual([]);
     expect(metricPresets({ p20: 5, p50: 5, p80: 5 }, "cost")).toEqual([]);
+  });
+});
+
+describe("saved scopes", () => {
+  it("keeps only the rail-owned params when saving", () => {
+    const params = railOwnedParams(
+      "?label=team:platforms&label=release:r42&environment=prod&cost_min=0.25&page=3&status=failed&q=x",
+    );
+    const kept = new URLSearchParams(params);
+    expect(kept.getAll("label")).toEqual(["team:platforms", "release:r42"]);
+    expect(kept.get("environment")).toBe("prod");
+    expect(kept.get("cost_min")).toBe("0.25");
+    expect(kept.get("page")).toBeNull();
+    expect(kept.get("status")).toBeNull();
+  });
+
+  it("round-trips saved scopes through storage, dropping corrupt entries", () => {
+    window.localStorage.setItem(
+      "runs-saved-scopes",
+      JSON.stringify([
+        { id: "a", name: "Platform nightly", params: "label=team:platforms" },
+        { broken: true },
+      ]),
+    );
+    const loaded = loadSavedScopes();
+    expect(loaded).toEqual([
+      { id: "a", name: "Platform nightly", params: "label=team:platforms" },
+    ]);
+    saveSavedScopes([
+      { id: "b", name: "Cheap", params: "cost_max=0.1" },
+    ]);
+    expect(loadSavedScopes()).toEqual([{ id: "b", name: "Cheap", params: "cost_max=0.1" }]);
   });
 });

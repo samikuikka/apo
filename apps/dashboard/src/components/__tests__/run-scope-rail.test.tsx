@@ -332,3 +332,50 @@ describe("metric sections", () => {
     });
   });
 });
+
+describe("saved views", () => {
+  function renderWithSaved() {
+    const onApplyParams = vi.fn();
+    render(
+      <ScopeRail
+        facets={facets}
+        scope={EMPTY_RUN_SCOPE}
+        onScopeChange={vi.fn()}
+        onApplyParams={onApplyParams}
+        currentParams="label=team:platforms"
+        onClose={vi.fn()}
+      />,
+    );
+    return onApplyParams;
+  }
+
+  it("saves the current filters under a name, then applies them on click", async () => {
+    const onApplyParams = renderWithSaved();
+    fireEvent.change(screen.getByLabelText("Saved view name"), {
+      target: { value: "Platform nightly" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const entry = await screen.findByRole("button", { name: "Platform nightly" });
+    fireEvent.click(entry);
+    expect(onApplyParams).toHaveBeenCalledWith("label=team:platforms");
+  });
+
+  it("deletes a saved view", async () => {
+    window.localStorage.setItem(
+      "runs-saved-scopes",
+      JSON.stringify([{ id: "a", name: "Old view", params: "environment=prod" }]),
+    );
+    renderWithSaved();
+    const entry = await screen.findByRole("button", { name: "Old view" });
+    expect(entry).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete Old view" }));
+    expect(screen.queryByRole("button", { name: "Old view" })).toBeNull();
+  });
+
+  it("hides the block when the page supplies no writer", () => {
+    render(
+      <ScopeRail facets={facets} scope={EMPTY_RUN_SCOPE} onScopeChange={vi.fn()} onClose={vi.fn()} />,
+    );
+    expect(screen.queryByLabelText("Saved view name")).toBeNull();
+  });
+});
