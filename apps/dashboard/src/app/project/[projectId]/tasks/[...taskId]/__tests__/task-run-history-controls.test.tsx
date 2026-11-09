@@ -64,6 +64,33 @@ beforeEach(() => {
   searchParamsHolder = new URLSearchParams();
 });
 
+// Node 25 ships a global localStorage without the Storage methods the rail's
+// remembered visibility needs; an in-memory Storage stands in, same pattern
+// as the run-scope-rail tests.
+class MemoryStorage implements Storage {
+  private data = new Map<string, string>();
+  get length() {
+    return this.data.size;
+  }
+  clear() {
+    this.data.clear();
+  }
+  getItem(key: string) {
+    return this.data.get(key) ?? null;
+  }
+  key(index: number) {
+    return [...this.data.keys()][index] ?? null;
+  }
+  removeItem(key: string) {
+    this.data.delete(key);
+  }
+  setItem(key: string, value: string) {
+    this.data.set(key, String(value));
+  }
+}
+
+vi.stubGlobal("localStorage", new MemoryStorage());
+
 describe("TaskRunHistoryControls (presentational)", () => {
   it("renders the model label and an escape link", () => {
     render(
@@ -277,7 +304,10 @@ describe("RunHistoryScopeBar (URL ownership)", () => {
       labels: [{ key: "customer", values: [{ id: "c-1", name: "Acme", count: 2 }] }],
     };
     render(<RunHistoryScopeBar projectId="acme" facets={FACETS} labelFacets={labelFacets} />);
-    expect(screen.getByRole("combobox", { name: "customer filter" })).toHaveTextContent("Acme");
+    // Close the rail (open by default): the toggle then carries the scope
+    // as chips, the same way the Runs page behaves.
+    await userEvent.click(screen.getByRole("button", { name: "Hide filters" }));
+    expect(screen.getByRole("button", { name: "Remove customer Acme" })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Status filter" }));
     await userEvent.click(screen.getByRole("menuitemcheckbox", { name: /passed/i }));

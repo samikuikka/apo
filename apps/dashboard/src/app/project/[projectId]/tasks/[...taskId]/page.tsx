@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TaskFileBrowser } from "@/components/agent-task-files/task-file-browser";
 import { TaskRunHistory } from "./task-run-history";
+import { RunHistoryRail } from "./run-history-rail";
 import { TaskRunsAutoRefresh } from "./task-runs-auto-refresh";
 import { RunHistoryScopeBar } from "./run-history-scope-bar";
 import Link from "next/link";
@@ -291,12 +292,17 @@ export default async function TaskDetailPage({
         </Suspense>
       </div>
 
-      <TaskRunsAutoRefresh
-        project={projectId}
-        taskId={taskId}
-        runs={taskRuns}
-        watchForNewRuns={inCatalog}
-      />
+      {/* The same scope rail the Runs page uses, around this task's
+          history. Client-side (reads the search params), so it sits in its
+          own Suspense boundary like the scope bar above. */}
+      <Suspense fallback={null}>
+        <RunHistoryRail labelFacets={labelFacets}>
+          <TaskRunsAutoRefresh
+            project={projectId}
+            taskId={taskId}
+            runs={taskRuns}
+            watchForNewRuns={inCatalog}
+          />
 
       <Tabs defaultValue="runs" className="flex flex-col">
         <div className="border-b border-border px-6">
@@ -322,7 +328,9 @@ export default async function TaskDetailPage({
             />
           </TabsContent>
         ) : null}
-      </Tabs>
+        </Tabs>
+        </RunHistoryRail>
+      </Suspense>
     </div>
   );
 }
