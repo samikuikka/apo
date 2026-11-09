@@ -142,8 +142,10 @@ these and on the batch's `environment`; a task run matches through its batch.
   batch without both timestamps never matches a duration filter.
 
 `GET /v1/projects/{project_id}/agent-task-run-label-facets` returns the filter
-options: the project's distinct environments, and per label key the distinct
-ids with the name of their most recent batch and a batch count.
+options: the project's distinct environments, per label key the distinct ids
+with the name of their most recent batch and a batch count, and p20/p50/p80
+of batch cost and duration so the range presets bucket by the project's own
+distribution (cheapest 20% and so on) instead of fixed cutoffs.
 
 ### Executor and Attempt Auth
 

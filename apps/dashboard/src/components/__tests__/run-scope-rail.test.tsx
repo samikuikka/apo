@@ -185,15 +185,24 @@ describe("metric sections", () => {
     cost: { min: null, max: null },
     durationSeconds: { min: null, max: null },
   };
+  // A project whose own distribution sets the preset cutoffs.
+  const facetsWithMetrics: RunLabelFacets = {
+    ...facets,
+    metrics: {
+      cost: { p20: 0.08, p50: 0.23, p80: 0.61 },
+      duration_seconds: { p20: 30, p50: 90, p80: 300 },
+    },
+  };
 
   function renderRail(
+    railFacets: RunLabelFacets | null = facetsWithMetrics,
     overrides: Partial<RunMetricFilters> = {},
     onScopeChange: (next: RunScope) => void = vi.fn(),
   ) {
     const onMetricsChange = vi.fn();
     render(
       <ScopeRail
-        facets={facets}
+        facets={railFacets}
         scope={EMPTY_RUN_SCOPE}
         onScopeChange={onScopeChange}
         metrics={{ ...metrics, ...overrides }}
@@ -204,35 +213,44 @@ describe("metric sections", () => {
     return onMetricsChange;
   }
 
-  it("renders Cost and Duration sections with presets", () => {
+  it("renders Cost and Duration sections with the median and derived presets", () => {
     renderRail();
-    expect(screen.getByText("Cost")).toBeInTheDocument();
-    expect(screen.getByText("Duration")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Under $0.10" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "1 to 5 min" })).toBeInTheDocument();
+    expect(screen.getByText("median $0.23")).toBeInTheDocument();
+    expect(screen.getByText("median 1.5 min")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cheapest 20% under \$0\.08/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Slowest 20% over 5 min/ })).toBeInTheDocument();
   });
 
-  it("a cost preset applies dollars bounds", () => {
+  it("a cost preset applies the project's own cutoffs", () => {
     const onMetricsChange = renderRail();
-    fireEvent.click(screen.getByRole("button", { name: "$0.10 to 0.50" }));
+    fireEvent.click(screen.getByRole("button", { name: /Cheapest 20%/ }));
     expect(onMetricsChange).toHaveBeenCalledWith({
-      cost: { min: 0.1, max: 0.5 },
+      cost: { min: null, max: 0.08 },
       durationSeconds: { min: null, max: null },
     });
   });
 
-  it("a duration preset applies second bounds", () => {
+  it("a duration preset applies second cutoffs from the distribution", () => {
     const onMetricsChange = renderRail();
-    fireEvent.click(screen.getByRole("button", { name: "Over 5 min" }));
+    fireEvent.click(screen.getByRole("button", { name: /Fastest 20%/ }));
     expect(onMetricsChange).toHaveBeenCalledWith({
       cost: { min: null, max: null },
-      durationSeconds: { min: 300, max: null },
+      durationSeconds: { min: null, max: 30 },
     });
   });
 
+  it("shows no presets when the project has no distribution, but keeps the inputs", () => {
+    renderRail(facets);
+    expect(screen.queryByRole("button", { name: /Cheapest 20%/ })).toBeNull();
+    expect(screen.getByLabelText("Cost minimum")).toBeInTheDocument();
+  });
+
   it("clicking the pressed preset clears the range", () => {
-    const onMetricsChange = renderRail({ durationSeconds: { min: 300, max: null } });
-    const preset = screen.getByRole("button", { name: "Over 5 min" });
+    const onMetricsChange = renderRail(
+      facetsWithMetrics,
+      { durationSeconds: { min: 300, max: null } },
+    );
+    const preset = screen.getByRole("button", { name: /Slowest 20%/ });
     expect(preset.getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(preset);
     expect(onMetricsChange).toHaveBeenCalledWith(EMPTY_METRIC_FILTERS);
@@ -250,7 +268,7 @@ describe("metric sections", () => {
 
   it("Clear All clears the metrics with the scope", () => {
     const onScopeChange = vi.fn();
-    const onMetricsChange = renderRail({ cost: { min: 0.1, max: null } }, onScopeChange);
+    const onMetricsChange = renderRail(facetsWithMetrics, { cost: { min: 0.1, max: null } }, onScopeChange);
     fireEvent.click(screen.getByRole("button", { name: "Clear All" }));
     expect(onScopeChange).toHaveBeenCalledWith(EMPTY_RUN_SCOPE);
     expect(onMetricsChange).toHaveBeenCalledWith(EMPTY_METRIC_FILTERS);

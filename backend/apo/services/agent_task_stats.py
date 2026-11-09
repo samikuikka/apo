@@ -20,12 +20,13 @@ attribute on it that *could* hold a transcript.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import select as sa_select
-from sqlmodel import Session
+from sqlmodel import col, Session
 
 from ..models.columns import (
     AGENT_TASK_BATCH_ID_COL,
@@ -36,6 +37,8 @@ from ..models.columns import (
 )
 from ..models.db import AgentTaskBatchRunDB
 from ..models.schemas import (
+    RunMetricFacets,
+    RunMetricQuantiles,
     AgentTaskRunStats,
     RunConfigEffortFacet,
     RunConfigModelFacet,
@@ -308,3 +311,74 @@ def compute_run_host_facets(
         RunHostFacet(label=str(value), count=int(count))
         for value, count in sorted(rows, key=lambda r: (-int(r[1]), str(r[0])))
     ]
+
+
+def compute_run_metric_quantiles(session: Session, project_id: str) -> RunMetricFacets:
+    """p20/p50/p80 of batch cost and wall-clock duration over a project.
+
+    The filter rail's range presets bucket by the project's own distribution
+    (cheapest 20% and so on): fixed dollar cutoffs cannot fit every model
+    mix. Cost is the batch's child-run sum, exactly what the list shows and
+    filters by; duration only counts batches with both timestamps, and the
+    span is computed in Python so both dialects agree. Fewer than five
+    values leaves that metric None so the rail shows no presets rather than
+    buckets off two runs.
+    """
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select as sa_sel
+
+    from ..models.columns import AGENT_TASK_BATCH_PROJECT_COL
+    from ..models.db import AgentTaskBatchRunDB, AgentTaskRunDB
+
+    span_rows = session.execute(
+        sa_sel(
+            col(AgentTaskBatchRunDB.started_at),
+            col(AgentTaskBatchRunDB.completed_at),
+        ).where(
+            AGENT_TASK_BATCH_PROJECT_COL == project_id,
+            col(AgentTaskBatchRunDB.started_at).is_not(None),
+            col(AgentTaskBatchRunDB.completed_at).is_not(None),
+        )
+    ).all()
+    durations = [
+        (completed - started).total_seconds()
+        for started, completed in span_rows
+        if started is not None and completed is not None and completed >= started
+    ]
+
+    cost_rows = session.execute(
+        sa_sel(
+            sa_func.sum(sa_func.coalesce(AgentTaskRunDB.total_cost, 0.0)).label("cost"),
+        )
+        .join(
+            AgentTaskBatchRunDB,
+            col(AgentTaskRunDB.batch_run_id) == col(AgentTaskBatchRunDB.id),
+        )
+        .where(AGENT_TASK_BATCH_PROJECT_COL == project_id)
+        .group_by(AgentTaskRunDB.batch_run_id)
+    ).all()
+    costs = [float(cost) for (cost,) in cost_rows if cost is not None]
+
+    return RunMetricFacets(
+        cost=_quantiles(costs),
+        duration_seconds=_quantiles(durations),
+    )
+
+
+_MIN_VALUES_FOR_QUANTILES = 5
+
+
+def _quantiles(values: list[float]) -> RunMetricQuantiles | None:
+    if len(values) < _MIN_VALUES_FOR_QUANTILES:
+        return None
+    ordered = sorted(values)
+    n = len(ordered)
+
+    def nearest_rank(q: float) -> float:
+        return ordered[max(0, math.ceil(q * n) - 1)]
+
+    return RunMetricQuantiles(
+        p20=nearest_rank(0.2),
+        p50=nearest_rank(0.5),
+        p80=nearest_rank(0.8),
+    )

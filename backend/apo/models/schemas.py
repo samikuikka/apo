@@ -719,11 +719,30 @@ class RunLabelKeyFacet(SQLModel):
     values: list[RunLabelFacetValue] = []
 
 
+class RunMetricQuantiles(SQLModel):
+    """Nearest-rank quantiles over a project's batches, in native units
+    (dollars for cost, seconds for duration)."""
+
+    p20: float
+    p50: float
+    p80: float
+
+
+class RunMetricFacets(SQLModel):
+    """Distribution of the stored run metrics, for the range presets the
+    filter rail offers: fixed cutoffs cannot fit every model mix, so the
+    buckets come from the project's own runs. None when too few runs."""
+
+    cost: RunMetricQuantiles | None = None
+    duration_seconds: RunMetricQuantiles | None = None
+
+
 class RunLabelFacets(SQLModel):
     """Filter options for the run lists' environment and label filters."""
 
     environments: list[FacetBucket] = []
     labels: list[RunLabelKeyFacet] = []
+    metrics: RunMetricFacets = Field(default_factory=RunMetricFacets)
 
 
 class FailureBreakdownItem(SQLModel):

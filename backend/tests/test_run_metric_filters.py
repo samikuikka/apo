@@ -122,3 +122,61 @@ def test_negative_bounds_are_rejected(client: TestClient, session: Session) -> N
         "/v1/agent-task-batch-runs", params={"project": PROJECT, "cost_min": -1}
     )
     assert response.status_code == 422
+
+
+def _quantile_batch(batch_id: str, cost: float, duration_seconds: float) -> tuple[
+    AgentTaskBatchRunDB, AgentTaskRunDB
+]:
+    started = NOW - timedelta(minutes=30)
+    batch = AgentTaskBatchRunDB(
+        id=batch_id,
+        project=PROJECT,
+        selection_type="caller-task",
+        environment="default",
+        run_metadata={"trigger": {"source": "api"}},
+        status="completed",
+        total_tasks=1,
+        started_at=started,
+        completed_at=started + timedelta(seconds=duration_seconds),
+        created_at=NOW - timedelta(minutes=31),
+    )
+    run = AgentTaskRunDB(
+        id=f"r-{batch_id}",
+        batch_run_id=batch_id,
+        task_id="team/task",
+        task_path="team/task",
+        status="passed",
+        pass_result=True,
+        total_cost=cost,
+        started_at=started,
+        completed_at=started,
+    )
+    return batch, run
+
+
+def test_facets_report_distribution_quantiles(client: TestClient, session: Session) -> None:
+    session.add(ProjectDB(id=PROJECT, name=PROJECT, created_at=NOW))
+    pairs = [
+        _quantile_batch(f"b-{i}", cost=float(i), duration_seconds=float(i * 30))
+        for i in range(1, 6)
+    ]
+    session.add_all([row for pair in pairs for row in pair])
+    session.commit()
+
+    response = client.get(f"/v1/projects/{PROJECT}/agent-task-run-label-facets")
+    assert response.status_code == 200, response.text
+    metrics = response.json()["metrics"]
+    # Nearest-rank over [1..5]: p20=1, p50=3, p80=4; durations [30..150].
+    assert metrics["cost"] == {"p20": 1.0, "p50": 3.0, "p80": 4.0}
+    assert metrics["duration_seconds"] == {"p20": 30.0, "p50": 90.0, "p80": 120.0}
+
+
+def test_facets_leave_metrics_null_below_five_values(
+    client: TestClient, session: Session
+) -> None:
+    seeded(session)  # four batches: below the quantile minimum
+    response = client.get(f"/v1/projects/{PROJECT}/agent-task-run-label-facets")
+    assert response.status_code == 200, response.text
+    metrics = response.json()["metrics"]
+    assert metrics["cost"] is None
+    assert metrics["duration_seconds"] is None

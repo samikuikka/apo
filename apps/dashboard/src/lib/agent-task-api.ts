@@ -163,9 +163,22 @@ export interface RunLabelFacetValue {
 }
 
 /** Filter options for the environment and label dimensions of a project's runs. */
+/** Nearest-rank distribution of a stored run metric (dollars or seconds). */
+export interface RunMetricQuantiles {
+  p20: number;
+  p50: number;
+  p80: number;
+}
+
 export interface RunLabelFacets {
   environments: { value: string; count: number }[];
   labels: { key: string; values: RunLabelFacetValue[] }[];
+  /** Cost/duration distribution for the rail's range presets; null when the
+   * project has too few runs to bucket. */
+  metrics?: {
+    cost: RunMetricQuantiles | null;
+    duration_seconds: RunMetricQuantiles | null;
+  } | null;
 }
 
 export interface PaginatedBatchRunSummary {
