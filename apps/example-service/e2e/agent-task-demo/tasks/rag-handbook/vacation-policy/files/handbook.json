@@ -1,0 +1,42 @@
+[
+  {
+    "id": "handbook-vacation#p1",
+    "tenant": "northwind",
+    "content": "Full-time employees receive 25 days of paid vacation per calendar year. New employees accrue vacation from their first day of work."
+  },
+  {
+    "id": "handbook-vacation#p2",
+    "tenant": "northwind",
+    "content": "Vacation requests are submitted in the HR portal at least two weeks before the first day off."
+  },
+  {
+    "id": "handbook-carryover#p1",
+    "tenant": "northwind",
+    "content": "Up to 5 unused vacation days carry over into the next calendar year. Any remaining unused days expire on December 31."
+  },
+  {
+    "id": "handbook-sick-leave#p1",
+    "tenant": "northwind",
+    "content": "Sick leave needs a doctor's note after three consecutive days of absence."
+  },
+  {
+    "id": "handbook-remote#p1",
+    "tenant": "northwind",
+    "content": "Employees may work remotely up to three days per week with their manager's approval."
+  },
+  {
+    "id": "handbook-expenses#p1",
+    "tenant": "northwind",
+    "content": "Travel expenses are reimbursed within 30 days when receipts are uploaded to the finance portal."
+  },
+  {
+    "id": "acme-vacation#p1",
+    "tenant": "acme",
+    "content": "Acme full-time employees receive 30 days of paid vacation per year, and new employees get 5 bonus vacation days that never expire."
+  },
+  {
+    "id": "acme-payroll#p1",
+    "tenant": "acme",
+    "content": "Acme salaries are paid on the 25th of each month."
+  }
+]
