@@ -78,8 +78,11 @@ export {
 } from "./checks/matchers.ts";
 export type {
   TestContext,
+  NotTestContext,
   NameMatcher,
   ToolCallOptions,
+  DocumentMatcher,
+  RetrievedOptions,
   DurationBudgetOptions,
   TokenBudgetOptions,
   JudgeConfig,
