@@ -106,6 +106,22 @@ tracer.startSpan(`gen_ai.execute_tool ${toolName}`, {
 
 Without `apo.skill.name` the span name is used as the skill name.
 
+### Harness generations
+
+A task's own model calls, such as a simulated user writing the next message or a check that decides the conversation is over, land in the same trace as the agent's. Set `apo.harness: true` on those generations. apo still counts their tokens and cost, but leaves them out of the run's model drift, which compares only the agent's generations with the configured model:
+
+```typescript
+tracer.startSpan("sim-user", {
+  attributes: {
+    "gen_ai.operation.name": "chat",
+    "gen_ai.request.model": "deepseek-v4.1-flash",
+    "apo.harness": true,
+  },
+});
+```
+
+`t.judge` and `t.agent` spans are recognized without it.
+
 ## Attaching a score
 
 `score(params, config)` records a named score against a specific trace (or a single observation within it). It calls the native score API directly, a score is an apo domain record, not a span. Unlike the trace-context `trace.score(...)` method available inside a task run, this standalone form takes an explicit `traceId` and the backend `config` (endpoint + auth headers), since it has no ambient run to attach to.

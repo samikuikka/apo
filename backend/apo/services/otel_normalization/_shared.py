@@ -36,7 +36,9 @@ VALID_OBSERVATION_TYPES = frozenset({
 # were "only" tool calls or thinking projected to an empty output).
 # v12: an ERROR status without a description is a failed span (level ERROR);
 # the OTel JS SDK sends none for setStatus({ code: ERROR }).
-NORMALIZER_VERSION = 12
+# v13: apo.harness marks a call the evaluation harness made (simulated user,
+# turn-done check) rather than the system under test.
+NORMALIZER_VERSION = 13
 
 
 @final
@@ -62,6 +64,7 @@ class NormalizedSpan:
         token_usage: dict[str, int | float] | None = None,
         error_message: str | None = None,
         metadata: dict[str, Any] | None = None,
+        harness: bool = False,
         mapping_name: str = "generic",
         mapping_version: int = NORMALIZER_VERSION,
     ) -> None:
@@ -82,6 +85,7 @@ class NormalizedSpan:
         self.token_usage = token_usage or {}
         self.error_message = error_message
         self.metadata = metadata or {}
+        self.harness = harness
         self.mapping_name = mapping_name
         self.mapping_version = mapping_version
 
@@ -338,6 +342,21 @@ def extract_route(attrs: dict[str, Any]) -> str | None:
     ``apo.llm.route`` is apo's attribute for it; absent on most spans.
     """
     return get_str(attrs, "apo.llm.route")
+
+
+def extract_harness(attrs: dict[str, Any]) -> bool:
+    """Whether the evaluation harness made this call, not the system under test.
+
+    A task's own model calls (a simulated user, a turn-done check) sit in the
+    same trace as the agent's. ``apo.harness`` lets the emitter say so, so
+    agent-only readings such as model drift leave them out.
+    """
+    value = attrs.get("apo.harness")
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() == "true"
+    return False
 
 
 def extract_tokens(attrs: dict[str, Any]) -> dict[str, int | float]:

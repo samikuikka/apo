@@ -111,6 +111,20 @@ class TestExtraction:
         assert normalized.model == "my-alias"
         assert normalized.served_model == "openai/gpt-4o-mini"
 
+    def test_normalize_span_reads_apo_harness(self) -> None:
+        cases: list[tuple[object, bool]] = [
+            (True, True),
+            ("true", True),
+            (False, False),
+            ("yes", False),
+            (None, False),
+        ]
+        for value, expected in cases:
+            attributes: dict[str, object] = {"gen_ai.request.model": "sim-model"}
+            if value is not None:
+                attributes["apo.harness"] = value
+            assert normalize_span(_span(attributes=attributes)).harness is expected, value
+
 
 @pytest.fixture(autouse=True)
 def setup_database():
@@ -158,6 +172,24 @@ class TestProjection:
             session.commit()
             call = session.exec(select(LoggedCallDB)).one()
             assert call.served_model == "openai/gpt-4o-mini"
+
+    def test_harness_marker_persisted(self) -> None:
+        with Session(engine) as session:
+            TraceProjector().project(
+                _span(
+                    span_id="sim",
+                    attributes={"gen_ai.request.model": "sim-model", "apo.harness": True},
+                ),
+                session,
+            )
+            TraceProjector().project(
+                _span(span_id="agent", attributes={"gen_ai.request.model": "my-alias"}),
+                session,
+            )
+            session.commit()
+            by_id = {c.id: c for c in session.exec(select(LoggedCallDB)).all()}
+            assert by_id["sim"].harness is True
+            assert by_id["agent"].harness is False
 
     def test_rollup_splits_pairs_on_served_model(self) -> None:
         summary = model_providers_summary(
@@ -276,6 +308,26 @@ class TestDriftSummary:
             "my-alias",
         )
         assert summary is None
+
+    def test_harness_generations_excluded(self) -> None:
+        # A chat task's simulated user and turn-done check run on the
+        # harness's own model in the agent's trace; only the agent's calls
+        # say anything about what served the configured model.
+        agent = [
+            _call(id=f"agent-{i}", model="claude-haiku-5-5", served_model="claude-haiku-5-5")
+            for i in range(5)
+        ]
+        harness = [
+            _call(id=name, step_name=name, model="deepseek-v4.1-flash", harness=True)
+            for name in ("sim-user", "finished-check")
+        ]
+        assert model_drift_summary([*agent, *harness], "claude-haiku-5-5") is None
+
+        drifted = _call(id="fallback", model="claude-haiku-5-5", served_model="other-model")
+        summary = model_drift_summary([*agent, drifted, *harness], "claude-haiku-5-5")
+        assert summary is not None
+        assert summary.total_agent_generations == 6
+        assert [(p.model, p.calls) for p in summary.pairs] == [("other-model", 1)]
 
     def test_drift_pairs_aggregate_and_count(self) -> None:
         summary = model_drift_summary(
@@ -399,3 +451,29 @@ class TestV57Backfill:
                 )
             ).all()
             assert len(filled) == 600
+
+
+class TestV66HarnessColumn:
+    def test_adds_column_defaulting_false(self, monkeypatch: MonkeyPatch) -> None:
+        test_engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        SQLModel.metadata.create_all(test_engine)
+        with test_engine.begin() as conn:
+            conn.execute(text("ALTER TABLE logged_calls DROP COLUMN harness"))
+            conn.execute(
+                text(
+                    "INSERT INTO logged_calls (id, run_id, project, task_id, created_at, model, observation_type, level, environment, tags) VALUES ('old', 't', 'p', '', :at, 'm', 'GENERATION', 'DEFAULT', 'default', '[]')"
+                ),
+                {"at": NOW},
+            )
+
+        monkeypatch.setattr(apo_db, "engine", test_engine)
+        apo_db._migrate_to_v66()
+        apo_db._migrate_to_v66()  # idempotent
+
+        with Session(test_engine) as session:
+            call = session.exec(select(LoggedCallDB)).one()
+            assert call.harness is False
