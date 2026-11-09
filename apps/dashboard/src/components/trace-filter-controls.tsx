@@ -629,14 +629,13 @@ export function TraceFilterControls({
 
 
 /**
- * Run labels on traces: each caller-defined dimension is a real
- * FilterSection — identical header, chevron, spacing, and hide/show
- * behavior as Models and Hosts — grouped under a "Run labels" caption so
- * their origin is clear. Checking a value writes `label=<key>:<id>` URL
- * params (OR within a key, AND across keys); a trace matches through its
- * parent run's batch. Sections start expanded; the open state is local
- * because the sidebar's shared list cannot express default-open for ids
- * it has never seen.
+ * Run labels on traces: one collapsible "Run labels" group hiding every
+ * caller-defined dimension at once, with each dimension inside as a real
+ * FilterSection (identical header, chevron, and hide/show behavior as
+ * Models and Hosts). Checking a value writes `label=<key>:<id>` URL params
+ * (OR within a key, AND across keys); a trace matches through its parent
+ * run's batch. The group starts expanded and shows the total selected
+ * count when collapsed, so an active filter is never hidden.
  */
 function RunLabelsSection({
   filters,
@@ -648,6 +647,7 @@ function RunLabelsSection({
   labelFacets: RunLabelFacets | null;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [groupOpen, setGroupOpen] = useState(true);
   if (!labelFacets || labelFacets.labels.length === 0) return null;
 
   const sectionId = (key: string) => `label:${key}`;
@@ -676,42 +676,56 @@ function RunLabelsSection({
     actions.setLabels(next);
   };
 
+  const totalSelected = Object.values(filters.labels).reduce(
+    (sum, ids) => sum + ids.length,
+    0,
+  );
+  const groupLabel =
+    totalSelected > 0 ? `Run labels (${totalSelected})` : "Run labels";
+
   return (
-    <>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Run labels</p>
-      {labelFacets.labels.map((facet) => {
-        const selectedCount = filters.labels[facet.key]?.length ?? 0;
-        return (
-          <FilterSection
-            key={facet.key}
-            id={sectionId(facet.key)}
-            label={selectedCount > 0 ? `${facet.key} (${selectedCount})` : facet.key}
-            expanded={expandedIds}
-            onToggle={toggle}
-          >
-            {facet.values.map((value) => {
-              const checked = (filters.labels[facet.key] ?? []).includes(value.id);
-              return (
-                <button
-                  key={value.id}
-                  type="button"
-                  role="checkbox"
-                  aria-checked={checked}
-                  aria-label={`${facet.key} ${value.name}`}
-                  onClick={() => toggleValue(facet.key, value.id)}
-                  className="flex w-full cursor-pointer items-center gap-2 py-1 text-left text-xs hover:bg-accent"
-                >
-                  <input type="checkbox" checked={checked} readOnly className="h-3.5 w-3.5" />
-                  <span className="truncate">{value.name}</span>
-                  <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-                    {value.count}
-                  </span>
-                </button>
-              );
-            })}
-          </FilterSection>
-        );
-      })}
-    </>
+    <FilterSection
+      id="run-labels"
+      label={groupLabel}
+      expanded={groupOpen ? ["run-labels"] : []}
+      onToggle={() => setGroupOpen((open) => !open)}
+    >
+      <div className="space-y-3">
+        {labelFacets.labels.map((facet) => {
+          const selectedCount = filters.labels[facet.key]?.length ?? 0;
+          return (
+            <FilterSection
+              key={facet.key}
+              id={sectionId(facet.key)}
+              label={selectedCount > 0 ? `${facet.key} (${selectedCount})` : facet.key}
+              expanded={expandedIds}
+              onToggle={toggle}
+            >
+              {facet.values.map((value) => {
+                const checked = (filters.labels[facet.key] ?? []).includes(value.id);
+                return (
+                  <button
+                    key={value.id}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={checked}
+                    aria-label={`${facet.key} ${value.name}`}
+                    onClick={() => toggleValue(facet.key, value.id)}
+                    className="flex w-full cursor-pointer items-center gap-2 py-1 text-left text-xs hover:bg-accent"
+                  >
+                    <input type="checkbox" checked={checked} readOnly className="h-3.5 w-3.5" />
+                    <span className="truncate">{value.name}</span>
+                    <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                      {value.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </FilterSection>
+          );
+        })}
+      </div>
+    </FilterSection>
   );
 }
+
