@@ -28,6 +28,7 @@ from ._shared import (
     NormalizedSpan,
     extract_call_context,
     extract_error,
+    extract_harness,
     extract_input,
     extract_model,
     extract_output,
@@ -102,6 +103,7 @@ def normalize_span(span: OtlpSpanDB) -> NormalizedSpan:
     normalized.provider = extract_provider(attrs)
     normalized.route = extract_route(attrs)
     normalized.served_model = extract_served_model(attrs)
+    normalized.harness = extract_harness(attrs)
     normalized.token_usage = _token_usage(attrs, normalized.model)
     normalized.error_message = extract_error(span, attrs)
     normalized.input = extract_input(attrs)

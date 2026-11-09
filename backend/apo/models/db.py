@@ -15,7 +15,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.engine import Dialect
-from sqlalchemy.sql import func, text
+from sqlalchemy.sql import false, func, text
 from sqlmodel import JSON, Field, SQLModel
 
 from ..models.schemas import JsonValue, LoggedCallBase
@@ -354,6 +354,10 @@ class LoggedCallDB(LoggedCallBase, table=True):
     observation_type: str = Field(
         default="GENERATION"
     )  # SPAN, GENERATION, TOOL, CHAIN, RETRIEVER, EVALUATOR, EMBEDDING, GUARDRAIL
+    # Made by the evaluation harness (apo.harness), not the system under test.
+    harness: bool = Field(
+        default=False, sa_column_kwargs={"server_default": false()}
+    )
     level: str = Field(default="DEFAULT")  # DEBUG, DEFAULT, WARNING, ERROR
     status_message: str | None = Field(default=None)  # Error messages or status
     completion_start_time: datetime | None = Field(

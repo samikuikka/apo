@@ -348,6 +348,7 @@ class TraceProjector:
                 served_model=normalized.served_model,
                 observation_type=normalized.observation_type,
                 step_name=normalized.display_name,
+                harness=normalized.harness,
                 parent_call_id=span.parent_span_id,
                 input=io.input if write_fat else {},
                 output=io.output if write_fat else {},
@@ -369,6 +370,7 @@ class TraceProjector:
             call.served_model = normalized.served_model or call.served_model
             call.observation_type = normalized.observation_type
             call.step_name = normalized.display_name
+            call.harness = normalized.harness
             call.parent_call_id = span.parent_span_id
             if write_fat:
                 if io.input:

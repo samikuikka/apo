@@ -169,7 +169,8 @@ def model_drift_summary(
     requested model when the provider reported none) against the
     configured model. Judge generations are excluded — the judge is
     expected to run on its own model, in either shape (``judge:`` calls
-    and ``t.agent:`` sessions).
+    and ``t.agent:`` sessions) — and so are calls the emitter marked
+    ``apo.harness`` (a simulated user, a turn-done check).
 
     Returns None when there is no configuration or no divergence; the
     absence of drift is not a fact worth storing.
@@ -181,7 +182,7 @@ def model_drift_summary(
     for call in calls:
         if call.observation_type != "GENERATION" or not call.model:
             continue
-        if (call.step_name or "").startswith(JUDGE_STEP_PREFIXES):
+        if call.harness or (call.step_name or "").startswith(JUDGE_STEP_PREFIXES):
             continue
         total += 1
         effective = call.served_model or call.model

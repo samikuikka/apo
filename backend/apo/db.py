@@ -4425,7 +4425,21 @@ def _migrate_to_v65() -> None:
         _add_column_if_missing(conn, "users", "max_api_keys", "INTEGER")
 
 
-LATEST_SCHEMA_VERSION = 65
+def _migrate_to_v66() -> None:
+    """Version 66: ``logged_calls.harness``.
+
+    True when the emitter marked the span ``apo.harness`` (a simulated
+    user, a turn-done check): the call belongs to the evaluation harness,
+    not the system under test, and model drift leaves it out. No backfill:
+    spans recorded before the attribute existed carry no marker to read.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(
+            conn, "logged_calls", "harness", f"BOOLEAN NOT NULL DEFAULT {_sql_false(conn)}"
+        )
+
+
+LATEST_SCHEMA_VERSION = 66
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -4493,6 +4507,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     63: _migrate_to_v63,
     64: _migrate_to_v64,
     65: _migrate_to_v65,
+    66: _migrate_to_v66,
 }
 
 
