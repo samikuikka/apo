@@ -22,6 +22,11 @@ import type {
   TraceProjectionObservation,
   TraceProjectionSnapshot,
 } from "./types.ts";
+import {
+  documentsFromObservation,
+  retrievalQueryFrom,
+  type TraceProjectionDocument,
+} from "./retrieval.ts";
 import { TASK_STEER_SPAN_NAME } from "../run/steer-scheduler.ts";
 
 /** The span name `runTask` gives each Task Turn (one `sendUserTurn` call). */
@@ -170,6 +175,22 @@ export interface TraceToolCall {
   startedAt?: string;
 }
 
+/** A retrieval derived from a `RETRIEVER` observation. */
+export interface TraceRetrieval {
+  spanId: string;
+  /** The query the retriever ran with, when recorded. */
+  query?: string;
+  /**
+   * The returned documents, in retriever rank order, when the result shape was
+   * recognized. Absent means the retrieval happened but its documents are
+   * unknown: negative assertions must fail closed on it, never read it as
+   * "nothing retrieved".
+   */
+  documents?: readonly TraceProjectionDocument[];
+  status: ObservationStatus;
+  startedAt?: string;
+}
+
 /** A skill load derived from a `SKILL` observation. */
 export interface TraceSkillLoad {
   spanId: string;
@@ -272,6 +293,21 @@ export class TraceView {
   /** Tool names in invocation order with deterministic span-ID tie-breaking. */
   get toolNamesInOrder(): readonly string[] {
     return this.toolCalls.map((c) => c.name);
+  }
+
+  /** Retrievals derived from `RETRIEVER` observations, in invocation order. */
+  get retrievals(): readonly TraceRetrieval[] {
+    return this.sortedObservations
+      .filter((o) => o.type === "RETRIEVER")
+      .map((o) => {
+        const retrieval: TraceRetrieval = { spanId: o.spanId, status: o.status };
+        const query = retrievalQueryFrom(o.input);
+        if (query !== undefined) retrieval.query = query;
+        const documents = documentsFromObservation(o);
+        if (documents !== undefined) retrieval.documents = documents;
+        if (o.startedAt !== undefined) retrieval.startedAt = o.startedAt;
+        return retrieval;
+      });
   }
 
   /** Skill loads derived from `SKILL` observations, in invocation order. */
