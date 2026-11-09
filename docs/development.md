@@ -133,6 +133,9 @@ dimension, so runs can be filtered by what they ran against:
 
 Both `GET /v1/agent-task-batch-runs` and `GET /v1/agent-task-runs` filter on
 these and on the batch's `environment`; a task run matches through its batch.
+The trace list (`GET /v1/runs`) accepts the same repeatable `label=<key>:<id>`
+filter: a trace matches through its task run's batch, so a label dimension
+narrows call traces exactly like it narrows runs.
 
 - `environment=prod,staging`: any of the listed environments.
 - `label=<key>:<id>`, repeatable: OR within a key, AND across keys. The id is
