@@ -33,4 +33,5 @@ export const TEST_METHOD_NAMES = [
   "judge",
   "semantic",
   "agent",
+  "grounded",
 ] as const;

@@ -30,6 +30,7 @@ import {
   isCascadeActive,
 } from "./judge-cascade.ts";
 import { createAgentMethod, type AgentEvidence, type AgentJudgeOptions } from "./agent-session.ts";
+import { formatAuthorSources, formatTraceSources, GROUNDEDNESS_RUBRIC } from "./grounded.ts";
 import type { JudgeToolsConfig } from "./mcp-tools.ts";
 import type { EmbeddingTracer, JudgeTracer } from "../tracing.ts";
 import { servingHostFromBaseURL } from "../integrations/span-helpers.ts";
@@ -92,6 +93,20 @@ export type RetrievedOptions = {
   topK?: number;
   /** Only retrievals whose query contains this text count. */
   query?: string;
+};
+
+/** Options for `t.grounded`. */
+export type GroundedOptions = {
+  /**
+   * What the answer must be grounded in. `"trace"` (the default) is every
+   * document this run retrieved; an array is author-supplied source texts.
+   */
+  sources?: "trace" | readonly string[];
+  label?: string;
+  /** Per-call judge config override, merged like `t.judge`'s. */
+  judge?: Partial<JudgeConfig>;
+  /** Ground-truth verdict, like `t.judge`'s: `"fail"` asserts the judge catches a known hallucination. */
+  expect?: "pass" | "fail";
 };
 
 /**
@@ -352,6 +367,16 @@ export interface TestContext {
    * the check passes only when its verdict matches.
    */
   agent(instruction: string, opts?: AgentJudgeOptions): Promise<void>;
+
+  /**
+   * Groundedness (faithfulness): an LLM judge checks that every factual claim
+   * in `value` is supported by the sources, by default the documents this run
+   * actually retrieved. A fixed rubric over `t.judge`, so `expect`, judge
+   * overrides and the second judge apply. Without retrieval evidence the
+   * outcome is `unsupported`, never a verdict on missing sources. Async: the
+   * check function must `await` it.
+   */
+  grounded(value: unknown, opts?: GroundedOptions): Promise<void>;
 }
 
 /**
@@ -404,6 +429,7 @@ export const TEST_METHOD_NAMES = [
   "judge",
   "semantic",
   "agent",
+  "grounded",
 ] as const satisfies readonly (keyof TestContext)[];
 
 /**
@@ -1066,6 +1092,27 @@ export function createTraceTestContext(
   const isAvailable = (c: keyof TraceProjectionCapabilities): boolean =>
     view.requireCapability(c) === "available";
 
+  /** This run's retrieved documents as judge sources, or undefined after recording why they cannot be used. */
+  const traceSourcesFor = (label: string): string | undefined => {
+    if (!isAvailable("retrieval")) {
+      unsupported(label, "retrieval");
+      return undefined;
+    }
+    // Judging against a partial source list would fail claims the missing
+    // documents support, or under expect "fail" pass on sources never read.
+    const opaque = view.retrievals.filter((r) => r.documents === undefined).length;
+    if (opaque > 0) {
+      rec.record(label, false, `${opaque} retrieval(s) returned results in an unrecognized shape, so the sources are incomplete`, {
+        evaluator_type: "llm",
+        outcome: "unsupported",
+        expected: "every retrieval's documents known",
+        received: `${opaque} unrecognized retrieval result(s)`,
+      });
+      return undefined;
+    }
+    return formatTraceSources(view.retrievals);
+  };
+
   const context: TestContext = {
     calledTool(name, opts) {
       if (!isAvailable("tools")) {
@@ -1354,6 +1401,18 @@ export function createTraceTestContext(
     // Like t.judge: value-plane check, no capability gating — but traced, so
     // the embeddings call shows up as an EMBEDDING observation.
     semantic: trackPending(rec, createSemanticMethod(rec, embedding, judgeScope)),
+
+    async grounded(value, opts) {
+      const label = opts?.label ?? "grounded";
+      const sources = opts?.sources ?? "trace";
+      const sourceList = sources === "trace" ? traceSourcesFor(label) : formatAuthorSources(sources);
+      if (sourceList === undefined) return;
+      await context.judge([value, sourceList], GROUNDEDNESS_RUBRIC, {
+        label,
+        judge: opts?.judge,
+        expect: opts?.expect,
+      });
+    },
 
     get not(): NotTestContext {
       return createNotContext(context, rec);

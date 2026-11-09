@@ -83,6 +83,7 @@ export type {
   ToolCallOptions,
   DocumentMatcher,
   RetrievedOptions,
+  GroundedOptions,
   DurationBudgetOptions,
   TokenBudgetOptions,
   JudgeConfig,
