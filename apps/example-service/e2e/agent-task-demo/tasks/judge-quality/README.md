@@ -24,6 +24,10 @@ cannot hide.
 
 Judge model comes from the environment (OPENROUTER_MODEL etc.).
 
+Each stub reports its own name (report-stub / md-stub) as the run
+configuration, so the Runs list's Execution column shows what produced
+the deliverables instead of an empty dash.
+
 | Case | Ground truth | Failure mode probed |
 |---|---|---|
 | `jq-supported-figures` | PASS | true positive: all figures recompute from the work log |

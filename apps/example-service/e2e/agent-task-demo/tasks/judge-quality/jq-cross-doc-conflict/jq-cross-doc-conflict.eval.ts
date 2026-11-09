@@ -28,6 +28,7 @@ const stubAdapter = defineAdapter({
   deliverables: { report_a: null, report_b: null, work_log: null },
   turn: (ctx) => (ctx.transcript.length === 0 ? "write the summary and annex" : null),
   startSession: async () => ({
+    runConfiguration: { model: "report-stub" },
     sendUserTurn: async () => ({ response: "done" }),
   }),
   collectDeliverables: async () => ({ report_a: REPORT_A, report_b: REPORT_B, work_log: WORK_LOG }),
