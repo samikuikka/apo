@@ -56,7 +56,7 @@ from ..services.email_templates import (
 )
 from ..services.email_admission import require_admissible_email
 from ..services.installation_admin import require_installation_admin
-from ..services.user_quotas import apply_quota_updates
+from ..services.user_quotas import apply_quota_updates, effective_daily_span_quota
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +198,8 @@ def _user_to_response(user: UserDB) -> UserResponse:
         daily_span_quota=user.daily_span_quota,
         max_projects=user.max_projects,
         max_api_keys=user.max_api_keys,
+        effective_daily_span_quota=effective_daily_span_quota(user.daily_span_quota)
+        or 0,
         created_at=user.created_at.isoformat() if user.created_at else "",
     )
 

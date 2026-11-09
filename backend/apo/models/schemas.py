@@ -1745,6 +1745,10 @@ class UserResponse(SQLModel):
     daily_span_quota: int | None = None
     max_projects: int | None = None
     max_api_keys: int | None = None
+    # What ingest actually enforces for spans: the override above when
+    # set, else APO_USER_DAILY_SPAN_QUOTA. 0 = unlimited. Consumers read
+    # this instead of re-deriving the precedence.
+    effective_daily_span_quota: int = 0
     created_at: str
 
 
