@@ -112,6 +112,10 @@ class TraceProjectionCapabilities(BaseModel):
     subagents: EvidenceAvailability
     # Defaulted so snapshots persisted before usage was projected still parse.
     usage: EvidenceAvailability = EvidenceAvailability.UNAVAILABLE
+    # Defaulted for the same reason: snapshots from before retrieval was
+    # projected read as unavailable, so retrieval assertions report
+    # unsupported instead of passing on missing evidence.
+    retrieval: EvidenceAvailability = EvidenceAvailability.UNAVAILABLE
 
 
 class TraceProjectionTrace(BaseModel):

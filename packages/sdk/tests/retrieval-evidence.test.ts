@@ -106,6 +106,25 @@ describe("TraceView.retrievals", () => {
     expect(view.retrievals.map((r) => r.query)).toEqual(["first", "second"]);
     expect(view.retrievals[1]?.documents).toEqual([{ content: "b" }]);
   });
+
+  it("reads canonical observations whose query and documents ride the tool channels", () => {
+    const canonical: TraceProjectionObservation = {
+      spanId: "c1",
+      type: "RETRIEVER",
+      name: "retrieve",
+      status: "ok",
+      toolParameters: { query: "vacation days" },
+      toolResult: { documents: [{ id: "handbook-vacation#p1", score: 0.9, content: "25 days" }] },
+    };
+    expect(new TraceView(snapshotOf([canonical])).retrievals).toEqual([
+      {
+        spanId: "c1",
+        status: "ok",
+        query: "vacation days",
+        documents: [{ id: "handbook-vacation#p1", score: 0.9, content: "25 days" }],
+      },
+    ]);
+  });
 });
 
 function snapshotOf(observations: TraceProjectionObservation[]): TraceProjectionSnapshot {

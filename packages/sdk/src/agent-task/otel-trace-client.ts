@@ -166,14 +166,18 @@ export function createOtelAgentTaskTraceClient(
       span.setAttribute("apo.llm.route", params.route);
     }
     const isTool = params.observation_type === "TOOL";
+    // A retrieval's query and documents are structured evidence that
+    // retrieval assertions read back from the canonical projection, so they
+    // ride the same channels as tool arguments and results.
+    const usesToolChannels = isTool || params.observation_type === "RETRIEVER";
     if (params.input) {
-      if (isTool) {
+      if (usesToolChannels) {
         // A tool call is not a chat turn: args must reach the backend as
         // gen_ai.tool.call.arguments so they land in tool_parameters. Sending
         // them as gen_ai.input.messages instead stores a fake system message
         // whose content is a JSON string, which the dashboard renders as one
         // escaped wall of text.
-        if (params.tool_name) {
+        if (isTool && params.tool_name) {
           span.setAttribute("gen_ai.tool.name", params.tool_name);
         }
         span.setAttribute("gen_ai.tool.call.arguments", JSON.stringify(params.input));
@@ -213,7 +217,7 @@ export function createOtelAgentTaskTraceClient(
     active.span.setAttribute("latency_ms", latency);
 
     if (params.output !== undefined) {
-      if (active.observationType === "TOOL") {
+      if (active.observationType === "TOOL" || active.observationType === "RETRIEVER") {
         // Mirror the input side: tool results belong in
         // gen_ai.tool.call.result (→ tool_result), not as a fake assistant
         // message — same rendering concern as tool arguments.

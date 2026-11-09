@@ -16,6 +16,7 @@ canonical path.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import socket
@@ -561,3 +562,78 @@ class TestSkillObservationEndToEnd:
         )
         assert attrs_call["attributes"]["apo.observation.type"] == "SKILL"
         assert attrs_call["attributes"]["apo.skill.name"] == "xlsx"
+
+
+# ===========================================================================
+# Retriever observations: query + documents on the tool channels
+# ===========================================================================
+
+
+class TestRetrieverObservationEndToEnd:
+    """A retrieval exported like the apo SDK exports it (apo observation type
+    plus gen_ai tool argument/result channels) must project so retrieval
+    assertions can read it back from the canonical snapshot."""
+
+    def test_retriever_span_projects_documents_and_capability(self, otel_server):
+        from opentelemetry import trace
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
+
+        resource = Resource.create({"service.name": "e2e-rag-service"})
+        provider = TracerProvider(resource=resource)
+        exporter = OTLPSpanExporter(endpoint=_url(otel_server), headers=_auth_headers(otel_server))
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+        tracer = provider.get_tracer("e2e-rag")
+
+        trace_id_holder: dict[str, str] = {}
+        root = tracer.start_span("rag.root")
+        root.set_attribute("apo.observation.type", "AGENT")
+        with trace.use_span(root, end_on_exit=True):
+            raw_id = root.get_span_context().trace_id
+            trace_id_holder["id"] = f"{raw_id:032x}" if isinstance(raw_id, int) else str(raw_id)
+            retriever = tracer.start_span("retrieve")
+            retriever.set_attribute("apo.observation.type", "RETRIEVER")
+            retriever.set_attribute(
+                "gen_ai.tool.call.arguments", '{"query": "vacation days"}'
+            )
+            documents = json.dumps(
+                {
+                    "documents": [
+                        {"id": "handbook-vacation#p1", "score": 0.9, "content": "25 days"}
+                    ]
+                }
+            )
+            retriever.set_attribute("gen_ai.tool.call.result", documents)
+            retriever.end()
+        provider.force_flush()
+        provider.shutdown()
+
+        trace_id = trace_id_holder["id"]
+        from apo.services.trace_repository import get_trace_repository
+
+        engine = otel_server["engine"]
+        snapshot = None
+        for _ in range(40):
+            with Session(engine) as session:
+                repo = get_trace_repository()
+                snapshot = repo.get_projection_snapshot(
+                    session, project_id=otel_server["project"], trace_id=trace_id
+                )
+            if snapshot is not None:
+                break
+            time.sleep(0.1)
+
+        assert snapshot is not None, "no projection built for the retrieval trace"
+        retrievals = [o for o in snapshot.observations if o.type == "RETRIEVER"]
+        assert len(retrievals) == 1
+        assert retrievals[0].tool_parameters == {"query": "vacation days"}
+        assert retrievals[0].tool_result == {
+            "documents": [
+                {"id": "handbook-vacation#p1", "score": 0.9, "content": "25 days"}
+            ]
+        }
+        assert snapshot.capabilities.retrieval.value == "available"
