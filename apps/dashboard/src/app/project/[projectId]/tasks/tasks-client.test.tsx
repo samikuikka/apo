@@ -130,7 +130,6 @@ describe("AgentTasksClient — native source-owned Run", () => {
     const runButtons = screen.getAllByRole("button", { name: /Run/i });
     await user.click(runButtons[0]);
 
-    // Run now goes through the labels dialog; confirm to start the batch.
     const dialog = screen.getByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Run 2 tasks" }));
 

@@ -87,8 +87,6 @@ export function UsersTable({
   )
 }
 
-// Active accounts can be locked or have their admin flag flipped; locked
-// accounts can only be unlocked. Nothing here deletes an account.
 function UserRowActions({
   user,
   pendingAction,

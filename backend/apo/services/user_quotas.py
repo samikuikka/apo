@@ -8,25 +8,30 @@ override against the APO_USER_DAILY_SPAN_QUOTA installation default, and
 the two ``enforce_*`` helpers raise 403 when the account already holds
 its cap of live rows. Details are plain strings because the CLI renders
 them verbatim.
+
+The count caps are checked then inserted without locking: two concurrent
+creations can both pass and overshoot the cap by one. That is accepted;
+the caps are an anti-abuse backstop, not an exact invariant.
 """
 
 from __future__ import annotations
 
 import os
+from typing import cast
 
 from fastapi import HTTPException
 from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ..models.db import ApiKeyDB, ProjectMembershipDB, UserDB
+from ..models.schemas import UpdateUserRequest
 
 
 def user_daily_span_quota() -> int:
     """Account-level daily span cap; 0/unset = off.
 
-    Read per call (not import time) so operators can flip it with a
-    restart-free env change on the next request and tests can monkeypatch
-    it without module reloads.
+    Read per call (not import time) so a restart picks up new values and
+    tests can monkeypatch it without module reloads.
     """
     try:
         return int(os.environ.get("APO_USER_DAILY_SPAN_QUOTA", "0"))
@@ -102,7 +107,32 @@ def enforce_project_count_limit(session: Session, user_id: str) -> None:
         )
 
 
+_QUOTA_FIELDS = ("daily_span_quota", "max_projects", "max_api_keys")
+
+
+def apply_quota_updates(user: UserDB, body: UpdateUserRequest) -> None:
+    """Apply the admin PATCH's tri-state quota fields to ``user``.
+
+    Absent fields (detected via ``exclude_unset``) leave the column
+    unchanged; an explicit ``null`` clears the per-user policy; a value
+    sets it. Negative values raise 400. Mutates ``user`` in place; the
+    caller owns the commit.
+    """
+    updates = body.model_dump(exclude_unset=True)
+    for field in _QUOTA_FIELDS:
+        if field not in updates:
+            continue
+        value = cast("int | None", updates[field])
+        if value is not None and value < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field} must be null or a non-negative integer",
+            )
+        setattr(user, field, value)
+
+
 __all__ = [
+    "apply_quota_updates",
     "effective_daily_span_quota",
     "enforce_api_key_count_limit",
     "enforce_project_count_limit",

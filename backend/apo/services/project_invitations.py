@@ -504,6 +504,10 @@ def accept_invitation_create_account(
             ),
         )
 
+    # Re-check at user creation: invitations issued before the disposable-
+    # domain blocklist landed must not admit through the accept path either.
+    require_admissible_email(invitation.email)
+
     user = UserDB(
         email=invitation.email,
         name=name_clean,

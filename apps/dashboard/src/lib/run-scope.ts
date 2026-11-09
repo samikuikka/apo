@@ -229,8 +229,8 @@ export function toggleRunScopeValue(scope: RunScope, key: string, id: string): R
   return { ...scope, labels };
 }
 
-/** Every selected value across dimensions, newest dimension first is not
- * tracked; chips simply follow the dimension order. */
+/** Every selected value across dimensions. Chips follow the dimension order
+ * (Environment first, then label keys); no click-order recency is tracked. */
 export function runScopeChips(scope: RunScope, dims: RunScopeDimension[]): RunScopeChip[] {
   return dims.flatMap((dim) =>
     scopeValuesOf(scope, dim.key).map((id) => ({

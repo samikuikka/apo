@@ -20,6 +20,8 @@ function resolveLang(lang?: string): string {
   return LANG_MAP[lang] ?? lang;
 }
 
+type Highlight = { status: "loading" } | { status: "ready"; html: string } | { status: "plain" };
+
 export function ShikiCodeBlock({
   code,
   language,
@@ -31,18 +33,25 @@ export function ShikiCodeBlock({
   className?: string;
   defaultWrapped?: boolean;
 }) {
-  const [html, setHtml] = useState<string>("");
+  const [highlight, setHighlight] = useState<Highlight>({ status: "loading" });
   const [wrapped, setWrapped] = useState(defaultWrapped);
   const lang = resolveLang(language);
 
   useEffect(() => {
     let cancelled = false;
+    setHighlight({ status: "loading" });
     codeToHtml(code, {
       lang,
       theme: "github-dark",
-    }).then((result) => {
-      if (!cancelled) setHtml(result);
-    });
+    })
+      .then((result) => {
+        if (!cancelled) setHighlight({ status: "ready", html: result });
+      })
+      // An unregistered language rejects; plain code beats a permanent
+      // skeleton and an unhandled rejection.
+      .catch(() => {
+        if (!cancelled) setHighlight({ status: "plain" });
+      });
     return () => {
       cancelled = true;
     };
@@ -65,7 +74,7 @@ export function ShikiCodeBlock({
           {wrapped ? "Wrap" : "No wrap"}
         </button>
       </div>
-      {html ? (
+      {highlight.status === "ready" ? (
         <div
           className={cn(
             "overflow-x-auto text-[13px] leading-[1.6] [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:!m-0",
@@ -74,8 +83,19 @@ export function ShikiCodeBlock({
             "!bg-background px-4 py-3",
           )}
           // react-doctor-disable-next-line react-doctor/dangerous-html-sink
-          dangerouslySetInnerHTML={{ __html: html }}
+          dangerouslySetInnerHTML={{ __html: highlight.html }}
         />
+      ) : highlight.status === "plain" ? (
+        <div className="overflow-x-auto !bg-background py-3">
+          <pre
+            className={cn(
+              "px-4 text-[13px] leading-[1.6]",
+              wrapped && "whitespace-pre-wrap break-all",
+            )}
+          >
+            {code}
+          </pre>
+        </div>
       ) : (
         <div
           className={cn(

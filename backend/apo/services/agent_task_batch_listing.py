@@ -470,7 +470,8 @@ def _apply_metric_filters(
     """
     started = col(AgentTaskBatchRunDB.started_at)
     completed = col(AgentTaskBatchRunDB.completed_at)
-    if any((filters.duration_min_s, filters.duration_max_s)):
+    # `is not None`, not truthiness: a 0-second or $0 bound is a real filter.
+    if filters.duration_min_s is not None or filters.duration_max_s is not None:
         base = base.where(started.is_not(None), completed.is_not(None))
         if filters.duration_min_s is not None:
             base = base.where(_duration_seconds(completed, started) >= filters.duration_min_s)

@@ -381,7 +381,12 @@ def _stage_new_user(
 
 
 def _stage_project(session: Session, *, name: str, created_by: str) -> ProjectDB:
-    """Stage the one Project this admission materializes."""
+    """Stage the one Project this admission materializes.
+
+    Deliberately not subject to ``enforce_project_count_limit``: the
+    invitation is admin-issued admission, so the account's max_projects
+    cap does not block the one project that admission exists to create.
+    """
     project = ProjectDB(
         id=uuid4().hex[:12],
         name=name,
@@ -467,6 +472,10 @@ def accept_hosted_access_create_account(
                 "Sign in and accept the invitation instead."
             ),
         )
+
+    # Re-check at user creation: invitations issued before the disposable-
+    # domain blocklist landed must not admit through the accept path either.
+    require_admissible_email(invitation.email)
 
     try:
         user = _stage_new_user(

@@ -56,6 +56,7 @@ from ..services.email_templates import (
 )
 from ..services.email_admission import require_admissible_email
 from ..services.installation_admin import require_installation_admin
+from ..services.user_quotas import apply_quota_updates
 
 logger = logging.getLogger(__name__)
 
@@ -703,20 +704,7 @@ def update_user(
     if body.is_active is not None:
         user.is_active = body.is_active
 
-    # Quota fields are tri-state, so they cannot reuse the ``is not None``
-    # handling above: an explicit null must reach the column (clearing the
-    # per-user policy) while an absent field leaves it unchanged.
-    quota_updates = body.model_dump(exclude_unset=True)
-    for field in ("daily_span_quota", "max_projects", "max_api_keys"):
-        if field not in quota_updates:
-            continue
-        value = cast(int | None, quota_updates[field])
-        if value is not None and value < 0:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{field} must be null or a non-negative integer",
-            )
-        setattr(user, field, value)
+    apply_quota_updates(user, body)
 
     session.add(user)
     session.commit()

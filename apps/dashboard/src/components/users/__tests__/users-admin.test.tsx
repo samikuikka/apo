@@ -124,7 +124,6 @@ describe("UsersAdmin", () => {
     vi.mocked(updateUser).mockResolvedValue(account({ is_active: true }));
     const user = renderUsersAdmin([self, account({ is_active: false })]);
 
-    // A locked account offers only the unlock, not the admin toggle.
     expect(screen.queryByRole("button", { name: /make admin/i })).toBeNull();
     await user.click(
       screen.getByRole("button", { name: "Reactivate member@example.com" }),

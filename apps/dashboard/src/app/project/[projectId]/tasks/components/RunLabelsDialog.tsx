@@ -13,7 +13,12 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchRunLabelFacets, type RunLabelFacets, type RunLabels } from "@/lib/agent-task-api";
+import {
+  fetchRunLabelFacets,
+  type RunLabelFacetValue,
+  type RunLabelFacets,
+  type RunLabels,
+} from "@/lib/agent-task-api";
 
 const LABEL_KEY_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const MAX_LABELS = 32;
@@ -52,8 +57,14 @@ export function RunLabelsDialog({
   // Suggestions come from the same facet summary the Runs filter rail reads;
   // failing to load them only removes the shortcuts, never blocks the run.
   // The fetch helper takes no signal, so a close is tracked with a flag.
+  // A fresh open also starts a clean draft: labels left over from a
+  // cancelled run must not silently ride along with the next one.
   useEffect(() => {
     if (!open) return;
+    setLabels({});
+    setKey("");
+    setValue("");
+    setError(null);
     let cancelled = false;
     setFacets(null);
     fetchRunLabelFacets(projectId)
@@ -72,6 +83,21 @@ export function RunLabelsDialog({
     return facets.labels.find((facet) => facet.key === trimmed)?.values ?? [];
   }, [facets, key]);
 
+  const commitLabel = (labelKey: string, labelValue: { id: string; name: string }) => {
+    if (Object.hasOwn(labels, labelKey)) {
+      setError(`"${labelKey}" already has a value; remove it first to change it.`);
+      return;
+    }
+    if (Object.keys(labels).length >= MAX_LABELS) {
+      setError(`A run carries at most ${MAX_LABELS} labels.`);
+      return;
+    }
+    setLabels((prev) => ({ ...prev, [labelKey]: labelValue }));
+    setKey("");
+    setValue("");
+    setError(null);
+  };
+
   const addLabel = () => {
     const trimmedKey = key.trim();
     const trimmedValue = value.trim();
@@ -83,26 +109,29 @@ export function RunLabelsDialog({
       setError("Keys use letters, digits, _ and - (up to 64 characters).");
       return;
     }
-    if (labels[trimmedKey]) {
-      setError(`"${trimmedKey}" already has a value; remove it first to change it.`);
-      return;
-    }
-    if (Object.keys(labels).length >= MAX_LABELS) {
-      setError(`A run carries at most ${MAX_LABELS} labels.`);
-      return;
-    }
     if (!trimmedValue) {
       setError("Fill in a value for the label.");
       return;
     }
-    if (trimmedValue.length > MAX_VALUE_LENGTH) {
+    // Code points, not UTF-16 units: the backend's max_length counts
+    // characters, so a value of 129 emoji is 129, not 258.
+    if ([...trimmedValue].length > MAX_VALUE_LENGTH) {
       setError(`Values are at most ${MAX_VALUE_LENGTH} characters.`);
       return;
     }
-    setLabels((prev) => ({ ...prev, [trimmedKey]: { id: trimmedValue, name: trimmedValue } }));
-    setKey("");
-    setValue("");
-    setError(null);
+    commitLabel(trimmedKey, { id: trimmedValue, name: trimmedValue });
+  };
+
+  // A suggestion click commits the facet's own id: re-typing its display
+  // name would create a second value under the same dimension whenever the
+  // two differ, exactly the fork the suggestions exist to prevent.
+  const addSuggestion = (suggestion: RunLabelFacetValue) => {
+    const trimmedKey = key.trim();
+    if (!LABEL_KEY_RE.test(trimmedKey)) {
+      setError("Keys use letters, digits, _ and - (up to 64 characters).");
+      return;
+    }
+    commitLabel(trimmedKey, { id: suggestion.id, name: suggestion.name });
   };
 
   const start = () => {
@@ -182,11 +211,7 @@ export function RunLabelsDialog({
                 <button
                   key={suggestion.id}
                   type="button"
-                  onClick={() => {
-                    setKey(key.trim());
-                    setValue(suggestion.name);
-                    setError(null);
-                  }}
+                  onClick={() => addSuggestion(suggestion)}
                   className="border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted/60"
                 >
                   {suggestion.name}

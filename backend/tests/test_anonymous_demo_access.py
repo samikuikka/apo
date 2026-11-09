@@ -154,11 +154,9 @@ class TestAnonymousMiddleware:
             )
 
         assert proxied_get("198.51.100.7") == {"auth_method": "anonymous"}
-        # exhausted: the same visitor is throttled on their own bucket
         throttled = proxied_get("198.51.100.7")
         assert isinstance(throttled, JSONResponse)
         assert throttled.status_code == 429
-        # a different visitor through the same proxy keeps their own budget
         assert proxied_get("198.51.100.9") == {"auth_method": "anonymous"}
 
 

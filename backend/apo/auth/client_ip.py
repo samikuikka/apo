@@ -63,5 +63,7 @@ def get_client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
     peer = request.client.host if request.client else "unknown"
     if forwarded and _peer_is_trusted(peer):
-        return forwarded.split(",")[0].strip()
+        # A whitespace-only first hop must not collapse every such visitor
+        # onto one shared bucket key.
+        return forwarded.split(",")[0].strip() or peer
     return peer

@@ -212,9 +212,6 @@ export function RunsClient({
     },
     [updateUrl],
   );
-  // The scope rail: visible on desktop while remembered open, a sheet on
-  // mobile. RailToggle in the filter row drives both and shows the active
-  // chips whenever no rail is on screen.
   const isMobile = useIsMobile();
   const [railOpen, setRailOpen] = useRailVisible();
   const [sheetOpen, setSheetOpen] = useState(false);
