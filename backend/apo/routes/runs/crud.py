@@ -207,6 +207,10 @@ def list_runs(
         40, ge=1, le=100, description="Number of items per page (max 100)"
     ),
     environment: str | None = Query(None, description="Comma-separated environment list"),
+    label: list[str] | None = Query(
+        None,
+        description="Run label filter `<key>:<id>`, repeatable: OR within a key, AND across keys; matches the trace's parent run's batch labels",
+    ),
     session_id: str | None = Query(None, description="Comma-separated session ID list"),
     user_id: str | None = Query(None, description="Comma-separated user ID list"),
     tags: str | None = Query(None, description="Comma-separated tag list"),
@@ -255,6 +259,7 @@ def list_runs(
             flow_names=split_csv_param(flow_name),
             task_ids=split_csv_param(task_id),
             environments=split_csv_param(environment),
+            labels=_trace_label_filters_or_422(label),
             session_ids=split_csv_param(session_id),
             user_ids=split_csv_param(user_id),
             models=split_csv_param(models),
@@ -825,3 +830,16 @@ def reproject_run(
 
     count = reproject_trace(run_id, project_id=project)
     return {"trace_id": run_id, "project": project, "reprojected_spans": count}
+
+
+def _trace_label_filters_or_422(values: list[str] | None) -> dict[str, list[str]]:
+    """Parse repeated `label=<key>:<id>` into `{key: [ids]}`; malformed values
+    422 rather than silently matching nothing (same rule as the run lists)."""
+    from fastapi import HTTPException
+
+    from ...services.run_labels import parse_label_filters
+
+    try:
+        return parse_label_filters(values or [])
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error

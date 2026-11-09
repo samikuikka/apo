@@ -12,12 +12,14 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { TraceFilterControls, type TraceFilterOptions } from "@/components/trace-filter-controls";
+import { fetchRunLabelFacets, type RunLabelFacets } from "@/lib/agent-task-api";
+import { useProjectId } from "@/lib/project-router";
 import { TraceActiveFilters } from "@/components/trace-active-filters";
 import { useFilters } from "@/hooks/use-filters";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useRouter } from "next/navigation";
 import { ListFilter, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { Suspense, useState, type ReactNode, useCallback, useSyncExternalStore } from "react";
+import { Suspense, useEffect, useState, type ReactNode, useCallback, useSyncExternalStore } from "react";
 
 export interface TracesPageLayoutProps {
   children: ReactNode;
@@ -81,6 +83,28 @@ function getBasePath(pathname: string | null, fallback: string): string {
 
 function TracesPageLayoutInner({ children, filterOptions, spanFieldOptions }: TracesPageLayoutProps) {
   const [filters, actions] = useFilters();
+  // Run-label options for the Labels section: the same facet summary the
+  // Runs rail reads. Unavailable -> section hidden, filtering unaffected.
+  const [labelFacets, setLabelFacets] = useState<RunLabelFacets | null>(null);
+  // The project comes from the route (/project/<id>/traces), not from a
+  // ?project= query param; reading filters.project here left the facets
+  // unfetched and the Labels section hidden on the real page.
+  const routeProjectId = useProjectId();
+  useEffect(() => {
+    if (!routeProjectId) {
+      setLabelFacets(null);
+      return;
+    }
+    let cancelled = false;
+    fetchRunLabelFacets(routeProjectId)
+      .then((facets) => {
+        if (!cancelled) setLabelFacets(facets);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [routeProjectId]);
   const router = useRouter();
   const filtersVisible = useFiltersVisible();
   const isMobile = useIsMobile();
@@ -138,6 +162,7 @@ function TracesPageLayoutInner({ children, filterOptions, spanFieldOptions }: Tr
             </SheetHeader>
             <div className="space-y-4 p-4">
               <TraceFilterControls
+                labelFacets={labelFacets}
                 filters={filters}
                 actions={actions}
                 availableEnvironments={["default", "dev", "staging", "production"]}
@@ -180,6 +205,7 @@ function TracesPageLayoutInner({ children, filterOptions, spanFieldOptions }: Tr
 
               <div className="space-y-4">
                 <TraceFilterControls
+                labelFacets={labelFacets}
                   filters={filters}
                   actions={actions}
                   availableEnvironments={["default", "dev", "staging", "production"]}

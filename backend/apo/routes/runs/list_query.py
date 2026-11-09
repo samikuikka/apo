@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import asc, desc, and_ as sql_and
 from sqlalchemy.orm import defer
 from sqlalchemy.sql.elements import ColumnElement
-from sqlmodel import Session, func, or_, select
+from sqlmodel import Session, col, func, or_, select
 
 from ...db_helpers import as_column
 from ...models import LoggedCallDB, RunDB, RunMetricDB, RunMetric, RunSummary
@@ -98,6 +98,9 @@ class RunListFilters:
     status_values: list[str] = field(default_factory=list)
     bookmarked: bool | None = None
     allowed_projects: list[str] | None = None
+    # Run labels (``run_metadata.labels`` on the trace's parent batch):
+    # ids OR within a key, AND across keys — same semantics as the run lists.
+    labels: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -186,6 +189,25 @@ def _apply_attribute_filters(statement: Any, filters: RunListFilters) -> Any:
         statement = statement.where(RUN_TASK_ID_COL.in_(filters.task_ids))
     if filters.environments:
         statement = statement.where(RUN_ENVIRONMENT_COL.in_(filters.environments))
+    if filters.labels:
+        # A trace matches a label through its task run's batch; trace ids are
+        # globally unique, so no project correlation is needed inside the
+        # subquery (the outer statement already carries the project scope).
+        from ...models.db import AgentTaskBatchRunDB, AgentTaskRunDB
+        from ...services.run_labels import batch_scope_conditions
+
+        matching = (
+            select(AgentTaskRunDB.trace_run_id)
+            .join(
+                AgentTaskBatchRunDB,
+                col(AgentTaskRunDB.batch_run_id) == col(AgentTaskBatchRunDB.id),
+            )
+            .where(
+                col(AgentTaskRunDB.trace_run_id).is_not(None),
+                *batch_scope_conditions([], filters.labels),
+            )
+        )
+        statement = statement.where(col(RunDB.id).in_(matching))
     if filters.session_ids:
         statement = statement.where(RUN_SESSION_ID_COL.in_(filters.session_ids))
     if filters.user_ids:
