@@ -74,7 +74,7 @@ jobs:
         working-directory: backend
         run: uv sync --frozen
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@562878fc153dee6c0f3719c99b1799334cfc3ccc # v5
+        uses: CodSpeedHQ/action@e2468555258f286b6ea6423deaf092e655ea8f45 # v5.6.3
         with:
           mode: simulation
           run: cd backend && uv run pytest tests/benchmarks --codspeed
@@ -97,7 +97,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Run benchmarks
-        uses: CodSpeedHQ/action@562878fc153dee6c0f3719c99b1799334cfc3ccc # v5
+        uses: CodSpeedHQ/action@e2468555258f286b6ea6423deaf092e655ea8f45 # v5.6.3
         with:
           mode: simulation
           run: pnpm --filter @apo-ai/sdk bench
