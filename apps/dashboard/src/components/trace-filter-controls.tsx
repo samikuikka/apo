@@ -629,11 +629,14 @@ export function TraceFilterControls({
 
 
 /**
- * Run labels on traces: each caller-defined dimension becomes a native
- * FilterSection (same header, chevron, and expand behavior as Models and
- * Hosts), grouped under a "Run labels" caption so their origin is clear.
- * Checking a value writes `label=<key>:<id>` URL params (OR within a key,
- * AND across keys); a trace matches through its parent run's batch.
+ * Run labels on traces: each caller-defined dimension is a real
+ * FilterSection — identical header, chevron, spacing, and hide/show
+ * behavior as Models and Hosts — grouped under a "Run labels" caption so
+ * their origin is clear. Checking a value writes `label=<key>:<id>` URL
+ * params (OR within a key, AND across keys); a trace matches through its
+ * parent run's batch. Sections start expanded; the open state is local
+ * because the sidebar's shared list cannot express default-open for ids
+ * it has never seen.
  */
 function RunLabelsSection({
   filters,
@@ -644,14 +647,14 @@ function RunLabelsSection({
   actions: FilterActions;
   labelFacets: RunLabelFacets | null;
 }) {
-  // Open state is local to the label group (the shared sidebar list means
-  // "open" for its own ids and cannot express default-open for ids it has
-  // never seen); sections start expanded.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   if (!labelFacets || labelFacets.labels.length === 0) return null;
 
-  const toggle = (key: string) => {
-    const id = `label:${key}`;
+  const sectionId = (key: string) => `label:${key}`;
+  const expandedIds = labelFacets.labels
+    .map((facet) => sectionId(facet.key))
+    .filter((id) => !collapsed.has(id));
+  const toggle = (id: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -674,62 +677,41 @@ function RunLabelsSection({
   };
 
   return (
-    <div>
-      <p className="pt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-        Run labels
-      </p>
+    <>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Run labels</p>
       {labelFacets.labels.map((facet) => {
-        const sectionId = `label:${facet.key}`;
-        const isOpen = !collapsed.has(sectionId);
         const selectedCount = filters.labels[facet.key]?.length ?? 0;
         return (
-          <div key={facet.key} className="border-b">
-            <button
-              type="button"
-              onClick={() => toggle(facet.key)}
-              className="flex w-full items-center justify-between py-2 text-xs font-medium hover:underline"
-            >
-              <span>
-                {facet.key}
-                {selectedCount > 0 && (
-                  <span className="ml-1.5 font-mono text-[10px] font-normal text-muted-foreground">
-                    {selectedCount}
+          <FilterSection
+            key={facet.key}
+            id={sectionId(facet.key)}
+            label={selectedCount > 0 ? `${facet.key} (${selectedCount})` : facet.key}
+            expanded={expandedIds}
+            onToggle={toggle}
+          >
+            {facet.values.map((value) => {
+              const checked = (filters.labels[facet.key] ?? []).includes(value.id);
+              return (
+                <button
+                  key={value.id}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={checked}
+                  aria-label={`${facet.key} ${value.name}`}
+                  onClick={() => toggleValue(facet.key, value.id)}
+                  className="flex w-full cursor-pointer items-center gap-2 py-1 text-left text-xs hover:bg-accent"
+                >
+                  <input type="checkbox" checked={checked} readOnly className="h-3.5 w-3.5" />
+                  <span className="truncate">{value.name}</span>
+                  <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                    {value.count}
                   </span>
-                )}
-              </span>
-              {isOpen ? (
-                <ChevronUpIcon className="h-4 w-4" />
-              ) : (
-                <ChevronDownIcon className="h-4 w-4" />
-              )}
-            </button>
-            {isOpen && (
-              <div className="pb-3">
-                {facet.values.map((value) => {
-                  const checked = (filters.labels[facet.key] ?? []).includes(value.id);
-                  return (
-                    <button
-                      key={value.id}
-                      type="button"
-                      role="checkbox"
-                      aria-checked={checked}
-                      aria-label={`${facet.key} ${value.name}`}
-                      onClick={() => toggleValue(facet.key, value.id)}
-                      className="flex w-full cursor-pointer items-center gap-2 py-1 text-left text-xs hover:bg-accent"
-                    >
-                      <input type="checkbox" checked={checked} readOnly className="h-3.5 w-3.5" />
-                      <span className="truncate">{value.name}</span>
-                      <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-                        {value.count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                </button>
+              );
+            })}
+          </FilterSection>
         );
       })}
-    </div>
+    </>
   );
 }
