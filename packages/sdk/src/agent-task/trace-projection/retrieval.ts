@@ -1,5 +1,5 @@
 /**
- * Retrieval evidence — the boundary between whatever a retriever returns and
+ * Retrieval evidence: the boundary between whatever a retriever returns and
  * the typed documents assertions match on.
  *
  * A retrieval is an action with content: a query in, ranked documents out.
@@ -17,9 +17,7 @@ import type { TraceProjectionObservation } from "./types.ts";
 export interface TraceProjectionDocument {
   /** Stable corpus id when the retriever reports one. Absent for content-only retrievers. */
   id?: string;
-  /** Similarity score when reported. Finite only. */
   score?: number;
-  /** The retrieved text. */
   content: string;
 }
 
@@ -27,7 +25,7 @@ export interface TraceProjectionDocument {
  * Parse a retriever result into documents. Recognized shapes: a
  * `{ documents: [...] }` wrapper, or a bare array; items are objects with
  * `content`/`text` and optional `id`/`score`, or plain strings. Returns
- * `undefined` for unrecognized shapes — unknown stays unknown, never "no
+ * `undefined` for unrecognized shapes: unknown stays unknown, never "no
  * documents".
  */
 export function parseRetrievedDocuments(
@@ -54,7 +52,6 @@ export function documentsFromObservation(
   return parseRetrievedDocuments(obs.toolResult) ?? parseRetrievedDocuments(obs.output);
 }
 
-/** The query a retrieval observation ran with, when recorded. */
 export function retrievalQueryFrom(
   obs: Pick<TraceProjectionObservation, "input" | "toolParameters">,
 ): string | undefined {

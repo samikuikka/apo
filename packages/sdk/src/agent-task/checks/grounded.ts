@@ -8,7 +8,6 @@
 import type { TraceProjectionDocument } from "../trace-projection/retrieval.ts";
 import type { TraceRetrieval } from "../trace-projection/view.ts";
 
-/** The judge instruction. Value 1 is the answer, value 2 the sources. */
 export const GROUNDEDNESS_RUBRIC = [
   "Value 1 is an answer. Value 2 is the set of source documents the answer was supposed to rely on.",
   "Decide whether the answer is grounded in the sources. Check every factual claim in the answer. " +
@@ -35,7 +34,6 @@ export function formatTraceSources(retrievals: readonly TraceRetrieval[]): strin
   return formatSources(documents);
 }
 
-/** Author-supplied source texts as the judge's source list. */
 export function formatAuthorSources(sources: readonly string[]): string {
   return formatSources(sources.map((content) => ({ content })));
 }

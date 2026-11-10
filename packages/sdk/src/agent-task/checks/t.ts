@@ -87,7 +87,6 @@ export type DocumentMatcher =
   | { idPrefix: string }
   | { contentIncludes: string };
 
-/** Scope for retrieval assertions. */
 export type RetrievedOptions = {
   /** The match must rank within a retrieval's first `topK` documents (retriever order). */
   topK?: number;
@@ -95,7 +94,6 @@ export type RetrievedOptions = {
   query?: string;
 };
 
-/** Options for `t.grounded`. */
 export type GroundedOptions = {
   /**
    * What the answer must be grounded in. `"trace"` (the default) is every
@@ -1421,7 +1419,6 @@ export function createTraceTestContext(
   return context;
 }
 
-/** `t.not`: each negatable assertion runs inside the recorder's negation scope. */
 function createNotContext(t: TestContext, rec: Recorder): NotTestContext {
   return {
     calledTool: (name, opts) => rec.negated(() => t.calledTool(name, opts)),

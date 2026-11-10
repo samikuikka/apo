@@ -279,7 +279,6 @@ def _retrieval_availability(retrievals: list[LoggedCallDB]) -> EvidenceAvailabil
 
 
 def _is_document_list(value: object) -> bool:
-    """A bare list of documents, or a ``{"documents": [...]}`` wrapper."""
     if isinstance(value, list):
         return True
     return isinstance(value, dict) and isinstance(cast(dict[str, object], value).get("documents"), list)

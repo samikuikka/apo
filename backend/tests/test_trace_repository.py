@@ -487,7 +487,7 @@ class TestRetrievalCapability:
     Recorded runs evaluate the backend's canonical projection, so a retrieval
     that exported its documents on the tool channels must read back as
     available, and one whose result shape was unrecognized must read as
-    partial — never available, never silently absent.
+    partial: never available, never silently absent.
     """
 
     def _capabilities(self, calls: list[LoggedCallDB], trace_id: str, project: str):
