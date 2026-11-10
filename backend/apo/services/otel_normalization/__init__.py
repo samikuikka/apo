@@ -133,6 +133,22 @@ def normalize_span(span: OtlpSpanDB) -> NormalizedSpan:
     if tool_result is not None:
         normalized.tool_result = tool_result
 
+    # OpenInference retrievers (LangChain, LlamaIndex, Phoenix) carry the
+    # query as input.value and the documents as flattened
+    # retrieval.documents.* attributes. Map them onto the same tool channels
+    # the apo SDK exports, so retrieval assertions read auto-instrumented
+    # retrievals with no wrapping. An explicit gen_ai channel always wins.
+    if (
+        observation_type == "RETRIEVER"
+        and mapping_name == "openinference"
+        and normalized.tool_result is None
+    ):
+        oi_params, oi_result = _openinference.extract_retrieval(attrs)
+        if normalized.tool_parameters is None and oi_params is not None:
+            normalized.tool_parameters = oi_params
+        if oi_result is not None:
+            normalized.tool_result = oi_result
+
     return normalized
 
 
