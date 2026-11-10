@@ -16,15 +16,21 @@ import asyncio
 import threading
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 from sqlmodel import Session
 
 import apo.services.execution_finalization as fin
 from apo.db import begin_immediate, engine
-from apo.models.db import AgentTaskResultEvidenceDB, ProjectDB, TaskExecutionAttemptDB
+from apo.models.db import (
+    AgentTaskDeliverableDB,
+    AgentTaskResultEvidenceDB,
+    ProjectDB,
+    TaskExecutionAttemptDB,
+)
 from apo.services.execution_finalization import (
     AttemptResultBody,
     finalize_attempt_with_deliverables,
@@ -47,7 +53,7 @@ def _heartbeat_like_write() -> float:
 
 
 async def test_loop_side_write_is_not_starved_while_a_result_finalizes(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: MonkeyPatch,
 ) -> None:
     def slow_precheck(
         session: Session, *, lease: CurrentAttemptLease, body: AttemptResultBody
@@ -61,6 +67,7 @@ async def test_loop_side_write_is_not_starved_while_a_result_finalizes(
         lease: CurrentAttemptLease,
         body: AttemptResultBody,
         completion_digest: str | None = None,
+        staged_deliverables: Sequence[AgentTaskDeliverableDB] = (),
     ) -> TaskExecutionAttemptDB:
         begin_immediate(session)
         session.commit()

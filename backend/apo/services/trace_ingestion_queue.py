@@ -428,9 +428,16 @@ class QueueWorker:
         ``project_immediately=False``. This method reads the batch payload,
         finds the canonical spans, and projects each one through the projector.
         """
-        from .trace_projector import get_trace_projector
+        from .trace_projector import (
+            deferred_run_aggregates,
+            flush_run_aggregates,
+            get_trace_projector,
+        )
 
-        with Session(engine) as session:
+        # Run rollups are deferred for the whole batch: recomputing them per
+        # span made a batch of spans landing on a completed run quadratic in
+        # trace size, all of it inside the write lock.
+        with Session(engine) as session, deferred_run_aggregates(session):
             # This transaction writes for its whole life (per-span savepoints
             # read run/call state, then write). Take SQLite's write lock
             # before the first read so the savepoints can never need the WAL
@@ -505,6 +512,12 @@ class QueueWorker:
                         if seen % PROJECTION_COMMIT_CHUNK == 0:
                             session.commit()
                             begin_immediate(session)
+            # Once per run the batch touched, in the batch's last transaction:
+            # the state this pass leaves behind matches per-span refreshes. A
+            # pass that dies before this point leaves the batch on its lease
+            # (or requeued on lock contention), and the retry re-projects and
+            # lands here.
+            flush_run_aggregates(session)
             session.commit()
             return BatchProjectionResult(
                 projected=projected,

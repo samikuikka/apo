@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 
@@ -24,7 +25,12 @@ from sqlmodel import Session, select
 
 from apo.db import begin_immediate
 from apo.db_helpers import as_column
-from apo.models.db import AgentTaskBatchRunDB, AgentTaskRunDB, TaskExecutionAttemptDB
+from apo.models.db import (
+    AgentTaskBatchRunDB,
+    AgentTaskDeliverableDB,
+    AgentTaskRunDB,
+    TaskExecutionAttemptDB,
+)
 from apo.models.schemas import AgentTaskRunConfiguration
 from apo.services.agent_task_runner import finalize_task_run_with_result, update_batch_run_status
 from apo.services.execution_leases import (
@@ -156,6 +162,7 @@ def finalize_attempt_result(
     lease: CurrentAttemptLease,
     body: AttemptResultBody,
     completion_digest: str | None = None,
+    staged_deliverables: Sequence[AgentTaskDeliverableDB] = (),
 ) -> TaskExecutionAttemptDB:
     """Apply a bounded result: attempt succeeded, Task Run finalized via the
     shared finalizer, batch rolled up. Idempotent by (completion_id, digest).
@@ -163,8 +170,13 @@ def finalize_attempt_result(
     ``completion_digest`` overrides the body-derived digest: the
     evidence-ref path resolves referenced parts into an effective body whose
     transcript/checks/deliverables differ from the wire request, and the
-    stored digest must match what a replay of the same request hashes —
+    stored digest must match what a replay of the same request hashes:
     the wire body, not the resolved one.
+
+    ``staged_deliverables`` are ready rows built outside any write
+    transaction (see ``stage_json_deliverable``); they are added right after
+    the idempotency check, so they commit atomically with the terminal state
+    and a replay adds nothing.
     """
     # Reads (lease, completion idempotency) then writes in one transaction;
     # take SQLite's write lock first so a projector commit landing between
@@ -180,6 +192,9 @@ def finalize_attempt_result(
         terminal_status=SUCCEEDED,
     ):
         return attempt
+
+    for row in staged_deliverables:
+        session.add(row)
 
     now = datetime.now(timezone.utc)
     transition_attempt(attempt, SUCCEEDED)
@@ -351,10 +366,14 @@ async def finalize_attempt_with_deliverables(
     body: AttemptResultBody,
     deliverables: dict[str, object] | None,
 ) -> TaskExecutionAttemptDB | None:
-    """Precheck replay, resolve evidence, persist, then finalize the attempt.
+    """Precheck replay, resolve evidence, stage, then finalize the attempt.
 
     Shared by executor protocol v1 and v2 result routes so the
-    precheck → resolve → persist → finalize ordering lives in one place.
+    precheck → resolve → stage → finalize ordering lives in one place.
+    Staging places deliverable objects in the store with NO write
+    transaction open on the session; the rows land in finalize's one
+    transaction, together with the terminal state, so an interrupted
+    finalize loses nothing and the executor's retry records it exactly once.
 
     Returns the finalized attempt, or ``None`` for an idempotent replay
     (caller should return its replay response without touching the result).
@@ -384,36 +403,45 @@ async def finalize_attempt_with_deliverables(
         session, lease=lease, body=body, wire_deliverables=deliverables
     )
 
+    staged: list[AgentTaskDeliverableDB] = []
     if effective.deliverables:
-        from apo.models.db import TaskExecutionAttemptDB
-        from apo.services.agent_task_deliverables import persist_json_deliverable
+        from apo.services.agent_task_deliverables import stage_json_deliverable
         from apo.services.artifact_stores.registry import get_store
 
         attempt_row = session.get(TaskExecutionAttemptDB, lease.attempt_id)
         if attempt_row is not None:
             store = get_store(None)
             for name, value in effective.deliverables.items():
-                await persist_json_deliverable(
-                    session,
-                    project=attempt_row.project,
-                    task_run_id=attempt_row.task_run_id,
-                    name=name,
-                    value=value,
-                    store=store,
+                # Stage (compress + store.put) with no write transaction open
+                # on the session; the rows join the one transaction in
+                # finalize_attempt_result below. Each staged row claims its
+                # name and bytes for the next iteration's joint limits.
+                staged.append(
+                    await stage_json_deliverable(
+                        session,
+                        project=attempt_row.project,
+                        task_run_id=attempt_row.task_run_id,
+                        name=name,
+                        value=value,
+                        store=store,
+                        staged=staged,
+                    )
                 )
-            # The flush emits the queued INSERTs and UPDATEs; like every
-            # write here it waits for SQLite's write lock, so it runs off
-            # the event loop.
-            await asyncio.to_thread(session.flush)
+
 
     # The stored completion digest is over the WIRE body (refs, not their
     # resolved contents) so a replay after staging cleanup hashes identically.
     wire_digest = _body_digest({"kind": "result", "body": asdict(body)})
     finalized = await asyncio.to_thread(
-        finalize_attempt_result, session, lease=lease, body=effective, completion_digest=wire_digest
+        finalize_attempt_result,
+        session,
+        lease=lease,
+        body=effective,
+        completion_digest=wire_digest,
+        staged_deliverables=staged,
     )
     # Staging has served its purpose: the permanent stores now hold the
-    # evidence. Best-effort removal — the TTL sweep collects anything a
+    # evidence. Best-effort removal; the TTL sweep collects anything a
     # crash between finalize and cleanup leaves behind.
     if body.evidence_refs:
         from apo.services.result_evidence import delete_result_evidence
