@@ -201,10 +201,6 @@ function minutesText(range: MetricRange): string {
   return `under ${toMin(range.max ?? 0)}`;
 }
 
-// ============================================================================
-// Saved scopes (Runs page): named filter sets kept per browser
-// ============================================================================
-
 /** A named snapshot of the scope + metric params, stored as the URL's own
  * encoding so applying is a straight param swap. */
 export interface SavedRunScope {

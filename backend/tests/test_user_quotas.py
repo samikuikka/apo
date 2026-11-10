@@ -91,7 +91,6 @@ class TestMaxApiKeys:
         assert "API key limit reached" in detail
         assert "max 1" in detail
 
-        # The denied mint wrote nothing: still exactly one key row.
         keys = session.exec(
             select(ApiKeyDB).where(ApiKeyDB.created_by == user.id)
         ).all()

@@ -184,8 +184,6 @@ export function parseServingFilterValues(raw: string | null): string[] {
   return raw.split(",").map((value) => value.trim()).filter(Boolean);
 }
 
-// Format helpers
-
 /** The identity tuple as one label, skipping unreported dimensions:
  * `"fireworks · priority"`, `"openrouter · baseten · nitro"`. Empty string
  * when nothing was reported. */

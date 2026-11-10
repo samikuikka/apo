@@ -163,7 +163,6 @@ export interface RunLabelFacetValue {
   count: number;
 }
 
-/** Filter options for the environment and label dimensions of a project's runs. */
 /** Nearest-rank distribution of a stored run metric (dollars or seconds). */
 export interface RunMetricQuantiles {
   p20: number;
@@ -171,6 +170,7 @@ export interface RunMetricQuantiles {
   p80: number;
 }
 
+/** Filter options for the environment and label dimensions of a project's runs. */
 export interface RunLabelFacets {
   environments: { value: string; count: number }[];
   labels: { key: string; values: RunLabelFacetValue[] }[];

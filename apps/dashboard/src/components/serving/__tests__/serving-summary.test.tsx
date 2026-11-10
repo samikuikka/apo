@@ -167,8 +167,7 @@ describe("ServingSummary", () => {
       expect(screen.getByText("7")).toBeInTheDocument();
       expect(screen.getByText("120 tok/s \u00b7 3")).toBeInTheDocument();
       expect(screen.getByText("All Output")).toBeInTheDocument();
-      // Coverage line lists the quality split and the unpriced remainder.
-      expect(screen.getByText(/Cost coverage: reported \$0\.00/)).toBeInTheDocument();
+        expect(screen.getByText(/Cost coverage: reported \$0\.00/)).toBeInTheDocument();
       expect(screen.getByText(/2 unpriced/)).toBeInTheDocument();
     });
 

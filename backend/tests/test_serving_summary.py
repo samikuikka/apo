@@ -81,11 +81,6 @@ def _call(
     )
 
 
-# ============================================================================
-# generation_rates
-# ============================================================================
-
-
 class TestGenerationRates:
     def test_spec_example_whole_streaming_and_ttft(self) -> None:
         """n=100, duration 2s, compatible 500ms first-content offset:
@@ -184,11 +179,6 @@ class TestGenerationRates:
         assert rates.whole_call_output_tokens_per_second is None
         assert rates.streaming_output_tokens_per_second is None
         assert rates.streaming_unavailable_reason == "invalid_timing"
-
-
-# ============================================================================
-# summarize_calls
-# ============================================================================
 
 
 class TestSummarizeStates:
@@ -390,11 +380,6 @@ class TestSummarizeRates:
         assert [g.identity.model for g in summary.groups[1:3]] == ["model-01", "model-02"]
 
 
-# ============================================================================
-# cost_coverage
-# ============================================================================
-
-
 class TestCostCoverage:
     def test_sums_split_by_quality_with_nulls_when_empty(self) -> None:
         coverage = cost_coverage([_call("s-free")])
@@ -461,11 +446,6 @@ class TestCostCoverage:
             [_call("s-prov", provided_cost=42, pricing_quality="reported")]
         )
         assert coverage.reported == 42
-
-
-# ============================================================================
-# Filters
-# ============================================================================
 
 
 def _filter(
