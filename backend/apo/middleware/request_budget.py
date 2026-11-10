@@ -1,6 +1,6 @@
 """Aggregate request budget across every route.
 
-The read throttle caps 8 heavy list/aggregate reads per identity, and
+The read throttle caps the heavy list/aggregate reads per identity, and
 telemetry admission caps 5 telemetry write routes, but nothing bounded the
 TOTAL request rate: hundreds of pollers with distinct identities (attempt
 tokens, executors) or a fleet sharing one API key each stay under every
@@ -18,13 +18,24 @@ ceiling: dashboard polling, task clients flushing ~2 requests/s per run,
 and executor heartbeats all fit inside one identity's budget with room
 to spare.
 
-Unauthenticated traffic (executor protocol, public auth routes) counts
-into the global bucket only: derive_admission_identity would return the
-synthetic identity "open-dev" for it, so this middleware only derives an
-identity for requests whose auth_method is actually set. The one shared
-exception is anonymous-demo traffic (auth_method "anonymous"), which
-derives "open-dev" and is bounded as a single tenant, mirroring the
-telemetry admission middleware.
+Public paths (the health probe, the auth routes, the self-authenticating
+executor protocol: every path AuthMiddleware's public-path check admits)
+skip auth entirely, so their requests carry no identity. Charging those
+to the global bucket let one anonymous address flood the health probe,
+empty the installation-wide bucket, and 429 every route for every
+caller. A public-path request attributable to a client address is
+therefore bounded by a per-address sliding window instead
+(``APO_PUBLIC_PATH_REQUESTS_PER_MINUTE``, default 120/min; 0 disables
+it) and charges nothing shared: each address can only lock out itself.
+
+Every other request without an identity keeps the legacy global-only
+charge. That covers the development-profile open-dev bypass, and
+public-path requests with no attributable address: a trusted peer that
+forwarded no client address is the installation's own server-side call
+(the dashboard server verifying a password, say), and keying those by
+the peer would put every visitor into one bucket. Anonymous-demo traffic
+(auth_method "anonymous") still derives "open-dev" and is bounded as a
+single tenant, mirroring the telemetry admission middleware.
 """
 
 # pyright: reportImplicitOverride=false
@@ -40,6 +51,13 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
+from ..auth.client_ip import get_external_client_ip
+
+# Which paths are public is auth's knowledge. Reusing its own predicate
+# (not a copied path list) keeps the per-address window and the auth
+# allow-list from drifting: a route made public later is covered at once.
+from ..auth.middleware import _is_public  # pyright: ignore[reportPrivateUsage]
+from ..auth.rate_limit import LoginRateLimiter
 from ..services.telemetry_admission import (
     AdmissionRejection,
     TelemetryAdmissionController,
@@ -50,14 +68,17 @@ from ..services.telemetry_limits import TokenBucketPolicy
 
 @dataclass(frozen=True)
 class RequestBudgetLimits:
-    """The budget's two dimensions; None disables that dimension.
+    """The budget's dimensions; None disables that dimension.
 
-    Both None means the whole budget is off and the middleware is not
-    wired at all.
+    All three None means the whole budget is off and the middleware is
+    not wired at all. ``public_path_per_ip`` is not a token bucket: it
+    is the sliding-window size (requests per 60s) applied per source
+    address to public-path traffic.
     """
 
     identity: TokenBucketPolicy | None
     global_requests: TokenBucketPolicy | None
+    public_path_per_ip: int | None = None
 
 
 def load_request_budget_limits() -> RequestBudgetLimits:
@@ -81,11 +102,12 @@ def load_request_budget_limits() -> RequestBudgetLimits:
             "APO_REQUEST_BUDGET_GLOBAL_BURST",
             2000,
         ),
+        public_path_per_ip=_load_public_path_per_ip(),
     )
 
 
 class RequestBudgetMiddleware(BaseHTTPMiddleware):
-    """Bound total request rate with a global plus per-identity budget."""
+    """Bound request rate: global plus per-identity, per-address on public paths."""
 
     def __init__(
         self,
@@ -96,6 +118,13 @@ class RequestBudgetMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._controller: TelemetryAdmissionController = controller
         self._limits: RequestBudgetLimits = limits
+        self._public_limiter: LoginRateLimiter | None = (
+            LoginRateLimiter(
+                max_attempts=limits.public_path_per_ip, window_seconds=60
+            )
+            if limits.public_path_per_ip is not None
+            else None
+        )
 
     async def dispatch(
         self,
@@ -112,9 +141,38 @@ class RequestBudgetMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         identity = _authenticated_identity(request)
+        if identity is None and self._public_limiter is not None and _is_public(path):
+            # None = the installation's own server-side call: no client
+            # address to meter, so it keeps the legacy charge below.
+            address = get_external_client_ip(request)
+            if address is not None:
+                return await self._dispatch_public(
+                    request, call_next, self._public_limiter, address
+                )
         rejection = self._consume(identity)
         if rejection is not None:
             return _budget_response(rejection)
+        return await call_next(request)
+
+    async def _dispatch_public(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+        limiter: LoginRateLimiter,
+        address: str,
+    ) -> Response:
+        """Public-path traffic: one sliding window per client address.
+
+        Public paths skip auth, so their requests have no identity and
+        no identity bucket; charging them the global bucket is the
+        drain-the-budget-for-everyone vector (an anonymous flood on the
+        health probe empties the one bucket every caller shares). On the
+        window they charge nothing shared: each address can only lock
+        out itself.
+        """
+        if not limiter.is_allowed(address):
+            return _public_limit_response(limiter, address)
+        limiter.record_attempt(address)
         return await call_next(request)
 
     def _consume(self, identity: str | None) -> AdmissionRejection | None:
@@ -141,11 +199,13 @@ def _authenticated_identity(request: Request) -> str | None:
 
     derive_admission_identity returns the synthetic "open-dev" when
     auth_method is unset; requests with no auth state at all must stay
-    global-only, so gate on auth_method first. Anonymous-demo requests
-    (auth_method "anonymous") pass the gate deliberately and derive the
-    shared "open-dev" identity: the demo is one tenant. An authenticated
-    request whose subject cannot be derived (None) also falls back to
-    global-only rather than inventing an identity.
+    off the identity dimension (the per-address window when they are
+    attributable public-path requests, global-only otherwise), so gate
+    on auth_method first. Anonymous-demo requests (auth_method
+    "anonymous") pass the gate deliberately and derive the shared
+    "open-dev" identity: the demo is one tenant. An authenticated
+    request whose subject cannot be derived (None) is treated as
+    identity-less too rather than inventing an identity.
     """
     if not getattr(request.state, "auth_method", None):
         return None
@@ -164,6 +224,35 @@ def _budget_response(rejection: AdmissionRejection) -> JSONResponse:
             "X-RateLimit-Scope": rejection.scope,
         },
     )
+
+
+def _public_limit_response(limiter: LoginRateLimiter, address: str) -> JSONResponse:
+    """The budget's 429 shape for an address that exhausted its window.
+
+    Same header set as ``_budget_response`` so clients parse one shape;
+    scope "ip" tells a caller the limit is its own address, not a
+    saturated backend.
+    """
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": "Public path request rate limit exceeded for this address."
+        },
+        headers={
+            "Retry-After": str(limiter.get_retry_after(address)),
+            "X-RateLimit-Limit": str(limiter.max_attempts),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Resource": "public-requests",
+            "X-RateLimit-Scope": "ip",
+        },
+    )
+
+
+def _load_public_path_per_ip() -> int | None:
+    """Per-address window size for public-path traffic; None when 0."""
+    name = "APO_PUBLIC_PATH_REQUESTS_PER_MINUTE"
+    value = _parse_budget_int(name, os.environ.get(name), 120)
+    return value if value > 0 else None
 
 
 def _load_policy(

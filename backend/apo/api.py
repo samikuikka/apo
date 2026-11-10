@@ -228,6 +228,11 @@ def create_app() -> FastAPI:
     from .services.sse_limits import load_sse_limits
 
     load_sse_limits()
+    # Creation-cap defaults share the same fail-fast contract: an invalid
+    # value must stop startup, not 500 on the first key or project create.
+    from .services.user_quotas import load_default_creation_caps
+
+    load_default_creation_caps()
 
     # validate admission limits and construct the controller.
     admission_limits = load_telemetry_admission_limits()
@@ -255,7 +260,9 @@ def create_app() -> FastAPI:
     # Aggregate request budget: the two limiters above cap specific heavy
     # reads and telemetry writes, but nothing bounded total request rate
     # until this global-plus-per-identity backstop. Own controller so
-    # budget charges never drain the telemetry admission buckets.
+    # budget charges never drain the telemetry admission buckets. The
+    # middleware also owns the per-address window for public-path
+    # traffic, so it is wired whenever any of the three dimensions is live.
     from dataclasses import replace
 
     from .middleware.request_budget import (
@@ -267,6 +274,7 @@ def create_app() -> FastAPI:
     if (
         request_budget_limits.identity is not None
         or request_budget_limits.global_requests is not None
+        or request_budget_limits.public_path_per_ip is not None
     ):
         telemetry_defaults = load_telemetry_admission_limits()
         # A disabled dimension keeps the telemetry default because the
