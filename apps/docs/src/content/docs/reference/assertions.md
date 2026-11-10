@@ -65,6 +65,18 @@ These read the run's trace, what the agent *did*. Fast, deterministic, free.
 - **Signature:** `() → void`
 - **Asserts:** no tool or subagent call reported an error, anti-flail.
 
+### `t.retrieved(document, opts?)`
+
+- **Signature:** `(document: DocumentMatcher, opts?: { topK?: number; query?: string }) → void`
+- **Asserts:** a retrieval returned a matching document, optionally within the retrieval's first `topK` results and only for retrievals whose query contains `query`.
+
+Context recall as a test: one committed expectation per assertion, no score and no threshold. A string matcher is a document id, matched exactly or as the parent of a chunk id (`"handbook"` matches `"handbook#p3"`); `{ idPrefix }` and `{ contentIncludes }` cover other chunk-id schemes and retrievers that report no ids. Produces evidence by wrapping your retrieval in `trace.traceRetriever(query, fn)` inside the adapter (see [tracing integrations](/reference/tracing-integrations/)); the fn should return `{ documents: [{ id, score, content }] }` or a bare array.
+
+### `t.maxRetrievals(n)`
+
+- **Signature:** `(n: number) → void`
+- **Asserts:** at most `n` retrievals ran, anti-flail. Counts retrievals even when their document lists were unrecognized.
+
 ### `t.loadedSkill(skill)`
 
 - **Signature:** `(skill: string) → void`
@@ -125,6 +137,13 @@ test("reacted-to-correction", (t) => {
 
 An undelivered steer yields an empty window: evidence-demanding assertions inside fail, but ceiling-only assertions would pass vacuously — pair `t.afterSteer` with `t.steerDelivered` in the same task.
 
+### `t.not.<assertion>()`
+
+- **Signature:** `t.not.retrieved(...)`, `t.not.calledTool(...)`, `t.not.toolOrder(...)`, `t.not.loadedSkill(...)`, `t.not.calledSubagent(...)`, `t.not.messageIncludes(...)`, `t.not.check(...)`
+- **Asserts:** the negatable assertion does not hold — `t.not.retrieved({ idPrefix: "acme-" })` passes when no other tenant's document was retrieved.
+
+The flip applies to verdicts only. An `unsupported` or `error` outcome stays as it is, so missing evidence can never become a pass by negation: with no retrieval evidence at all, `t.not.retrieved(...)` records `unsupported`, it does not pass. Judged checks (`t.judge`, `t.semantic`, `t.agent`) and budgets are not negatable — judged checks carry their own polarity through `{ expect: "fail" }`.
+
 ### `t.assert(label, predicate)`
 
 - **Signature:** `(label: string, predicate: (view: TraceView) => boolean) → void`
@@ -151,6 +170,18 @@ type ToolCallOptions = {
   output?: ValueMatcher<unknown>;    // match the tool's output
   status?: "ok" | "error";          // match the call status
 };
+```
+
+### `DocumentMatcher`
+
+Which retrieved document a `t.retrieved` assertion looks for:
+
+```typescript
+type DocumentMatcher =
+  | string                // document id, exact or the parent of a chunk id ("handbook" matches "handbook#p3")
+  | { id: string }        // document id, exact only
+  | { idPrefix: string }  // document id starts with this (other chunk-id schemes)
+  | { contentIncludes: string }; // retrieved text contains this (retrievers without ids)
 ```
 
 ## Value assertions
@@ -386,6 +417,13 @@ MCP calls draw down the **same session budget** as `read_deliverable` (tool call
 A stdio server is a process the eval file told apo to spawn — the same trust as any adapter code. Secret-bearing values (`env`, `headers`) expand `${VAR}` from the environment at connect time; an unset variable is a visible load error, and the values themselves never appear in the recorded session. A configured server that fails to connect fails the check closed, naming the server.
 :::
 
+### `t.grounded(value, opts?)`, async
+
+- **Signature:** `(value: unknown, opts?: { sources?: "trace" | readonly string[]; label?: string; judge?: Partial<JudgeConfig>; expect?: "pass" | "fail" }) → Promise<void>`
+- **Asserts:** every factual claim in `value` is supported by the sources — the groundedness (faithfulness) check for retrieval-augmented answers. A claim that is true in the real world but not stated by the sources still fails; the judge measures the answer against the sources, not against its own knowledge.
+
+`sources` defaults to `"trace"`: the documents this run actually retrieved, read from the retrieval evidence, so the judge sees what the system fed the model rather than a curated context. An array supplies author-written sources instead, which works without any retrieval evidence. A fixed rubric over `t.judge`, so per-call judge overrides, the second judge, and `{ expect: "fail" }` (the judge must catch a known hallucination) all apply. With no retrieval evidence — or a retrieval whose document list was unrecognized — the outcome is `unsupported` and the judge is never called.
+
 ## Matchers
 
 Imported from `@apo-ai/sdk/agent-task` and passed to `t.check(value, matcher)`:
@@ -415,6 +453,9 @@ Every `t.*` assertion is gated by an **evidence capability**: whether the trace 
 | Positive (`calledTool`, `loadedSkill`, `calledSubagent`, `messageIncludes`) | normal evaluation | `unsupported` (inconclusive) | `unsupported` |
 | Negative / upper-bound (`notCalledTool`, `usedNoTools`, `maxToolCalls`, `maxTurns`, `maxDurationMs`) | normal evaluation | `unsupported` (absence is inconclusive) | `unsupported` |
 | `noFailedActions` | normal evaluation | `unsupported` (inconclusive) | `unsupported` |
+| `retrieved` | normal evaluation | `unsupported` when an in-scope retrieval returned an unrecognized shape (the match could be hiding there) | `unsupported` |
+| `not.retrieved` | normal evaluation | `unsupported` (absence of evidence is not evidence of absence) | `unsupported` |
+| `maxRetrievals`, `t.grounded` with `sources: "trace"` | normal evaluation | `maxRetrievals` counts retrievals normally; `t.grounded` is `unsupported` (the source list would be incomplete) | `unsupported` |
 
 When a capability is `partial` or `unavailable`, the assertion immediately records `unsupported` without scanning for matches, a partial projection cannot prove a positive or a negative.
 

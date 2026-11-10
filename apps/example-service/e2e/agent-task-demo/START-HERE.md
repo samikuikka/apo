@@ -12,6 +12,7 @@ structured data from an invoice.
 | **Apo Adapter** | [`ai-sdk-adapter.ts`](../ai-sdk-adapter.ts) — thin bridge calling `handleChat()` |
 | **First Task** | [`tasks/ai-sdk-agent/data-extraction/data-extraction.eval.ts`](tasks/ai-sdk-agent/data-extraction/data-extraction.eval.ts) |
 | **Task inputs** | [`tasks/ai-sdk-agent/data-extraction/files/`](tasks/ai-sdk-agent/data-extraction/files/) — `invoice.txt` + `instructions.md` |
+| **RAG demo** | [`tasks/rag-handbook/vacation-policy/vacation-policy.eval.ts`](tasks/rag-handbook/vacation-policy/vacation-policy.eval.ts) + [`rag-adapter.ts`](../rag-adapter.ts) — retrieval assertions (`t.retrieved`, `t.not.retrieved`, `t.grounded`) over a live chatbot |
 
 ## Prerequisites
 
