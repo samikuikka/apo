@@ -44,6 +44,7 @@ export default defineConfig({
 					label: 'Guides',
 					items: [
 						{ label: 'Define a Task', slug: 'guides/define-a-task' },
+						{ label: 'Test a RAG Agent', slug: 'guides/testing-rag' },
 						{ label: 'Steer a running agent', slug: 'guides/steer-a-running-agent' },
 						{ label: 'Run and debug', slug: 'guides/run-and-debug' },
 						{ label: 'Send service traces', slug: 'guides/send-service-traces' },

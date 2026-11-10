@@ -1,0 +1,81 @@
+---
+title: Test a RAG Agent
+description: Assert on what your retriever returned and whether the answer stays inside the sources.
+---
+
+**RAG breaks in two places: retrieval and generation.** apo tests both against the real system. Retrieval becomes deterministic tests over what the run actually retrieved, and generation becomes a judged test with a fixed faithfulness rubric. No scores, no thresholds, one binary verdict per run.
+
+This guide assumes you have a task and adapter already. If not, read [Define a Task](/guides/define-a-task/) first. The complete example lives in the repo: [`apps/example-service/e2e/agent-task-demo`](https://github.com/samikuikka/apo/tree/main/apps/example-service/e2e/agent-task-demo) (`rag-adapter.ts` and `tasks/rag-handbook/vacation-policy`).
+
+## 1. Mark the retrieval
+
+Wrap the search inside your agent so apo can see what came back. One line, in your code, nothing changes at runtime:
+
+```typescript
+const passages = await ctx.trace.traceRetriever(query, async () => {
+  return { documents: searchHandbook(corpus, query) };
+});
+```
+
+Have the wrapped function return its documents as `{ documents: [...] }` (or a bare array). Each document is `{ id?, score?, content }` — the [OpenInference](https://github.com/Arize-ai/openinference/blob/main/spec/semantic_conventions.md) attribute names. The ids come from your corpus: the stable chunk ids your store already has.
+
+If your retriever runs inside a tool, wrap it there. If you use LangChain or LlamaIndex with OpenInference instrumentation, their `RETRIEVER` spans map automatically.
+
+## 2. Assert what retrieval must return
+
+Recall as committed facts, one test each. A string matches a document id exactly or as the parent of a chunk id (`"handbook"` matches `"handbook#p3"`):
+
+```typescript
+test("found the vacation allowance", (t) => {
+  t.retrieved("handbook-vacation", { topK: 3 });
+});
+
+test("found the carry-over rule", (t) => {
+  t.retrieved("handbook-carryover");
+});
+```
+
+`{ topK: 5 }` asserts rank, which is precision where it matters. `{ query: "..." }` scopes to retrievals whose query contains that text. See [DocumentMatcher](/reference/assertions/#documentmatcher) for `{ id }`, `{ idPrefix }`, and `{ contentIncludes }` when your retriever uses other id schemes or none.
+
+## 3. Assert what it must not return
+
+Negation is where RAG security becomes ordinary tests. Cross-tenant leakage, one line:
+
+```typescript
+test("never retrieves another tenant's documents", (t) => {
+  t.not.retrieved({ idPrefix: "acme-" });
+});
+```
+
+The same pattern covers indirect prompt injection: put a poisoned chunk in the task's `files/` corpus, then assert the agent did not act on it (`t.not.calledTool` on the dangerous action, plus a judged check on the answer). The poison becomes a fixture and the guard becomes a regression test.
+
+Negation fails closed. If retrieval evidence is missing, or a retrieval returned a shape apo could not read, `t.not.retrieved(...)` records `unsupported`, never a pass. See [t.not](/reference/assertions/#tnotassertion).
+
+## 4. Assert the answer is grounded
+
+The hallucination check. The judge reads the answer against the documents this run actually retrieved, so it catches answers that are true in the real world but not supported by what the system fed the model:
+
+```typescript
+test("answer is grounded in what was retrieved", async (t, { deliverables }) => {
+  await t.grounded(deliverables.answer);
+});
+```
+
+Pass `{ sources: ["..."] }` to judge against your own source texts instead. Because `t.grounded` rides the regular judge pipeline, you can pin the ground truth the other way too, asserting the judge catches a known hallucination:
+
+```typescript
+test("judge catches an invented policy", async (t) => {
+  await t.grounded("Unused days can be sold back for cash.", {
+    expect: "fail",
+    label: "catches invented sell-back policy",
+  });
+});
+```
+
+## What you see when it fails
+
+The failing assertion carries the evidence: which document matched and at what rank, or the complete list of what every in-scope retrieval returned instead. The trace shows each `RETRIEVER` observation with its query and its documents, next to the tool and generation calls, so the debugging path is the same as for any other apo check.
+
+:::tip[Run the demo]
+The handbook demo includes a fault injector. Run the task with `HANDBOOK_TENANT_FILTER=off` and watch the leak test fail with the other tenant's document at rank 1.
+:::
