@@ -23,6 +23,15 @@ for _suffix in ("", "-wal", "-shm"):
         pass
 _os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB_PATH}"
 
+# The per-address window on public paths is read when apo.api builds the
+# app, and one shared app then serves every test in this process from a
+# single client address ("testclient"). Left on, the suite's combined
+# traffic to public paths (/auth/setup, the bootstrap mints, the executor
+# protocol) would exhaust one 120-per-minute window and 429 unrelated
+# tests. Tests of the window itself build their own app with explicit
+# limits.
+_os.environ.setdefault("APO_PUBLIC_PATH_REQUESTS_PER_MINUTE", "0")
+
 import asyncio
 import inspect
 from typing import override

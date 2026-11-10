@@ -11,7 +11,7 @@ from apo.middleware.read_throttle import ReadThrottle, ReadThrottleMiddleware
 def _throttled_client(max_requests: int) -> TestClient:
     """A minimal app carrying the real middleware on the real route shapes.
 
-    Built fresh per test — adding middleware to the shared `apo.api.app`
+    Built fresh per test: adding middleware to the shared `apo.api.app`
     would leak the throttle into every other test in the process.
     """
     mini = FastAPI()
@@ -22,6 +22,22 @@ def _throttled_client(max_requests: int) -> TestClient:
 
     @mini.get("/v1/runs/{run_id}")
     def get_run(run_id: str) -> dict[str, bool]:
+        return {"ok": True}
+
+    @mini.patch("/v1/runs/{run_id}")
+    def patch_run(run_id: str) -> dict[str, bool]:
+        return {"ok": True}
+
+    @mini.post("/v1/runs/{run_id}/reproject")
+    def reproject_run(run_id: str) -> dict[str, bool]:
+        return {"ok": True}
+
+    @mini.get("/v1/runs/{run_id}/calls/{call_id}")
+    def get_call(run_id: str, call_id: str) -> dict[str, bool]:
+        return {"ok": True}
+
+    @mini.get("/v1/runs/{run_id}/adjacent")
+    def adjacent_runs(run_id: str) -> dict[str, bool]:
         return {"ok": True}
 
     mini.add_middleware(
@@ -48,13 +64,48 @@ def test_throttle_reports_retry_after() -> None:
     assert resp.headers["X-RateLimit-Limit"] == "1"
 
 
-def test_throttle_leaves_detail_reads_alone() -> None:
+def test_throttle_covers_run_detail() -> None:
+    # Run detail loads every call of the run with its payloads, so it is as
+    # heavy as a list read and shares the per-identity window.
+    client = _throttled_client(max_requests=2)
+    statuses = [client.get("/v1/runs/run-1").status_code for _ in range(3)]
+    assert statuses == [200, 200, 429]
+
+
+def test_throttle_covers_reproject() -> None:
+    # Reproject rewrites a run's projection while holding the write lock, so
+    # a loop of them stalls every tenant's writes.
+    client = _throttled_client(max_requests=2)
+    statuses = [
+        client.post("/v1/runs/run-1/reproject").status_code for _ in range(3)
+    ]
+    assert statuses == [200, 200, 429]
+
+
+def test_heavy_run_routes_share_one_window_with_the_list() -> None:
+    # One identity, one window across every protected route: detail and
+    # reproject are not a second budget beside the list.
+    client = _throttled_client(max_requests=3)
+    assert client.get("/v1/runs").status_code == 200
+    assert client.get("/v1/runs/run-1").status_code == 200
+    assert client.post("/v1/runs/run-1/reproject").status_code == 200
+
+    assert client.get("/v1/runs/run-1").status_code == 429
+    assert client.post("/v1/runs/run-1/reproject").status_code == 429
+    assert client.get("/v1/runs").status_code == 429
+
+
+def test_throttle_leaves_cheap_run_subresources_and_writes_alone() -> None:
     client = _throttled_client(max_requests=1)
     client.get("/v1/runs")
-    assert client.get("/v1/runs").status_code == 429
-    # Detail reads (by id) are not on the protected list and never trip it.
+    assert client.get("/v1/runs/run-1").status_code == 429
+    # A single call row and the neighbor lookup are indexed one-row reads.
+    # PATCH shares the detail path but is the task client's own progress
+    # write (about 2 per second per run); throttling it would fail runs.
     for _ in range(3):
-        assert client.get("/v1/runs/some-trace-id").status_code == 200
+        assert client.get("/v1/runs/run-1/calls/call-1").status_code == 200
+        assert client.get("/v1/runs/run-1/adjacent").status_code == 200
+        assert client.patch("/v1/runs/run-1").status_code == 200
 
 
 def test_throttle_disabled_when_max_zero() -> None:

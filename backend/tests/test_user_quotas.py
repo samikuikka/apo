@@ -2,11 +2,18 @@
 
 """Per-user creation count caps (max_api_keys, max_projects).
 
-NULL = unlimited, 0 = creation frozen, N = cap. Enforced on POST
-/v1/api-keys, both bootstrap mints, POST /v1/projects, and
+NULL = installation default (5, env-tunable), 0 = creation frozen,
+N = cap, and an explicit column always beats the env default. Enforced
+on POST /v1/api-keys, both bootstrap mints, POST /v1/projects, and
 POST /v1/projects/bootstrap before any write, so a key-cap denial
-never strands an orphan project row. Denials are 403 with a
-plain-string detail (the CLI renders detail verbatim).
+never strands an orphan project row.
+
+Denials are 403, never 429: released CLIs answer every 429 with
+"Too many attempts. Try again in a few minutes." (project-create.ts),
+and a creation cap lifts only when the user revokes a row or an admin
+raises the cap, so a retry-later message would promise an outcome
+waiting cannot deliver. The detail is a plain string (rendered
+verbatim by the CLI) and the numbers ride X-RateLimit-Limit/-Used.
 """
 
 from collections.abc import Iterator
@@ -90,6 +97,9 @@ class TestMaxApiKeys:
         detail = _assert_string_detail(second)
         assert "API key limit reached" in detail
         assert "max 1" in detail
+        assert second.headers["X-RateLimit-Limit"] == "1"
+        assert second.headers["X-RateLimit-Used"] == "1"
+        assert "Retry-After" not in second.headers
 
         keys = session.exec(
             select(ApiKeyDB).where(ApiKeyDB.created_by == user.id)
@@ -137,17 +147,24 @@ class TestMaxApiKeys:
         assert "API key limit reached" in _assert_string_detail(resp)
         assert session.exec(select(ApiKeyDB)).first() is None
 
-    def test_null_is_unlimited(
+    def test_null_column_takes_the_installation_default(
         self, client: TestClient, session: Session, make_authed_client: Any
     ) -> None:
         authed, user = self._authed(client, session, make_authed_client)
         assert user.max_api_keys is None
 
-        for i in range(3):
-            resp = authed.post(
+        statuses = [
+            authed.post(
                 "/v1/api-keys", json={"name": f"k{i}", "project": TEST_PROJECT_ID}
-            )
-            assert resp.status_code == 200, resp.text
+            ).status_code
+            for i in range(6)
+        ]
+        assert statuses == [200] * 5 + [403]
+        rejected = authed.post(
+            "/v1/api-keys", json={"name": "sixth", "project": TEST_PROJECT_ID}
+        )
+        assert rejected.headers["X-RateLimit-Limit"] == "5"
+        assert rejected.headers["X-RateLimit-Used"] == "5"
 
     def test_revoked_key_frees_slot(
         self, client: TestClient, session: Session, make_authed_client: Any
@@ -184,6 +201,9 @@ class TestMaxProjects:
         detail = _assert_string_detail(second)
         assert "Project limit reached" in detail
         assert "max 1" in detail
+        assert second.headers["X-RateLimit-Limit"] == "1"
+        assert second.headers["X-RateLimit-Used"] == "1"
+        assert "Retry-After" not in second.headers
 
         owned = [
             p
@@ -204,16 +224,21 @@ class TestMaxProjects:
         assert "Project limit reached" in _assert_string_detail(resp)
         assert session.exec(select(ProjectDB)).first() is None
 
-    def test_null_is_unlimited(
+    def test_null_column_takes_the_installation_default(
         self, client: TestClient, session: Session, make_authed_client: Any
     ) -> None:
         user = _setup_user(client, session)
         authed = make_authed_client(user.id, session)
         assert user.max_projects is None
 
-        for i in range(3):
-            resp = authed.post("/v1/projects", json={"name": f"p{i}"})
-            assert resp.status_code == 201, resp.text
+        statuses = [
+            authed.post("/v1/projects", json={"name": f"p{i}"}).status_code
+            for i in range(6)
+        ]
+        assert statuses == [201] * 5 + [403]
+        rejected = authed.post("/v1/projects", json={"name": "sixth"})
+        assert rejected.headers["X-RateLimit-Limit"] == "5"
+        assert rejected.headers["X-RateLimit-Used"] == "5"
 
 
 class TestProjectBootstrapCaps:
@@ -261,3 +286,96 @@ class TestProjectBootstrapCaps:
         assert resp.status_code == 403
         assert "Project limit reached" in _assert_string_detail(resp)
         assert session.exec(select(ProjectDB)).first() is None
+
+
+class TestInstallationDefaults:
+    """How a NULL column resolves, and how the env default itself is read."""
+
+    def test_env_override_lowers_the_default(
+        self,
+        client: TestClient,
+        session: Session,
+        make_authed_client: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        user = _setup_user(client, session)
+        seed_project_for_user(session, user.id)
+        authed = make_authed_client(user.id, session)
+        monkeypatch.setenv("APO_DEFAULT_MAX_API_KEYS_PER_USER", "2")
+
+        statuses = [
+            authed.post(
+                "/v1/api-keys", json={"name": f"k{i}", "project": TEST_PROJECT_ID}
+            ).status_code
+            for i in range(3)
+        ]
+        assert statuses == [200, 200, 403]
+        assert authed.post(
+            "/v1/api-keys", json={"name": "third", "project": TEST_PROJECT_ID}
+        ).headers["X-RateLimit-Limit"] == "2"
+
+    def test_env_zero_restores_unlimited(
+        self,
+        client: TestClient,
+        session: Session,
+        make_authed_client: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        user = _setup_user(client, session)
+        seed_project_for_user(session, user.id)
+        authed = make_authed_client(user.id, session)
+        monkeypatch.setenv("APO_DEFAULT_MAX_API_KEYS_PER_USER", "0")
+        monkeypatch.setenv("APO_DEFAULT_MAX_PROJECTS_PER_USER", "0")
+
+        for i in range(6):
+            assert authed.post(
+                "/v1/api-keys", json={"name": f"k{i}", "project": TEST_PROJECT_ID}
+            ).status_code == 200
+            assert authed.post("/v1/projects", json={"name": f"p{i}"}).status_code == 201
+
+    def test_explicit_column_beats_the_env_default(
+        self,
+        client: TestClient,
+        session: Session,
+        make_authed_client: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Column 10 under an env default of 2: the column wins on both
+        # directions (higher than default here; test_zero_freezes_minting
+        # covers lower-than-default).
+        user = _setup_user(client, session)
+        seed_project_for_user(session, user.id)
+        authed = make_authed_client(user.id, session)
+        monkeypatch.setenv("APO_DEFAULT_MAX_API_KEYS_PER_USER", "2")
+        _set_caps(session, user, max_api_keys=10)
+
+        statuses = [
+            authed.post(
+                "/v1/api-keys", json={"name": f"k{i}", "project": TEST_PROJECT_ID}
+            ).status_code
+            for i in range(10)
+        ]
+        assert statuses == [200] * 10
+
+    @pytest.mark.parametrize("bad_value", ["", "abc", "-1", "3.5"])
+    def test_invalid_default_cap_env_fails_fast(
+        self, monkeypatch: pytest.MonkeyPatch, bad_value: str
+    ) -> None:
+        # create_app validates at startup; an invalid value must name the
+        # variable, not read as 0 and silently lift the cap everywhere.
+        from apo.services.user_quotas import load_default_creation_caps
+
+        monkeypatch.setenv("APO_DEFAULT_MAX_API_KEYS_PER_USER", bad_value)
+        with pytest.raises(ValueError) as exc_info:
+            load_default_creation_caps()
+        assert "APO_DEFAULT_MAX_API_KEYS_PER_USER" in str(exc_info.value)
+
+    def test_invalid_project_default_cap_env_fails_fast(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from apo.services.user_quotas import load_default_creation_caps
+
+        monkeypatch.setenv("APO_DEFAULT_MAX_PROJECTS_PER_USER", "nope")
+        with pytest.raises(ValueError) as exc_info:
+            load_default_creation_caps()
+        assert "APO_DEFAULT_MAX_PROJECTS_PER_USER" in str(exc_info.value)

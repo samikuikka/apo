@@ -67,3 +67,24 @@ def get_client_ip(request: Request) -> str:
         # onto one shared bucket key.
         return forwarded.split(",")[0].strip() or peer
     return peer
+
+
+def get_external_client_ip(request: Request) -> str | None:
+    """The client address when the call is attributable to a client, else ``None``.
+
+    ``None`` means a trusted peer forwarded no client address. Every
+    client that reaches the backend through the ingress carries
+    ``x-forwarded-for`` (the Caddy ingress stamps it), so its absence
+    from a trusted peer marks a call the installation made itself: the
+    dashboard server's server-side fetches, or a tool on the host.
+    Keying those by the peer address would put every dashboard visitor
+    into the frontend container's single bucket, so one visitor wave
+    could exhaust a per-address limit and break everyone's sign-in.
+    Callers should leave such requests to whatever bound applied before
+    per-address limits existed.
+    """
+    peer = request.client.host if request.client else "unknown"
+    first_hop = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    if _peer_is_trusted(peer) and not first_hop:
+        return None
+    return get_client_ip(request)

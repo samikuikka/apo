@@ -1,9 +1,9 @@
-"""Read throttle for expensive list/aggregate endpoints.
+"""Read throttle for expensive list/aggregate/detail endpoints.
 
 The telemetry admission middleware bounds *writes* (7 ingest routes), but
-the expensive reads — the runs list with span search, the task-run list,
-facets — had no limit for authenticated callers: one user (or one leaking
-script) could pin the database with repeated heavy queries.
+the expensive reads (the runs list with span search, the task-run list,
+facets, run detail) had no limit for authenticated callers: one user (or
+one leaking script) could pin the database with repeated heavy queries.
 
 Design mirrors the admission layer's shape but with generous defaults so
 the dashboard's polling stays far below the ceiling:
@@ -32,16 +32,24 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-# Exact (method, path) pairs. Only the heavy list/aggregate reads — detail
-# reads by id are cheap and stay unthrottled. bulk-export is a POST in
-# method but a read in cost (loads + serializes up to 200 runs), so it
-# shares the budget.
+# Exact (method, path) pairs for the heavy routes. Two are not lists:
+#   - Run detail (GET /v1/runs/{id}) loads every call of the run with its
+#     payloads (measured ~18 MB for one 281-call run), so a few dozen
+#     parallel reads can exhaust the container's memory.
+#   - Reproject (POST /v1/runs/{id}/reproject) rewrites the run's whole
+#     projection while holding the database write lock, so a loop of them
+#     stalls every tenant's writes.
+# bulk-export is likewise a POST in method but a read in cost (loads +
+# serializes up to 200 runs). Single-row reads below a run, such as
+# GET /v1/runs/{id}/calls/{call_id}, are cheap and stay unthrottled.
 _PROTECTED_READS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("GET", re.compile(r"^/v1/runs$")),
     ("GET", re.compile(r"^/v1/runs/facets")),
     ("GET", re.compile(r"^/v1/runs/sessions$")),
     ("GET", re.compile(r"^/v1/runs/distinct-")),
     ("POST", re.compile(r"^/v1/runs/bulk-export$")),
+    ("GET", re.compile(r"^/v1/runs/[^/]+$")),
+    ("POST", re.compile(r"^/v1/runs/[^/]+/reproject$")),
     ("GET", re.compile(r"^/v1/agent-task-runs$")),
     ("GET", re.compile(r"^/v1/agent-task-batch-runs$")),
     ("GET", re.compile(r"^/v1/agent-task-batch-runs/[^/]+$")),

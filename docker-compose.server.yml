@@ -18,6 +18,17 @@ services:
       - APO_DEPLOYMENT_PROFILE=server
       - APO_PUBLIC_URL=${APO_PUBLIC_URL:?Set APO_PUBLIC_URL to https://your-apo-host.example}
       - FRONTEND_URL=${APO_PUBLIC_URL:?Set APO_PUBLIC_URL to https://your-apo-host.example}
+      # Fairness knobs: the per-address window on public paths and the
+      # per-user creation caps. Listed here so a server operator can tune
+      # them from .env; Compose silently ignores a variable with no entry.
+      - APO_PUBLIC_PATH_REQUESTS_PER_MINUTE=${APO_PUBLIC_PATH_REQUESTS_PER_MINUTE:-120}
+      - APO_DEFAULT_MAX_API_KEYS_PER_USER=${APO_DEFAULT_MAX_API_KEYS_PER_USER:-5}
+      - APO_DEFAULT_MAX_PROJECTS_PER_USER=${APO_DEFAULT_MAX_PROJECTS_PER_USER:-5}
+    deploy:
+      resources:
+        limits:
+          # 1 GiB starved the page cache for the ~1 GB calls table and left no room for parallel run-detail reads (~18 MB each); the host has ~5.4 GB free, so stay at or below 2g.
+          memory: ${APO_BACKEND_MEMORY_LIMIT:-2g}
 
   caddy:
     image: caddy:2.10.2-alpine
