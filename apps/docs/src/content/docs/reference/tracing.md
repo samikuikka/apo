@@ -87,6 +87,8 @@ const content = await traceTool(
 | `traceChain(tracer, name, fn)` | `(tracer, name: string, fn: () => Promise<T>) => Promise<T>` | `CHAIN` |
 | `traceRetriever(tracer, query, fn)` | `(tracer, query: string, fn: () => Promise<T>) => Promise<T>` | `RETRIEVER` |
 
+`traceRetriever` exports the query and documents on the same channels as the agent-task trace client: have `fn` return `{ documents: [{ id, score, content }] }` (or a bare array) and retrieval assertions (`t.retrieved`, `t.not.retrieved`, `t.grounded`) can read a standalone service's retrievals from the recorded trace.
+
 `apo.observation.type` must be one of the valid kinds: `GENERATION`, `SPAN`, `TOOL`, `CHAIN`, `RETRIEVER`, `EVALUATOR`, `EMBEDDING`, `GUARDRAIL`, `AGENT`, `SKILL`. An out-of-vocabulary value is ignored and the span falls through to generic classification.
 
 ### Skill observations

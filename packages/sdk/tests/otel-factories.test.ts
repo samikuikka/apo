@@ -140,3 +140,43 @@ describe("standalone telemetry ownership", () => {
     await second.shutdown();
   });
 });
+
+describe("standalone traceRetriever", () => {
+  it("exports the query and documents on the tool channels", async () => {
+    const exporter = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    const tracer = provider.getTracer("standalone-rag");
+    const { traceRetriever } = await import("../src/otel/index.ts");
+
+    const raw = [{ id: "handbook-vacation#p1", score: 0.9, text: "25 days" }];
+    const result = await traceRetriever(tracer, "vacation days", async () => raw);
+    expect(result, "caller gets its own result object").toBe(raw);
+
+    const span = exporter.getFinishedSpans().find((s) => s.name === "retrieve");
+    expect(span).toBeDefined();
+    expect(span!.attributes["apo.observation.type"]).toBe("RETRIEVER");
+    expect(JSON.parse(String(span!.attributes["gen_ai.tool.call.arguments"]))).toEqual({
+      query: "vacation days",
+    });
+    expect(JSON.parse(String(span!.attributes["gen_ai.tool.call.result"]))).toEqual({
+      documents: [{ id: "handbook-vacation#p1", score: 0.9, content: "25 days" }],
+    });
+    await provider.shutdown();
+  });
+
+  it("passes an unrecognized result through raw", async () => {
+    const exporter = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
+    const tracer = provider.getTracer("standalone-rag");
+    const { traceRetriever } = await import("../src/otel/index.ts");
+
+    await traceRetriever(tracer, "q", async () => ({ hits: 2 }));
+    const span = exporter.getFinishedSpans().find((s) => s.name === "retrieve");
+    expect(JSON.parse(String(span!.attributes["gen_ai.tool.call.result"]))).toEqual({ hits: 2 });
+    await provider.shutdown();
+  });
+});

@@ -28,6 +28,8 @@ import {
 } from "@opentelemetry/api";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 
+import { parseRetrievedDocuments } from "../agent-task/trace-projection/retrieval.ts";
+
 /**
  * Shared W3C Trace Context propagator. OTel's official implementation handles
  * `traceparent`/`tracestate`, edge cases (invalid traceId/spanId, versioning),
@@ -538,6 +540,14 @@ export async function traceChain<T>(
 
 /**
  * Trace a retrieval as an OTel span.
+ *
+ * The query and the returned documents ride the tool channels
+ * (``gen_ai.tool.call.arguments`` / ``.result``), which ingestion maps onto
+ * tool_parameters/tool_result: the same channels the agent-task trace client
+ * uses, so retrieval assertions read standalone-service traces too. Have
+ * ``fn`` return ``{ documents: [{ id, score, content }] }`` or a bare array;
+ * anything else passes through raw and the retrieval capability reads
+ * partial.
  */
 export async function traceRetriever<T>(
   tracer: Tracer,
@@ -545,9 +555,21 @@ export async function traceRetriever<T>(
   fn: () => Promise<T>,
 ): Promise<T> {
   return withApoTrace(
-    { name: "retrieve", observationType: "RETRIEVER", attributes: { query } },
+    {
+      name: "retrieve",
+      observationType: "RETRIEVER",
+      attributes: { "gen_ai.tool.call.arguments": JSON.stringify({ query }) },
+    },
     tracer,
-    async () => fn(),
+    async (span) => {
+      const result = await fn();
+      const documents = parseRetrievedDocuments(result);
+      span.setAttribute(
+        "gen_ai.tool.call.result",
+        JSON.stringify(documents !== undefined ? { documents } : result),
+      );
+      return result;
+    },
   );
 }
 
