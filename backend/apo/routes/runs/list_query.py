@@ -14,8 +14,8 @@ from dataclasses import dataclass, field
 from typing import Any, cast
 
 from pydantic import BaseModel
-from sqlalchemy import asc, desc, and_ as sql_and
-from sqlalchemy.orm import defer
+from sqlalchemy import asc, desc
+from sqlalchemy.orm import load_only
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, col, func, or_, select
 
@@ -23,25 +23,21 @@ from ...db_helpers import as_column
 from ...models import LoggedCallDB, RunDB, RunMetricDB, RunMetric, RunSummary
 from ...services.filters import apply_date_range, apply_numeric_range, apply_tag_filters
 from ...models.columns import (
-    CALL_LIGHT,
-    LOGGED_CALL_LEVEL_COL,
-    LOGGED_CALL_MODEL_COL,
     LOGGED_CALL_PROJECT_COL,
     LOGGED_CALL_PROVIDER_COL,
     LOGGED_CALL_ROUTE_COL,
     LOGGED_CALL_RUN_ID_COL,
-    RUN_CALL_COUNT_COL,
     RUN_CREATED_AT_COL,
     RUN_DURATION_MS_COL,
     RUN_ENVIRONMENT_COL,
     RUN_EXTERNAL_ID_COL,
     RUN_FLOW_NAME_COL,
     RUN_ID_COL,
-    RUN_PRIMARY_MODEL_COL,
     RUN_PROJECT_COL,
     RUN_SESSION_ID_COL,
     RUN_TASK_ID_COL,
     RUN_USER_ID_COL,
+    RUN_METRIC_NAME_COL,
     RUN_METRIC_PROJECT_COL,
     RUN_METRIC_RUN_ID_COL,
     RUN_METRIC_SCORE_COL,
@@ -50,6 +46,14 @@ from ...services.projection_io import has_preview_payload
 from ...services.trace_backend import parse_model_providers, provider_labels
 from ...services.trace_search import apply_trace_search
 from .metrics import calculate_run_metrics_from_calls
+from .run_call_scope import (
+    RunScope,
+    metric_runs,
+    model_predicate,
+    runs_with_metrics,
+    scope_runs,
+    status_predicate,
+)
 
 
 VALID_SORT_FIELDS = frozenset({"created_at", "duration_ms", "call_count"})
@@ -115,18 +119,19 @@ def list_run_summaries(
     session: Session, filters: RunListFilters, pagination: RunListPagination
 ) -> PaginatedRunSummary:
     # The trailing COUNT(*) OVER() rides the page query itself: the filtered
-    # statement — including every span-level EXISTS — executes once instead
+    # statement, including every span-level EXISTS, executes once instead
     # of a second full execution for the count. Window functions are
     # evaluated before OFFSET/LIMIT is applied, so the total covers the
     # whole filtered set; an empty page is zero rows and a zero total.
-    statement = _apply_project_scope(
-        select(RunDB, func.count().over()), filters.project, filters.allowed_projects
-    )
-    statement = _apply_attribute_filters(statement, filters)
-    statement = _apply_metric_filter(statement, session, filters)
+    scope = RunScope(project=filters.project, allowed_projects=filters.allowed_projects)
+    statement = scope_runs(select(RunDB, func.count().over()), scope)
+    statement = _apply_attribute_filters(statement, filters, scope)
+    statement = _apply_metric_filter(statement, session, filters, scope)
     if statement is None:
         return _empty_page(pagination)
-    statement = _apply_status_filter(statement, filters.status_values)
+    status = status_predicate(scope, filters.status_values)
+    if status is not None:
+        statement = statement.where(status)
     if filters.bookmarked is not None:
         statement = statement.where(RunDB.bookmarked == filters.bookmarked)
     # Span-derived predicates MUST land before the page query executes,
@@ -172,17 +177,9 @@ def _empty_page(pagination: RunListPagination) -> PaginatedRunSummary:
     )
 
 
-def _apply_project_scope(
-    statement: Any, project: str | None, allowed_projects: list[str] | None
+def _apply_attribute_filters(
+    statement: Any, filters: RunListFilters, scope: RunScope
 ) -> Any:
-    if project:
-        return statement.where(RUN_PROJECT_COL == project)
-    if allowed_projects is not None:
-        return statement.where(RUN_PROJECT_COL.in_(allowed_projects))
-    return statement
-
-
-def _apply_attribute_filters(statement: Any, filters: RunListFilters) -> Any:
     if filters.flow_names:
         statement = statement.where(RUN_FLOW_NAME_COL.in_(filters.flow_names))
     if filters.task_ids:
@@ -216,16 +213,7 @@ def _apply_attribute_filters(statement: Any, filters: RunListFilters) -> Any:
     if filters.user_ids:
         statement = statement.where(RUN_USER_ID_COL.in_(filters.user_ids))
     if filters.models:
-        call_model_ids = select(LOGGED_CALL_RUN_ID_COL).where(
-            LOGGED_CALL_RUN_ID_COL.is_not(None),
-            LOGGED_CALL_MODEL_COL.in_(filters.models),
-        )
-        statement = statement.where(
-            or_(
-                RUN_PRIMARY_MODEL_COL.in_(filters.models),
-                RUN_ID_COL.in_(call_model_ids),
-            )
-        )
+        statement = statement.where(model_predicate(scope, filters.models))
     if filters.providers:
         # A provider filter matches the observed serving provider OR the
         # finer-grained route, so "openrouter:nitro" finds runs whose host
@@ -272,7 +260,7 @@ def _apply_attribute_filters(statement: Any, filters: RunListFilters) -> Any:
 
 
 def _apply_metric_filter(
-    statement: Any, session: Session, filters: RunListFilters
+    statement: Any, session: Session, filters: RunListFilters, scope: RunScope
 ) -> Any | None:
     """Restrict to runs with a matching metric row.
 
@@ -282,47 +270,19 @@ def _apply_metric_filter(
     """
     if not filters.metric_name:
         return statement
-    metric_subquery = select(RunMetricDB.run_id).where(
-        RunMetricDB.metric_name == filters.metric_name
-    )
+    conditions: list[Any] = [RUN_METRIC_NAME_COL == filters.metric_name]
     if filters.min_score is not None:
-        metric_subquery = metric_subquery.where(RUN_METRIC_SCORE_COL >= filters.min_score)
+        conditions.append(RUN_METRIC_SCORE_COL >= filters.min_score)
     if filters.max_score is not None:
-        metric_subquery = metric_subquery.where(RUN_METRIC_SCORE_COL <= filters.max_score)
+        conditions.append(RUN_METRIC_SCORE_COL <= filters.max_score)
 
-    # Keep the empty-page fast path, but push the id set down as a subquery
-    # instead of materializing it: a materialized list is unscoped (crosses
-    # every project's metrics), can exceed SQLite's host-parameter limit on
-    # large installs, and pays a full Python round-trip per id. The probe
-    # costs one indexed lookup.
-    if session.exec(metric_subquery.limit(1)).first() is None:
+    # The probe keeps the empty-page fast path at the cost of one indexed
+    # lookup. The match itself stays a subquery: a materialized id list can
+    # exceed SQLite's host-parameter limit on large installs and pays a
+    # Python round-trip per id.
+    if session.exec(metric_runs(scope, *conditions).limit(1)).first() is None:
         return None
-    return statement.where(RUN_ID_COL.in_(metric_subquery.scalar_subquery()))
-
-
-def _apply_status_filter(statement: Any, status_values: list[str]) -> Any:
-    if not status_values:
-        return statement
-    status_conditions: list[Any] = []
-    if "error" in status_values:
-        error_sub = select(LoggedCallDB.run_id).where(LOGGED_CALL_LEVEL_COL == "ERROR")
-        status_conditions.append(RUN_ID_COL.in_(error_sub))
-    if "warning" in status_values:
-        warning_sub = select(LoggedCallDB.run_id).where(LOGGED_CALL_LEVEL_COL == "WARNING")
-        error_sub = select(LoggedCallDB.run_id).where(LOGGED_CALL_LEVEL_COL == "ERROR")
-        status_conditions.append(
-            sql_and(RUN_ID_COL.in_(warning_sub), RUN_ID_COL.not_in(error_sub))
-        )
-    if "success" in status_values:
-        issues_sub = select(LoggedCallDB.run_id).where(
-            LOGGED_CALL_LEVEL_COL.in_(["ERROR", "WARNING"])
-        )
-        status_conditions.append(
-            sql_and(RUN_ID_COL.not_in(issues_sub), RUN_CALL_COUNT_COL > 0)
-        )
-    if status_conditions:
-        statement = statement.where(or_(*status_conditions))
-    return statement
+    return statement.where(runs_with_metrics(scope, *conditions))
 
 
 def _apply_sort(statement: Any, sort_by: str | None, sort_order: str | None) -> Any:
@@ -430,12 +390,25 @@ def _load_calls_for_runs_without_metrics(
     ]
     if not needing:
         return {}
+    # The metric rollups read ``raw_usage``, so CALL_LIGHT's defer of it would
+    # cost one lazy-load statement per call. Load exactly what the aggregates
+    # and the level count read; ``raiseload`` turns a read of anything else
+    # into an error instead of a silent per-row fetch.
     query = (
         select(LoggedCallDB)
         .options(
-            *CALL_LIGHT,
-            defer(LoggedCallDB.input),  # pyright: ignore[reportArgumentType]
-            defer(LoggedCallDB.output),  # pyright: ignore[reportArgumentType]
+            load_only(
+                LoggedCallDB.id,  # pyright: ignore[reportArgumentType]
+                LoggedCallDB.run_id,  # pyright: ignore[reportArgumentType]
+                LoggedCallDB.level,  # pyright: ignore[reportArgumentType]
+                LoggedCallDB.observation_type,  # pyright: ignore[reportArgumentType]
+                LoggedCallDB.latency_ms,  # pyright: ignore[reportArgumentType]
+                LoggedCallDB.cost,  # pyright: ignore[reportArgumentType]
+                LoggedCallDB.prompt_tokens,  # pyright: ignore[reportArgumentType]
+                LoggedCallDB.completion_tokens,  # pyright: ignore[reportArgumentType]
+                LoggedCallDB.raw_usage,  # pyright: ignore[reportArgumentType]
+                raiseload=True,
+            )
         )
         .where(LOGGED_CALL_RUN_ID_COL.in_(needing))
     )

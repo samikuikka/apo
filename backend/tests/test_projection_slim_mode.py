@@ -155,7 +155,9 @@ def _reproject_local(session: Session, trace_id: str = TRACE) -> int:
 
 
 def _detail(client: Any, include: str | None = None) -> dict[str, Any]:
-    url = f"/v1/runs/{TRACE}?project=p1"
+    # The fat payload: these tests assert stored I/O and metadata context,
+    # which slim mode defers by design (now the endpoint default).
+    url = f"/v1/runs/{TRACE}?project=p1&slim=false"
     if include:
         url += f"&include={include}"
     response = client.get(url)

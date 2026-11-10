@@ -74,6 +74,22 @@ describe("traces show command", () => {
     expect(url).toContain("project=my-project");
   });
 
+  it("pins slim=false on the default view so output stays byte-identical", async () => {
+    // The backend's detail default is slim; the text view prints tool args,
+    // results, and the Evidence line, which slim omits. The default view
+    // must keep asking for the fat payload explicitly.
+    const { run } = await import("../src/commands/traces-show.ts");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockResponse(makeTraceDetail()),
+    );
+
+    await run([FULL_ID, "--backend", "http://backend.test"]);
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain("slim=false");
+    expect(url).not.toContain("include=");
+  });
+
   it("returns 404 error when trace is not found", async () => {
     const { run } = await import("../src/commands/traces-show.ts");
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(

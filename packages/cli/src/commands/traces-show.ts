@@ -128,6 +128,11 @@ export async function run(argv: string[]): Promise<number> {
     // raw dump genuinely carries the content the text view previews.
     // Comma-separated — the backend checks each token by substring.
     if (view.verbose || config.json) params.include = "messages,attributes";
+    // The backend's detail default is slim; the text view prints each tool
+    // call's args/result and an Evidence line, all fat-mode fields. Pin
+    // slim=false so installed CLIs keep byte-identical output (the verbose
+    // views already force fat through include=messages).
+    if (!view.verbose && !config.json) params.slim = "false";
     trace = await apiGet<TraceDetail>(
       config.backendUrl,
       `/v1/runs/${resolvedTraceId}`,

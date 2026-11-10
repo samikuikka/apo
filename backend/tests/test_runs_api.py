@@ -123,7 +123,7 @@ def test_get_run_details(client: TestClient, session: Session):
     session.add(c3)
     session.commit()
 
-    response = client.get("/v1/runs/r1?project=p")
+    response = client.get("/v1/runs/r1?project=p&slim=false")
     assert response.status_code == 200
     data = response.json()
 
@@ -159,7 +159,7 @@ def test_get_run_details_omits_messages_unless_included(client: TestClient, sess
     ))
     session.commit()
 
-    default = client.get("/v1/runs/r-msg?project=p")
+    default = client.get("/v1/runs/r-msg?project=p&slim=false")
     assert default.status_code == 200
     call = default.json()["calls"][0]
     assert "messages" not in call
@@ -224,8 +224,8 @@ def test_get_run_details_slim_ships_metadata_only(client: TestClient, session: S
     assert calls[0]["input"] == '{"messages": [{"role": "user", "content": "hello"}]}'
     assert calls[2]["output"] == '{"text": "final answer"}'
 
-    # Default (non-slim) response keeps the full contract.
-    full = client.get("/v1/runs/r-slim?project=p").json()
+    # Default is slim; slim=false keeps the full contract.
+    full = client.get("/v1/runs/r-slim?project=p&slim=false").json()
     assert full["calls"][1]["input"]["messages"][0]["content"] == "x" * 20000
     assert "slim_calls" not in full
 
@@ -263,6 +263,119 @@ def test_get_run_details_include_messages_beats_slim(client: TestClient, session
     assert "slim_calls" not in data
     assert data["calls"][0]["messages"] == msgs
     assert data["calls"][0]["input"]["messages"] == msgs
+
+
+def test_get_run_details_defaults_to_slim(client: TestClient, session: Session):
+    # The fat payload is opt-in: the default request is the bounded one, and
+    # slim=false reproduces the previous default contract byte for byte.
+    now = datetime.now(timezone.utc)
+    session.add(RunDB(id="r-def", project="p", task_id="t", created_at=now, call_count=2))
+    session.add(LoggedCallDB(
+        id="d0", project="p", model="m", task_id="t", run_id="r-def",
+        created_at=now, step_index=0, level="WARNING",
+        input={"q": 1}, messages=[], output={"text": "partial"},
+    ))
+    session.add(LoggedCallDB(
+        id="d1", project="p", model="m", task_id="t", run_id="r-def",
+        created_at=now, step_index=1,
+        input={}, messages=[], output={"text": "done"},
+    ))
+    session.commit()
+
+    data = client.get("/v1/runs/r-def?project=p").json()
+    assert data["slim_calls"] is True
+    assert "capabilities" not in data
+
+    full = client.get("/v1/runs/r-def?project=p&slim=false").json()
+    assert "slim_calls" not in full
+    assert "capabilities" in full
+
+    # Both modes agree on everything except the deferred payloads.
+    assert data["run"] == full["run"]
+    assert data["metrics"] == full["metrics"]
+    assert [c["id"] for c in data["calls"]] == [c["id"] for c in full["calls"]]
+    for slim_call, fat_call in zip(data["calls"], full["calls"], strict=True):
+        for key in (
+            "id", "model", "observation_type", "level", "created_at",
+            "latency_ms", "cost", "prompt_tokens", "completion_tokens",
+            "raw_usage", "cost_breakdown", "tool_name",
+        ):
+            assert slim_call[key] == fat_call[key], key
+
+
+def test_get_run_details_slim_keeps_only_the_event_type_metadata_key(
+    client: TestClient, session: Session
+):
+    # The trace view reads one legacy key (metadata.eventType) off list calls;
+    # everything else in metadata (tool definitions, system prompts) repeats
+    # per generation and is exactly what slim mode exists to drop.
+    now = datetime.now(timezone.utc)
+    session.add(RunDB(id="r-ev", project="p", task_id="t", created_at=now, call_count=2))
+    session.add(LoggedCallDB(
+        id="e0", project="p", model="m", task_id="t", run_id="r-ev",
+        created_at=now, step_index=0,
+        meta={"eventType": "tool.call", "tool_definitions": [{"name": "search"}],
+              "system_instructions": "be brief"},
+        input={}, messages=[], output={},
+    ))
+    session.add(LoggedCallDB(
+        id="e1", project="p", model="m", task_id="t", run_id="r-ev",
+        created_at=now, step_index=1,
+        meta={"other": 1}, input={}, messages=[], output={},
+    ))
+    session.commit()
+
+    data = client.get("/v1/runs/r-ev?project=p").json()
+    calls = {c["id"]: c for c in data["calls"]}
+    assert calls["e0"]["metadata"] == {"eventType": "tool.call"}
+    assert "tool_definitions" not in calls["e0"]["metadata"]
+    assert "system_instructions" not in calls["e0"]["metadata"]
+    assert "metadata" not in calls["e1"]
+
+    full = client.get("/v1/runs/r-ev?project=p&slim=false").json()
+    fat = {c["id"]: c for c in full["calls"]}
+    assert fat["e0"]["metadata"]["tool_definitions"] == [{"name": "search"}]
+    assert fat["e1"]["metadata"] == {"other": 1}
+
+
+def test_get_run_details_slim_issues_no_per_call_statements(
+    client: TestClient, session: Session
+):
+    # Statement count must not follow the call count: the only per-row
+    # fetches allowed are the two bounded first/last preview loads.
+    from sqlalchemy import event
+
+    now = datetime.now(timezone.utc)
+
+    def seed(run_id: str, call_count: int) -> None:
+        session.add(RunDB(id=run_id, project="p", task_id="t", created_at=now, call_count=call_count))
+        for index in range(call_count):
+            session.add(LoggedCallDB(
+                id=f"{run_id}-c{index}", project="p", model="m", task_id="t",
+                run_id=run_id, created_at=now, step_index=index,
+                meta={"eventType": "tool.call"} if index == 0 else None,
+                input={"i": index}, messages=[], output={"o": index},
+            ))
+        session.commit()
+
+    seed("r-stat4", 4)
+    seed("r-stat16", 16)
+
+    def statement_count(run_id: str) -> int:
+        statements: list[str] = []
+
+        def _capture(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+            statements.append(statement)
+
+        engine = session.get_bind()
+        event.listen(engine, "before_cursor_execute", _capture)
+        try:
+            assert client.get(f"/v1/runs/{run_id}?project=p").status_code == 200
+        finally:
+            event.remove(engine, "before_cursor_execute", _capture)
+        return len(statements)
+
+    assert statement_count("r-stat4") == statement_count("r-stat16")
 
 
 def test_get_call_details_returns_full_payload(client: TestClient, session: Session):
@@ -315,7 +428,7 @@ def test_get_run_details_reports_projection_capabilities(client: TestClient, ses
     ))
     session.commit()
 
-    response = client.get("/v1/runs/r-cap?project=p")
+    response = client.get("/v1/runs/r-cap?project=p&slim=false")
     assert response.status_code == 200
     caps = response.json()["capabilities"]
     assert caps["tools"] == "available"
@@ -376,7 +489,7 @@ def test_get_run_details_accepts_nondict_json_fields(client: TestClient, session
     session.add(c1)
     session.commit()
 
-    response = client.get("/v1/runs/r-nondict?project=p")
+    response = client.get("/v1/runs/r-nondict?project=p&slim=false")
     assert response.status_code == 200, response.text
 
     calls = response.json()["calls"]

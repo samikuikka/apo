@@ -67,9 +67,9 @@ async function downloadTrace(run: TraceDetail, projectId?: string) {
     toast.info(`Downloading trace with ${run.calls.length} observations`);
   }
   // The workspace may hold a slim fetch (call metadata only) — an explicit
-  // export must carry the full payloads, so re-fetch without slim.
+  // export must carry the full payloads, so re-fetch with slim=false.
   const data = run.slim_calls
-    ? await getTraceDetail(run.run.id, projectId)
+    ? await getTraceDetail(run.run.id, projectId, undefined, { slim: false })
     : { run: run.run, calls: run.calls, metrics: run.metrics };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);

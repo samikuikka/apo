@@ -80,9 +80,10 @@ interface TraceDetailTransport {
 }
 
 export interface GetTraceDetailOptions {
-  /** `?slim=true`: omit per-call input/output/tool payloads (agentic traces
-   * ship megabytes of accumulated history otherwise) — the selected call's
-   * full payload is fetched separately via `getCallDetail`. */
+  /** `slim: true` (the default here): omit per-call input/output/tool
+   * payloads (agentic traces ship megabytes of accumulated history
+   * otherwise) — the selected call's full payload is fetched separately
+   * via `getCallDetail`. `slim: false` fetches the full payloads. */
   slim?: boolean;
 }
 
@@ -303,9 +304,11 @@ export async function getTraceDetail(
   options?: GetTraceDetailOptions,
 ): Promise<TraceDetail> {
   try {
+    // The flag is always explicit: the backend's slim default may change,
+    // but what this app renders must not drift with it.
     const data = await apiClient<TraceDetailTransport>(`/v1/runs/${runId}`, {
       ...NO_CACHE,
-      query: { project: projectId, slim: options?.slim ? true : undefined },
+      query: { project: projectId, slim: options?.slim !== false },
       signal,
     });
     return normalizeTraceDetail(data);

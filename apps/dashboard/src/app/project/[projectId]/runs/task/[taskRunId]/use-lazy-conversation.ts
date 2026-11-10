@@ -91,6 +91,6 @@ async function loadConversation(
 
   // No generation carried messages (e.g. imported traces with provider-native
   // payloads) — reconstruct from every call's raw I/O in one full fetch.
-  const full = await getTraceDetail(traceRunId, projectId, signal);
+  const full = await getTraceDetail(traceRunId, projectId, signal, { slim: false });
   return deriveConversationFromTrace(full).messages;
 }

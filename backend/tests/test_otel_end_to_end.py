@@ -529,12 +529,15 @@ class TestSkillObservationEndToEnd:
         params = {"project": otel_server["project"]}
 
         # The receiver projects in a background task — poll until the run
-        # detail carries the SKILL call.
+        # detail carries the SKILL call. Fat payload: capabilities (which a
+        # slim response defers) is what this test asserts.
         detail = None
         deadline = time.time() + 10
         while time.time() < deadline:
             resp = httpx.get(
-                f"{base}/v1/runs/{trace_id}", headers=headers, params=params
+                f"{base}/v1/runs/{trace_id}",
+                headers=headers,
+                params={**params, "slim": "false"},
             )
             if resp.status_code == 200:
                 detail = resp.json()

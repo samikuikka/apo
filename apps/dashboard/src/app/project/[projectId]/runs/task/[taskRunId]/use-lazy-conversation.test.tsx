@@ -171,7 +171,8 @@ describe("useLazyConversation", () => {
       expect(assistant?.content).toContain("Starter and Business");
     }
     expect(getTraceDetailMock).toHaveBeenCalledTimes(2);
-    expect(getTraceDetailMock.mock.calls[1][3]).toBeUndefined();
+    // The full fetch is explicit: slim=false, never an omitted flag.
+    expect(getTraceDetailMock.mock.calls[1][3]).toEqual({ slim: false });
   });
 
   it("surfaces a failed fetch as an error state", async () => {

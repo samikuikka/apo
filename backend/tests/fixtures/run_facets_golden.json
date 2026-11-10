@@ -1,0 +1,1613 @@
+{
+  "alpha": {
+    "environments": [
+      {
+        "count": 5,
+        "value": "prod"
+      },
+      {
+        "count": 2,
+        "value": "dev"
+      },
+      {
+        "count": 1,
+        "value": "staging"
+      }
+    ],
+    "models": [
+      {
+        "count": 4,
+        "value": "claude"
+      },
+      {
+        "count": 3,
+        "value": "gpt-4o"
+      },
+      {
+        "count": 2,
+        "value": "gemini"
+      },
+      {
+        "count": 1,
+        "value": "gpt-4o-mini"
+      }
+    ],
+    "providers": [
+      {
+        "count": 3,
+        "value": "anthropic"
+      },
+      {
+        "count": 3,
+        "value": "openai"
+      },
+      {
+        "count": 2,
+        "value": "fireworks"
+      },
+      {
+        "count": 2,
+        "value": "priority"
+      }
+    ],
+    "scores": [
+      {
+        "count": 3,
+        "value": "accuracy"
+      },
+      {
+        "count": 2,
+        "value": "latency"
+      },
+      {
+        "count": 1,
+        "value": "toxicity"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 3,
+        "value": "s1"
+      },
+      {
+        "count": 2,
+        "value": "s2"
+      },
+      {
+        "count": 1,
+        "value": "s3"
+      }
+    ],
+    "status": [
+      {
+        "count": 2,
+        "value": "success"
+      },
+      {
+        "count": 2,
+        "value": "warning"
+      },
+      {
+        "count": 3,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 5,
+        "value": "a"
+      },
+      {
+        "count": 3,
+        "value": "b"
+      },
+      {
+        "count": 2,
+        "value": "c"
+      }
+    ],
+    "users": [
+      {
+        "count": 4,
+        "value": "u1"
+      },
+      {
+        "count": 2,
+        "value": "u2"
+      }
+    ]
+  },
+  "alpha_created_window": {
+    "environments": [
+      {
+        "count": 5,
+        "value": "prod"
+      }
+    ],
+    "models": [
+      {
+        "count": 4,
+        "value": "claude"
+      },
+      {
+        "count": 3,
+        "value": "gpt-4o"
+      },
+      {
+        "count": 1,
+        "value": "gemini"
+      }
+    ],
+    "providers": [
+      {
+        "count": 3,
+        "value": "anthropic"
+      },
+      {
+        "count": 2,
+        "value": "openai"
+      },
+      {
+        "count": 2,
+        "value": "priority"
+      },
+      {
+        "count": 1,
+        "value": "fireworks"
+      }
+    ],
+    "scores": [
+      {
+        "count": 3,
+        "value": "accuracy"
+      },
+      {
+        "count": 2,
+        "value": "latency"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 3,
+        "value": "s1"
+      },
+      {
+        "count": 2,
+        "value": "s2"
+      }
+    ],
+    "status": [
+      {
+        "count": 1,
+        "value": "success"
+      },
+      {
+        "count": 2,
+        "value": "warning"
+      },
+      {
+        "count": 2,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 4,
+        "value": "a"
+      },
+      {
+        "count": 1,
+        "value": "c"
+      },
+      {
+        "count": 1,
+        "value": "b"
+      }
+    ],
+    "users": [
+      {
+        "count": 4,
+        "value": "u1"
+      },
+      {
+        "count": 1,
+        "value": "u2"
+      }
+    ]
+  },
+  "alpha_dev_success": {
+    "environments": [
+      {
+        "count": 1,
+        "value": "prod"
+      },
+      {
+        "count": 1,
+        "value": "dev"
+      }
+    ],
+    "models": [
+      {
+        "count": 1,
+        "value": "gpt-4o-mini"
+      }
+    ],
+    "providers": [
+      {
+        "count": 1,
+        "value": "openai"
+      }
+    ],
+    "scores": [],
+    "sessions": [
+      {
+        "count": 1,
+        "value": "s3"
+      }
+    ],
+    "status": [
+      {
+        "count": 1,
+        "value": "success"
+      },
+      {
+        "count": 0,
+        "value": "warning"
+      },
+      {
+        "count": 0,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 1,
+        "value": "b"
+      }
+    ],
+    "users": [
+      {
+        "count": 1,
+        "value": "u2"
+      }
+    ]
+  },
+  "alpha_environment_prod": {
+    "environments": [
+      {
+        "count": 5,
+        "value": "prod"
+      },
+      {
+        "count": 2,
+        "value": "dev"
+      },
+      {
+        "count": 1,
+        "value": "staging"
+      }
+    ],
+    "models": [
+      {
+        "count": 4,
+        "value": "claude"
+      },
+      {
+        "count": 3,
+        "value": "gpt-4o"
+      },
+      {
+        "count": 1,
+        "value": "gemini"
+      }
+    ],
+    "providers": [
+      {
+        "count": 3,
+        "value": "anthropic"
+      },
+      {
+        "count": 2,
+        "value": "openai"
+      },
+      {
+        "count": 2,
+        "value": "priority"
+      },
+      {
+        "count": 1,
+        "value": "fireworks"
+      }
+    ],
+    "scores": [
+      {
+        "count": 3,
+        "value": "accuracy"
+      },
+      {
+        "count": 2,
+        "value": "latency"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 3,
+        "value": "s1"
+      },
+      {
+        "count": 2,
+        "value": "s2"
+      }
+    ],
+    "status": [
+      {
+        "count": 1,
+        "value": "success"
+      },
+      {
+        "count": 2,
+        "value": "warning"
+      },
+      {
+        "count": 2,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 4,
+        "value": "a"
+      },
+      {
+        "count": 1,
+        "value": "c"
+      },
+      {
+        "count": 1,
+        "value": "b"
+      }
+    ],
+    "users": [
+      {
+        "count": 4,
+        "value": "u1"
+      },
+      {
+        "count": 1,
+        "value": "u2"
+      }
+    ]
+  },
+  "alpha_metric_accuracy": {
+    "environments": [
+      {
+        "count": 3,
+        "value": "prod"
+      }
+    ],
+    "models": [
+      {
+        "count": 3,
+        "value": "claude"
+      },
+      {
+        "count": 2,
+        "value": "gpt-4o"
+      }
+    ],
+    "providers": [
+      {
+        "count": 2,
+        "value": "anthropic"
+      },
+      {
+        "count": 2,
+        "value": "openai"
+      },
+      {
+        "count": 2,
+        "value": "priority"
+      }
+    ],
+    "scores": [
+      {
+        "count": 3,
+        "value": "accuracy"
+      },
+      {
+        "count": 2,
+        "value": "latency"
+      },
+      {
+        "count": 1,
+        "value": "toxicity"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 3,
+        "value": "s1"
+      }
+    ],
+    "status": [
+      {
+        "count": 1,
+        "value": "success"
+      },
+      {
+        "count": 1,
+        "value": "warning"
+      },
+      {
+        "count": 1,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 3,
+        "value": "a"
+      },
+      {
+        "count": 1,
+        "value": "c"
+      },
+      {
+        "count": 1,
+        "value": "b"
+      }
+    ],
+    "users": [
+      {
+        "count": 3,
+        "value": "u1"
+      }
+    ]
+  },
+  "alpha_models_and_status": {
+    "environments": [
+      {
+        "count": 3,
+        "value": "prod"
+      },
+      {
+        "count": 1,
+        "value": "staging"
+      }
+    ],
+    "models": [
+      {
+        "count": 3,
+        "value": "gpt-4o"
+      },
+      {
+        "count": 3,
+        "value": "claude"
+      },
+      {
+        "count": 2,
+        "value": "gemini"
+      }
+    ],
+    "providers": [
+      {
+        "count": 2,
+        "value": "fireworks"
+      },
+      {
+        "count": 2,
+        "value": "openai"
+      },
+      {
+        "count": 1,
+        "value": "anthropic"
+      },
+      {
+        "count": 1,
+        "value": "priority"
+      }
+    ],
+    "scores": [
+      {
+        "count": 2,
+        "value": "latency"
+      },
+      {
+        "count": 2,
+        "value": "accuracy"
+      },
+      {
+        "count": 1,
+        "value": "toxicity"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 2,
+        "value": "s1"
+      },
+      {
+        "count": 1,
+        "value": "s2"
+      }
+    ],
+    "status": [
+      {
+        "count": 0,
+        "value": "success"
+      },
+      {
+        "count": 2,
+        "value": "warning"
+      },
+      {
+        "count": 2,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 3,
+        "value": "a"
+      },
+      {
+        "count": 1,
+        "value": "b"
+      }
+    ],
+    "users": [
+      {
+        "count": 2,
+        "value": "u1"
+      },
+      {
+        "count": 1,
+        "value": "u2"
+      }
+    ]
+  },
+  "alpha_models_claude": {
+    "environments": [
+      {
+        "count": 4,
+        "value": "prod"
+      }
+    ],
+    "models": [
+      {
+        "count": 4,
+        "value": "claude"
+      },
+      {
+        "count": 3,
+        "value": "gpt-4o"
+      },
+      {
+        "count": 2,
+        "value": "gemini"
+      },
+      {
+        "count": 1,
+        "value": "gpt-4o-mini"
+      }
+    ],
+    "providers": [
+      {
+        "count": 3,
+        "value": "anthropic"
+      },
+      {
+        "count": 2,
+        "value": "openai"
+      },
+      {
+        "count": 2,
+        "value": "priority"
+      }
+    ],
+    "scores": [
+      {
+        "count": 3,
+        "value": "accuracy"
+      },
+      {
+        "count": 1,
+        "value": "latency"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 3,
+        "value": "s1"
+      },
+      {
+        "count": 1,
+        "value": "s2"
+      }
+    ],
+    "status": [
+      {
+        "count": 1,
+        "value": "success"
+      },
+      {
+        "count": 1,
+        "value": "warning"
+      },
+      {
+        "count": 2,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 3,
+        "value": "a"
+      },
+      {
+        "count": 1,
+        "value": "c"
+      },
+      {
+        "count": 1,
+        "value": "b"
+      }
+    ],
+    "users": [
+      {
+        "count": 4,
+        "value": "u1"
+      }
+    ]
+  },
+  "alpha_no_match": {
+    "environments": [
+      {
+        "count": 5,
+        "value": "prod"
+      },
+      {
+        "count": 2,
+        "value": "dev"
+      },
+      {
+        "count": 1,
+        "value": "staging"
+      }
+    ],
+    "models": [],
+    "providers": [],
+    "scores": [],
+    "sessions": [],
+    "status": [
+      {
+        "count": 0,
+        "value": "success"
+      },
+      {
+        "count": 0,
+        "value": "warning"
+      },
+      {
+        "count": 0,
+        "value": "error"
+      }
+    ],
+    "tags": [],
+    "users": []
+  },
+  "alpha_sessions": {
+    "environments": [
+      {
+        "count": 5,
+        "value": "prod"
+      }
+    ],
+    "models": [
+      {
+        "count": 4,
+        "value": "claude"
+      },
+      {
+        "count": 3,
+        "value": "gpt-4o"
+      },
+      {
+        "count": 1,
+        "value": "gemini"
+      }
+    ],
+    "providers": [
+      {
+        "count": 3,
+        "value": "anthropic"
+      },
+      {
+        "count": 2,
+        "value": "openai"
+      },
+      {
+        "count": 2,
+        "value": "priority"
+      },
+      {
+        "count": 1,
+        "value": "fireworks"
+      }
+    ],
+    "scores": [
+      {
+        "count": 3,
+        "value": "accuracy"
+      },
+      {
+        "count": 2,
+        "value": "latency"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 3,
+        "value": "s1"
+      },
+      {
+        "count": 2,
+        "value": "s2"
+      },
+      {
+        "count": 1,
+        "value": "s3"
+      }
+    ],
+    "status": [
+      {
+        "count": 1,
+        "value": "success"
+      },
+      {
+        "count": 2,
+        "value": "warning"
+      },
+      {
+        "count": 2,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 4,
+        "value": "a"
+      },
+      {
+        "count": 1,
+        "value": "c"
+      },
+      {
+        "count": 1,
+        "value": "b"
+      }
+    ],
+    "users": [
+      {
+        "count": 4,
+        "value": "u1"
+      },
+      {
+        "count": 1,
+        "value": "u2"
+      }
+    ]
+  },
+  "alpha_status_error": {
+    "environments": [
+      {
+        "count": 2,
+        "value": "prod"
+      },
+      {
+        "count": 1,
+        "value": "staging"
+      }
+    ],
+    "models": [
+      {
+        "count": 2,
+        "value": "claude"
+      },
+      {
+        "count": 1,
+        "value": "gpt-4o"
+      },
+      {
+        "count": 1,
+        "value": "gemini"
+      }
+    ],
+    "providers": [
+      {
+        "count": 1,
+        "value": "anthropic"
+      },
+      {
+        "count": 1,
+        "value": "fireworks"
+      },
+      {
+        "count": 1,
+        "value": "openai"
+      },
+      {
+        "count": 1,
+        "value": "priority"
+      }
+    ],
+    "scores": [
+      {
+        "count": 1,
+        "value": "toxicity"
+      },
+      {
+        "count": 1,
+        "value": "latency"
+      },
+      {
+        "count": 1,
+        "value": "accuracy"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 1,
+        "value": "s2"
+      },
+      {
+        "count": 1,
+        "value": "s1"
+      }
+    ],
+    "status": [
+      {
+        "count": 2,
+        "value": "success"
+      },
+      {
+        "count": 2,
+        "value": "warning"
+      },
+      {
+        "count": 3,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 1,
+        "value": "b"
+      },
+      {
+        "count": 1,
+        "value": "a"
+      }
+    ],
+    "users": [
+      {
+        "count": 2,
+        "value": "u1"
+      }
+    ]
+  },
+  "alpha_status_success": {
+    "environments": [
+      {
+        "count": 1,
+        "value": "prod"
+      },
+      {
+        "count": 1,
+        "value": "dev"
+      }
+    ],
+    "models": [
+      {
+        "count": 1,
+        "value": "gpt-4o-mini"
+      },
+      {
+        "count": 1,
+        "value": "claude"
+      }
+    ],
+    "providers": [
+      {
+        "count": 1,
+        "value": "anthropic"
+      },
+      {
+        "count": 1,
+        "value": "openai"
+      },
+      {
+        "count": 1,
+        "value": "priority"
+      }
+    ],
+    "scores": [
+      {
+        "count": 1,
+        "value": "accuracy"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 1,
+        "value": "s3"
+      },
+      {
+        "count": 1,
+        "value": "s1"
+      }
+    ],
+    "status": [
+      {
+        "count": 2,
+        "value": "success"
+      },
+      {
+        "count": 2,
+        "value": "warning"
+      },
+      {
+        "count": 3,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 1,
+        "value": "c"
+      },
+      {
+        "count": 1,
+        "value": "b"
+      },
+      {
+        "count": 1,
+        "value": "a"
+      }
+    ],
+    "users": [
+      {
+        "count": 1,
+        "value": "u2"
+      },
+      {
+        "count": 1,
+        "value": "u1"
+      }
+    ]
+  },
+  "alpha_status_warning_success": {
+    "environments": [
+      {
+        "count": 3,
+        "value": "prod"
+      },
+      {
+        "count": 1,
+        "value": "dev"
+      }
+    ],
+    "models": [
+      {
+        "count": 2,
+        "value": "gpt-4o"
+      },
+      {
+        "count": 2,
+        "value": "claude"
+      },
+      {
+        "count": 1,
+        "value": "gpt-4o-mini"
+      },
+      {
+        "count": 1,
+        "value": "gemini"
+      }
+    ],
+    "providers": [
+      {
+        "count": 2,
+        "value": "anthropic"
+      },
+      {
+        "count": 2,
+        "value": "openai"
+      },
+      {
+        "count": 1,
+        "value": "fireworks"
+      },
+      {
+        "count": 1,
+        "value": "priority"
+      }
+    ],
+    "scores": [
+      {
+        "count": 2,
+        "value": "accuracy"
+      },
+      {
+        "count": 1,
+        "value": "latency"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 2,
+        "value": "s1"
+      },
+      {
+        "count": 1,
+        "value": "s3"
+      },
+      {
+        "count": 1,
+        "value": "s2"
+      }
+    ],
+    "status": [
+      {
+        "count": 2,
+        "value": "success"
+      },
+      {
+        "count": 2,
+        "value": "warning"
+      },
+      {
+        "count": 3,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 3,
+        "value": "a"
+      },
+      {
+        "count": 1,
+        "value": "c"
+      },
+      {
+        "count": 1,
+        "value": "b"
+      }
+    ],
+    "users": [
+      {
+        "count": 2,
+        "value": "u2"
+      },
+      {
+        "count": 2,
+        "value": "u1"
+      }
+    ]
+  },
+  "alpha_tags_a": {
+    "environments": [
+      {
+        "count": 4,
+        "value": "prod"
+      },
+      {
+        "count": 1,
+        "value": "dev"
+      }
+    ],
+    "models": [
+      {
+        "count": 3,
+        "value": "gpt-4o"
+      },
+      {
+        "count": 3,
+        "value": "claude"
+      },
+      {
+        "count": 1,
+        "value": "gemini"
+      }
+    ],
+    "providers": [
+      {
+        "count": 2,
+        "value": "anthropic"
+      },
+      {
+        "count": 2,
+        "value": "openai"
+      },
+      {
+        "count": 2,
+        "value": "priority"
+      },
+      {
+        "count": 1,
+        "value": "fireworks"
+      }
+    ],
+    "scores": [
+      {
+        "count": 3,
+        "value": "accuracy"
+      },
+      {
+        "count": 2,
+        "value": "latency"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 3,
+        "value": "s1"
+      },
+      {
+        "count": 1,
+        "value": "s2"
+      }
+    ],
+    "status": [
+      {
+        "count": 1,
+        "value": "success"
+      },
+      {
+        "count": 2,
+        "value": "warning"
+      },
+      {
+        "count": 1,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 5,
+        "value": "a"
+      },
+      {
+        "count": 3,
+        "value": "b"
+      },
+      {
+        "count": 2,
+        "value": "c"
+      }
+    ],
+    "users": [
+      {
+        "count": 3,
+        "value": "u1"
+      },
+      {
+        "count": 1,
+        "value": "u2"
+      }
+    ]
+  },
+  "alpha_user_u1": {
+    "environments": [
+      {
+        "count": 4,
+        "value": "prod"
+      }
+    ],
+    "models": [
+      {
+        "count": 4,
+        "value": "claude"
+      },
+      {
+        "count": 2,
+        "value": "gpt-4o"
+      }
+    ],
+    "providers": [
+      {
+        "count": 3,
+        "value": "anthropic"
+      },
+      {
+        "count": 2,
+        "value": "openai"
+      },
+      {
+        "count": 2,
+        "value": "priority"
+      }
+    ],
+    "scores": [
+      {
+        "count": 3,
+        "value": "accuracy"
+      },
+      {
+        "count": 1,
+        "value": "latency"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 3,
+        "value": "s1"
+      },
+      {
+        "count": 1,
+        "value": "s2"
+      }
+    ],
+    "status": [
+      {
+        "count": 1,
+        "value": "success"
+      },
+      {
+        "count": 1,
+        "value": "warning"
+      },
+      {
+        "count": 2,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 3,
+        "value": "a"
+      },
+      {
+        "count": 1,
+        "value": "c"
+      },
+      {
+        "count": 1,
+        "value": "b"
+      }
+    ],
+    "users": [
+      {
+        "count": 4,
+        "value": "u1"
+      },
+      {
+        "count": 2,
+        "value": "u2"
+      }
+    ]
+  },
+  "beta": {
+    "environments": [
+      {
+        "count": 2,
+        "value": "dev"
+      },
+      {
+        "count": 1,
+        "value": "prod"
+      }
+    ],
+    "models": [
+      {
+        "count": 1,
+        "value": "gemini"
+      },
+      {
+        "count": 1,
+        "value": "claude"
+      }
+    ],
+    "providers": [
+      {
+        "count": 1,
+        "value": "fireworks"
+      },
+      {
+        "count": 1,
+        "value": "groq"
+      }
+    ],
+    "scores": [
+      {
+        "count": 1,
+        "value": "accuracy"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 1,
+        "value": "sB"
+      }
+    ],
+    "status": [
+      {
+        "count": 1,
+        "value": "success"
+      },
+      {
+        "count": 0,
+        "value": "warning"
+      },
+      {
+        "count": 1,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 2,
+        "value": "z"
+      },
+      {
+        "count": 1,
+        "value": "a"
+      }
+    ],
+    "users": [
+      {
+        "count": 2,
+        "value": "u9"
+      },
+      {
+        "count": 1,
+        "value": "u1"
+      }
+    ]
+  },
+  "unpinned": {
+    "environments": [
+      {
+        "count": 6,
+        "value": "prod"
+      },
+      {
+        "count": 4,
+        "value": "dev"
+      },
+      {
+        "count": 1,
+        "value": "staging"
+      }
+    ],
+    "models": [
+      {
+        "count": 5,
+        "value": "claude"
+      },
+      {
+        "count": 3,
+        "value": "gpt-4o"
+      },
+      {
+        "count": 3,
+        "value": "gemini"
+      },
+      {
+        "count": 1,
+        "value": "gpt-4o-mini"
+      }
+    ],
+    "providers": [
+      {
+        "count": 3,
+        "value": "anthropic"
+      },
+      {
+        "count": 3,
+        "value": "fireworks"
+      },
+      {
+        "count": 3,
+        "value": "openai"
+      },
+      {
+        "count": 2,
+        "value": "priority"
+      },
+      {
+        "count": 1,
+        "value": "groq"
+      }
+    ],
+    "scores": [
+      {
+        "count": 4,
+        "value": "accuracy"
+      },
+      {
+        "count": 2,
+        "value": "latency"
+      },
+      {
+        "count": 1,
+        "value": "toxicity"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 3,
+        "value": "s1"
+      },
+      {
+        "count": 2,
+        "value": "s2"
+      },
+      {
+        "count": 1,
+        "value": "sB"
+      },
+      {
+        "count": 1,
+        "value": "s3"
+      }
+    ],
+    "status": [
+      {
+        "count": 3,
+        "value": "success"
+      },
+      {
+        "count": 2,
+        "value": "warning"
+      },
+      {
+        "count": 4,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 6,
+        "value": "a"
+      },
+      {
+        "count": 3,
+        "value": "b"
+      },
+      {
+        "count": 2,
+        "value": "z"
+      },
+      {
+        "count": 2,
+        "value": "c"
+      }
+    ],
+    "users": [
+      {
+        "count": 5,
+        "value": "u1"
+      },
+      {
+        "count": 2,
+        "value": "u9"
+      },
+      {
+        "count": 2,
+        "value": "u2"
+      }
+    ]
+  },
+  "unpinned_status_error": {
+    "environments": [
+      {
+        "count": 3,
+        "value": "prod"
+      },
+      {
+        "count": 1,
+        "value": "staging"
+      }
+    ],
+    "models": [
+      {
+        "count": 3,
+        "value": "claude"
+      },
+      {
+        "count": 1,
+        "value": "gpt-4o"
+      },
+      {
+        "count": 1,
+        "value": "gemini"
+      }
+    ],
+    "providers": [
+      {
+        "count": 1,
+        "value": "anthropic"
+      },
+      {
+        "count": 1,
+        "value": "fireworks"
+      },
+      {
+        "count": 1,
+        "value": "groq"
+      },
+      {
+        "count": 1,
+        "value": "openai"
+      },
+      {
+        "count": 1,
+        "value": "priority"
+      }
+    ],
+    "scores": [
+      {
+        "count": 2,
+        "value": "accuracy"
+      },
+      {
+        "count": 1,
+        "value": "toxicity"
+      },
+      {
+        "count": 1,
+        "value": "latency"
+      }
+    ],
+    "sessions": [
+      {
+        "count": 1,
+        "value": "sB"
+      },
+      {
+        "count": 1,
+        "value": "s2"
+      },
+      {
+        "count": 1,
+        "value": "s1"
+      }
+    ],
+    "status": [
+      {
+        "count": 3,
+        "value": "success"
+      },
+      {
+        "count": 2,
+        "value": "warning"
+      },
+      {
+        "count": 4,
+        "value": "error"
+      }
+    ],
+    "tags": [
+      {
+        "count": 2,
+        "value": "a"
+      },
+      {
+        "count": 1,
+        "value": "z"
+      },
+      {
+        "count": 1,
+        "value": "b"
+      }
+    ],
+    "users": [
+      {
+        "count": 3,
+        "value": "u1"
+      }
+    ]
+  }
+}
