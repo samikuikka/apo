@@ -213,6 +213,20 @@ means unlimited — an invalid value fails startup.
 | `APO_ARTIFACT_UPLOAD_MAX_BODY_BYTES` | `104857600` | Max artifact upload body (100 MiB). |
 | `APO_WRITE_MAX_BODY_BYTES` | `10485760` | Max body for other member writes: executor-protocol `result`/`failure` (v1/v2), judgments, comments, and `/v1/runs` POSTs (create, custom-metrics, bulk-export, reproject). |
 
+## Live stream limits
+
+Bounds on Server-Sent Events: how many streams one caller may hold open,
+and how much may sit buffered for a subscriber that reads slowly. An
+over-cap stream open gets `429`; a full subscriber queue drops its oldest
+events. Same contract as the write caps: no disable flag, `0` never means
+unlimited.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `APO_MAX_STREAMS_PER_IDENTITY` | `10` | Concurrent open event streams (run events and trace streams combined) one caller may hold. Anonymous demo traffic shares one bucket. |
+| `APO_SSE_QUEUE_MAX_EVENTS` | `4096` | Max events buffered for one stream subscriber before the oldest are dropped (covers a whole max-size OTLP batch). |
+| `APO_SSE_QUEUE_MAX_BYTES` | `2097152` | Max characters buffered for one subscriber (2 MiB). Binds when single events are abnormally large. |
+
 ## Export budgets
 
 Byte caps on export renders, enforced while the document is assembled:

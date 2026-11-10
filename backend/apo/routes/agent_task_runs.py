@@ -970,7 +970,7 @@ def list_agent_task_batch_runs(
     "/agent-task-batch-runs/{batch_run_id}",
     response_model=AgentTaskBatchRunDetail,
 )
-async def get_agent_task_batch_run(
+def get_agent_task_batch_run(
     request: Request,
     batch_run_id: str,
     session: Session = Depends(get_session),
@@ -1314,6 +1314,10 @@ async def get_agent_task_run(
     session: Session = Depends(get_session),
 ):
     """Get detailed information about a single task run."""
+    # Stays async on purpose: derive_deliverables_json below reads
+    # store-backed deliverables through the async artifact-store iterator,
+    # so unlike the sync read routes this body cannot move to the
+    # threadpool as a plain def.
     task_run = session.get(AgentTaskRunDB, task_run_id)
     if task_run is None:
         raise HTTPException(status_code=404, detail="Task run not found")

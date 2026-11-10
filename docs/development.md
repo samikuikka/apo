@@ -578,10 +578,12 @@ The fastest path is the root `pnpm dev`, which starts all four services concurre
 The backend pushes real-time updates to the dashboard over Server-Sent Events. Both live event streams are built on the same generic in-memory broadcaster (see the SSE section of [Architecture](architecture.md#real-time-updates-with-server-sent-events-sse) for the full design).
 
 **Backend:**
-- Use `asyncio.Queue.put_nowait()` for non-blocking event publishing
+- Build every stream through `services/sse.py::sse_streaming_response`: it owns the SSE envelope, headers, keepalives, and the per-caller stream cap (`APO_MAX_STREAMS_PER_IDENTITY`, answered with a 429 past it)
+- Publish with `asyncio.Queue.put_nowait()`; subscriber queues are bounded (`APO_SSE_QUEUE_MAX_EVENTS`, `APO_SSE_QUEUE_MAX_BYTES`) and drop their oldest events, so a slow reader never blocks the publisher or grows memory
+- A route whose body is only blocking SQL is plain `def`: FastAPI runs it in the threadpool, off the event loop
+- An async route that also awaits real async work offloads its blocking SQL with `asyncio.to_thread` (`routes/run_events.py` does this for authorization and the initial events)
 - Always clean up listeners in `finally` blocks to prevent memory leaks
 - Check `request.is_disconnected()` before yielding events
-- Use `StreamingResponse` with `text/event-stream` media type
 
 **Frontend:**
 - Wrap event handlers in `useCallback` to prevent unnecessary re-renders

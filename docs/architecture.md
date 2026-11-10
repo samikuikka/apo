@@ -756,6 +756,8 @@ Document-heavy runs upload their oversized result fields as attempt-scoped stagi
 
 The backend pushes real-time updates to the dashboard over Server-Sent Events, eliminating polling. There are two live event streams, both built on the same generic in-memory broadcaster.
 
+Both are also bounded the same way, in `services/sse.py::sse_streaming_response` (the single construction point for every stream). Each stream takes one slot from its caller's admission identity, the same identity every rate limiter uses (`user:{id}`, `api-key:{id}`, or the shared `open-dev` bucket that all anonymous demo traffic counts as): at most `APO_MAX_STREAMS_PER_IDENTITY` (default 10) concurrent streams per caller across both endpoints. An over-cap open gets a `429` whose `Retry-After` is the keepalive interval (25 s): a slot held by a connection that already dropped is reclaimed within one keepalive poll, so a retry after that finds a free slot.
+
 ### Architecture Overview
 
 ```mermaid
@@ -772,9 +774,9 @@ graph LR
 #### Backend
 
 1. **Generic core** (`services/broadcaster.py`)
-   - `Broadcaster[K]` — in-memory pub/sub using `asyncio.Queue`
+   - `Broadcaster[K]`: in-memory pub/sub using `asyncio.Queue`
    - Manages multiple concurrent subscribers per key
-   - Thread-safe via `asyncio.Lock`; non-blocking publish (drops on `QueueFull`)
+   - Thread-safe via `asyncio.Lock`; publish never blocks: each subscriber queue is bounded by event count (`APO_SSE_QUEUE_MAX_EVENTS`) and buffered bytes (`APO_SSE_QUEUE_MAX_BYTES`), and a subscriber that falls behind loses its oldest queued events, so it always holds the newest ones
    - Single-instance only (see Future Enhancements)
 
 2. **Run events** (`services/run_events.py`, `routes/run_events.py`)
@@ -805,7 +807,7 @@ graph LR
 - **Latency**: sub-100ms from backend event to frontend update
 - **Server Load**: one persistent connection vs. polling
 - **Scalability**: in-memory broadcaster supports single-instance deployments (see Self-Hosted Alpha Topology)
-- **Memory**: automatic cleanup of disconnected listeners
+- **Memory**: bounded per subscriber (queued events capped by count and by bytes, oldest dropped first), plus automatic cleanup of disconnected listeners
 
 ### Future Enhancements
 

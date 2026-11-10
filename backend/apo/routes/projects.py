@@ -513,7 +513,7 @@ def _load_runs_by_task(
     "/{project_id}/agent-tasks",
     response_model=list[AgentTaskSummary],
 )
-async def list_project_agent_tasks(
+def list_project_agent_tasks(
     project_id: str,
     request: Request,
     session: Session = Depends(get_session),

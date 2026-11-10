@@ -2,6 +2,7 @@
 
 # pyright: reportCallInDefaultInitializer=false, reportUnusedCallResult=false
 
+import asyncio
 from typing import cast
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -49,12 +50,23 @@ async def stream_run_events(
     # Authorize before any broadcaster access or
     # initial-event construction. A cross-Project denial returns JSON
     # 403/404 before the text/event-stream response is created.
-    enforce_project_role_from_request(
-        request, session, project, minimum_role="viewer"
+    #
+    # Authorization and the initial events are blocking SQL, so each runs in
+    # a worker thread: on the event loop, one slow read here would stall
+    # every other request. The request session is safe to hand over: SQLite
+    # opens with check_same_thread=False and each call is fully awaited
+    # before the session is touched again. The route itself stays async
+    # because it awaits the broadcaster and returns a live stream.
+    await asyncio.to_thread(
+        enforce_project_role_from_request,
+        request,
+        session,
+        project,
+        minimum_role="viewer",
     )
 
     broadcaster = await get_run_event_broadcaster()
-    initial_events = _build_initial_events(project, session)
+    initial_events = await asyncio.to_thread(_build_initial_events, project, session)
 
     return sse_streaming_response(
         request,
