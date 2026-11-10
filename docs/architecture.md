@@ -264,7 +264,16 @@ The write path has explicit ownership boundaries:
    between chunks simply rides the lease and reprojects idempotently. Write-lock
    exhaustion after the full timeout requeues the batch instead of terminating
    it (`scripts/loadtest/otlp_projection_loss.py` is the acceptance harness:
-   zero projection loss at 5 and 20 concurrent, 256-span requests).
+   zero projection loss at 5 and 20 concurrent, 256-span requests). Whole-run
+   rollups (aggregate metrics, the linked Task Run's cost/token totals) are
+   recomputed once per run per projection pass
+   (`trace_projector.deferred_run_aggregates`), not after every span: a batch
+   of spans landing on a completed run used to pay one whole-run
+   recomputation per span inside the write lock, quadratic in trace size.
+   Reprojection (`services/reproject.py`) follows the same chunk commits and
+   additionally pauses between chunks with the lock released, so a client
+   looping the reproject endpoint cannot hold the single write lock
+   indefinitely.
 7. Projection materializes `RunDB` and `LoggedCallDB` for current product APIs.
    Public OTel IDs are preserved, while storage identity and every lookup are
    Project-scoped. Canonical OTel spans remain the replayable source of truth

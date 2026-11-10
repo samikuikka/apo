@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING
 
 from sqlmodel import Session, col, select
@@ -61,6 +62,66 @@ def get_trace_projector() -> TraceProjector:
     if not _projector_cache:
         _projector_cache.append(TraceProjector())
     return _projector_cache[0]
+
+
+# Session-info key holding the set of (project, trace) runs whose rollups a
+# projection pass owes. Present only inside ``deferred_run_aggregates``.
+_DEFERRED_RUNS_KEY = "apo_deferred_run_rollups"
+
+
+@contextmanager
+def deferred_run_aggregates(session: Session) -> Iterator[None]:
+    """Recompute run rollups once per pass instead of once per span.
+
+    Whole-run rollups (aggregate metrics, ``call_count`` / ``primary_model``
+    / provider summary, the linked Task Run's cost and token totals) are
+    derived from every call of the run, so each refresh costs as much as
+    the trace is large. Recomputing them after every span projected into a
+    completed run makes projection quadratic in trace size, inside the
+    write lock.
+
+    While active on ``session``, :meth:`TraceProjector.project` records the
+    runs it touches instead of refreshing them. The caller MUST call
+    :func:`flush_run_aggregates` before every commit whose readers deserve
+    current rollups (in practice: the pass's final commit), so the state a
+    pass leaves behind is identical to per-span refreshes. Callers outside
+    a scope keep the per-span behavior unchanged.
+    """
+    if _DEFERRED_RUNS_KEY in session.info:  # nesting: keep the outer scope
+        yield
+        return
+    session.info[_DEFERRED_RUNS_KEY] = set[tuple[str, str]]()
+    try:
+        yield
+    finally:
+        session.info.pop(_DEFERRED_RUNS_KEY, None)
+
+
+def flush_run_aggregates(session: Session) -> int:
+    """Refresh the rollups of every run the pass touched, once each.
+
+    Runs inside the caller's current transaction; the caller commits. Safe
+    to call outside a deferral scope (no-op) and repeatedly (each call
+    refreshes only runs touched since the previous one). Returns the number
+    of runs refreshed.
+    """
+    pending = _deferred_runs(session)
+    if not pending:
+        return 0
+    for project_id, trace_id in sorted(pending):
+        _refresh_run_rollups(
+            session, select_run(session, trace_id, project_id), trace_id, project_id
+        )
+    refreshed = len(pending)
+    pending.clear()
+    session.flush()
+    return refreshed
+
+
+def _deferred_runs(session: Session) -> set[tuple[str, str]] | None:
+    """The pass's pending runs, or None when rollups are not deferred."""
+    pending = session.info.get(_DEFERRED_RUNS_KEY)
+    return pending if isinstance(pending, set) else None
 
 
 class TraceProjector:
@@ -134,24 +195,21 @@ class TraceProjector:
             session, span, normalized, repo, cost_mode=cost_mode
         )
 
-        # A completed root may arrive before its children, and replay updates
-        # calls on a run that was already complete. Refresh after every span
-        # projected into a completed run so dashboard-facing aggregates cannot
-        # lag behind the authoritative call rows.
         run_after = select_run(session, span.trace_id, span.project_id)
         if run_after is not None:
             # dual/slim: maintain the write-time list previews.
             if projection_write_mode() != "fat":
                 maybe_update_run_preview(session, run_after, call, io)
-            if run_after.completed_at is not None:
-                _compute_run_aggregates(session, span.trace_id, span.project_id)
 
-        # Issue #41: re-aggregate the linked Task Run's cost/tokens whenever a
-        # span lands for a trace linked to a Task Run. The task runner's single
-        # finalize-time aggregation runs against whatever calls existed then;
-        # costed spans can land after finalize (late OTLP batches, exporter
-        # retries), so the totals would otherwise stay null forever.
-        _refresh_task_run_total(session, span.trace_id, span.project_id)
+        # Run rollups are recomputed from every call of the run, so one
+        # refresh costs as much as the trace is large. A caller projecting
+        # many spans in one pass defers them and pays once per run (see
+        # ``deferred_run_aggregates``); every other caller refreshes here.
+        deferred = _deferred_runs(session)
+        if deferred is not None:
+            deferred.add((span.project_id, span.trace_id))
+        else:
+            _refresh_run_rollups(session, run_after, span.trace_id, span.project_id)
 
         session.flush()
 
@@ -621,6 +679,30 @@ def _apply_cost(session: Session, call: LoggedCallDB, span: OtlpSpanDB) -> None:
         )
     except Exception:
         logger.debug("Cost calculation failed for model %s", call.model, exc_info=True)
+
+
+def _refresh_run_rollups(
+    session: Session,
+    run: RunDB | None,
+    trace_id: str,
+    project: str,
+) -> None:
+    """Recompute everything derived from a run's whole call set.
+
+    A completed root may arrive before its children, and replay updates
+    calls on a run that was already complete, so a completed run is
+    re-aggregated whenever its calls change, not only when it completes;
+    an incomplete one is left to its completion.
+
+    Issue #41: the linked Task Run's cost/tokens are re-aggregated too. The
+    task runner's single finalize-time aggregation runs against whatever
+    calls existed then; costed spans can land after finalize (late OTLP
+    batches, exporter retries), so the totals would otherwise stay null
+    forever.
+    """
+    if run is not None and run.completed_at is not None:
+        _compute_run_aggregates(session, trace_id, project)
+    _refresh_task_run_total(session, trace_id, project)
 
 
 def _compute_run_aggregates(session: Session, trace_id: str, project: str) -> None:

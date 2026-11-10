@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from sqlmodel import Session
 
 import apo.services.execution_finalization as fin
-from apo.models.db import TaskExecutionAttemptDB
+from apo.models.db import AgentTaskDeliverableDB, TaskExecutionAttemptDB
 from apo.services.execution_finalization import (
     AttemptResultBody,
     finalize_attempt_with_deliverables,
@@ -57,6 +58,7 @@ async def test_result_finalization_runs_off_the_event_loop(
         lease: CurrentAttemptLease,
         body: AttemptResultBody,
         completion_digest: str | None = None,
+        staged_deliverables: Sequence[AgentTaskDeliverableDB] = (),
     ) -> TaskExecutionAttemptDB:
         time.sleep(SYNC_WORK_SECONDS)  # the heavy finalization write
         calls.append("finalize")

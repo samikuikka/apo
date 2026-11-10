@@ -88,35 +88,76 @@ async def persist_json_deliverable(
     """Validate, serialize, and place a JSON Deliverable row.
 
     Small values go inline; large values are gzip-compressed and written
-    through ``store``. Returns the persisted (ready) row, unsaved — the caller
+    through ``store``. Returns the persisted (ready) row, unsaved: the caller
     commits so multiple rows and the terminal task-run state land together.
+
+    Placement happens before any write transaction is open on the session
+    (see ``stage_json_deliverable``), so a caller persisting several
+    deliverables never holds SQLite's write lock across the store writes.
+    """
+    row = await stage_json_deliverable(
+        session,
+        project=project,
+        task_run_id=task_run_id,
+        name=name,
+        value=value,
+        store=store,
+        staged=_pending_deliverable_rows(session, task_run_id),
+    )
+    session.add(row)
+    return row
+
+
+async def stage_json_deliverable(
+    session: Session,
+    *,
+    project: str,
+    task_run_id: str,
+    name: str,
+    value: object,
+    store: ArtifactStore,
+    staged: Sequence[AgentTaskDeliverableDB] = (),
+) -> AgentTaskDeliverableDB:
+    """Validate, place, and build the ready row for one JSON Deliverable.
+
+    Does every slow part (serialization, limit checks, gzip, the store
+    write) WITHOUT opening a write transaction on ``session``: its reads
+    run under ``no_autoflush`` so rows pending on the session are not
+    flushed, and the returned row is not added to the session. SQLite has a
+    single write lock; a transaction opened here would hold it across the
+    compression and object I/O of every later deliverable.
+
+    ``staged`` carries the rows this unit of work already staged for the
+    same task run. They claim their names and count toward the run's total
+    byte limit, exactly as rows flushed earlier in the transaction would.
     """
     validate_deliverable_name(name)
     body = _compact_json_bytes(value)
     size = len(body)
     sha = _sha256_hex(body)
 
-    # A JSON deliverable name cannot collide with an
-    # existing Artifact (or another JSON deliverable) on the same Task Run.
-    existing = _find_deliverable(session, project, task_run_id, name)
-    if existing is not None:
-        raise ValueError(
-            f"Deliverable name '{name}' already exists on task run {task_run_id}"
-        )
+    with session.no_autoflush:
+        # A JSON deliverable name cannot collide with an existing Artifact
+        # (or another JSON deliverable) on the same Task Run.
+        if _name_taken(session, project, task_run_id, name, staged):
+            raise ValueError(
+                f"Deliverable name '{name}' already exists on task run {task_run_id}"
+            )
 
-    # JSON deliverables count toward the same per-run byte budget as
-    # Artifacts — without this they could grow a run's total without bound.
-    from apo.services.artifact_stores.registry import artifact_limits
+        # JSON deliverables count toward the same per-run byte budget as
+        # Artifacts. Without this they could grow a run's total without bound.
+        from apo.services.artifact_stores.registry import artifact_limits
 
-    _, max_run, _ = artifact_limits()
-    _reject_run_total_overflow(session, task_run_id, size, max_run)
-    # Project-level daily storage budget: same accept moment, one choke
-    # point shared with artifact intents.
-    enforce_project_storage_quota(session, project_id=project, pending_bytes=size)
+        _, max_run, _ = artifact_limits()
+        staged_bytes = sum(row.size_bytes for row in staged)
+        _reject_run_total_overflow(session, task_run_id, size + staged_bytes, max_run)
+        # Project-level daily storage budget: same accept moment, one choke
+        # point shared with artifact intents.
+        enforce_project_storage_quota(session, project_id=project, pending_bytes=size)
     await record_project_storage(session, project, size_bytes=size)
 
     if size <= INLINE_THRESHOLD_BYTES:
-        row = AgentTaskDeliverableDB(
+        return AgentTaskDeliverableDB(
             id=_new_id(),
             project=project,
             task_run_id=task_run_id,
@@ -135,8 +176,6 @@ async def persist_json_deliverable(
             created_at=datetime.now(timezone.utc),
             ready_at=datetime.now(timezone.utc),
         )
-        session.add(row)
-        return row
 
     # Large JSON: gzip once, write through the store.
     compressed = gzip.compress(body)
@@ -147,7 +186,7 @@ async def persist_json_deliverable(
         expected_size=len(compressed),
         expected_sha256=_sha256_hex(compressed),
     )
-    row = AgentTaskDeliverableDB(
+    return AgentTaskDeliverableDB(
         id=_new_id(),
         project=project,
         task_run_id=task_run_id,
@@ -166,8 +205,6 @@ async def persist_json_deliverable(
         created_at=datetime.now(timezone.utc),
         ready_at=datetime.now(timezone.utc),
     )
-    session.add(row)
-    return row
 
 
 async def read_json_deliverable_value(
@@ -629,6 +666,30 @@ def _find_deliverable(
             AgentTaskDeliverableDB.name == name,
         )
     ).first()
+
+
+def _name_taken(
+    session: Session,
+    project: str,
+    task_run_id: str,
+    name: str,
+    staged: Sequence[AgentTaskDeliverableDB],
+) -> bool:
+    """True when a stored row, or one staged in this unit of work, has the name."""
+    if any(row.task_run_id == task_run_id and row.name == name for row in staged):
+        return True
+    return _find_deliverable(session, project, task_run_id, name) is not None
+
+
+def _pending_deliverable_rows(
+    session: Session, task_run_id: str
+) -> list[AgentTaskDeliverableDB]:
+    """Rows added to the session for this run that are not written yet."""
+    return [
+        row
+        for row in session.new
+        if isinstance(row, AgentTaskDeliverableDB) and row.task_run_id == task_run_id
+    ]
 
 
 def _reject_run_total_overflow(
