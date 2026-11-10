@@ -12,7 +12,6 @@ claimed.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 
 from fastapi import Response
@@ -41,24 +40,22 @@ def _member(s: Session, email: str) -> str:
 
 
 def _enroll(session: Session, token: str, name: str) -> str:
-    result = asyncio.run(
-        enroll_v2(
-            EnrollV2Request(
-                token=token,
-                name=name,
-                capabilities=ExecutorCapabilities(
-                    protocol_version=2,
-                    executor_version="0.0.0-test",
-                    driver_kinds=["source-owned-ts"],
-                    os="linux",
-                    architecture="x64",
-                    runtimes={"node": "22"},
-                    max_concurrency=1,
-                ),
+    result = enroll_v2(
+        EnrollV2Request(
+            token=token,
+            name=name,
+            capabilities=ExecutorCapabilities(
+                protocol_version=2,
+                executor_version="0.0.0-test",
+                driver_kinds=["source-owned-ts"],
+                os="linux",
+                architecture="x64",
+                runtimes={"node": "22"},
+                max_concurrency=1,
             ),
-            Response(),
-            session,
-        )
+        ),
+        Response(),
+        session,
     )
     return result.executor_id
 

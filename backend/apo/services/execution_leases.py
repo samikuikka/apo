@@ -855,11 +855,18 @@ async def _sweep_expired_attempts() -> None:
     # A failed sweep, the startup one included, must never end the
     # background loop: the next interval sweeps again.
     try:
-        with Session(engine) as session:
-            _ = await asyncio.to_thread(recover_expired_attempts, session, now=_now())
-            session.commit()
+        await asyncio.to_thread(_sweep_expired_attempts_blocking)
     except Exception:
         _logger.exception("Lease reaper sweep failed")
+
+
+def _sweep_expired_attempts_blocking() -> None:
+    # The commit belongs to the worker thread too. Left on the event loop, a
+    # sweep that wrote would hold the write lock until the loop got back to
+    # it, and a write waiting on the loop for that lock would never let it.
+    with Session(engine) as session:
+        _ = recover_expired_attempts(session, now=_now())
+        session.commit()
 
 
 def start_lease_reaper() -> None:
