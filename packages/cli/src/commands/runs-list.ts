@@ -118,6 +118,17 @@ export async function run(argv: string[]): Promise<number> {
   // AND across keys (the backend splits each raw key:id value itself).
   const environments = getFlagValues(multiFlags, "environment");
   if (environments.length > 0) params.environment = environments.join(",");
+  // Stored-metric ranges: dollars for cost, seconds for wall-clock duration,
+  // forwarded as strings (the backend 422s anything negative or non-numeric).
+  for (const [flag, param] of [
+    ["cost-min", "cost_min"],
+    ["cost-max", "cost_max"],
+    ["duration-min", "duration_min"],
+    ["duration-max", "duration_max"],
+  ] as const) {
+    const value = getFlagValue(flags, flag);
+    if (value) params[param] = value;
+  }
   const labels = getFlagValues(multiFlags, "label");
   for (const raw of labels) {
     try {

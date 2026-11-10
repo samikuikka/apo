@@ -43,6 +43,31 @@ function makeRun(overrides: Record<string, unknown> = {}): Record<string, unknow
   };
 }
 
+describe("runs list metric ranges", () => {
+  it("forwards cost and duration bounds as API param names", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(mockResponse([]));
+    const { restore } = captureLog();
+
+    const code = await run([
+      "--backend", "http://backend.test",
+      "--cost-min", "0.10",
+      "--cost-max", "0.50",
+      "--duration-min", "60",
+      "--duration-max", "300",
+    ]);
+    restore();
+
+    expect(code).toBe(0);
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain("cost_min=0.10");
+    expect(url).toContain("cost_max=0.50");
+    expect(url).toContain("duration_min=60");
+    expect(url).toContain("duration_max=300");
+  });
+});
+
 describe("runs list command", () => {
   afterEach(() => {
     vi.restoreAllMocks();

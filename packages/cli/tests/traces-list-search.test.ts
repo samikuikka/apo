@@ -28,6 +28,27 @@ beforeEach(() => {
   getMock.mockResolvedValue({ data: [], total_count: 0, page: 0, page_size: 20 });
 });
 
+describe("traces list run-label scope", () => {
+  it("sends repeated label params and comma-joined environments", async () => {
+    const code = await run([
+      "--label", "customer:acme",
+      "--label", "release:r42",
+      "--environment", "prod",
+      "--environment", "staging",
+    ]);
+    expect(code).toBe(0);
+    const [, , params] = getMock.mock.calls[0];
+    expect(params.label).toEqual(["customer:acme", "release:r42"]);
+    expect(params.environment).toBe("prod,staging");
+  });
+
+  it("refuses a malformed label before any request", async () => {
+    const code = await run(["--label", "nocolon"]);
+    expect(code).toBe(2);
+    expect(getMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("traces list span search", () => {
   it("passes service, operation, and span-text params", async () => {
     const code = await run([
