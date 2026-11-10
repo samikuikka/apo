@@ -81,7 +81,7 @@ def test_every_read_path_tolerates_nondict_json(client: TestClient, session: Ses
     session.commit()
 
     # 1. GET /v1/runs/{id} — the run readback target. Must be 200.
-    resp = client.get("/v1/runs/run-e2e?project=p")
+    resp = client.get("/v1/runs/run-e2e?project=p&slim=false")
     assert resp.status_code == 200, resp.text
     data = resp.json()
     run_data = data["run"]

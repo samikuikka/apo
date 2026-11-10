@@ -27,7 +27,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Literal
 
-from sqlalchemy.orm import defer
+from sqlalchemy.orm import load_only
 from sqlmodel import Session, col, select
 
 from ..models.db import LoggedCallDB
@@ -92,18 +92,35 @@ UnavailableReason = Literal[
     "aggregate_only",
 ]
 
-# Heavy payload columns the read side never touches; deferring them keeps
-# a page of summaries from loading megabytes of call bodies.
-_CALL_DEFERS = (
-    defer(LoggedCallDB.input),
-    defer(LoggedCallDB.messages),
-    defer(LoggedCallDB.output),
-    defer(LoggedCallDB.tool_parameters),
-    defer(LoggedCallDB.tool_result),
-    defer(LoggedCallDB.meta),
-    defer(LoggedCallDB.cost_breakdown),
-    defer(LoggedCallDB.serving_evidence),
-    defer(LoggedCallDB.matched_serving),
+# Exactly the columns the serving rollups read: identity (model, provider,
+# host, route, tier), accounting and observation type, timing, tokens, and
+# cost scalars. Every other column stays off the wire — payloads, messages,
+# tool bodies, metadata — and ``raiseload`` turns a read of an unloaded
+# column into an error instead of a silent per-row lazy load, so the diet
+# cannot regress quietly.
+_SERVING_COLUMNS = (
+    LoggedCallDB.id,
+    LoggedCallDB.run_id,
+    LoggedCallDB.model,
+    LoggedCallDB.observed_model,
+    LoggedCallDB.api_provider,
+    LoggedCallDB.serving_host,
+    LoggedCallDB.route,
+    LoggedCallDB.service_tier,
+    LoggedCallDB.request_accounting,
+    LoggedCallDB.observation_type,
+    LoggedCallDB.level,
+    LoggedCallDB.created_at,
+    LoggedCallDB.end_time,
+    LoggedCallDB.time_to_first_token_ms,
+    LoggedCallDB.completion_tokens,
+    LoggedCallDB.output_token_scope,
+    LoggedCallDB.first_content_scope,
+    LoggedCallDB.raw_usage,
+    LoggedCallDB.cost,
+    LoggedCallDB.provided_cost,
+    LoggedCallDB.cost_provenance,
+    LoggedCallDB.pricing_quality,
 )
 
 
@@ -655,7 +672,7 @@ def load_call_rows(
 ) -> dict[str, list[LoggedCallDB]]:
     """All call rows for the given trace run ids, grouped by run id.
 
-    One query; heavy payload columns stay deferred. ``project`` scopes the
+    One query carrying only the serving columns. ``project`` scopes the
     lookup because trace ids may collide across projects (surrogate-PK
     design) and another project's copy of a trace must never leak into
     this one's summary or filter.
@@ -665,7 +682,7 @@ def load_call_rows(
         return {}
     rows = session.exec(
         select(LoggedCallDB)
-        .options(*_CALL_DEFERS)
+        .options(load_only(*_SERVING_COLUMNS, raiseload=True))
         .where(
             col(LoggedCallDB.run_id).in_(unique_ids),
             col(LoggedCallDB.project) == project,

@@ -135,7 +135,11 @@ describe("getTraceDetail", () => {
     await expect(getTraceDetail("r1")).rejects.toThrow("Trace not found");
   });
 
-  it("sends slim=true only when requested", async () => {
+  it("sends the slim flag explicitly in both directions", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(sampleDetail),
+    });
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve(sampleDetail),
@@ -146,12 +150,17 @@ describe("getTraceDetail", () => {
     });
 
     await getTraceDetail("r1", "proj-123", undefined, { slim: true });
+    await getTraceDetail("r1", "proj-123", undefined, { slim: false });
     await getTraceDetail("r1", "proj-123");
 
     const slimUrl = mockFetch.mock.calls[0][0] as string;
-    const fullUrl = mockFetch.mock.calls[1][0] as string;
+    const fatUrl = mockFetch.mock.calls[1][0] as string;
+    const defaultUrl = mockFetch.mock.calls[2][0] as string;
     expect(slimUrl).toContain("slim=true");
-    expect(fullUrl).not.toContain("slim=");
+    expect(fatUrl).toContain("slim=false");
+    // No options means slim: what this app renders must not drift with the
+    // backend's default.
+    expect(defaultUrl).toContain("slim=true");
   });
 
   it("normalizes the slim_calls marker through to the caller", async () => {

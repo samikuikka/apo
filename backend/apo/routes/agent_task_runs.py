@@ -14,7 +14,7 @@ from typing import Literal, cast
 from fastapi import Response, APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import asc, desc, func, or_
-from sqlalchemy.orm import defer
+from sqlalchemy.orm import defer, load_only
 from sqlmodel import Session, col, select
 
 from ..db import get_session
@@ -229,7 +229,9 @@ def _load_primary_models(
         return {}
 
     runs = session.exec(
-        select(RunDB).where(
+        select(RunDB)
+        .options(load_only(RunDB.id, RunDB.primary_model, raiseload=True))
+        .where(
             as_column(cast(object, RunDB.id)).in_(unique_trace_ids),
             as_column(cast(object, RunDB.project)) == project,
         )
@@ -248,11 +250,19 @@ def _load_primary_models(
         # created_at so the first real model wins. Structural spans like
         # the "agent-task" run-loop CHAIN are not LLM models, and
         # "unknown" means the SDK never captured a model — both skipped.
-        # CALL_LIGHT: only the scalar model/type/created_at fields are
-        # read — the payload JSON columns stay deferred.
+        # Only the keys the fallback reads are loaded; ``raiseload`` makes
+        # a touch of any payload column an error instead of a lazy fetch.
         calls = session.exec(
             select(LoggedCallDB)
-            .options(*CALL_LIGHT)
+            .options(
+                load_only(
+                    LoggedCallDB.run_id,
+                    LoggedCallDB.model,
+                    LoggedCallDB.observation_type,
+                    LoggedCallDB.created_at,
+                    raiseload=True,
+                )
+            )
             .where(
                 as_column(cast(object, LoggedCallDB.run_id)).in_(missing),
                 as_column(cast(object, LoggedCallDB.project)) == project,

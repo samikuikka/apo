@@ -1,28 +1,36 @@
 # pyright: reportAny=false, reportCallInDefaultInitializer=false, reportExplicitAny=false, reportPrivateUsage=false
 
-from typing import Any, cast
+"""Facet counts for the traces sidebar, as SQL aggregates.
+
+Each facet is one aggregate statement over the filtered-runs SELECT with its
+own dimension's filter removed (the sidebar shows alternatives, not echoes).
+The filtered runs are never materialized: a Python id list is one extra
+statement per facet, stops working past SQLite's host-parameter limit on a
+large project, and — because the old aggregates filtered by run id with no
+project predicate — counted another project's copy of a shared trace id.
+"""
+
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import and_, func, or_
-from sqlmodel import Session, select
+from sqlalchemy import func, true
+from sqlalchemy.sql.elements import ColumnElement
+from sqlmodel import Session, col, select
 
 from ...db import get_session
 from ...models import RunDB
 from ...models.columns import (
-    LOGGED_CALL_LEVEL_COL,
     LOGGED_CALL_MODEL_COL,
     LOGGED_CALL_PROVIDER_COL,
     LOGGED_CALL_ROUTE_COL,
     LOGGED_CALL_RUN_ID_COL,
-    RUN_CALL_COUNT_COL,
     RUN_ENVIRONMENT_COL,
     RUN_ID_COL,
-    RUN_PRIMARY_MODEL_COL,
+    RUN_METRIC_NAME_COL,
+    RUN_METRIC_RUN_ID_COL,
     RUN_PROJECT_COL,
     RUN_SESSION_ID_COL,
     RUN_USER_ID_COL,
-    RUN_METRIC_NAME_COL,
-    RUN_METRIC_RUN_ID_COL,
 )
 from ...models.schemas import FacetBucket, RunFacets
 from ...services.filters import apply_date_range, apply_tag_filters, split_csv_param
@@ -30,13 +38,23 @@ from ...services.project_memberships import (
     enforce_project_read_from_request,
     list_readable_projects_from_request,
 )
+from .run_call_scope import (
+    RunScope,
+    calls_of_runs,
+    metrics_of_runs,
+    model_predicate,
+    runs_with_metrics,
+    scope_runs,
+    status_conditions,
+    status_predicate,
+)
 
 router = APIRouter(prefix="/v1/runs", tags=["runs"])
 
 
 def _build_filtered_run_ids(
-    session: Session,
-    project: str | None = None,
+    scope: RunScope,
+    *,
     models: str | None = None,
     environment: str | None = None,
     tags: str | None = None,
@@ -46,29 +64,18 @@ def _build_filtered_run_ids(
     metric_name: str | None = None,
     created_after: str | None = None,
     created_before: str | None = None,
-    allowed_projects: list[str] | None = None,
-) -> list[str]:
-    stmt = select(RUN_ID_COL)
-    if project:
-        stmt = stmt.where(RunDB.project == project)
-    elif allowed_projects is not None:
-        # No single project selected: restrict the aggregate to the caller's
-        # projects so facet counts can't span tenants. A caller who is a member
-        # of nothing sees no runs.
-        stmt = stmt.where(RUN_PROJECT_COL.in_(allowed_projects))
+) -> Any:
+    """The SELECT of run ids every facet aggregates over.
+
+    Never executed on its own: each facet embeds it as a subquery. Status
+    and model filters come from ``run_call_scope`` so a facet and the runs
+    list judge a run by the same project-scoped calls.
+    """
+    stmt = scope_runs(select(RUN_ID_COL), scope)
 
     model_list = split_csv_param(models)
     if model_list:
-        call_model_ids = select(LOGGED_CALL_RUN_ID_COL).where(
-            LOGGED_CALL_RUN_ID_COL.is_not(None),
-            LOGGED_CALL_MODEL_COL.in_(model_list),
-        )
-        stmt = stmt.where(
-            or_(
-                RUN_PRIMARY_MODEL_COL.in_(model_list),
-                RUN_ID_COL.in_(call_model_ids),
-            )
-        )
+        stmt = stmt.where(model_predicate(scope, model_list))
 
     env_list = split_csv_param(environment)
     if env_list:
@@ -85,62 +92,70 @@ def _build_filtered_run_ids(
     if tags:
         stmt = apply_tag_filters(stmt, tags)
     if metric_name:
-        metric_run_ids = select(RUN_METRIC_RUN_ID_COL).where(
-            RUN_METRIC_NAME_COL == metric_name
-        )
-        stmt = stmt.where(RUN_ID_COL.in_(metric_run_ids))
+        stmt = stmt.where(runs_with_metrics(scope, RUN_METRIC_NAME_COL == metric_name))
     if created_after or created_before:
         stmt = apply_date_range(stmt, RunDB.created_at, created_after, created_before)
 
     status_values = split_csv_param(status)
     if status_values:
-        conditions: list[Any] = []
-        if "error" in status_values:
-            error_sub = select(LOGGED_CALL_RUN_ID_COL).where(
-                LOGGED_CALL_RUN_ID_COL.is_not(None),
-                LOGGED_CALL_LEVEL_COL == "ERROR",
-            )
-            conditions.append(RUN_ID_COL.in_(error_sub))
-        if "warning" in status_values:
-            warning_sub = select(LOGGED_CALL_RUN_ID_COL).where(
-                LOGGED_CALL_RUN_ID_COL.is_not(None),
-                LOGGED_CALL_LEVEL_COL == "WARNING",
-            )
-            error_sub = select(LOGGED_CALL_RUN_ID_COL).where(
-                LOGGED_CALL_RUN_ID_COL.is_not(None),
-                LOGGED_CALL_LEVEL_COL == "ERROR",
-            )
-            conditions.append(
-                and_(RUN_ID_COL.in_(warning_sub), RUN_ID_COL.not_in(error_sub))
-            )
-        if "success" in status_values:
-            issues_sub = select(LOGGED_CALL_RUN_ID_COL).where(
-                LOGGED_CALL_RUN_ID_COL.is_not(None),
-                LOGGED_CALL_LEVEL_COL.in_(["ERROR", "WARNING"]),
-            )
-            conditions.append(
-                and_(RUN_ID_COL.not_in(issues_sub), RUN_CALL_COUNT_COL > 0)
-            )
-        if conditions:
-            stmt = stmt.where(or_(*conditions))
+        predicate = status_predicate(scope, status_values)
+        if predicate is not None:
+            stmt = stmt.where(predicate)
 
-    return cast(list[str], session.exec(stmt).all())
+    return stmt
 
 
-def _compute_model_facets(session: Session, run_ids: list[str]) -> list[FacetBucket]:
-    if not run_ids:
-        return []
+def _runs_of_scope(scope: RunScope, runs: Any) -> list[ColumnElement[bool]]:
+    """Predicates keeping the runs rows that belong to ``runs`` SELECT."""
+    conditions: list[ColumnElement[bool]] = []
+    if scope.project:
+        conditions.append(RUN_PROJECT_COL == scope.project)
+    elif scope.allowed_projects is not None:
+        conditions.append(RUN_PROJECT_COL.in_(scope.allowed_projects))
+    conditions.append(RUN_ID_COL.in_(runs.with_only_columns(RUN_ID_COL)))
+    return conditions
+
+
+def _compute_status_facets(session: Session, runs: Any, scope: RunScope) -> list[FacetBucket]:
+    """The three status buckets, counted by one conditional-sum statement.
+
+    Status is per run, not per call: a run is ``error`` if it owns an ERROR
+    call, ``warning`` if it owns a WARNING call and no ERROR call, and
+    ``success`` when it has calls and owns neither. The row predicates come
+    from ``status_conditions``, so the facet and the list's status filter
+    cannot drift apart.
+    """
+    conditions = status_conditions(scope)
+    error_count, warning_count, success_count = session.exec(
+        select(
+            func.count().filter(conditions.error),
+            func.count().filter(conditions.warning),
+            func.count().filter(conditions.success),
+        ).where(*_runs_of_scope(scope, runs))
+    ).one()
+    return [
+        FacetBucket(value="success", count=success_count),
+        FacetBucket(value="warning", count=warning_count),
+        FacetBucket(value="error", count=error_count),
+    ]
+
+
+def _compute_model_facets(session: Session, runs: Any, scope: RunScope) -> list[FacetBucket]:
+    run_count = func.count(func.distinct(LOGGED_CALL_RUN_ID_COL))
     stmt = (
-        select(LOGGED_CALL_MODEL_COL, func.count(func.distinct(LOGGED_CALL_RUN_ID_COL)))
-        .where(LOGGED_CALL_RUN_ID_COL.in_(run_ids))
+        select(LOGGED_CALL_MODEL_COL, run_count)
+        .where(
+            *calls_of_runs(scope, runs),
+            LOGGED_CALL_MODEL_COL != "",
+        )
         .group_by(LOGGED_CALL_MODEL_COL)
-        .order_by(func.count(func.distinct(LOGGED_CALL_RUN_ID_COL)).desc())
+        .order_by(run_count.desc(), LOGGED_CALL_MODEL_COL.desc())
     )
     rows = session.exec(stmt).all()
     return [FacetBucket(value=r[0], count=r[1]) for r in rows if r[0]]
 
 
-def _compute_provider_facets(session: Session, run_ids: list[str]) -> list[FacetBucket]:
+def _compute_provider_facets(session: Session, runs: Any, scope: RunScope) -> list[FacetBucket]:
     """Serving-host facet over the labels the UI displays (issue #307).
 
     The label is route-wins — the same projection as the runs list column
@@ -149,14 +164,12 @@ def _compute_provider_facets(session: Session, run_ids: list[str]) -> list[Facet
     offer "fireworks" for a run whose cell shows "priority": picking it
     would look like a filter that does nothing.
     """
-    if not run_ids:
-        return []
     label = func.coalesce(func.nullif(LOGGED_CALL_ROUTE_COL, ""),
                           func.nullif(LOGGED_CALL_PROVIDER_COL, ""))
     stmt = (
         select(label, func.count(func.distinct(LOGGED_CALL_RUN_ID_COL)))
         .where(
-            LOGGED_CALL_RUN_ID_COL.in_(run_ids),
+            *calls_of_runs(scope, runs),
             label.is_not(None),
         )
         .group_by(label)
@@ -172,122 +185,80 @@ def _compute_provider_facets(session: Session, run_ids: list[str]) -> list[Facet
 
 
 def _compute_environment_facets(
-    session: Session, run_ids: list[str]
+    session: Session, runs: Any, scope: RunScope
 ) -> list[FacetBucket]:
-    if not run_ids:
-        return []
     stmt = (
-        select(RunDB.environment, func.count())
-        .where(RUN_ID_COL.in_(run_ids))
-        .group_by(RunDB.environment)
-        .order_by(func.count().desc())
+        select(RUN_ENVIRONMENT_COL, func.count())
+        .where(*_runs_of_scope(scope, runs))
+        .group_by(RUN_ENVIRONMENT_COL)
+        .order_by(func.count().desc(), RUN_ENVIRONMENT_COL.desc())
     )
     rows = session.exec(stmt).all()
     return [FacetBucket(value=r[0], count=r[1]) for r in rows]
 
 
-def _compute_tag_facets(session: Session, run_ids: list[str]) -> list[FacetBucket]:
-    if not run_ids:
-        return []
-    conn: Any = session.connection().connection.connection
-    placeholders = ",".join("?" for _ in run_ids)
-    query_str = (
-        "SELECT jt.value, COUNT(DISTINCT runs.id) as cnt "
-        + "FROM runs, json_each(runs.tags) jt "
-        + f"WHERE runs.id IN ({placeholders}) "
-        + "GROUP BY jt.value ORDER BY cnt DESC"
-    )
-    results = conn.execute(query_str, list(run_ids)).fetchall()
-    return [FacetBucket(value=str(r[0]), count=int(r[1])) for r in results]
-
-
-def _compute_user_facets(session: Session, run_ids: list[str]) -> list[FacetBucket]:
-    if not run_ids:
-        return []
+def _compute_tag_facets(session: Session, runs: Any, scope: RunScope) -> list[FacetBucket]:
+    # json_each walks each run's tags in place: the join is a per-row path
+    # expansion (ON true), one group per tag value, counting the distinct
+    # runs that carry it.
+    jt = func.json_each(col(RunDB.tags)).table_valued("value")
+    run_count = func.count(func.distinct(RUN_ID_COL))
     stmt = (
-        select(RunDB.user_id, func.count())
-        .where(RUN_ID_COL.in_(run_ids))
-        .where(RunDB.user_id != None)  # noqa: E711
-        .where(RunDB.user_id != "")
-        .group_by(RunDB.user_id)
-        .order_by(func.count().desc())
+        select(jt.c.value, run_count)
+        .select_from(RunDB)
+        .join(jt, true())
+        .where(*_runs_of_scope(scope, runs))
+        .group_by(jt.c.value)
+        .order_by(run_count.desc(), jt.c.value.desc())
+    )
+    return [FacetBucket(value=str(r[0]), count=int(r[1])) for r in session.exec(stmt).all()]
+
+
+def _compute_user_facets(session: Session, runs: Any, scope: RunScope) -> list[FacetBucket]:
+    stmt = (
+        select(RUN_USER_ID_COL, func.count())
+        .where(
+            *_runs_of_scope(scope, runs),
+            RUN_USER_ID_COL.is_not(None),
+            RUN_USER_ID_COL != "",
+        )
+        .group_by(RUN_USER_ID_COL)
+        .order_by(func.count().desc(), RUN_USER_ID_COL.desc())
     )
     rows = session.exec(stmt).all()
     return [FacetBucket(value=r[0], count=r[1]) for r in rows if r[0]]
 
 
 def _compute_session_facets(
-    session: Session, run_ids: list[str]
+    session: Session, runs: Any, scope: RunScope
 ) -> list[FacetBucket]:
-    if not run_ids:
-        return []
     stmt = (
-        select(RunDB.session_id, func.count())
-        .where(RUN_ID_COL.in_(run_ids))
-        .where(RunDB.session_id != None)  # noqa: E711
-        .where(RunDB.session_id != "")
-        .group_by(RunDB.session_id)
-        .order_by(func.count().desc())
+        select(RUN_SESSION_ID_COL, func.count())
+        .where(
+            *_runs_of_scope(scope, runs),
+            RUN_SESSION_ID_COL.is_not(None),
+            RUN_SESSION_ID_COL != "",
+        )
+        .group_by(RUN_SESSION_ID_COL)
+        .order_by(func.count().desc(), RUN_SESSION_ID_COL.desc())
     )
     rows = session.exec(stmt).all()
     return [FacetBucket(value=r[0], count=r[1]) for r in rows if r[0]]
 
 
-def _compute_score_facets(session: Session, run_ids: list[str]) -> list[FacetBucket]:
-    if not run_ids:
-        return []
+def _compute_score_facets(session: Session, runs: Any, scope: RunScope) -> list[FacetBucket]:
+    run_count = func.count(func.distinct(RUN_METRIC_RUN_ID_COL))
     stmt = (
-        select(RUN_METRIC_NAME_COL, func.count(func.distinct(RUN_METRIC_RUN_ID_COL)))
-        .where(RUN_METRIC_RUN_ID_COL.in_(run_ids))
+        select(RUN_METRIC_NAME_COL, run_count)
+        .where(
+            *metrics_of_runs(scope, runs),
+            RUN_METRIC_NAME_COL != "",
+        )
         .group_by(RUN_METRIC_NAME_COL)
-        .order_by(func.count(func.distinct(RUN_METRIC_RUN_ID_COL)).desc())
+        .order_by(run_count.desc(), RUN_METRIC_NAME_COL.desc())
     )
     rows = session.exec(stmt).all()
     return [FacetBucket(value=r[0], count=r[1]) for r in rows if r[0]]
-
-
-def _compute_status_facets(session: Session, run_ids: list[str]) -> list[FacetBucket]:
-    if not run_ids:
-        return [
-            FacetBucket(value="success", count=0),
-            FacetBucket(value="warning", count=0),
-            FacetBucket(value="error", count=0),
-        ]
-
-    error_ids = set(
-        session.exec(
-            select(LOGGED_CALL_RUN_ID_COL).where(
-                LOGGED_CALL_RUN_ID_COL.in_(run_ids),
-                LOGGED_CALL_LEVEL_COL == "ERROR",
-            )
-        ).all()
-    )
-    warning_ids = set(
-        session.exec(
-            select(LOGGED_CALL_RUN_ID_COL).where(
-                LOGGED_CALL_RUN_ID_COL.in_(run_ids),
-                LOGGED_CALL_LEVEL_COL == "WARNING",
-            )
-        ).all()
-    )
-    runs_with_calls = set(
-        session.exec(
-            select(RUN_ID_COL).where(
-                RUN_ID_COL.in_(run_ids),
-                RunDB.call_count > 0,
-            )
-        ).all()
-    )
-
-    error_count = len(error_ids)
-    warning_count = len(warning_ids - error_ids)
-    success_count = len(runs_with_calls - error_ids - warning_ids)
-
-    return [
-        FacetBucket(value="success", count=success_count),
-        FacetBucket(value="warning", count=warning_count),
-        FacetBucket(value="error", count=error_count),
-    ]
 
 
 @router.get("/facets")
@@ -318,9 +289,9 @@ def get_run_facets(
         allowed_projects = list_readable_projects_from_request(
             http_request, session
         )
+    scope = RunScope(project=project, allowed_projects=allowed_projects)
 
-    all_kwargs: dict[str, Any] = dict(
-        project=project,
+    filter_kwargs: dict[str, Any] = dict(
         models=models,
         environment=environment,
         tags=tags,
@@ -330,38 +301,39 @@ def get_run_facets(
         metric_name=metric_name,
         created_after=created_after,
         created_before=created_before,
-        allowed_projects=allowed_projects,
     )
 
-    def filtered_ids(**overrides: Any) -> list[str]:
-        kw = {**all_kwargs, **overrides}
-        return _build_filtered_run_ids(session=session, **kw)
+    def filtered(**overrides: Any) -> Any:
+        return _build_filtered_run_ids(scope, **{**filter_kwargs, **overrides})
 
     return RunFacets(
         status=_compute_status_facets(
-            session, filtered_ids(status=None) if status else filtered_ids()
+            session, filtered(status=None) if status else filtered(), scope
         ),
         models=_compute_model_facets(
-            session, filtered_ids(models=None) if models else filtered_ids()
+            session, filtered(models=None) if models else filtered(), scope
         ),
-        providers=_compute_provider_facets(session, filtered_ids()),
+        providers=_compute_provider_facets(session, filtered(), scope),
         environments=_compute_environment_facets(
             session,
-            filtered_ids(environment=None) if environment else filtered_ids(),
+            filtered(environment=None) if environment else filtered(),
+            scope,
         ),
         tags=_compute_tag_facets(
-            session, filtered_ids(tags=None) if tags else filtered_ids()
+            session, filtered(tags=None) if tags else filtered(), scope
         ),
         users=_compute_user_facets(
-            session, filtered_ids(user_id=None) if user_id else filtered_ids()
+            session, filtered(user_id=None) if user_id else filtered(), scope
         ),
         sessions=_compute_session_facets(
             session,
-            filtered_ids(session_id=None) if session_id else filtered_ids(),
+            filtered(session_id=None) if session_id else filtered(),
+            scope,
         ),
         scores=_compute_score_facets(
             session,
-            filtered_ids(metric_name=None) if metric_name else filtered_ids(),
+            filtered(metric_name=None) if metric_name else filtered(),
+            scope,
         ),
     )
 

@@ -628,6 +628,65 @@ def test_batch_detail_backfills_task_selection_from_children(
     assert resp.json()["selection_query"] == {"task_paths": ["chat/cost-inquiry"]}
 
 
+def test_batch_detail_resolves_primary_models_with_generation_fallback(
+    client: TestClient,
+    session: Session,
+) -> None:
+    """Each child's primary model resolves through the batch detail.
+
+    A stored ``runs.primary_model`` wins. A run without one falls back to
+    its first GENERATION call's model, skipping structural spans (the
+    "agent-task" CHAIN) and non-generation calls regardless of order. The
+    fallback loads only its four columns, so this also pins that the diet
+    keeps the resolution working."""
+    from apo.models.db import LoggedCallDB, RunDB
+
+    now = datetime.now(timezone.utc)
+    session.add(_batch("b-model", "proj-model", now))
+
+    stored = _run("m-stored", "b-model", "task-1", now)
+    stored.trace_run_id = "trace-stored"
+    derived = _run("m-derived", "b-model", "task-2", now)
+    derived.trace_run_id = "trace-derived"
+    session.add_all([stored, derived])
+
+    session.add(RunDB(
+        id="trace-stored", project="proj-model", task_id="task-1",
+        created_at=now, primary_model="stored-model", call_count=1,
+    ))
+    session.add(RunDB(
+        id="trace-derived", project="proj-model", task_id="task-2",
+        created_at=now, call_count=3,
+    ))
+    session.add_all([
+        LoggedCallDB(
+            id="derived-chain", project="proj-model", task_id="task-2",
+            run_id="trace-derived", created_at=now,
+            model="agent-task", observation_type="CHAIN",
+            input={}, messages=[], output={},
+        ),
+        LoggedCallDB(
+            id="derived-tool", project="proj-model", task_id="task-2",
+            run_id="trace-derived", created_at=now + timedelta(seconds=1),
+            model="tool-model-ignored", observation_type="TOOL",
+            input={}, messages=[], output={},
+        ),
+        LoggedCallDB(
+            id="derived-gen", project="proj-model", task_id="task-2",
+            run_id="trace-derived", created_at=now + timedelta(seconds=2),
+            model="fallback-model", observation_type="GENERATION",
+            input={}, messages=[], output={},
+        ),
+    ])
+    session.commit()
+
+    resp = client.get("/v1/agent-task-batch-runs/b-model")
+    assert resp.status_code == 200
+    by_run = {t["id"]: t for t in resp.json()["task_runs"]}
+    assert by_run["m-stored"]["primary_model"] == "stored-model"
+    assert by_run["m-derived"]["primary_model"] == "fallback-model"
+
+
 # ============================================================================
 # limit
 # ============================================================================
@@ -758,7 +817,7 @@ def test_batch_list_filters_and_facets_by_serving_host(
     """The Runs page's host filter: provider_facets list route-wins labels,
     and ?provider= keeps only batches whose child run's trace was served by
     that host (issue #307)."""
-    from apo.models.db import LoggedCallDB, RunDB
+    from apo.models.db import LoggedCallDB
 
     now = datetime.now(timezone.utc)
     session.add_all([_batch("batch-fw", "p", now), _batch("batch-other", "p", now)])

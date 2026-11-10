@@ -1,6 +1,7 @@
-# pyright: reportAny=false, reportCallInDefaultInitializer=false, reportExplicitAny=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnusedCallResult=false
+# pyright: reportAny=false, reportCallInDefaultInitializer=false, reportDeprecated=false, reportExplicitAny=false, reportPrivateUsage=false, reportUnknownParameterType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnusedCallResult=false
 
 import json
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any, cast
 from uuid import uuid4
@@ -10,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import asc, delete
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import defer, load_only
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from ...db import get_session
 from ...auth.deps import require_api_key_scope
@@ -60,6 +61,12 @@ from .list_query import (
 from .metrics import calculate_run_metrics_from_calls
 
 router = APIRouter(prefix="/v1/runs", tags=["runs"])
+
+# The one metadata key the trace view reads off list calls: the legacy
+# ``eventType`` semantic marker (no current SDK emits it, stored rows carry
+# it). Extracted in SQL so slim mode never loads the metadata column, where
+# tool definitions and system prompts repeat on every generation.
+_EVENT_TYPE_KEY = col(LoggedCallDB.meta)["eventType"].as_string()
 
 
 @router.patch("/{run_id}/bookmark")
@@ -357,16 +364,18 @@ def get_run_details(
     http_request: Request,
     project: str = "default",
     include: str | None = Query(default=None),
-    slim: bool = Query(default=False, description="Ship call metadata only: input/output/tool payloads are omitted (first/last calls carry short previews) so agentic traces don't serialize megabytes of accumulated history. Fetch GET /v1/runs/{run_id}/calls/{call_id} for a single call's full payload."),
+    slim: bool = Query(default=True, description="Ship call metadata only: input/output/tool payloads are omitted (first/last calls carry short previews) so agentic traces don't serialize megabytes of accumulated history. The default; pass slim=false for the full payloads. Fetch GET /v1/runs/{run_id}/calls/{call_id} for a single call's full payload."),
     session: Session = Depends(get_session),
     _: None = Depends(require_api_key_scope("full")),
 ):
-    """Full trace detail for one run: calls (messages deferred unless
-    ``?include=messages``), stored + derived metrics, derived status, and
-    projection capabilities. ``?include=attributes`` attaches canonical
-    OTLP span attributes per call. ``?slim=true`` defers every call's
-    heavy I/O columns (the dashboard's mode) — the response carries a
-    ``slim_calls: true`` marker instead."""
+    """Trace detail for one run, slim by default: calls (heavy I/O columns
+    deferred, metadata reduced to its ``eventType`` key; first/last calls
+    carry short previews), stored + derived metrics, derived status — the
+    response carries a ``slim_calls: true`` marker. ``?slim=false`` ships
+    the full payloads and projection capabilities. ``?include=messages``
+    needs the heavy columns anyway and forces the full shape;
+    ``?include=attributes`` attaches canonical OTLP span attributes per
+    call in either shape."""
     _enforce_project_read(http_request, session, project)
     run = session.exec(
         select(RunDB).where(RunDB.id == run_id, RunDB.project == project)
@@ -393,23 +402,34 @@ def get_run_details(
     # lazy-load only when a panel is opened. This cuts the base payload from
     # MB-scale (50-200 calls × full input/output/messages/tool_result) to
     # scalar-level metadata.
+    calls: Sequence[LoggedCallDB]
+    event_types: list[object] = []
     if effective_slim:
         # Slim mode: never even parse the fat columns. Agentic traces repeat
         # the whole accumulated conversation in every generation's input, so
         # the full payload grows quadratically with trace length (measured:
-        # 281 calls → 18 MB). Keep cost_breakdown/raw_usage loaded — the
-        # costs/tokens tabs aggregate them and they are a few ints per call.
-        calls_query = calls_query.options(
-            defer(LoggedCallDB.input),  # pyright: ignore[reportArgumentType]
-            defer(LoggedCallDB.output),  # pyright: ignore[reportArgumentType]
-            defer(LoggedCallDB.messages),  # pyright: ignore[reportArgumentType]
-            defer(LoggedCallDB.tool_parameters),  # pyright: ignore[reportArgumentType]
-            defer(LoggedCallDB.tool_result),  # pyright: ignore[reportArgumentType]
-        )
+        # 281 calls → 18 MB). Metadata shrinks to its eventType key,
+        # extracted beside the rows. Keep cost_breakdown/raw_usage loaded —
+        # the costs/tokens tabs aggregate them and they are a few ints per
+        # call. session.execute, not session.exec: sqlmodel unwraps an
+        # entity-led select to bare entities, which would drop the key.
+        rows = session.execute(
+            calls_query.add_columns(_EVENT_TYPE_KEY).options(
+                defer(LoggedCallDB.input),  # pyright: ignore[reportArgumentType]
+                defer(LoggedCallDB.output),  # pyright: ignore[reportArgumentType]
+                defer(LoggedCallDB.messages),  # pyright: ignore[reportArgumentType]
+                defer(LoggedCallDB.tool_parameters),  # pyright: ignore[reportArgumentType]
+                defer(LoggedCallDB.tool_result),  # pyright: ignore[reportArgumentType]
+                defer(LoggedCallDB.meta),  # pyright: ignore[reportArgumentType]
+            )
+        ).all()
+        calls = [row[0] for row in rows]
+        event_types = [row[1] for row in rows]
     elif not (include and "messages" in include):
         calls_query = calls_query.options(*CALL_LIGHT)
-
-    calls = session.exec(calls_query).all()
+        calls = session.exec(calls_query).all()
+    else:
+        calls = session.exec(calls_query).all()
 
     # Slim mode: resolve I/O from canonical spans (span-less rows keep
     # their stored columns). In-memory only — nothing is persisted.
@@ -455,7 +475,10 @@ def get_run_details(
                 RunMetric.model_validate(m).model_dump(by_alias=True)
                 for m in all_metrics
             ],
-            "calls": [_slim_call_payload(call) for call in calls],
+            "calls": [
+                _slim_call_payload(call, event_type)
+                for call, event_type in zip(calls, event_types, strict=True)
+            ],
             "slim_calls": True,
         }
         # The trace-level Preview tab falls back to the first call's input /
@@ -535,13 +558,14 @@ def _run_response_model(run: RunDB) -> Run:
     return model
 
 
-def _slim_call_payload(call: LoggedCallDB) -> dict[str, object]:
+def _slim_call_payload(call: LoggedCallDB, event_type: object) -> dict[str, object]:
     """Serialize a call from its LOADED columns only.
 
     The heavy I/O columns are deferred in slim mode; touching them (directly
     or via ``LoggedCall.model_validate``) would lazy-load every row, which is
     the exact cost slim mode avoids. Unloaded keys are simply absent from the
-    payload. ``meta`` keeps its response alias ``metadata``.
+    payload. ``meta`` is deferred too; a stored string ``eventType`` comes
+    back through the extracted key as a one-key ``metadata`` object.
     """
     state = sa_inspect(call)
     if state is None or state.mapper is None:  # defensive; persistent instances always inspect
@@ -551,8 +575,9 @@ def _slim_call_payload(call: LoggedCallDB) -> dict[str, object]:
     for attr in state.mapper.column_attrs:
         if attr.key in unloaded:
             continue
-        key = "metadata" if attr.key == "meta" else attr.key
-        payload[key] = getattr(call, attr.key)
+        payload[attr.key] = getattr(call, attr.key)
+    if isinstance(event_type, str) and event_type:
+        payload["metadata"] = {"eventType": event_type}
     return payload
 
 

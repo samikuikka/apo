@@ -301,13 +301,17 @@ window prune.
 
 Trace *detail* reads keep agentic payloads bounded: every GENERATION call's
 `input` carries the whole accumulated conversation, so the full detail of a
-long trace grows quadratically (a 281-call trace is ~18 MB). The dashboard
-fetches `GET /v1/runs/{id}?slim=true` — call metadata with deferred
-input/output/messages/tool payloads (plus bounded first/last previews for
-the trace Preview tab, marked by `slim_calls: true`) — and loads one call's
-full payload on demand from `GET /v1/runs/{id}/calls/{id}`. The default
-(non-slim) response keeps shipping full call I/O for API consumers (the
-CLI, the SDK, exports).
+long trace grows quadratically (a 281-call trace is ~18 MB). `GET
+/v1/runs/{id}` is slim by default — call metadata with deferred
+input/output/messages/tool payloads, `metadata` reduced to its `eventType`
+key (plus bounded first/last previews for the trace Preview tab, marked by
+`slim_calls: true`) — and loads one call's full payload on demand from
+`GET /v1/runs/{id}/calls/{id}`. Fat payloads are opt-in: `?slim=false`
+ships full call I/O for API consumers that need it. The dashboard sends
+the flag explicitly in both directions, and the CLI's default
+`apo traces show` view pins `slim=false` so its output stays
+byte-identical across backend versions; its verbose views force fat
+through `?include=messages`.
 
 ### Cost System
 

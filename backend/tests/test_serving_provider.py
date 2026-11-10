@@ -427,6 +427,15 @@ class TestProviderFacet:
                 ("r3", None, None),
             ):
                 session.add(
+                    RunDB(
+                        id=run_id,
+                        project="p",
+                        task_id="",
+                        call_count=1,
+                        created_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+                    )
+                )
+                session.add(
                     _call(
                         id=f"c-{run_id}",
                         run_id=run_id,
@@ -441,7 +450,12 @@ class TestProviderFacet:
             )
             session.commit()
 
-            buckets = _compute_provider_facets(session, ["r1", "r2", "r3"])
+            from apo.models.columns import RUN_ID_COL
+            from apo.routes.runs.run_call_scope import RunScope
+            from sqlmodel import select
+
+            runs = select(RUN_ID_COL).where(RUN_ID_COL.in_(["r1", "r2", "r3"]))
+            buckets = _compute_provider_facets(session, runs, RunScope(project="p"))
             assert [(b.value, b.count) for b in buckets] == [
                 ("baseten", 1),
                 ("priority", 1),
