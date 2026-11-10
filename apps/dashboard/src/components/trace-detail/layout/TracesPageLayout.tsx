@@ -86,6 +86,12 @@ function TracesPageLayoutInner({ children, filterOptions, spanFieldOptions }: Tr
   // Run-label options for the Labels section: the same facet summary the
   // Runs rail reads. Unavailable -> section hidden, filtering unaffected.
   const [labelFacets, setLabelFacets] = useState<RunLabelFacets | null>(null);
+  // Discovered environments replace the hardcoded list once facets load;
+  // until then the fallback keeps the dropdown from flashing empty.
+  const availableEnvironments =
+    labelFacets && labelFacets.environments.length > 0
+      ? labelFacets.environments.map((bucket) => bucket.value)
+      : ["default", "dev", "staging", "production"];
   // The project comes from the route (/project/<id>/traces), not from a
   // ?project= query param; reading filters.project here left the facets
   // unfetched and the Labels section hidden on the real page.
@@ -169,7 +175,7 @@ function TracesPageLayoutInner({ children, filterOptions, spanFieldOptions }: Tr
                 labelFacets={labelFacets}
                 filters={filters}
                 actions={actions}
-                availableEnvironments={["default", "dev", "staging", "production"]}
+                availableEnvironments={availableEnvironments}
                 filterOptions={filterOptions}
                 spanFieldOptions={spanFieldOptions}
               />
@@ -212,7 +218,7 @@ function TracesPageLayoutInner({ children, filterOptions, spanFieldOptions }: Tr
                 labelFacets={labelFacets}
                   filters={filters}
                   actions={actions}
-                  availableEnvironments={["default", "dev", "staging", "production"]}
+                  availableEnvironments={availableEnvironments}
                   filterOptions={filterOptions}
                   spanFieldOptions={spanFieldOptions}
                 />
