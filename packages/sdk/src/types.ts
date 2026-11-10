@@ -42,6 +42,12 @@ export interface CreateSpanParams {
   /** Finer-grained serving route (e.g. a custom gateway host), emitted as
    * `apo.llm.route`. */
   route?: string;
+  /** Overrides the default request-accounting marker for GENERATION
+   * spans. Default is `request` (one span = one physical provider call);
+   * pass `aggregate` when the span wraps several physical requests (an
+   * AI SDK `generateText`/`streamText` loop whose `doGenerate` children
+   * are the requests), or the rollups count the loop twice. */
+  request_kind?: "request" | "aggregate";
   /** Tool name for TOOL observations; emitted as `gen_ai.tool.name`. */
   tool_name?: string;
   input?: Record<string, unknown>;

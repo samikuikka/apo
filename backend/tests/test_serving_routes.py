@@ -119,11 +119,6 @@ def _seed_openrouter_baseten(session: Session) -> None:
     session.commit()
 
 
-# ============================================================================
-# Run list / detail summaries
-# ============================================================================
-
-
 def test_run_list_and_detail_carry_serving_summaries(
     client: TestClient, session: Session
 ) -> None:
@@ -153,11 +148,6 @@ def test_run_without_trace_reports_no_data(client: TestClient, session: Session)
     body = client.get("/v1/agent-task-runs/run-empty").json()
     assert body["serving"]["state"] == "no_data"
     assert body["serving"]["calls"] == 0
-
-
-# ============================================================================
-# Breakdown endpoints
-# ============================================================================
 
 
 def _seed_three_groups(session: Session) -> None:
@@ -234,15 +224,9 @@ def test_batch_breakdown_unions_child_traces(client: TestClient, session: Sessio
     assert detail["serving"]["task_runs_total"] == 3
     assert detail["serving"]["task_runs_with_evidence"] == 2
     assert detail["serving"]["state"] == "partial"
-    # Each child summary rides along on the batch detail.
     child_servings = {r["id"]: r["serving"] for r in detail["task_runs"]}
     assert child_servings["run-u1"]["state"] == "uniform"
     assert child_servings["run-u3"]["state"] == "no_data"
-
-
-# ============================================================================
-# Run list serving filters
-# ============================================================================
 
 
 def _seed_filter_runs(session: Session) -> None:
@@ -378,11 +362,6 @@ def test_invalid_serving_params_are_422(client: TestClient, session: Session) ->
     assert resp.status_code == 422
 
 
-# ============================================================================
-# Batch list serving filter
-# ============================================================================
-
-
 def test_batch_list_serving_filter_selects_batches_with_matching_child(
     client: TestClient, session: Session
 ) -> None:
@@ -406,7 +385,6 @@ def test_batch_list_serving_filter_selects_batches_with_matching_child(
     assert resp.status_code == 200
     assert [b["id"] for b in resp.json()["data"]] == ["batch-or"]
 
-    # List items carry the child-derived summary.
     unfiltered = client.get(
         "/v1/agent-task-batch-runs", params={"project": _PROJECT}
     ).json()["data"]
@@ -415,11 +393,6 @@ def test_batch_list_serving_filter_selects_batches_with_matching_child(
     assert by_id["batch-or"]["serving"]["task_runs_total"] == 2
     assert by_id["batch-or"]["serving"]["task_runs_with_evidence"] == 2
     assert by_id["batch-fw-only"]["serving"]["total_groups"] == 1
-
-
-# ============================================================================
-# Project isolation
-# ============================================================================
 
 
 @pytest.fixture(name="serving_project")
@@ -445,11 +418,6 @@ def test_breakdown_denies_foreign_project_runs(
     # A member still reads it: the 404 above is authorization, not absence.
     owner = make_authed_client(_OWNER, session)
     assert owner.get("/v1/agent-task-runs/run-iso/serving").status_code == 200
-
-
-# ============================================================================
-# Saved Task Views round trip
-# ============================================================================
 
 
 @pytest.fixture(name="views_client")
@@ -500,11 +468,6 @@ def test_task_view_serving_filter_round_trip(
     )
     assert cleared.status_code == 200, cleared.text
     assert cleared.json()["serving_filter"] is None
-
-
-# ============================================================================
-# Comparison snapshots
-# ============================================================================
 
 
 def _seed_comparison_evidence(session: Session) -> None:

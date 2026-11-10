@@ -107,11 +107,6 @@ _CALL_DEFERS = (
 )
 
 
-# ---------------------------------------------------------------------------
-# Request accounting
-# ---------------------------------------------------------------------------
-
-
 def is_request_evidence(call: LoggedCallDB) -> bool:
     """Does this row carry per-request serving evidence?
 
@@ -156,11 +151,6 @@ def _group_sort_key(key: ServingGroupKey) -> tuple[tuple[int, str], ...]:
 
 def _is_errored(call: LoggedCallDB) -> bool:
     return call.level == "ERROR"
-
-
-# ---------------------------------------------------------------------------
-# Rates
-# ---------------------------------------------------------------------------
 
 
 def _reasoning_tokens(call: LoggedCallDB) -> int | None:
@@ -278,11 +268,6 @@ def _streaming_unavailable_reason(
     if output_scope != content_scope:
         return "scope_mismatch"
     return None
-
-
-# ---------------------------------------------------------------------------
-# Summaries
-# ---------------------------------------------------------------------------
 
 
 def _rate_summary(values: Sequence[float]) -> RateSummary:
@@ -481,11 +466,6 @@ def summarize_calls(
     )
 
 
-# ---------------------------------------------------------------------------
-# Cost coverage
-# ---------------------------------------------------------------------------
-
-
 def _effective_cost(call: LoggedCallDB) -> int | None:
     """The single effective total (micro-USD), as the run rollup reads it."""
     return call.cost if call.cost is not None else call.provided_cost
@@ -560,11 +540,6 @@ def cost_coverage(calls: Sequence[LoggedCallDB]) -> CostCoverage:
     )
 
 
-# ---------------------------------------------------------------------------
-# Filters (shared by run lists, saved views, and comparisons)
-# ---------------------------------------------------------------------------
-
-
 def _dimension_values(serving_filter: ServingFilter) -> dict[str, tuple[list[str], bool]]:
     """Value lists and unknown-operator flags per dimension name."""
     return {
@@ -604,13 +579,14 @@ def filter_is_active(serving_filter: ServingFilter) -> bool:
 def call_matches_filter(call: LoggedCallDB, serving_filter: ServingFilter) -> bool:
     """Same-request predicate: values OR within a dimension, dimensions AND.
 
-    The comparison is case-insensitive (a hand-edited URL must not silently
-    empty the list, matching the other list filters). ``unknown`` selects
-    null as one more OR value inside its dimension; it is an operator, not
-    a provider string. A dimension with neither values nor the unknown
-    operator is unconstrained. So a filter for OpenRouter + Baseten cannot
-    match an OpenRouter/Fireworks request plus an unrelated direct Baseten
-    request: both values must hold on the same call.
+    Shared by the run lists, saved views, and comparisons. The comparison
+    is case-insensitive (a hand-edited URL must not silently empty the
+    list, matching the other list filters). ``unknown`` selects null as one
+    more OR value inside its dimension; it is an operator, not a provider
+    string. A dimension with neither values nor the unknown operator is
+    unconstrained. So a filter for OpenRouter + Baseten cannot match an
+    OpenRouter/Fireworks request plus an unrelated direct Baseten request:
+    both values must hold on the same call.
     """
     for dimension, (values, unknown) in _dimension_values(serving_filter).items():
         if not values and not unknown:
@@ -669,11 +645,6 @@ def run_matches_filter(
         ):
             return False
     return True
-
-
-# ---------------------------------------------------------------------------
-# DB-facing helpers (batched, project-scoped)
-# ---------------------------------------------------------------------------
 
 
 def load_call_rows(

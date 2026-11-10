@@ -188,11 +188,16 @@ def create_app() -> FastAPI:
     from .services.request_body_limits import load_request_body_limits
 
     body_limits = load_request_body_limits()
-    # Fail fast on invalid evidence-limit env values too — same eager
+    # Fail fast on invalid evidence-limit env values too, same eager
     # contract as the transport caps (issue #251).
     from .services.result_evidence import result_evidence_limits
 
     result_evidence_limits()
+    # Export render budgets share the write caps' fail-fast contract: an
+    # invalid value must stop startup, not 500 on the first export request.
+    from .services.export_budget import load_export_byte_limits
+
+    load_export_byte_limits()
 
     # validate admission limits and construct the controller.
     admission_limits = load_telemetry_admission_limits()

@@ -379,6 +379,7 @@ export function hasActiveFilters(filters: TraceFilters): boolean {
     filters.tags.length > 0 ||
     filters.models.length > 0 ||
     filters.providers.length > 0 ||
+    Object.values(filters.labels ?? {}).some((ids) => ids.length > 0) ||
     (filters.metric_name ?? "") !== "" ||
     (filters.search ?? "") !== "" ||
     (filters.service ?? "") !== "" ||

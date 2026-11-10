@@ -49,6 +49,7 @@ import {
   metricFilterParams,
   parseMetricFilters,
   railOwnedParams,
+  savedScopePatch,
 } from "@/lib/run-metric-filters";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { COL, computeOverlap } from "./components/runs-utils";
@@ -245,7 +246,7 @@ export function RunsClient({
         environment: null,
         label: null,
         ...metricFilterParams(EMPTY_METRIC_FILTERS),
-        ...(Object.fromEntries(new URLSearchParams(params)) as Record<string, string>),
+        ...savedScopePatch(params),
         page: null,
       });
     },

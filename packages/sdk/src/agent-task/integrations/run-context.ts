@@ -4,7 +4,7 @@
  * The OTel {@link ApoSpanProcessor} is global — it doesn't know which run a
  * span belongs to. This module solves that: {@link withApoRun} establishes
  * the run's trace context on AsyncLocalStorage, and any code called during
- * the run (including the processor's `onStart`/`onEnd`) can read it via
+ * the run (including the processor's `onStart`/`onEnding`) can read it via
  * {@link getActiveApoRun}.
  *
  * This is the same propagation mechanism OTel's own
@@ -48,7 +48,7 @@ export function withApoRunSync<T>(ctx: ApoRunContext, fn: () => T): T {
 /**
  * Get the active run context, or `undefined` if called outside a run.
  *
- * This is what the {@link ApoSpanProcessor} calls in `onStart`/`onEnd` to
+ * This is what the {@link ApoSpanProcessor} calls in `onStart`/`onEnding` to
  * know which run a span belongs to.
  */
 export function getActiveApoRun(): ApoRunContext | undefined {

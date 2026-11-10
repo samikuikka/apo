@@ -21,7 +21,7 @@ shape assumes one pass.
 import csv
 import json
 from collections.abc import Iterator
-from io import StringIO
+from io import BytesIO, TextIOWrapper
 from typing import cast
 
 from fastapi.responses import Response
@@ -188,8 +188,13 @@ def _load_calls_by_run(
 def _render_csv(
     items: Iterator[dict[str, object]], count: int, limit: int
 ) -> Response:
-    output = StringIO()
-    writer = csv.writer(output)
+    # The budget counts UTF-8 bytes. StringIO.tell() counts characters, and
+    # non-ASCII tags inflate the wire size up to 4x past the char count, so
+    # render through a write-through wrapper into BytesIO: tell() is then
+    # the byte position the limit describes.
+    output = BytesIO()
+    text = TextIOWrapper(output, encoding="utf-8", newline="", write_through=True)
+    writer = csv.writer(text)
     writer.writerow(_CSV_COLUMNS)
 
     for run_item in items:

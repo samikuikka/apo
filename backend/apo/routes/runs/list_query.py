@@ -190,9 +190,10 @@ def _apply_attribute_filters(statement: Any, filters: RunListFilters) -> Any:
     if filters.environments:
         statement = statement.where(RUN_ENVIRONMENT_COL.in_(filters.environments))
     if filters.labels:
-        # A trace matches a label through its task run's batch; trace ids are
-        # globally unique, so no project correlation is needed inside the
-        # subquery (the outer statement already carries the project scope).
+        # A trace matches a label through its task run's batch. The subquery
+        # is project-correlated because trace ids may collide across projects
+        # (surrogate-PK design): without the correlation, another project's
+        # labelled copy of a trace would satisfy this one's label filter.
         from ...models.db import AgentTaskBatchRunDB, AgentTaskRunDB
         from ...services.run_labels import batch_scope_conditions
 
@@ -203,9 +204,11 @@ def _apply_attribute_filters(statement: Any, filters: RunListFilters) -> Any:
                 col(AgentTaskRunDB.batch_run_id) == col(AgentTaskBatchRunDB.id),
             )
             .where(
+                col(AgentTaskBatchRunDB.project) == RUN_PROJECT_COL,
                 col(AgentTaskRunDB.trace_run_id).is_not(None),
                 *batch_scope_conditions([], filters.labels),
             )
+            .correlate(RunDB)
         )
         statement = statement.where(col(RunDB.id).in_(matching))
     if filters.session_ids:
@@ -228,7 +231,7 @@ def _apply_attribute_filters(statement: Any, filters: RunListFilters) -> Any:
         # finer-grained route, so "openrouter:nitro" finds runs whose host
         # identity lives in the route attribute (issue #307). The subquery
         # is project-correlated because trace ids may collide across
-        # projects (surrogate-PK design) — an unscoped scan would let
+        # projects (surrogate-PK design): an unscoped scan would let
         # another project's copy of a trace satisfy this one's filter.
         values = [v.lower() for v in filters.providers]
         run_project = RUN_PROJECT_COL

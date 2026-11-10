@@ -201,10 +201,6 @@ function minutesText(range: MetricRange): string {
   return `under ${toMin(range.max ?? 0)}`;
 }
 
-// ============================================================================
-// Saved scopes (Runs page): named filter sets kept per browser
-// ============================================================================
-
 /** A named snapshot of the scope + metric params, stored as the URL's own
  * encoding so applying is a straight param swap. */
 export interface SavedRunScope {
@@ -260,4 +256,17 @@ export function railOwnedParams(search: string): string {
     for (const value of params.getAll(key)) kept.append(key, value);
   }
   return kept.toString();
+}
+
+/** A saved scope's params as an `updateUrl` patch: repeated params (the
+ * rail writes `label` repeated) stay arrays, so every saved label returns
+ * to the URL instead of only the last one surviving the round trip. */
+export function savedScopePatch(params: string): Record<string, string | string[]> {
+  const stored = new URLSearchParams(params);
+  const patch: Record<string, string | string[]> = {};
+  for (const key of new Set(stored.keys())) {
+    const values = stored.getAll(key);
+    patch[key] = values.length > 1 ? values : values[0];
+  }
+  return patch;
 }

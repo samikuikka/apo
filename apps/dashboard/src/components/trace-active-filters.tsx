@@ -275,6 +275,26 @@ export function TraceActiveFilters({
     );
   });
 
+  // Run labels: one chip per selected id, `key:id` like the rail's chips.
+  // Same invisibility risk as providers: a label filter with no chip reads
+  // as a mysteriously short list.
+  for (const [labelKey, ids] of Object.entries(filters.labels ?? {})) {
+    for (const id of ids) {
+      const nextLabels = { ...filters.labels };
+      const remaining = (nextLabels[labelKey] ?? []).filter((v) => v !== id);
+      if (remaining.length > 0) nextLabels[labelKey] = remaining;
+      else delete nextLabels[labelKey];
+      chips.push(
+        <FilterChip
+          key={`label-${labelKey}-${id}`}
+          icon={<Tag className="h-3 w-3" />}
+          label={`${labelKey}:${id}`}
+          onRemove={() => onRemoveFilter("labels", nextLabels)}
+        />
+      );
+    }
+  }
+
   // Metrics
   if (filters.metric_name) {
     const label =

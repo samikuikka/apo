@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import asc, delete
 from sqlalchemy import inspect as sa_inspect
-from sqlalchemy.orm import defer
+from sqlalchemy.orm import defer, load_only
 from sqlmodel import Session, select
 
 from ...db import get_session
@@ -730,8 +730,12 @@ def bulk_delete_runs(
     if not request.run_ids:
         raise HTTPException(status_code=400, detail="No run IDs provided")
 
+    # Only id and project are read; load_only keeps the request's payload
+    # columns (input/output, provider maps) out of this existence check.
     existing_runs = session.exec(
-        select(RunDB).where(
+        select(RunDB)
+        .options(load_only(RunDB.id, RunDB.project))  # pyright: ignore[reportArgumentType]
+        .where(
             RUN_ID_COL.in_(request.run_ids), RUN_PROJECT_COL == project
         )
     ).all()

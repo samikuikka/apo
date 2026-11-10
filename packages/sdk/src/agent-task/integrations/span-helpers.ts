@@ -53,9 +53,14 @@ export function emitGenerationAndTools(
     reasoningTokens?: number;
     /** The model that actually served the call (response `model` field). */
     servedModel?: string;
-    /** Serving host learned from the response (gateway metadata/headers);
-     * overrides the start-time baseURL guess when present. */
+    /** The gateway the harness called (response metadata/headers): the
+     * instrumentation's provider flavor, distinct from the host below. */
     servedProvider?: string;
+    /** The upstream that executed the call, when the gateway names it
+     * (OpenRouter's selected endpoint, LiteLLM's api-base host). This is
+     * the only source of serving_host: the gateway name above is an API
+     * provider, and copying it there would break host filters. */
+    servedHost?: string;
     servedRoute?: string;
     toolCalls?: Array<{ name: string; input?: unknown }>;
     taskId?: string;
@@ -74,9 +79,9 @@ export function emitGenerationAndTools(
     reasoning_tokens: opts.reasoningTokens,
     served_model: opts.servedModel,
     ...(opts.servedProvider ? { provider: opts.servedProvider } : {}),
-    // The response-reported host is serving-host evidence distinct from
-    // the API provider: gateways report who executed, not who was called.
-    ...(opts.servedProvider ? { serving_host: opts.servedProvider } : {}),
+    // serving_host is only the upstream the gateway names; the gateway
+    // itself is the API provider and must never land here.
+    ...(opts.servedHost ? { serving_host: opts.servedHost } : {}),
     ...(opts.servedRoute ? { route: opts.servedRoute } : {}),
     output: {
       ...(opts.text !== undefined ? { text: opts.text } : {}),
@@ -184,18 +189,22 @@ export function servingFromResponse(
     };
   },
   headers?: { get(name: string): string | null } | null,
-): { provider?: string; route?: string } {
+): { provider?: string; host?: string; route?: string } {
   const endpoints = response?.openrouter_metadata?.endpoints?.available;
   if (Array.isArray(endpoints)) {
     const selected = endpoints.find(
       (e) => e && typeof e === "object" && e.selected === true,
     );
-    const provider =
+    const upstream =
       selected && typeof (selected as { provider?: unknown }).provider === "string"
         ? (selected as { provider: string }).provider
         : undefined;
-    if (provider) {
-      return { provider: "openrouter", route: `openrouter:${provider}` };
+    if (upstream) {
+      return {
+        provider: "openrouter",
+        host: upstream,
+        route: `openrouter:${upstream}`,
+      };
     }
   }
   const litellmId = headers?.get?.("x-litellm-model-id");
@@ -207,6 +216,7 @@ export function servingFromResponse(
         : undefined;
     return {
       provider: "litellm",
+      ...(host ? { host } : {}),
       route: host ? `litellm:${litellmId}@${host}` : `litellm:${litellmId}`,
     };
   }

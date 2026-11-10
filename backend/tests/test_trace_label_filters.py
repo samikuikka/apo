@@ -96,6 +96,15 @@ def seeded(session: Session) -> None:
     other_trace = other[2]
     other_trace.project = "elsewhere"
     rows.extend(other)
+    # Same trace id, two projects: the surrogate-PK design allows both
+    # projections. The other project's copy is labelled; this project's
+    # copy must not inherit that label through the id.
+    collision = _linked(
+        "b-collision", "tr-collision", "trace-unlabelled", _label(("customer", "acme"))
+    )
+    collision[0].project = "elsewhere"
+    collision[2].project = "elsewhere"
+    rows.extend(collision)
     session.add_all(rows)
     session.commit()
 
@@ -131,6 +140,15 @@ def test_traces_labels_and_across_keys(client: TestClient, session: Session) -> 
 def test_traces_label_filter_ignores_other_projects(client: TestClient, session: Session) -> None:
     seeded(session)
     assert "trace-other" not in _trace_ids(client, label="customer:acme")
+
+
+def test_traces_label_filter_ignores_same_trace_id_in_other_project(
+    client: TestClient, session: Session
+) -> None:
+    seeded(session)
+    # trace-unlabelled exists in both projects; only the other project's
+    # copy is labelled, and the label filter must not leak across the id.
+    assert _trace_ids(client, label="customer:acme") == ["trace-acme", "trace-acme-2"]
 
 
 def test_traces_malformed_label_is_422(client: TestClient, session: Session) -> None:

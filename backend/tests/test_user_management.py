@@ -334,8 +334,7 @@ class TestUpdateUserQuotas:
             assert resp.status_code == 400, field
             assert field in resp.json()["detail"]
 
-        # The rejected PATCHes changed nothing.
-        row = session.get(UserDB, member["id"])
+            row = session.get(UserDB, member["id"])
         assert row is not None
         assert row.daily_span_quota is None
         assert row.max_projects is None

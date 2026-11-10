@@ -13,7 +13,8 @@ import pytest
 from sqlmodel import Session
 
 from apo.models.db import AgentTaskBatchRunDB, AgentTaskRunDB, RunDB, RunMetricDB, LoggedCallDB
-from apo.routes.runs.bulk_export import iter_export_run_items
+from apo.routes.runs.bulk_export import _render_csv, iter_export_run_items
+from apo.services.export_budget import ExportBudgetExceeded
 from apo.services.agent_task_batch_listing import (
     BatchRunListFilters,
     BatchRunListPagination,
@@ -499,6 +500,35 @@ def test_iter_export_run_items_respects_project_scope(session: Session):
     data = list(iter_export_run_items(session, ["r1", "r2"], "proj-a"))
     assert len(data) == 1
     assert data[0]["run"]["id"] == "r1"  # pyright: ignore[reportIndexIssue]
+
+
+def test_render_csv_budget_counts_bytes_not_characters() -> None:
+    # A CJK tag makes the UTF-8 body up to 3x its character count; a
+    # char-counting check would let the render pass its byte budget.
+    items: list[dict[str, object]] = [
+        {"run": {"id": "r1", "tags": ["あ" * 60]}, "metrics": [], "calls": []}
+    ]
+    fine = _render_csv(iter(items), count=1, limit=10_000)
+    char_count = len(fine.body.decode("utf-8"))
+    byte_count = len(fine.body)
+    assert byte_count > char_count
+
+    midway = (char_count + byte_count) // 2
+    with pytest.raises(ExportBudgetExceeded):
+        _render_csv(iter(items), count=1, limit=midway)
+
+
+def test_invalid_export_budget_fails_app_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The write caps' contract: an invalid limit value fails startup, not
+    # the first export request with an unhandled RuntimeError.
+    from apo.api import create_app
+    from apo.services.export_budget import ExportByteLimitError
+
+    monkeypatch.setenv("APO_BULK_EXPORT_MAX_BYTES", "not-a-number")
+    with pytest.raises(ExportByteLimitError, match="APO_BULK_EXPORT_MAX_BYTES"):
+        create_app()
 
 
 # ---------------------------------------------------------------------------
