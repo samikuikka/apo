@@ -35,13 +35,33 @@ There is no undo. Export what you care about first, [`apo runs export`](/cli/run
 
 ## The daily maintenance pass
 
-A maintenance pass runs at startup and then every 24 hours, in this order:
+A maintenance pass runs once a day inside a quiet-hour window
+(`APO_MAINTENANCE_WINDOW_START_HOUR` to `APO_MAINTENANCE_WINDOW_END_HOUR`,
+03:00 to 05:00 UTC by default), in this order:
 
 1. **Always**: fail stuck non-terminal ingest batches past their horizon (payload discarded, batch marked failed); blank past-window ingest payloads of batches that never projected, a successfully projected batch's payload is already gone the moment projection commits; reap old payload-blanked inbox audit rows; fail artifact uploads abandoned past their TTL and remove their staging bytes; reap orphaned artifact-store objects no manifest row references; delete expired verification/reset/enrollment tokens.
 2. **If `APO_EVIDENCE_RETENTION_DAYS` is set**: expire the evidence tier of runs older than the window, aged by the run's own start (bookmarked runs skipped).
 3. **If `APO_RETENTION_DAYS` is set**: delete old traces and batches entirely (runs, spans, checks, judgments, deliverable objects, revision bundles) keeping bookmarked traces *and* bookmarked task runs' verdicts, then `VACUUM` (freelist-gated) to hand file space back to the disk.
+4. **Always, SQLite only**: refresh the query planner's statistics (`PRAGMA optimize` on SQLite 3.46+, a bounded `ANALYZE` on older builds), so index choices keep up as tables grow.
+
+A restart no longer reruns the pass on boot. Outside the window the pass
+runs only when the last recorded one is more than 24 hours old (a missed
+day is caught up); inside the window it runs once per day. A pass that
+fails waits for the next window instead of retrying in a loop, and an
+invalid window value fails startup.
 
 Nothing is deleted silently by default: both retention windows default to keep-forever, and only the replay-inbox trim (7 days) is on out of the box.
+
+### Upgrading across schema v71
+
+Schema v71 builds the indexes the Runs list, its facets, the traces
+list, and the OTLP ingest worker were missing, and runs `ANALYZE` for
+the first time so the query planner has statistics to choose them by.
+Expect the first boot after upgrading to take seconds to minutes
+depending on database size (the `logged_calls` index builds read the
+whole table); every step is idempotent, so an interrupted boot resumes
+on the next one. PostgreSQL keeps its statistics current by itself, so
+only the index builds run there.
 
 ### Upgrading across schema v34
 

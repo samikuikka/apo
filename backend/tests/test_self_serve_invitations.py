@@ -905,9 +905,11 @@ class TestMigration:
                 "SELECT COUNT(*) FROM hosted_access_invitations"
             ).scalar_one() == 1
 
-    def test_latest_rung_is_the_self_serve_schema(self) -> None:
-        latest = apo_db._SCHEMA_MIGRATIONS[apo_db.LATEST_SCHEMA_VERSION]
-        assert "self-serve" in (latest.__doc__ or "")
+    def test_self_serve_rung_is_registered(self) -> None:
+        # The hot-query indexes took v71 after this migration's era; the
+        # registration itself is stable.
+        rung = apo_db._SCHEMA_MIGRATIONS[70]
+        assert "self-serve" in (rung.__doc__ or "")
 
 
 # ---------------------------------------------------------------------------

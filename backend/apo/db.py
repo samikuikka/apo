@@ -3,6 +3,7 @@
 import logging
 import os
 import re
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import cast
@@ -56,19 +57,20 @@ engine = create_engine(DATABASE_URL, **_get_engine_kwargs())
 # request thread plus the batch-runner and scheduler background threads),
 # so reads never block writes and vice-versa. busy_timeout makes writers
 # QUEUE for the single write lock instead of raising SQLITE_BUSY at the
-# first bump — it must cover several multi-second projection batches
+# first bump: it must cover several multi-second projection batches
 # draining back to back, because WAL readers never wait and only writers
 # pay it. foreign_keys enforces declared FK constraints.
 # synchronous=NORMAL is safe under WAL and dramatically faster than the
 # default FULL fsync-per-commit.
 SQLITE_BUSY_TIMEOUT_MS = 30_000
+SQLITE_CACHE_SIZE_KIB = 65_536
 
 
 def attach_sqlite_pragmas(target_engine: object) -> None:
     """Register the per-connection PRAGMA hook on a SQLite engine.
 
     Shared with test fixtures so a temp-file test engine behaves exactly
-    like the production one (WAL + busy timeout + FK enforcement) — an
+    like the production one (WAL + busy timeout + FK enforcement): an
     e2e server thread and a queue-worker thread sharing one StaticPool
     connection corrupt each other's savepoint stack, so multi-threaded
     tests must use one connection per Session, which then needs these
@@ -81,8 +83,10 @@ def attach_sqlite_pragmas(target_engine: object) -> None:
         cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA synchronous=NORMAL")
+        # 64 MiB (negative = KiB): the 2 MiB default makes big scans and sorts re-read evicted pages.
+        cursor.execute(f"PRAGMA cache_size=-{SQLITE_CACHE_SIZE_KIB}")
         # max_page_count is a PER-CONNECTION limit (the database file does not
-        # remember it) and this engine uses NullPool — so it must be set
+        # remember it) and this engine uses NullPool, so it must be set
         # on every new connection or the hard cap is decorative. Read the
         # env fresh so operators (and tests) can change it without restart.
         try:
@@ -235,6 +239,30 @@ def _create_index_if_not_exists(conn, index_name: str, table_name: str, columns:
         conn.exec_driver_sql(
             f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({columns});"
         )
+
+
+def _create_index_if_columns_exist(
+    conn, index_name: str, table_name: str, columns: tuple[str, ...]
+) -> bool:
+    """Create an index unless its table or one of its columns is missing.
+
+    A schema_migrations stamp can run ahead of the live schema (the drift
+    ``_reconcile_model_columns_on`` repairs), and that repair only runs after
+    the ladder. An index that exists purely for speed must not be what stops
+    such a database from booting, so a missing column skips the index with a
+    warning instead of raising "no such column".
+    """
+    missing = sorted(set(columns) - _get_column_names(conn, table_name))
+    if missing:
+        logger.warning(
+            "skipped index %s: %s has no column(s) %s",
+            index_name,
+            table_name,
+            ", ".join(missing),
+        )
+        return False
+    _create_index_if_not_exists(conn, index_name, table_name, ", ".join(columns))
+    return True
 
 
 def _create_unique_index_if_not_exists(
@@ -4606,7 +4634,102 @@ def _make_invitation_inviter_nullable(conn: Connection) -> None:
             conn.exec_driver_sql(statement)
 
 
-LATEST_SCHEMA_VERSION = 70
+# Version 71's indexes as (name, table, columns). Each is also declared on its
+# model so ``create_all`` builds it on a fresh database. The names must match
+# those declarations exactly: under a different name a fresh database would
+# carry the same index twice.
+_V71_INDEXES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    (
+        "ix_logged_calls_run_project_route_provider",
+        "logged_calls",
+        ("run_id", "project", "route", "provider"),
+    ),
+    (
+        "ix_logged_calls_project_level_run_id",
+        "logged_calls",
+        ("project", "level", "run_id"),
+    ),
+    (
+        "ix_logged_calls_project_model_run_id",
+        "logged_calls",
+        ("project", "model", "run_id"),
+    ),
+    ("ix_batch_runs_project_created", "agent_task_batch_runs", ("project", "created_at")),
+    ("ix_runs_project_duration", "runs", ("project", "duration_ms")),
+    ("ix_runs_project_call_count", "runs", ("project", "call_count")),
+    (
+        "ix_otlp_ingest_batches_status_received",
+        "otlp_ingest_batches",
+        ("status", "received_at"),
+    ),
+)
+
+
+def _migrate_to_v71() -> None:
+    """Version 71: indexes for the hot list and facet queries, and the
+    planner's first statistics.
+
+    The Runs list, its provider facet, and the traces list read most of
+    ``logged_calls`` on every load because no index supported them:
+
+    - ``logged_calls(run_id, project, route, provider)`` answers the facet
+      join and the per-run call lookup from the index alone. On a database
+      that predates them, ``route`` and ``provider`` sit after the payload
+      columns, so reading them from the table walks every overflow page of
+      an old payload-carrying row.
+    - ``logged_calls(project, level, run_id)`` and
+      ``logged_calls(project, model, run_id)`` serve the project-scoped
+      status and model filter subqueries as index-only lookups. The leading
+      ``project`` is deliberate: a single-column ``level`` or ``model``
+      index loses the project scoping, and the planner then walks the
+      installation's biggest project through it (measured: a 24-call
+      project's model filter cost 105k VM steps through a ``(model)``
+      index against 200 steps with no index at all). Trailing ``run_id``
+      keeps the subqueries from touching the table, fat overflow rows
+      included.
+    - ``agent_task_batch_runs(project, created_at)`` was declared on the
+      model but never reached an existing database: ``create_all`` skips a
+      table that already exists, indexes included.
+    - ``runs(project, duration_ms)`` and ``runs(project, call_count)`` serve
+      the traces list's other two sort orders.
+    - ``otlp_ingest_batches(status, received_at)`` hands the ingest worker
+      its oldest queued batch without sorting every queued payload.
+
+    ANALYZE then gives SQLite's planner its first statistics (apo never ran
+    it before this version, so ``sqlite_stat1`` did not exist). SQLite only:
+    PostgreSQL's autovacuum daemon keeps its own statistics current. The
+    daily maintenance pass keeps them fresh from here on. The statistics
+    matter beyond this rung: without them the planner serves the per-run
+    call lookup from the project index (measured 600k VM steps on a
+    60k-call project); with them it picks the run-id path.
+
+    Each ``logged_calls`` index build reads the whole table, so the first
+    boot after upgrading can take minutes on a multi-GB database. Every
+    step is idempotent, so an interrupted run resumes on the next boot.
+    """
+    logger.info(
+        "Schema v71: building %d indexes, then ANALYZE (one-time; "
+        "minutes on a multi-GB database)",
+        len(_V71_INDEXES),
+    )
+    with engine.begin() as conn:
+        for index_name, table_name, columns in _V71_INDEXES:
+            started = time.perf_counter()
+            if _create_index_if_columns_exist(conn, index_name, table_name, columns):
+                logger.info(
+                    "Schema v71: index %s ready in %.1f s",
+                    index_name,
+                    time.perf_counter() - started,
+                )
+        if _is_sqlite_conn(conn):
+            started = time.perf_counter()
+            conn.exec_driver_sql("ANALYZE")
+            logger.info(
+                "Schema v71: ANALYZE finished in %.1f s", time.perf_counter() - started
+            )
+
+
+LATEST_SCHEMA_VERSION = 71
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -4679,6 +4802,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     68: _migrate_to_v68,
     69: _migrate_to_v69,
     70: _migrate_to_v70,
+    71: _migrate_to_v71,
 }
 
 
