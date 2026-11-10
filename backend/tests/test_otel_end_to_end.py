@@ -564,11 +564,6 @@ class TestSkillObservationEndToEnd:
         assert attrs_call["attributes"]["apo.skill.name"] == "xlsx"
 
 
-# ===========================================================================
-# Retriever observations: query + documents on the tool channels
-# ===========================================================================
-
-
 class TestRetrieverObservationEndToEnd:
     """A retrieval exported like the apo SDK exports it (apo observation type
     plus gen_ai tool argument/result channels) must project so retrieval

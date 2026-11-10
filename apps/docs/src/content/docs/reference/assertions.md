@@ -140,9 +140,9 @@ An undelivered steer yields an empty window: evidence-demanding assertions insid
 ### `t.not.<assertion>()`
 
 - **Signature:** `t.not.retrieved(...)`, `t.not.calledTool(...)`, `t.not.toolOrder(...)`, `t.not.loadedSkill(...)`, `t.not.calledSubagent(...)`, `t.not.messageIncludes(...)`, `t.not.check(...)`
-- **Asserts:** the negatable assertion does not hold — `t.not.retrieved({ idPrefix: "acme-" })` passes when no other tenant's document was retrieved.
+- **Asserts:** the negatable assertion does not hold. `t.not.retrieved({ idPrefix: "acme-" })` passes when no other tenant's document was retrieved.
 
-The flip applies to verdicts only. An `unsupported` or `error` outcome stays as it is, so missing evidence can never become a pass by negation: with no retrieval evidence at all, `t.not.retrieved(...)` records `unsupported`, it does not pass. Judged checks (`t.judge`, `t.semantic`, `t.agent`) and budgets are not negatable — judged checks carry their own polarity through `{ expect: "fail" }`.
+The flip applies to verdicts only. An `unsupported` or `error` outcome stays as it is, so missing evidence can never become a pass by negation: with no retrieval evidence at all, `t.not.retrieved(...)` records `unsupported`, it does not pass. Judged checks (`t.judge`, `t.semantic`, `t.agent`) and budgets are not negatable; judged checks carry their own polarity through `{ expect: "fail" }`.
 
 ### `t.assert(label, predicate)`
 
@@ -420,9 +420,9 @@ A stdio server is a process the eval file told apo to spawn — the same trust a
 ### `t.grounded(value, opts?)`, async
 
 - **Signature:** `(value: unknown, opts?: { sources?: "trace" | readonly string[]; label?: string; judge?: Partial<JudgeConfig>; expect?: "pass" | "fail" }) → Promise<void>`
-- **Asserts:** every factual claim in `value` is supported by the sources — the groundedness (faithfulness) check for retrieval-augmented answers. A claim that is true in the real world but not stated by the sources still fails; the judge measures the answer against the sources, not against its own knowledge.
+- **Asserts:** every factual claim in `value` is supported by the sources: the groundedness (faithfulness) check for retrieval-augmented answers. A claim that is true in the real world but not stated by the sources still fails; the judge measures the answer against the sources, not against its own knowledge.
 
-`sources` defaults to `"trace"`: the documents this run actually retrieved, read from the retrieval evidence, so the judge sees what the system fed the model rather than a curated context. An array supplies author-written sources instead, which works without any retrieval evidence. A fixed rubric over `t.judge`, so per-call judge overrides, the second judge, and `{ expect: "fail" }` (the judge must catch a known hallucination) all apply. With no retrieval evidence — or a retrieval whose document list was unrecognized — the outcome is `unsupported` and the judge is never called.
+`sources` defaults to `"trace"`: the documents this run actually retrieved, read from the retrieval evidence, so the judge sees what the system fed the model rather than a curated context. An array supplies author-written sources instead, which works without any retrieval evidence. A fixed rubric over `t.judge`, so per-call judge overrides, the second judge, and `{ expect: "fail" }` (the judge must catch a known hallucination) all apply. With no retrieval evidence, or with a retrieval whose document list was unrecognized, the outcome is `unsupported` and the judge is never called.
 
 ## Matchers
 

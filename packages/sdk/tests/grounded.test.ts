@@ -101,7 +101,6 @@ async function run(
   return rec;
 }
 
-/** Stub the judge's OpenAI-compatible endpoint; returns the raw request bodies it received. */
 function stubJudge(verdict: { pass: boolean; reasoning: string }): string[] {
   const requests: string[] = [];
   vi.stubGlobal(

@@ -114,7 +114,6 @@ export class Recorder {
   }
 }
 
-/** The `t.not` form of one assertion result. Non-verdict outcomes keep their outcome. */
 function negate(result: AssertionResult): AssertionResult {
   const negated: AssertionResult = {
     ...result,

@@ -25,7 +25,6 @@ const STOPWORDS = new Set([
   "from", "into", "per", "you", "your", "our", "their", "any", "has", "have", "will", "this",
 ]);
 
-/** Load the document store from the task's `handbook.json`. */
 export function loadHandbook(files: FileEntry[]): HandbookDocument[] {
   const entry = files.find((f) => f.relativePath === "handbook.json");
   if (!entry) throw new Error("rag-handbook tasks need a files/handbook.json document store");
