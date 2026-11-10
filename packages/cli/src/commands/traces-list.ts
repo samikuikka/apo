@@ -1,4 +1,5 @@
 import { getFlagValues, parseArgs, getFlagValue } from "../lib/args.ts";
+import { parseLabelRef } from "../lib/run-labels.ts";
 import { resolveConfig } from "../lib/config.ts";
 import { dim, formatJson, formatTable, formatTime } from "../lib/format.ts";
 import { apiGet } from "../lib/api.ts";
@@ -29,7 +30,7 @@ export async function run(argv: string[]): Promise<number> {
   const { flags, multiFlags } = parseArgs(argv);
   const config = resolveConfig(flags);
 
-  const params: Record<string, string> = {};
+  const params: Record<string, string | string[]> = {};
   if (config.projectId) params.project = config.projectId;
   const taskId = getFlagValue(flags, "task");
   if (taskId) params.task_id = taskId;
@@ -44,6 +45,24 @@ export async function run(argv: string[]): Promise<number> {
   if (operation) params.operation = operation;
   const spanText = getFlagValue(flags, "span-text");
   if (spanText) params.span_text = spanText;
+
+  // Run-label scope, the same `key:id` encoding the other list commands
+  // use: a trace matches through its parent run's batch. Environments OR
+  // (the endpoint takes them comma-joined); labels OR within a key, AND
+  // across keys.
+  const environments = getFlagValues(multiFlags, "environment");
+  if (environments.length > 0) params.environment = environments.join(",");
+  const labelValues = getFlagValues(multiFlags, "label");
+  for (const raw of labelValues) {
+    try {
+      parseLabelRef(raw);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`error: ${message}`);
+      return 2;
+    }
+  }
+  if (labelValues.length > 0) params.label = labelValues;
   const attrs = getFlagValues(multiFlags, "attr");
   const predicates = attrs.map(parseAttrFlag).filter((p) => p !== null);
   if (predicates.length > 0) params.span_filter = JSON.stringify(predicates);
