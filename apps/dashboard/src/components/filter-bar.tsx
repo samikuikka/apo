@@ -103,6 +103,9 @@ export interface FilterBarProps {
   onQueryChange?: (value: string) => void;
   searchPlaceholder?: string;
   searchTestId?: string;
+  /** Autocomplete suggestions for the search input, shown as a dropdown. */
+  searchSuggestions?: { insert: string; label: string; count?: number }[];
+  onSuggestionClick?: (insert: string) => void;
   /** Shown when any dimension is in play; the bar computes "active" itself. */
   onClearAll?: () => void;
   /** Page-specific right side (result count, expand-all, reset link…). */
@@ -129,6 +132,25 @@ export function FilterBar(props: FilterBarProps) {
             data-testid={props.searchTestId}
             className="h-8 border-border bg-card pl-8 text-[13px] placeholder:text-muted-foreground/50 focus-visible:border-border"
           />
+          {props.searchSuggestions && props.searchSuggestions.length > 0 && (
+            <div className="absolute left-0 top-full z-30 mt-1 w-full border border-border bg-popover">
+              {props.searchSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion.insert}
+                  type="button"
+                  onClick={() => props.onSuggestionClick?.(suggestion.insert)}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-muted/60"
+                >
+                  <span className="truncate font-mono">{suggestion.label}</span>
+                  {suggestion.count !== undefined && (
+                    <span className="ml-auto font-mono text-[10px] tabular-nums text-muted-foreground/60">
+                      {suggestion.count}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

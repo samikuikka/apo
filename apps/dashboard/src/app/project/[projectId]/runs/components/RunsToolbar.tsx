@@ -3,7 +3,13 @@
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
-import { type EffortFacetOption } from "@/lib/agent-task-api";
+import { type EffortFacetOption, type RunLabelFacets } from "@/lib/agent-task-api";
+import {
+  parseSearchTokens,
+  suggestTokens,
+  type SearchSuggestion,
+  type SearchToken,
+} from "@/lib/search-tokens";
 import { FilterBar } from "@/components/filter-bar";
 import { BATCH_RUN_STATUS_FILTERS } from "@/lib/filter-status";
 
@@ -30,6 +36,10 @@ interface RunsToolbarProps {
   onClearFilters: () => void;
   /** Retire a model from the palette, or bring it back. */
   onSetArchived: (model: string, archived: boolean) => void;
+  /** Label facets, for search-box token recognition and autocomplete. */
+  labelFacets: RunLabelFacets | null;
+  /** Called when the search text contained structured filter tokens. */
+  onTokensParsed: (tokens: SearchToken[], text: string) => void;
 }
 
 /**
@@ -53,6 +63,8 @@ export function RunsToolbar({
   onSetArchived,
   scopeSlot,
   servingSlot,
+  labelFacets,
+  onTokensParsed,
 }: RunsToolbarProps) {
   const [searchInput, setSearchInput] = useState(urlQ);
   // Follow ?q changes that did not come from our own typing (initial load,
@@ -64,15 +76,36 @@ export function RunsToolbar({
     setSearchInput(urlQ);
   }
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearchInput(value);
+      setSuggestions(suggestTokens(value, labelFacets));
+      setShowSuggestions(suggestions.length > 0);
       clearTimeout(searchTimer.current);
       searchTimer.current = setTimeout(() => {
-        updateUrl({ q: value || null, page: null });
+        const parsed = parseSearchTokens(value, labelFacets);
+        if (parsed.tokens.length > 0) {
+          // Tokens become filters; only the remaining text stays as ?q=.
+          onTokensParsed(parsed.tokens, parsed.text);
+          setSearchInput(parsed.text);
+        } else {
+          updateUrl({ q: value || null, page: null });
+        }
       }, 350);
     },
-    [updateUrl],
+    [updateUrl, labelFacets, onTokensParsed],
+  );
+  const applySuggestion = useCallback(
+    (suggestion: SearchSuggestion) => {
+      const words = searchInput.split(/\s+/).filter(Boolean);
+      words.pop(); // replace the partial word with the completed token
+      const completed = [...words, suggestion.insert].join(" ");
+      setShowSuggestions(false);
+      handleSearchChange(completed);
+    },
+    [searchInput, handleSearchChange],
   );
 
   const selectedEffort = selectedEfforts.size === 1 ? Array.from(selectedEfforts)[0] ?? null : null;
@@ -112,8 +145,10 @@ export function RunsToolbar({
           onSinceChange={(since) => updateUrl({ since, page: null })}
           query={searchInput}
           onQueryChange={handleSearchChange}
-          searchPlaceholder="Filter by ID, selection, environment..."
+          searchPlaceholder="Search or type a filter: customer:acme, cost>0.50, env:prod..."
           searchTestId="runs-search-input"
+          searchSuggestions={showSuggestions ? suggestions : undefined}
+          onSuggestionClick={(insert) => applySuggestion({ insert, label: insert })}
           onClearAll={onClearFilters}
           trailing={
             <>
