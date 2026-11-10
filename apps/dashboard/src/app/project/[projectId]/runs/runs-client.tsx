@@ -26,6 +26,7 @@ import {
 
 import { useProjectId } from "@/lib/project-router";
 import { cn } from "@/lib/utils";
+import { applyTokensToFilters, type SearchToken } from "@/lib/search-tokens";
 import { useClientNow } from "@/hooks/use-client-now";
 import { BATCH_RUN_STATUS_FILTERS } from "@/lib/filter-status";
 import { RunsModelFilter, type ModelOption } from "./runs-model-filter";
@@ -256,6 +257,26 @@ export function RunsClient({
     () => railOwnedParams(searchParams.toString()),
     [searchParams],
   );
+  const handleTokensParsed = useCallback(
+    (tokens: SearchToken[], text: string) => {
+      const { scope: nextScope, metrics: nextMetrics } = applyTokensToFilters(
+        tokens,
+        scope,
+        metrics,
+      );
+      updateUrl({
+        q: text || null,
+        environment: nextScope.environments.join(",") || null,
+        label: runScopeLabelParams(nextScope),
+        ...Object.fromEntries(
+          Object.entries(metricFilterParams(nextMetrics)).filter(([, v]) => v !== null),
+        ),
+        page: null,
+      });
+    },
+    [scope, metrics, updateUrl],
+  );
+
   const setMetrics = useCallback(
     (next: typeof EMPTY_METRIC_FILTERS) => {
       updateUrl({ ...metricFilterParams(next), page: null });
@@ -435,6 +456,8 @@ export function RunsClient({
         updateUrl={updateUrl}
         onClearFilters={clearFilters}
         onSetArchived={setModelArchivedState}
+        labelFacets={labelFacets}
+        onTokensParsed={handleTokensParsed}
       />
 
       <div className="flex-1 overflow-auto">
