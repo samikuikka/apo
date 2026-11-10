@@ -164,8 +164,11 @@ async def receive_otlp_traces(
 
     # Usage accounting — AFTER the inbox commit, non-fatal by
     # design: a failed counter must never turn an accepted batch into a
-    # 500 (the SDK would retry and re-send).
-    record_ingest_usage(
+    # 500 (the SDK would retry and re-send). It is a write, so it waits for
+    # SQLite's write lock behind running projections: in a worker thread,
+    # like the ingest above, so that wait is not the event loop's.
+    await asyncio.to_thread(
+        record_ingest_usage,
         session,
         getattr(request.state, "api_key_id", None),
         spans=result.accepted,

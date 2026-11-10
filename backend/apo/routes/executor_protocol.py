@@ -131,7 +131,7 @@ def require_attempt_lease(
 
 
 @router.post("/attempts/{attempt_id}/start")
-async def attempt_start(
+def attempt_start(
     attempt_id: str,
     body: StartRequest,
     response: Response,
@@ -152,7 +152,7 @@ async def attempt_start(
 
 
 @router.post("/attempts/{attempt_id}/heartbeat")
-async def attempt_heartbeat(
+def attempt_heartbeat(
     attempt_id: str,
     body: AttemptHeartbeatRequest,
     response: Response,
@@ -235,7 +235,7 @@ async def attempt_result(
 
 
 @router.post("/attempts/{attempt_id}/failure")
-async def attempt_failure(
+def attempt_failure(
     attempt_id: str,
     body: FailureRequest,
     response: Response,

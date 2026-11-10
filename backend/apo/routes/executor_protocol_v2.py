@@ -181,7 +181,7 @@ class SourceAttestationResponse(BaseModel):
 
 
 @router.post("/enroll", response_model=EnrollV2Response)
-async def enroll_v2(
+def enroll_v2(
     body: EnrollV2Request,
     response: Response,
     session: Session = Depends(get_session),
@@ -212,7 +212,7 @@ async def enroll_v2(
 
 
 @router.post("/heartbeat")
-async def heartbeat_v2(
+def heartbeat_v2(
     body: HeartbeatV2Request,
     response: Response,
     executor: ExecutorDB = Depends(_require_executor),
@@ -246,7 +246,7 @@ async def heartbeat_v2(
 
 
 @router.post("/claims", response_model=SourceOwnedAssignment | None)
-async def claims_v2(
+def claims_v2(
     body: ClaimV2Request,
     request: Request,
     response: Response,
@@ -331,7 +331,7 @@ async def claims_v2(
 
 
 @router.post("/attempts/{attempt_id}/source-attestation", response_model=SourceAttestationResponse)
-async def source_attestation(
+def source_attestation(
     attempt_id: str,
     body: SourceAttestationRequest,
     lease: CurrentAttemptLease = Depends(_require_attempt_lease),
@@ -437,7 +437,7 @@ class StartRequest(BaseModel):
 
 
 @router.post("/attempts/{attempt_id}/start")
-async def attempt_start_v2(
+def attempt_start_v2(
     attempt_id: str,
     body: StartRequest,
     response: Response,
@@ -476,7 +476,7 @@ class AttemptHeartbeatRequest(BaseModel):
 
 
 @router.post("/attempts/{attempt_id}/heartbeat")
-async def attempt_heartbeat_v2(
+def attempt_heartbeat_v2(
     attempt_id: str,
     body: AttemptHeartbeatRequest,
     response: Response,
@@ -593,7 +593,7 @@ async def attempt_result_v2(
 
 
 @router.post("/attempts/{attempt_id}/failure")
-async def attempt_failure_v2(
+def attempt_failure_v2(
     attempt_id: str,
     body: AttemptFailureRequest,
     response: Response,

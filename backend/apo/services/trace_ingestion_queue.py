@@ -23,10 +23,13 @@ import json
 import logging
 import os
 import time
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Protocol
+from functools import wraps
+from types import CoroutineType
+from typing import ParamSpec, Protocol, TypeVar
 
 from sqlalchemy import func
 from sqlalchemy.exc import OperationalError
@@ -59,6 +62,20 @@ def _is_write_lock_contention(exc: BaseException) -> bool:
     return isinstance(exc, OperationalError) and "database is locked" in str(
         exc
     ).lower()
+
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _off_loop(fn: Callable[_P, _R]) -> Callable[_P, CoroutineType[object, object, _R]]:
+    """Expose a blocking method as a coroutine that runs in a worker thread."""
+
+    @wraps(fn)
+    async def run(*args: _P.args, **kwargs: _P.kwargs) -> _R:
+        return await asyncio.to_thread(fn, *args, **kwargs)
+
+    return run
 
 
 class TraceIngestionQueue(Protocol):
@@ -123,9 +140,15 @@ class DbBackedQueue:
     based: the worker calls ``claim_next`` in a loop. For high-volume
     deployments, swap this for a ``RedisQueue`` that implements the same
     protocol.
+
+    Every operation is blocking SQL, and its write waits for SQLite's write
+    lock for up to ``busy_timeout`` while a projection batch holds it. Each
+    runs in a worker thread so that wait never lands on the event loop,
+    where it would stall every request for as long.
     """
 
-    async def enqueue(self, batch_id: str) -> None:
+    @_off_loop
+    def enqueue(self, batch_id: str) -> None:
         """Set batch status to 'queued' so the worker can find it."""
         with Session(engine) as session:
             session.exec(
@@ -139,7 +162,8 @@ class DbBackedQueue:
             )
             session.commit()
 
-    async def claim_next(self) -> str | None:
+    @_off_loop
+    def claim_next(self) -> str | None:
         """Atomically claim the oldest 'queued' batch.
 
         Uses a single conditional UPDATE with RETURNING to ensure atomicity
@@ -175,7 +199,8 @@ class DbBackedQueue:
             session.commit()
             return batch.id
 
-    async def claim(self, batch_id: str) -> bool:
+    @_off_loop
+    def claim(self, batch_id: str) -> bool:
         """Claim ``batch_id`` only when it is currently queued."""
         with Session(engine) as session:
             result = session.exec(
@@ -194,7 +219,8 @@ class DbBackedQueue:
             session.commit()
             return True
 
-    async def mark_complete(self, batch_id: str) -> None:
+    @_off_loop
+    def mark_complete(self, batch_id: str) -> None:
         """Mark a batch as 'projected' and drop its replay payload.
 
         Projection success is the payload's whole job: the canonical span
@@ -217,7 +243,8 @@ class DbBackedQueue:
             )
             session.commit()
 
-    async def mark_failed(
+    @_off_loop
+    def mark_failed(
         self, batch_id: str, error: str, rejected: int = 0
     ) -> None:
         """Mark a batch as 'failed' with an error message."""
@@ -232,7 +259,8 @@ class DbBackedQueue:
             session.add(batch)
             session.commit()
 
-    async def mark_partial(
+    @_off_loop
+    def mark_partial(
         self, batch_id: str, rejected: int, error: str
     ) -> None:
         """Record projection failures without hiding successful projections."""
@@ -247,7 +275,8 @@ class DbBackedQueue:
             session.add(batch)
             session.commit()
 
-    async def requeue(self, batch_id: str, reason: str) -> None:
+    @_off_loop
+    def requeue(self, batch_id: str, reason: str) -> None:
         """Return a claimed batch to 'queued' so a worker retries it later.
 
         Used for transient write-lock contention: an accepted batch must
@@ -266,7 +295,8 @@ class DbBackedQueue:
             )
             session.commit()
 
-    async def recover_stale(self) -> int:
+    @_off_loop
+    def recover_stale(self) -> int:
         """Requeue only processing batches whose worker lease expired."""
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=QUEUE_LEASE_SECONDS)
         with Session(engine) as session:

@@ -6,6 +6,7 @@ API key, or a Basic auth public:secret key pair. Sets ``request.state``
 attributes that route handlers can read for identity information.
 """
 
+import asyncio
 import base64
 import binascii
 import logging
@@ -250,10 +251,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # API-key usage is bookkeeping, not authentication. Defer its write
         # until the protected handler has finished so it cannot hold or wait
         # on SQLite's single writer while a caller-create request persists its
-        # Batch, Run, Revision, and Attempt transaction.
+        # Batch, Run, Revision, and Attempt transaction. The write runs in a
+        # worker thread: on the event loop its wait for the write lock would
+        # stall every other request.
         api_key_id = user_info.get("api_key_id")
         if auth_method == "api_key" and isinstance(api_key_id, str):
-            api_key_usage_tracker.record_use(api_key_id, engine)
+            await asyncio.to_thread(api_key_usage_tracker.record_use, api_key_id, engine)
         _add_no_cache_headers(response, path)
         # Anonymous demo responses are never cacheable (shared caches must
         # not pin demo state that a fixture refresh can replace).
