@@ -222,6 +222,12 @@ def create_app() -> FastAPI:
     from .services.signup_config import load_signup_config
 
     load_signup_config()
+    # Same contract for the live-stream bounds: the stream cap and the
+    # subscriber queue budgets are read lazily (first stream, first
+    # broadcaster), so an invalid value must stop startup here instead.
+    from .services.sse_limits import load_sse_limits
+
+    load_sse_limits()
 
     # validate admission limits and construct the controller.
     admission_limits = load_telemetry_admission_limits()
