@@ -195,6 +195,7 @@ export function createApoOpenAI<T extends OpenAIClientLike>(
         text,
         servedModel: response.model,
         servedProvider: reported.provider,
+        servedHost: reported.host,
         servedRoute: reported.route,
         promptTokens: response.usage?.prompt_tokens,
         completionTokens: response.usage?.completion_tokens,

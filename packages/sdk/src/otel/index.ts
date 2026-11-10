@@ -327,8 +327,8 @@ export async function configureApoTelemetry(
   // this provider so GenAI spans from SDKs (Vercel AI, OpenAI, etc.) are fed
   // into the projection-tee for local assertions AND exported via OTLP.
   // It must run BEFORE the exporting processor: it enriches spans with
-  // serving-identity attributes in onEnd, and enrichment after the export
-  // read is lost.
+  // serving-identity attributes in onEnding, and enrichment after the
+  // export read is lost.
   const apoProcessor = getRegisteredApoProcessor();
 
   // Official OTLP/HTTP trace exporter — standard OTLP wire format, no custom

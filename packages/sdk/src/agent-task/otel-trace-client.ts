@@ -158,9 +158,12 @@ export function createOtelAgentTaskTraceClient(
       span.setAttribute("apo.llm.serving_host", params.serving_host);
     }
     if (params.observation_type === "GENERATION") {
-      // One SDK-wrapped generation is one physical provider request; the
-      // backend's serving rollups key off this marker.
-      span.setAttribute("apo.llm.request_kind", "request");
+      // One SDK-wrapped generation is one physical provider request by
+      // default; the backend's serving rollups key off this marker. An
+      // explicit aggregate (an AI SDK wrapper whose doGenerate children
+      // are the requests) overrides it, or the rollups count the loop
+      // once per wrapper AND once per child.
+      span.setAttribute("apo.llm.request_kind", params.request_kind ?? "request");
     }
     if (params.route) {
       span.setAttribute("apo.llm.route", params.route);

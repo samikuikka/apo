@@ -4584,7 +4584,6 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     63: _migrate_to_v63,
     64: _migrate_to_v64,
     65: _migrate_to_v65,
-    65: _migrate_to_v65,
     66: _migrate_to_v66,
     67: _migrate_to_v67,
     68: _migrate_to_v68,

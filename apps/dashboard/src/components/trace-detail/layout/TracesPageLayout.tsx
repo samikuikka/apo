@@ -120,6 +120,10 @@ function TracesPageLayoutInner({ children, filterOptions, spanFieldOptions }: Tr
       actions.setTags(value);
     } else if (key === "models" && Array.isArray(value)) {
       actions.setModels(value);
+    } else if (key === "providers" && Array.isArray(value)) {
+      actions.setProviders(value);
+    } else if (key === "labels" && typeof value === "object" && value !== null) {
+      actions.setLabels(value as Record<string, string[]>);
     } else if (key === "span_predicates" && Array.isArray(value)) {
       actions.setSpanPredicates(value);
     } else if (CSV_REMOVE_KEYS.includes(key as string) && typeof value === "string") {

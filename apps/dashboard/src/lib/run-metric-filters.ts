@@ -261,3 +261,16 @@ export function railOwnedParams(search: string): string {
   }
   return kept.toString();
 }
+
+/** A saved scope's params as an `updateUrl` patch: repeated params (the
+ * rail writes `label` repeated) stay arrays, so every saved label returns
+ * to the URL instead of only the last one surviving the round trip. */
+export function savedScopePatch(params: string): Record<string, string | string[]> {
+  const stored = new URLSearchParams(params);
+  const patch: Record<string, string | string[]> = {};
+  for (const key of new Set(stored.keys())) {
+    const values = stored.getAll(key);
+    patch[key] = values.length > 1 ? values : values[0];
+  }
+  return patch;
+}

@@ -9,6 +9,7 @@ import {
   metricPresets,
   parseMetricFilters,
   railOwnedParams,
+  savedScopePatch,
   saveSavedScopes,
 } from "../run-metric-filters";
 
@@ -124,6 +125,15 @@ describe("saved scopes", () => {
     expect(kept.get("cost_min")).toBe("0.25");
     expect(kept.get("page")).toBeNull();
     expect(kept.get("status")).toBeNull();
+  });
+
+  it("applies a saved scope with every repeated label intact", () => {
+    const saved = railOwnedParams("?label=team:platforms&label=release:r42&environment=prod");
+    const patch = savedScopePatch(saved);
+    expect(patch).toEqual({
+      label: ["team:platforms", "release:r42"],
+      environment: "prod",
+    });
   });
 
   it("round-trips saved scopes through storage, dropping corrupt entries", () => {

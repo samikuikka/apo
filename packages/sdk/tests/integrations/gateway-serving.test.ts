@@ -43,6 +43,7 @@ describe("servingFromResponse", () => {
     );
     expect(serving).toEqual({
       provider: "openrouter",
+      host: "fireworks",
       route: "openrouter:fireworks",
     });
   });
@@ -58,6 +59,7 @@ describe("servingFromResponse", () => {
     );
     expect(serving).toEqual({
       provider: "litellm",
+      host: "fireworks-proxy.accounts.fireworks.ai",
       route: "litellm:dep-abc123@fireworks-proxy.accounts.fireworks.ai",
     });
   });
@@ -180,6 +182,9 @@ describe("createApoOpenAI wrapper learns serving from the response", () => {
     const end = [...ends.values()].find((p) => p.served_model) as EndSpanParams;
     expect(end.served_model).toBe("deepseek/deepseek-v4.1-flash");
     expect(end.provider).toBe("openrouter");
+    // serving_host is the upstream the gateway names, never the gateway
+    // itself: copying the API provider there would break host filters.
+    expect(end.serving_host).toBe("fireworks");
     expect(end.route).toBe("openrouter:fireworks");
   });
 
@@ -223,6 +228,7 @@ describe("createApoOpenAI wrapper learns serving from the response", () => {
     const end = [...ends.values()].find((p) => p.served_model) as EndSpanParams;
     expect(end.served_model).toBe("anthropic/claude-sonnet-4-6");
     expect(end.provider).toBe("litellm");
+    expect(end.serving_host).toBe("api.anthropic.com");
     expect(end.route).toBe("litellm:dep-42@api.anthropic.com");
   });
 

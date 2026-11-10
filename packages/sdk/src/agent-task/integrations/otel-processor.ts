@@ -12,7 +12,7 @@
  *
  * **Design: eager creation, deferred completion.** The apo span is created
  * at `onStart` (when initial attributes like tool name and model are
- * available). The span is ended at `onEnd` with the final attributes
+ * available). The span is ended at `onEnding` with the final attributes
  * (results, tokens, text). This gives correct ordering: parent spans
  * are created before children, matching the real call hierarchy.
  *
@@ -79,6 +79,11 @@ interface TrackedSpan {
   startedAt: number;
 }
 
+/** AI SDK wrapper spans: one logical generation whose doGenerate/doStream
+ * children are the physical requests. Both the apo-side span and the raw
+ * exported span must carry the aggregate marker for them. */
+const _AI_SDK_WRAPPER_NAMES = new Set(["ai.generateText", "ai.streamText"]);
+
 /**
  * Do not remove the parent-stamping built on this helper: the Vercel AI
  * SDK reports the serving model only on per-step doGenerate children,
@@ -100,9 +105,10 @@ function servedModelFrom(
 /**
  * A SpanProcessor that translates GenAI OTel spans into apo observations.
  *
- * Spans are created at `onStart` (eager) and completed at `onEnd`
- * (deferred). This gives correct parent/child ordering — parent spans
- * are created before their children, matching the real call hierarchy.
+ * Spans are created at `onStart` (eager) and completed at `onEnding`
+ * (deferred, while the span is still mutable). This gives correct
+ * parent/child ordering: parent spans are created before their children,
+ * matching the real call hierarchy.
  *
  * If a span isn't load-bearing (not a GenAI tool/generation span), no
  * apo span is created.
@@ -119,6 +125,11 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
       serviceTier?: string;
     }
   >();
+
+  onEnd(_span: OTelReadableSpan): void {
+    // All work happens in onEnding, where the span is still mutable; by
+    // onEnd the span is immutable and setAttribute is a no-op.
+  }
 
   onStart(span: OTelSpan, _parentContext: OTelContext): void {
     const run = getActiveApoRun();
@@ -143,6 +154,13 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
       step_name: translated.stepName,
       model: translated.model ?? translated.stepName,
       observation_type: translated.observationType,
+      // An AI SDK wrapper generation is one logical operation over several
+      // physical requests (its doGenerate/doStream children); without the
+      // aggregate marker the rollups count the wrapper as a request too
+      // and every call is counted twice.
+      ...(_AI_SDK_WRAPPER_NAMES.has(span.name)
+        ? { request_kind: "aggregate" as const }
+        : {}),
       ...(translated.serving?.apiProvider
         ? { api_provider: translated.serving.apiProvider }
         : {}),
@@ -165,7 +183,7 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
     });
   }
 
-  onEnd(span: OTelReadableSpan): void {
+  onEnding(span: OTelReadableSpan): void {
     const otelId = span.spanContext().spanId;
 
     // A per-step child reporting its serving model is the parent
@@ -209,13 +227,14 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
     const latency = round3(monotonicNowMs() - tracked.startedAt);
 
     // The backend projects from the RAW exported span, so identity must
-    // live on this span itself, not only the in-process apo view. Setting
-    // attributes in onEnd is the sanctioned processor hook to enrich a
-    // span before export.
+    // live on this span itself, not only the in-process apo view. This
+    // runs in onEnding, BEFORE the span becomes immutable: setAttribute
+    // inside onEnd is a silent no-op (Span.end sets _ended before calling
+    // onEnd), so enrichment there never reaches the exporter.
+    const raw = span as OTelReadableSpan & {
+      setAttribute?: (key: string, value: string) => void;
+    };
     if (servingForThis) {
-      const raw = span as OTelReadableSpan & {
-        setAttribute?: (key: string, value: string) => void;
-      };
       if (servingForThis.apiProvider) {
         raw.setAttribute?.("apo.llm.api_provider", servingForThis.apiProvider);
       }
@@ -228,11 +247,12 @@ export class ApoSpanProcessor implements OTelSpanProcessorLifecycle {
       if (servingForThis.serviceTier) {
         raw.setAttribute?.("apo.llm.service_tier", servingForThis.serviceTier);
       }
-      // A wrapper generation is one logical operation; its children are
-      // the physical requests. The backend's rollups read this marker.
-      if (tracked.otelSpanName === "ai.generateText" || tracked.otelSpanName === "ai.streamText") {
-        raw.setAttribute?.("apo.llm.request_kind", "aggregate");
-      }
+    }
+    // A wrapper generation is one logical operation; its children are the
+    // physical requests. The backend's rollups read this marker, and it
+    // must land even without declared serving identity.
+    if (_AI_SDK_WRAPPER_NAMES.has(tracked.otelSpanName)) {
+      raw.setAttribute?.("apo.llm.request_kind", "aggregate");
     }
 
     run.trace.endSpan(tracked.apoSpanId, {
