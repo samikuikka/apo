@@ -369,12 +369,11 @@ async def finalize_attempt_with_deliverables(
     Raises ``CompletionConflict`` / ``ResultEvidenceError`` / ``ValueError``
     / ``LeaseError`` — the caller maps these to HTTP responses.
     """
-    # The whole precheck → resolve → persist → finalize sequence reads then
-    # writes on one session; take SQLite's write lock before the first read
-    # so a concurrent projector commit cannot fail the result with
-    # SQLITE_BUSY_SNAPSHOT. The inner finalize_attempt_result re-calls
-    # begin_immediate and no-ops inside this already-immediate transaction.
-    begin_immediate(session)
+    # No write lock is taken here. This coroutine suspends between its
+    # stretches, and a lock held across a suspension freezes the service: an
+    # on-loop writer (the heartbeat routes) waits out busy_timeout on the loop
+    # thread while the holder needs that loop to go on. finalize_attempt_result
+    # takes the lock itself, inside its worker thread, and commits there.
     # Issue #174: the body digest and the finalization SQL are seconds of sync
     # work over multi-MB result bodies. Run them off the event loop so one
     # heavy finalize cannot freeze heartbeats and every other request behind
