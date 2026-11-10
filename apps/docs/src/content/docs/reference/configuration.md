@@ -245,9 +245,15 @@ deployments that also raised the backend memory limit.
 
 ## Bootstrap, retention, and maintenance
 
-A daily maintenance pass always runs (at startup, then every 24 h): it
-blanks raw OTLP ingest payloads past their replay window, fails artifact
-uploads abandoned past their TTL, and deletes expired credential tokens.
+A daily maintenance pass always runs, once a day inside a quiet-hour
+window (`APO_MAINTENANCE_WINDOW_START_HOUR` to `APO_MAINTENANCE_WINDOW_END_HOUR`,
+03:00 to 05:00 UTC by default): it blanks raw OTLP ingest payloads past
+their replay window, fails artifact uploads abandoned past their TTL,
+deletes expired credential tokens, and refreshes the database's query
+planner statistics. A restart no longer pays for the pass: outside the
+window it runs only when the last recorded pass is more than 24 h old
+(so a missed day is caught up), and an invalid window value fails
+startup instead of surfacing at 03:00.
 Retention is **two-tier**: verdicts (run status, pass/fail, check counts,
 costs, corrections, the regression timeline) are never deleted
 automatically, while run *evidence* can expire on a window. Setting
@@ -267,6 +273,8 @@ purges the OTLP spans of what it deletes.
 | `APO_INGEST_RETENTION_DAYS` | `7` | Backstop window for OTLP ingest payloads of batches that never projected. A successfully projected batch's payload is blanked the moment projection commits (the canonical span store is the source of truth). `0` keeps unprojected payloads forever. |
 | `APO_INGEST_STUCK_BATCH_DAYS` | `30` | Horizon for non-terminal (queued/processing) batches: past it the payload is discarded and the batch marked failed. Guards against a dead worker holding payloads forever. Watch `ingestion_queue` in `GET /v1/admin/retention`. |
 | `APO_INGEST_BATCH_ROW_RETENTION_DAYS` | `90` | Days to keep payload-blanked, terminal inbox audit rows before deleting them. |
+| `APO_MAINTENANCE_WINDOW_START_HOUR` | `3` | UTC hour the daily maintenance pass's quiet window opens (inclusive). With the end hour it decides when cleanup, VACUUM, and the planner-statistics refresh run; a restart outside the window skips them unless the last pass is over 24 h old. |
+| `APO_MAINTENANCE_WINDOW_END_HOUR` | `5` | UTC hour the window closes (exclusive). A start hour above the end hour wraps past midnight (22 to 2 means 22:00-02:00). Start and end may not be equal; an invalid value fails startup. |
 | `APO_VACUUM_MIN_FREE_BYTES` | `10485760` | The daily maintenance pass only VACUUMs when at least this many bytes are reclaimable (freelist pages). VACUUM needs up to ~2x the database size of free space on the data volume. |
 | `APO_MAX_DB_PAGES` | `0` | SQLite page cap, applied on every connection. `0` disables the cap. |
 | `APO_PROJECTION_WRITE_MODE` | `slim` | How the trace projection stores call I/O. `slim` keeps full I/O only in canonical spans and writes bounded run-level previews for trace lists. Detail views resolve span-backed I/O from that canonical store. `dual` and `fat` remain temporary rollback modes for upgrades that have not completed the preview backfill. Trace lists never read full call I/O in any mode. |

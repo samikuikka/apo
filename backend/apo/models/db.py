@@ -153,9 +153,14 @@ class RunDB(SQLModel, table=True):
     __tablename__: ClassVar[str] = "runs"
     __table_args__ = (
         UniqueConstraint("project", "id", name="uq_runs_project_trace"),
-        # The traces list defaults to unfiltered time — push the
+        # The traces list defaults to unfiltered time: push the
         # project scan down a created_at-ordered index.
         Index("ix_runs_project_created", "project", "created_at"),
+        # Its other two sort orders (and the duration range filter) get the
+        # same treatment, so a sorted page reads one index range instead of
+        # sorting every run in the project.
+        Index("ix_runs_project_duration", "project", "duration_ms"),
+        Index("ix_runs_project_call_count", "project", "call_count"),
     )
 
     row_id: int | None = Field(default=None, primary_key=True)
@@ -340,6 +345,22 @@ class LoggedCallDB(LoggedCallBase, table=True):
     __tablename__: ClassVar[str] = "logged_calls"
     __table_args__ = (
         UniqueConstraint("project", "id", name="uq_logged_calls_project_span"),
+        # Per-run call lookups and the provider facet, answered from the
+        # index alone: on older databases route and provider sit after the
+        # payload columns, so reading them from the row walks its overflow.
+        Index(
+            "ix_logged_calls_run_project_route_provider",
+            "run_id",
+            "project",
+            "route",
+            "provider",
+        ),
+        # Project-scoped status and model filter subqueries, index-only.
+        # Project leads on purpose: a single-column level or model index
+        # drops the scoping, and the planner then walks the installation's
+        # biggest project through it on behalf of the smallest.
+        Index("ix_logged_calls_project_level_run_id", "project", "level", "run_id"),
+        Index("ix_logged_calls_project_model_run_id", "project", "model", "run_id"),
     )
 
     row_id: int | None = Field(default=None, primary_key=True)
@@ -2095,6 +2116,12 @@ class OtlpIngestBatchDB(SQLModel, table=True):
     """
 
     __tablename__: ClassVar[str] = "otlp_ingest_batches"
+    __table_args__: ClassVar[tuple[object, ...]] = (
+        # The ingest worker claims the oldest queued batch. Status then
+        # received_at lets it read one index entry instead of sorting every
+        # queued row, multi-megabyte payload included.
+        Index("ix_otlp_ingest_batches_status_received", "status", "received_at"),
+    )
 
     id: str = Field(primary_key=True)  # batch UUID
     project_id: str = Field(index=True)  # from auth, never from payload

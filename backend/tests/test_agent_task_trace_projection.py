@@ -24,6 +24,7 @@ from sqlmodel import Session
 
 from apo import auth as auth_module
 from apo.auth import middleware as auth_middleware
+from apo.auth import service_tokens as service_tokens_module
 from apo.auth.service_tokens import create_agent_task_trace_token
 from apo.models.db import (
     AgentTaskBatchRunDB,
@@ -37,7 +38,10 @@ from apo.models.db import (
 def _force_auth_secret(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(auth_module, "AUTH_SECRET", "test-auth-secret")
     monkeypatch.setattr(auth_middleware, "AUTH_SECRET", "test-auth-secret")
-    monkeypatch.setattr("apo.auth.service_tokens.AUTH_SECRET", "test-auth-secret")
+    # The module object, not its dotted path: the auth-env tests re-import
+    # apo.auth mid-session, and the fresh package object never regains the
+    # service_tokens attribute a string-based setattr walks through.
+    monkeypatch.setattr(service_tokens_module, "AUTH_SECRET", "test-auth-secret")
 
 
 _PROJECT = "example-service"

@@ -566,6 +566,8 @@ def _rewind(engine: Engine) -> None:
         conn.exec_driver_sql("DROP INDEX ix_runs_task_run_id")
         conn.exec_driver_sql("UPDATE runs SET task_run_id = 'run-judge' WHERE id = 'trace-stale'")
         conn.exec_driver_sql("DROP INDEX ix_agent_task_runs_started_at")  # v42
+        for index_name, _, _ in apo_db._V71_INDEXES:  # v71
+            conn.exec_driver_sql(f"DROP INDEX {index_name}")
         for table, column in _DROPPED_COLUMNS:
             _drop_column(conn, table, column)
         for table, column, column_type in _LEGACY_COLUMNS:
@@ -730,6 +732,16 @@ def test_old_database_climbs_the_whole_ladder(ladder_engine: Engine) -> None:
     with ladder_engine.connect() as conn:
         automation_indexes = {index["name"] for index in inspect(conn).get_indexes("automations")}
     assert "ix_automations_trigger_kind" in automation_indexes  # v56
+    with ladder_engine.connect() as conn:
+        built = {
+            table: {
+                str(index["name"]): tuple(str(column) for column in index["column_names"])
+                for index in inspect(conn).get_indexes(table)
+            }
+            for table in sorted({name for _, name, _ in apo_db._V71_INDEXES})
+        }
+    for index_name, table, columns in apo_db._V71_INDEXES:  # v71
+        assert built[table].get(index_name) == columns, index_name
 
     apo_db.init_db()
 

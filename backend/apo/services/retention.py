@@ -4,8 +4,11 @@ Three mechanisms keep the database from growing without bound:
 
 1. **Daily maintenance** (always on): trims raw OTLP ingest payloads past
    their replay window, fails artifact uploads abandoned past their TTL,
-   reaps expired credential tokens, and — when retention is configured —
-   purges old data. Runs once at startup then every 24 h.
+   reaps expired credential tokens, refreshes the query planner's
+   statistics, and (when retention is configured) purges old data. Runs
+   once a day inside a quiet-hour window (``APO_MAINTENANCE_WINDOW_*``,
+   03:00 to 05:00 UTC by default). A restart only runs it when the last
+   pass is a day old or more, so a restart at noon stays cheap.
 
 2. **Time-based retention** (``APO_RETENTION_DAYS``, default 0 = off):
    deletes old traces, runs, and agent-task outputs older than the
@@ -17,7 +20,7 @@ Three mechanisms keep the database from growing without bound:
 3. **Hard size cap** (``APO_MAX_DB_PAGES``): sets SQLite's
    ``PRAGMA max_page_count``. Once the DB file reaches the cap, further
    writes fail with ``SQLITE_FULL`` rather than growing the file. This is a
-   blunt safety valve — retention is the graceful path, the cap is the
+   blunt safety valve: retention is the graceful path, the cap is the
    last line of defence.
 
 Retention defaults to off (0) so existing deployments are unaffected until
@@ -32,7 +35,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sqlite3
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
@@ -1281,6 +1286,57 @@ def vacuum_sqlite() -> dict[str, object]:
     return result
 
 
+# PRAGMA optimize mask for the daily pass. 0x02 runs ANALYZE where statistics
+# are missing or stale, 0x10 bounds each ANALYZE with a temporary analysis
+# limit, and 0x10000 considers every table. Without 0x10000 the pragma only
+# considers tables queried on the same connection, and the pass runs on a
+# fresh connection (the engine uses NullPool) that has queried nothing.
+_OPTIMIZE_MASK = 0x10012
+# The first SQLite release that knows the 0x10000 bit; older ones ignore it.
+_OPTIMIZE_EVERY_TABLE_SINCE = (3, 46, 0)
+# Rows examined per index by the bounded ANALYZE that older releases get.
+_FALLBACK_ANALYSIS_LIMIT = 1000
+
+
+def optimize_sqlite() -> bool:
+    """Refresh the query planner's statistics; True when the refresh ran.
+
+    The planner's statistics come from ANALYZE and nothing else in SQLite
+    refreshes them, so they go stale as tables grow or gain indexes.
+    ``PRAGMA optimize`` re-analyzes only the tables that need it (an index
+    with no statistics, or a row count that moved tenfold), which makes
+    most days a no-op.
+
+    SQLite before 3.46 cannot make that pragma look at tables its own
+    connection never queried, so on a fresh connection it would silently do
+    nothing. Those releases get a bounded ANALYZE of the whole database
+    instead. A failure is logged, never raised: stale statistics cost
+    speed, not correctness, and must not fail the pass.
+    """
+    if not is_sqlite():
+        return False
+    try:
+        with engine.connect() as conn:
+            if _optimize_considers_every_table():
+                _ = conn.exec_driver_sql(f"PRAGMA optimize={_OPTIMIZE_MASK:#x}")
+            else:
+                _ = conn.exec_driver_sql(
+                    f"PRAGMA analysis_limit={_FALLBACK_ANALYSIS_LIMIT}"
+                )
+                _ = conn.exec_driver_sql("ANALYZE")
+            conn.commit()
+    except Exception:
+        logger.exception(
+            "Planner statistics refresh failed; the next maintenance pass retries"
+        )
+        return False
+    return True
+
+
+def _optimize_considers_every_table() -> bool:
+    return sqlite3.sqlite_version_info >= _OPTIMIZE_EVERY_TABLE_SINCE
+
+
 def _run_and_record_maintenance_pass() -> None:
     """One maintenance pass, logged and persisted.
 
@@ -1319,8 +1375,8 @@ def run_maintenance_cleanup() -> dict[str, int]:
     unreferenced revision content, and reap orphaned artifact objects.
     When ``APO_RETENTION_DAYS`` is set, also purge old traces/runs/batches
     (bookmark-aware on both sides; the span orphan sweep runs inside that
-    window). Returns a per-task summary; the freelist-gated VACUUM runs
-    after it.
+    window). Returns a per-task summary; the freelist-gated VACUUM and the
+    planner-statistics refresh run after it.
     """
     summary: dict[str, int] = {}
     now = datetime.now(timezone.utc)
@@ -1414,10 +1470,11 @@ def run_maintenance_cleanup() -> dict[str, int]:
             "expired_tokens",
             "reaped_artifact_orphans",
             "vacuumed",
+            "optimized",
         )
     )
 
-    # Summary first, vacuum after — a failed VACUUM must not lose the log
+    # Summary first, vacuum after: a failed VACUUM must not lose the log
     # of what the pass freed.
     logger.info(
         "maintenance cleanup: %s (retention=%s days, evidence=%s days, ingest payload=%s days)",
@@ -1430,6 +1487,9 @@ def run_maintenance_cleanup() -> dict[str, int]:
         vacuum_info = vacuum_sqlite()
         summary["vacuumed"] = 1 if vacuum_info.get("vacuumed") else 0
         logger.info("vacuum: %s", vacuum_info)
+        # Last, so the statistics describe the database as the deletes and
+        # the VACUUM left it.
+        summary["optimized"] = 1 if optimize_sqlite() else 0
     return summary
 
 
@@ -1508,44 +1568,158 @@ def get_db_table_sizes(limit: int = 15) -> dict[str, object]:
 
 import threading  # noqa: E402
 
-# Daily cleanup cadence. Short enough to keep the DB bounded, long enough
-# to avoid overlapping VACUUMs.
-_RETENTION_INTERVAL_SECONDS = 24 * 60 * 60
+
+class MaintenanceScheduleError(RuntimeError):
+    """Raised when a maintenance schedule env var has an invalid value."""
+
+
+@dataclass(frozen=True)
+class MaintenanceWindow:
+    """The daily quiet-hour window the maintenance pass runs in.
+
+    Whole UTC hours, ``start_hour`` inclusive and ``end_hour`` exclusive. A
+    start above the end wraps past midnight: 22 and 2 mean 22:00 to 02:00.
+    """
+
+    start_hour: int
+    end_hour: int
+
+    def opened_at(self, now: datetime) -> datetime | None:
+        """When the window containing ``now`` opened, or None outside it."""
+        today = self._opening_on_day_of(now)
+        # A window that wraps past midnight opened yesterday for its
+        # early-morning tail.
+        opened = today if now >= today else today - timedelta(days=1)
+        length = timedelta(hours=(self.end_hour - self.start_hour) % 24)
+        return opened if now < opened + length else None
+
+    def next_opening(self, now: datetime) -> datetime:
+        """The first opening strictly after ``now``."""
+        today = self._opening_on_day_of(now)
+        return today if today > now else today + timedelta(days=1)
+
+    def _opening_on_day_of(self, now: datetime) -> datetime:
+        utc = now.astimezone(timezone.utc)
+        return utc.replace(hour=self.start_hour, minute=0, second=0, microsecond=0)
+
+
+MAINTENANCE_WINDOW_START_HOUR_ENV = "APO_MAINTENANCE_WINDOW_START_HOUR"
+MAINTENANCE_WINDOW_END_HOUR_ENV = "APO_MAINTENANCE_WINDOW_END_HOUR"
+# 03:00 to 05:00 UTC. Installations whose quiet hours fall elsewhere move it
+# with the two variables above.
+DEFAULT_MAINTENANCE_WINDOW = MaintenanceWindow(start_hour=3, end_hour=5)
+
+# One pass per day. Short enough to keep the DB bounded, long enough to
+# avoid overlapping VACUUMs.
+_MAINTENANCE_INTERVAL = timedelta(hours=24)
+
+# The longest the loop sleeps before it re-reads the wall clock. One day-long
+# timer would run on the monotonic clock, which stands still while a host is
+# suspended and ignores clock steps, and so can fire hours outside the window.
+_MAX_SLEEP_SECONDS = 300.0
 
 _retention_thread: threading.Thread | None = None
 _retention_stop = threading.Event()
 
 
+def load_maintenance_window() -> MaintenanceWindow:
+    """Load and validate the quiet-hour window from the environment.
+
+    Same contract as the telemetry limits: read at call time, a missing
+    variable takes its default, and a present empty, non-integer, or
+    out-of-range value raises :class:`MaintenanceScheduleError` naming the
+    variable. Start and end may not be equal: that window is either empty
+    or the whole day, and guessing which is how a pass ends up at noon.
+    """
+    start = _parse_hour(
+        MAINTENANCE_WINDOW_START_HOUR_ENV,
+        os.environ.get(MAINTENANCE_WINDOW_START_HOUR_ENV),
+        DEFAULT_MAINTENANCE_WINDOW.start_hour,
+    )
+    end = _parse_hour(
+        MAINTENANCE_WINDOW_END_HOUR_ENV,
+        os.environ.get(MAINTENANCE_WINDOW_END_HOUR_ENV),
+        DEFAULT_MAINTENANCE_WINDOW.end_hour,
+    )
+    if start == end:
+        raise MaintenanceScheduleError(
+            f"{MAINTENANCE_WINDOW_END_HOUR_ENV} must differ from "
+            f"{MAINTENANCE_WINDOW_START_HOUR_ENV} (both are {start})"
+        )
+    return MaintenanceWindow(start_hour=start, end_hour=end)
+
+
+def maintenance_pass_due(
+    now: datetime, last_pass_at: datetime | None, window: MaintenanceWindow
+) -> bool:
+    """Whether the daily pass should start at ``now``.
+
+    Inside the quiet window the pass is due once per opening. Outside it
+    the pass is due only as a catch-up: nothing trustworthy says one ever
+    ran, or the last one is a full interval old (the process was down,
+    suspended, or failing through its window).
+    """
+    if last_pass_at is None or last_pass_at > now:
+        # A pass recorded in the future means the clock was wrong then or is
+        # wrong now. Waiting for that moment could silence maintenance for
+        # as long as the clock was off, so it counts as never run.
+        return True
+    if now - last_pass_at >= _MAINTENANCE_INTERVAL:
+        return True
+    opened_at = window.opened_at(now)
+    return opened_at is not None and last_pass_at < opened_at
+
+
 def start_retention_loop() -> None:
-    """Run the maintenance pass once now, then daily, on a daemon thread.
+    """Run the maintenance pass once a day in its quiet window, on a daemon thread.
 
     Always starts: the ingest-payload trim, abandoned-upload cleanup, and
     credential reaping are hygiene every deployment wants, independent of
     whether age-based retention is configured.
+
+    The pass used to run at every boot. On a multi-GB database that is
+    seconds of work, now and then a VACUUM that rewrites the whole file
+    while blocking writers, paid on a cold cache at the very moment a
+    restart has already made the service slow. A boot now only catches up
+    when the last recorded pass is a day old or more.
+
+    The window is validated before the thread starts, so a bad
+    ``APO_MAINTENANCE_WINDOW_*`` value fails startup (this runs in the app
+    lifespan) instead of surfacing in the middle of the night.
     """
     global _retention_thread
     if _retention_thread is not None and _retention_thread.is_alive():
         return
 
+    window = load_maintenance_window()
     _retention_stop.clear()
 
     def _loop() -> None:
-        try:
-            _run_and_record_maintenance_pass()
-        except Exception:
-            logger.exception("Initial maintenance cleanup failed")
-        while not _retention_stop.wait(_RETENTION_INTERVAL_SECONDS):
-            try:
-                _run_and_record_maintenance_pass()
-            except Exception:
-                logger.exception("Maintenance cleanup failed")
+        last_attempt_at = _last_recorded_pass_at()
+        while True:
+            now = _utcnow()
+            if maintenance_pass_due(now, last_attempt_at, window):
+                # Counted before it runs: a pass that fails has still used
+                # its turn, so a broken pass waits for the next window
+                # instead of retrying every few minutes all day.
+                last_attempt_at = now
+                try:
+                    _run_and_record_maintenance_pass()
+                except Exception:
+                    logger.exception("Maintenance cleanup failed")
+            delay = _seconds_until_next_check(_utcnow(), last_attempt_at, window)
+            if _retention_stop.wait(delay):
+                return
 
     _retention_thread = threading.Thread(
         target=_loop, name="data-maintenance", daemon=True
     )
     _retention_thread.start()
     logger.info(
-        "data maintenance loop started (retention=%s days, evidence=%s days, ingest payload=%s days)",
+        "data maintenance loop started (window=%02d:00-%02d:00 UTC, retention=%s days, "
+        "evidence=%s days, ingest payload=%s days)",
+        window.start_hour,
+        window.end_hour,
         RETENTION_DAYS,
         evidence_retention_days(),
         ingest_payload_retention_days(),
@@ -1554,3 +1728,51 @@ def start_retention_loop() -> None:
 
 def stop_retention_loop() -> None:
     _retention_stop.set()
+
+
+def _seconds_until_next_check(
+    now: datetime, last_attempt_at: datetime | None, window: MaintenanceWindow
+) -> float:
+    """How long the loop may sleep before a pass could next be due."""
+    next_due = window.next_opening(now)
+    if last_attempt_at is not None:
+        next_due = min(next_due, last_attempt_at + _MAINTENANCE_INTERVAL)
+    return min(max((next_due - now).total_seconds(), 1.0), _MAX_SLEEP_SECONDS)
+
+
+def _last_recorded_pass_at() -> datetime | None:
+    """When the last recorded pass started, per ``maintenance_state``.
+
+    None when no pass was ever recorded, and also when the row cannot be
+    read: running a pass at startup (the old behavior) is the safe reading
+    of "unknown".
+    """
+    try:
+        with Session(engine) as session:
+            row = session.get(MaintenanceStateDB, 1)
+            return row.last_started_at if row is not None else None
+    except Exception:
+        logger.exception("Could not read the last maintenance pass; assuming none")
+        return None
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _parse_hour(name: str, raw: str | None, default: int) -> int:
+    """Parse an hour of the day (0 to 23). Missing means ``default``."""
+    if raw is None:
+        return default
+    raw = raw.strip()
+    if raw == "":
+        raise MaintenanceScheduleError(f"{name} must be an hour from 0 to 23 (got empty)")
+    try:
+        value = int(raw)
+    except ValueError:
+        raise MaintenanceScheduleError(
+            f"{name} must be a base-10 hour from 0 to 23 (got {raw!r})"
+        ) from None
+    if not 0 <= value <= 23:
+        raise MaintenanceScheduleError(f"{name} must be an hour from 0 to 23 (got {value})")
+    return value
