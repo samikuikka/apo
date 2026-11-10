@@ -56,6 +56,59 @@ class TestObservationTypeClassification:
         result = normalize_span(span)
         assert result.observation_type == "RETRIEVER"
 
+    def test_openinference_retriever_documents_map_onto_the_tool_channels(self):
+        """The promise to LangChain/LlamaIndex users: nothing to wrap.
+
+        Their instrumentation records the query as input.value and flattens
+        documents as retrieval.documents.*; ingestion must land both on the
+        channels retrieval assertions read.
+        """
+        span = _make_span(
+            attributes={
+                "openinference.span.kind": "RETRIEVER",
+                "input.value": "vacation days",
+                "input.mime_type": "text/plain",
+                "retrieval.documents.0.id": "handbook-vacation#p1",
+                "retrieval.documents.0.score": 0.9,
+                "retrieval.documents.0.content": "25 days of paid vacation.",
+                "retrieval.documents.1.id": "handbook-faq",
+                "retrieval.documents.1.content": "See the leave policy.",
+            }
+        )
+        result = normalize_span(span)
+        assert result.observation_type == "RETRIEVER"
+        assert result.tool_parameters == {"query": "vacation days"}
+        assert result.tool_result == {
+            "documents": [
+                {"id": "handbook-vacation#p1", "score": 0.9, "content": "25 days of paid vacation."},
+                {"id": "handbook-faq", "content": "See the leave policy."},
+            ]
+        }
+
+    def test_openinference_retriever_without_documents_stays_partial(self):
+        span = _make_span(
+            attributes={
+                "openinference.span.kind": "RETRIEVER",
+                "input.value": "vacation days",
+            }
+        )
+        result = normalize_span(span)
+        assert result.tool_parameters == {"query": "vacation days"}
+        assert result.tool_result is None
+
+    def test_openinference_retriever_keeps_genai_channels_when_both_present(self):
+        span = _make_span(
+            attributes={
+                "openinference.span.kind": "RETRIEVER",
+                "gen_ai.tool.call.arguments": '{"query": "explicit"}',
+                "gen_ai.tool.call.result": '{"documents": [{"content": "x"}]}',
+                "retrieval.documents.0.content": "ignored",
+            }
+        )
+        result = normalize_span(span)
+        assert result.tool_parameters == {"query": "explicit"}
+        assert result.tool_result == {"documents": [{"content": "x"}]}
+
     def test_gen_ai_tool_name(self):
         """gen_ai.tool.name presence → TOOL."""
         span = _make_span(attributes={"gen_ai.tool.name": "search"})

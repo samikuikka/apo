@@ -635,3 +635,76 @@ class TestRetrieverObservationEndToEnd:
             ]
         }
         assert snapshot.capabilities.retrieval.value == "available"
+
+    def test_openinference_retriever_projects_without_wrapping(self, otel_server):
+        """A LangChain/LlamaIndex-shaped span: kind + input.value + flattened
+        retrieval.documents.*. It must project exactly like the apo SDK's own
+        export, so auto-instrumented retrievals need no wrapping."""
+        from opentelemetry import trace
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
+
+        resource = Resource.create({"service.name": "e2e-oi-rag-service"})
+        provider = TracerProvider(resource=resource)
+        exporter = OTLPSpanExporter(endpoint=_url(otel_server), headers=_auth_headers(otel_server))
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+        tracer = provider.get_tracer("e2e-oi-rag")
+
+        trace_id_holder: dict[str, str] = {}
+        root = tracer.start_span("oi-rag.root")
+        root.set_attribute("apo.observation.type", "AGENT")
+        with trace.use_span(root, end_on_exit=True):
+            raw_id = root.get_span_context().trace_id
+            trace_id_holder["id"] = f"{raw_id:032x}" if isinstance(raw_id, int) else str(raw_id)
+            retriever = tracer.start_span("OpenInference.retriever")
+            retriever.set_attribute("openinference.span.kind", "RETRIEVER")
+            retriever.set_attribute("input.value", "paid vacation days")
+            retriever.set_attribute("input.mime_type", "text/plain")
+            retriever.set_attribute("retrieval.documents.0.id", "handbook-vacation#p1")
+            retriever.set_attribute("retrieval.documents.0.score", 1.5)
+            retriever.set_attribute(
+                "retrieval.documents.0.content",
+                "Full-time employees receive 25 days of paid vacation.",
+            )
+            retriever.set_attribute("retrieval.documents.1.id", "handbook-carryover#p1")
+            retriever.set_attribute(
+                "retrieval.documents.1.content",
+                "Up to 5 unused vacation days carry over.",
+            )
+            retriever.end()
+        provider.force_flush()
+        provider.shutdown()
+
+        trace_id = trace_id_holder["id"]
+        from apo.services.trace_repository import get_trace_repository
+
+        engine = otel_server["engine"]
+        snapshot = None
+        for _ in range(40):
+            with Session(engine) as session:
+                repo = get_trace_repository()
+                snapshot = repo.get_projection_snapshot(
+                    session, project_id=otel_server["project"], trace_id=trace_id
+                )
+            if snapshot is not None:
+                break
+            time.sleep(0.1)
+
+        assert snapshot is not None, "no projection built for the OpenInference trace"
+        (retrieval,) = [o for o in snapshot.observations if o.type == "RETRIEVER"]
+        assert retrieval.tool_parameters == {"query": "paid vacation days"}
+        assert retrieval.tool_result == {
+            "documents": [
+                {
+                    "id": "handbook-vacation#p1",
+                    "score": 1.5,
+                    "content": "Full-time employees receive 25 days of paid vacation.",
+                },
+                {"id": "handbook-carryover#p1", "content": "Up to 5 unused vacation days carry over."},
+            ]
+        }
+        assert snapshot.capabilities.retrieval.value == "available"
