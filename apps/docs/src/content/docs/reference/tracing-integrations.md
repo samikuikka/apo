@@ -191,7 +191,7 @@ Available primitives on `AgentTaskTraceContext`:
 | Method | What it does |
 |---|---|
 | `trace.traceTool(name, params, fn)` | Wraps a tool call. Automatically creates and ends a TOOL span. |
-| `trace.traceRetriever(query, fn)` | Wraps a retrieval step. |
+| `trace.traceRetriever(query, fn)` | Wraps a retrieval step. Have `fn` return `{ documents: [{ id, score, content }] }` (or a bare array) and `t.retrieved` / `t.not.retrieved` / `t.grounded` can assert on what came back. |
 | `trace.traceAgent(name, fn)` | Wraps a sub-agent call. Creates an AGENT span. |
 | `trace.traceChain(name, fn)` | Wraps a chain step. Creates a CHAIN span. |
 | `trace.traceGuardrail(name, fn)` | Wraps a guardrail check. |
