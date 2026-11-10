@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { FilterRailFrame, FilterRailSheetFrame, useFilterRailSheetOpen, useFilterRailVisible } from "@/components/filter-rail-shell";
 import {
   ENVIRONMENT_DIMENSION,
   filterRunScopeDimensions,
@@ -51,6 +51,17 @@ import { cn } from "@/lib/utils";
  * same sections live in a sheet ({@link ScopeRailSheet}) because a fixed-width
  * rail starves the table.
  */
+
+/** Runs-page rail visibility, backed by the shared shell under the
+ * Runs-scoped storage key. */
+export function useRailVisible(): [boolean, (next: boolean) => void] {
+  return useFilterRailVisible("runs-filters-visible");
+}
+
+export function useRailSheetOpen(): [boolean, (next: boolean) => void] {
+  return useFilterRailSheetOpen("runs-filters-visible");
+}
+
 export interface ScopeRailProps {
   facets: RunLabelFacets | null;
   scope: RunScope;
@@ -76,21 +87,7 @@ export function ScopeRail({
   onClose,
 }: ScopeRailProps & { onClose: () => void }) {
   return (
-    <aside aria-label="Filters" className="flex w-[264px] shrink-0 flex-col border-r border-border">
-      <div className="flex items-center justify-between px-4 pb-2 pt-4">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Filters
-        </span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Hide filters"
-          title="Hide filters"
-          className="flex h-7 w-7 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <PanelLeftClose className="h-4 w-4" />
-        </button>
-      </div>
+    <FilterRailFrame onClose={onClose}>
       <ScopeRailBody
         facets={facets}
         scope={scope}
@@ -100,7 +97,7 @@ export function ScopeRail({
         onApplyParams={onApplyParams}
         currentParams={currentParams}
       />
-    </aside>
+    </FilterRailFrame>
   );
 }
 
@@ -116,24 +113,17 @@ export function ScopeRailSheet({
   onOpenChange,
 }: ScopeRailProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-4/5 max-w-xs overflow-y-auto p-0 sm:max-w-xs">
-        <SheetHeader className="border-b border-border">
-          <SheetTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Filters
-          </SheetTitle>
-        </SheetHeader>
-        <ScopeRailBody
-          facets={facets}
-          scope={scope}
-          onScopeChange={onScopeChange}
-          metrics={metrics}
-          onMetricsChange={onMetricsChange}
-          onApplyParams={onApplyParams}
-          currentParams={currentParams}
-        />
-      </SheetContent>
-    </Sheet>
+    <FilterRailSheetFrame open={open} onOpenChange={onOpenChange}>
+      <ScopeRailBody
+        facets={facets}
+        scope={scope}
+        onScopeChange={onScopeChange}
+        metrics={metrics}
+        onMetricsChange={onMetricsChange}
+        onApplyParams={onApplyParams}
+        currentParams={currentParams}
+      />
+    </FilterRailSheetFrame>
   );
 }
 
@@ -212,71 +202,11 @@ export function RailToggle({
   );
 }
 
-const RAIL_VISIBLE_KEY = "runs-filters-visible";
-const railListeners = new Set<() => void>();
-
-function subscribeRail(onChange: () => void) {
-  railListeners.add(onChange);
-  window.addEventListener("storage", onChange);
-  return () => {
-    railListeners.delete(onChange);
-    window.removeEventListener("storage", onChange);
-  };
-}
-
-function readRail(): string | null {
-  try {
-    return window.localStorage.getItem(RAIL_VISIBLE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The sheet (mobile rail) open flag, shared in memory: the toggle and the
- * rail can live in different components on the task-history page, and both
- * must flip the same sheet.
- */
-const sheetListeners = new Set<() => void>();
-let sheetOpenMemory = false;
-
-function subscribeSheet(onChange: () => void) {
-  sheetListeners.add(onChange);
-  return () => {
-    sheetListeners.delete(onChange);
-  };
-}
-
-export function useRailSheetOpen(): [boolean, (next: boolean) => void] {
-  const open = useSyncExternalStore(
-    subscribeSheet,
-    () => sheetOpenMemory,
-    () => false,
-  );
-  const setOpen = useCallback((next: boolean) => {
-    sheetOpenMemory = next;
-    sheetListeners.forEach((notify) => notify());
-  }, []);
-  return [open, setOpen];
-}
-
 /**
  * Rail visibility, remembered per browser. The external-store pattern keeps
  * the server snapshot neutral (null means visible) so hydration never
  * mismatches; storage events keep other tabs in sync.
  */
-export function useRailVisible(): [boolean, (next: boolean) => void] {
-  const stored = useSyncExternalStore(subscribeRail, readRail, () => null);
-  const setVisible = useCallback((next: boolean) => {
-    try {
-      window.localStorage.setItem(RAIL_VISIBLE_KEY, String(next));
-    } catch {
-      // Storage unavailable: the in-memory notification below still applies.
-    }
-    railListeners.forEach((notify) => notify());
-  }, []);
-  return [stored !== "false", setVisible];
-}
 
 function ScopeRailBody({
   facets,
