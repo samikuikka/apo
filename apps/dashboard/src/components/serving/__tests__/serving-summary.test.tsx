@@ -111,7 +111,7 @@ describe("ServingSummary", () => {
 
     it("unknown and no_data states say so", () => {
       const { rerender } = render(<ServingSummary compact summary={summary({ state: "unknown" })} />);
-      expect(screen.getByText("Unknown")).toBeInTheDocument();
+      expect(screen.getByText("Not reported")).toBeInTheDocument();
       rerender(<ServingSummary compact summary={summary({ state: "no_data" })} />);
       expect(screen.getByText("No data")).toBeInTheDocument();
     });
@@ -208,6 +208,52 @@ describe("ServingSummary", () => {
       expect(onSelect).toHaveBeenCalledWith(tuple);
     });
 
+    it("collapses to one line when no call reported serving", () => {
+      render(
+        <ServingSummary
+          summary={summary({
+            state: "unknown",
+            calls: 5,
+            errored_calls: 2,
+            groups: [group({ calls: 5, errored_calls: 2 })],
+            total_groups: 1,
+            cost_coverage: coverage,
+          })}
+        />,
+      );
+      expect(screen.getByText("5 calls \u00b7 serving not reported")).toBeInTheDocument();
+      expect(screen.getByText("\u00b7 2 errored")).toBeInTheDocument();
+      expect(screen.getByText(/Cost coverage:/)).toBeInTheDocument();
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Unknown/)).not.toBeInTheDocument();
+    });
+
+    it("labels an unreported group and hides unknown-scope badges", () => {
+      render(
+        <ServingSummary
+          summary={summary({
+            state: "partial",
+            calls: 3,
+            groups: [
+              group({
+                calls: 3,
+                rate_scopes: [
+                  {
+                    scope: "unknown",
+                    whole_call_rate: { median: 80, samples: 3 },
+                    streaming_rate: { median: null, samples: 0 },
+                  },
+                ],
+              }),
+            ],
+            total_groups: 1,
+          })}
+        />,
+      );
+      expect(screen.getByText("Not reported")).toBeInTheDocument();
+      expect(screen.queryByText(/Unknown/)).not.toBeInTheDocument();
+    });
+
     it("shows the child-evidence count on batch summaries", () => {
       render(
         <ServingSummary
@@ -232,7 +278,7 @@ describe("GenerationServingDetails", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("lists the reported identity dimensions and hides nothing as zero", () => {
+  it("lists only the reported identity dimensions", () => {
     render(
       <GenerationServingDetails
         identity={identity({
@@ -241,18 +287,55 @@ describe("GenerationServingDetails", () => {
           serving_host: "baseten",
           route: "nitro",
           service_tier: "priority",
+          request_model: "example-model",
+          response_model: "example-model",
         })}
         rates={null}
       />,
     );
     expect(screen.getByText("openrouter \u00b7 baseten \u00b7 nitro \u00b7 priority")).toBeInTheDocument();
     expect(screen.getByText("example-model")).toBeInTheDocument();
-    // Unreported tiers render as em dashes, never as fabricated values.
-    const requested = screen.getByText("Requested Tier").nextElementSibling;
-    expect(requested).toHaveTextContent("\u2014");
+    expect(screen.getByText("Served Tier")).toBeInTheDocument();
+    expect(screen.queryByText("Requested Tier")).not.toBeInTheDocument();
+    expect(screen.queryByText("Request Model")).not.toBeInTheDocument();
+    expect(screen.queryByText("Response Model")).not.toBeInTheDocument();
+    expect(screen.queryByText("\u2014")).not.toBeInTheDocument();
   });
 
-  it("shows TTFT and the streaming-unavailable reason when present", () => {
+  it("shows the request model only when it differs from the served model (a fallback)", () => {
+    render(
+      <GenerationServingDetails
+        identity={identity({
+          model: "fallback-model",
+          request_model: "primary-model",
+          response_model: "fallback-model",
+        })}
+        rates={null}
+      />,
+    );
+    expect(screen.getByText("Request Model")).toBeInTheDocument();
+    expect(screen.getByText("primary-model")).toBeInTheDocument();
+    expect(screen.queryByText("Response Model")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unknown")).not.toBeInTheDocument();
+  });
+
+  it("renders nothing when the call reported no serving value", () => {
+    const { container } = render(
+      <GenerationServingDetails
+        identity={identity()}
+        rates={{
+          time_to_first_token_ms: null,
+          whole_call_output_tokens_per_second: null,
+          streaming_output_tokens_per_second: null,
+          output_token_scope: "unknown",
+          streaming_unavailable_reason: "missing_timing",
+        }}
+      />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows TTFT and token scope without the streaming-unavailable reason", () => {
     const rates: GenerationRates = {
       time_to_first_token_ms: 500,
       whole_call_output_tokens_per_second: null,
@@ -263,6 +346,6 @@ describe("GenerationServingDetails", () => {
     render(<GenerationServingDetails identity={null} rates={rates} />);
     expect(screen.getByText("500 ms")).toBeInTheDocument();
     expect(screen.getByText("All Output")).toBeInTheDocument();
-    expect(screen.getByText("token and timing scopes differ")).toBeInTheDocument();
+    expect(screen.queryByText("token and timing scopes differ")).not.toBeInTheDocument();
   });
 });
