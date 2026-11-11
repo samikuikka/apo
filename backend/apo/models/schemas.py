@@ -2002,7 +2002,8 @@ class HostedAccessInvitationSummary(SQLModel):
     delivery_method: str
     expires_at: datetime
     created_at: datetime
-    invited_by_user_id: str
+    origin: Literal["admin", "self_serve"] = "admin"
+    invited_by_user_id: str | None = None
     accepted_at: datetime | None = None
     accepted_by_user_id: str | None = None
     accepted_project_id: str | None = None
@@ -2014,19 +2015,41 @@ class CreateHostedAccessInvitationResponse(SQLModel):
 
     ``invite_url`` is populated only when email delivery is unavailable
     (``delivery_status="link_only"``) so the administrator can share the
-    URL out-of-band; it is never exposed again afterwards.
+    URL out-of-band; it is never exposed again afterwards. A self-serve
+    invitation never carries it: an undelivered one reports ``failed``.
     """
 
     invitation: HostedAccessInvitationSummary
     invite_url: str | None = None
-    delivery_status: Literal["sent", "link_only"]
+    delivery_status: Literal["sent", "link_only", "failed"]
+
+
+class SelfServeInvitationRequest(SQLModel):
+    """Body of ``POST /auth/hosted-access/request``."""
+
+    email: str
+
+
+class SelfServeInvitationRequestAccepted(SQLModel):
+    """The one answer the request endpoint gives every eligible-looking
+    address, so the response never says whether an account exists."""
+
+    message: str
+
+
+class SignupModeResponse(SQLModel):
+    """Whether this installation takes self-serve invitation requests."""
+
+    mode: Literal["invite_only", "self_serve"]
 
 
 class HostedAccessInvitationPreview(SQLModel):
     """Public preview of an admission token (no auth required).
 
     Invalid/expired/revoked/accepted tokens return ``valid=False`` with a
-    generic reason and no email metadata.
+    generic reason and no email metadata. For a valid token ``email`` is
+    masked (``j***n@example.com``): links get pasted into chats, and the
+    token alone must not hand out the invited address.
     """
 
     valid: bool = False
@@ -2053,10 +2076,17 @@ class AcceptHostedAccessExistingAccountRequest(SQLModel):
 
 
 class AcceptHostedAccessResponse(SQLModel):
-    """Result of a successful admission acceptance: the new Project."""
+    """Result of a successful admission acceptance: the new Project.
+
+    ``email`` is the account's address, which the masked preview no longer
+    gives the join page. ``email_verification_required`` tells it the
+    account cannot sign in until the mailed code is entered.
+    """
 
     status: Literal["accepted"]
     project_id: str
+    email: str
+    email_verification_required: bool = False
 
 
 class UpdateProjectTaskSourceRequest(SQLModel):

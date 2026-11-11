@@ -236,6 +236,10 @@ deployments that also raised the backend memory limit.
 | `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | `10` | Max login attempts before lockout. |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `300` | Lockout window length. |
 | `AUTH_EMAIL_VERIFICATION_REQUIRED` | `false` | Require email verification before login. |
+| `APO_SIGNUP_MODE` | `invite_only` | `self_serve` lets a visitor request a hosted-access invitation for their own email on `/join`; the accept link is mailed and never shown anywhere else. Requires a configured email transport, otherwise startup fails. |
+| `APO_SELF_SERVE_INVITE_TTL_HOURS` | `24` | How long a self-serve invitation link stays valid. |
+| `APO_SELF_SERVE_REQUESTS_PER_HOUR_PER_IP` | `3` | Self-serve requests one IP may send per hour. |
+| `APO_SELF_SERVE_MAX_OUTSTANDING` | `200` | Cap on unaccepted, unexpired self-serve invitations installation-wide; above it the request endpoint answers 429 until rows are accepted or expire. |
 | `APO_TRUSTED_PROXY_RANGES` | loopback + private (`127.0.0.0/8, ::1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, fc00::/7`) | Comma-separated CIDR ranges whose direct peers are trusted proxies. Client-IP resolution (login lockout, ingest rate limits) honors `x-forwarded-for` only when the connection's peer address falls inside these ranges — otherwise the peer address itself is used, so a spoofed header from an untrusted host changes nothing. When you front apo with your own nginx/Traefik (see [Publish on a Domain](/self-hosting/public-server/)), set this to the proxy's address or range; narrower is safer. |
 | `ADMIN_API_KEY` | - | Admin-level API key for privileged routes. |
 

@@ -2,25 +2,29 @@
 
 """Hosted access invitation routes.
 
-Two explicitly separated route groups on one router:
+Three explicitly separated route groups on one router:
 
-- **administrator** endpoints under ``/v1/admin/hosted-access-invitations``
-  — list, issue, resend, revoke. Guarded by
+- **administrator** endpoints under ``/v1/admin/hosted-access-invitations``:
+  list, issue, resend, revoke. Guarded by
   ``require_installation_admin`` (browser-session authority only).
-- **admission** endpoints under ``/auth/hosted-access`` — public token
+- **admission** endpoints under ``/auth/hosted-access``: public token
   preview and new-account acceptance (bearer token authority, added to
   ``AuthMiddleware.PUBLIC_PATHS``), plus existing-account acceptance
   which requires an authenticated session before the route runs.
+- **self-serve** endpoints under ``/auth/hosted-access``: the public
+  request form and the mode probe the join page reads. Open only while
+  ``APO_SIGNUP_MODE=self_serve`` and an email transport is configured.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from ..auth.client_ip import get_client_ip
 from ..auth.rate_limit import LoginRateLimiter
 from ..db import get_session
+from ..models.db import UserDB
 from ..models.schemas import (
     AcceptHostedAccessCreateAccountRequest,
     AcceptHostedAccessExistingAccountRequest,
@@ -29,23 +33,46 @@ from ..models.schemas import (
     CreateHostedAccessInvitationResponse,
     HostedAccessInvitationPreview,
     HostedAccessInvitationSummary,
+    SelfServeInvitationRequest,
+    SelfServeInvitationRequestAccepted,
+    SignupModeResponse,
 )
+from ..services.email import get_email_service
 from ..services.hosted_access_invitations import (
     accept_hosted_access_create_account,
     accept_hosted_access_existing_account,
     create_or_refresh_hosted_access_invitation,
     list_hosted_access_invitations,
     preview_hosted_access_invitation,
+    request_self_serve_invitation,
     resend_hosted_access_invitation,
     revoke_hosted_access_invitation,
 )
 from ..services.installation_admin import require_installation_admin
+from ..services.invitation_tokens import normalize_email
+from ..services.signup_config import SignupConfig, load_signup_config
+from .auth import create_and_send_otp
 
 router = APIRouter(tags=["hosted-access"])
 
 # Public admission endpoints are bearer-capability probes; rate-limit
 # them per IP like the other pre-authentication endpoints.
 hosted_access_rate_limiter = LoginRateLimiter(max_attempts=30, window_seconds=60)
+
+_SELF_SERVE_WINDOW_SECONDS = 3600
+# Three per hour per address, matching the per-IP default: a requester who
+# rotates addresses still cannot make one inbox the target of a mail flood.
+_SELF_SERVE_REQUESTS_PER_HOUR_PER_EMAIL = 3
+
+# The per-IP ceiling comes from APO_SELF_SERVE_REQUESTS_PER_HOUR_PER_IP and
+# is applied on each request, so it tracks the validated configuration.
+self_serve_ip_rate_limiter = LoginRateLimiter(
+    max_attempts=3, window_seconds=_SELF_SERVE_WINDOW_SECONDS
+)
+self_serve_email_rate_limiter = LoginRateLimiter(
+    max_attempts=_SELF_SERVE_REQUESTS_PER_HOUR_PER_EMAIL,
+    window_seconds=_SELF_SERVE_WINDOW_SECONDS,
+)
 
 
 def _enforce_public_rate_limit(request: Request) -> None:
@@ -162,15 +189,24 @@ async def accept_create_account(
     The bearer token alone is the authority (no session yet). Atomic:
     User, Project, owner membership, and invitation consumption commit
     together or not at all. Single-use; replays are rejected.
+
+    An account created from a self-serve invitation must verify its email
+    before it can sign in: the response says so and a code is mailed.
     """
     _enforce_public_rate_limit(request)
-    return accept_hosted_access_create_account(
+    accepted = accept_hosted_access_create_account(
         session,
         raw_token=body.token,
         name=body.name,
         password=body.password,
         project_name=body.project_name,
     )
+    if accepted.email_verification_required:
+        user = session.exec(
+            select(UserDB).where(UserDB.email == accepted.email)
+        ).one()
+        await create_and_send_otp(user, session)
+    return accepted
 
 
 @router.post("/auth/hosted-access/accept/existing-account")
@@ -193,3 +229,83 @@ async def accept_existing_account(
         accepting_user_id=user_id,
         project_name=body.project_name,
     )
+
+
+# ---------------------------------------------------------------------------
+# Self-serve endpoints (public, no token)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/auth/hosted-access/mode")
+def signup_mode() -> SignupModeResponse:
+    """Whether this installation takes self-serve invitation requests.
+
+    The join page reads this to decide whether to show the request form.
+    """
+    config = load_signup_config()
+    return SignupModeResponse(
+        mode="self_serve" if _self_serve_open(config) else "invite_only"
+    )
+
+
+@router.post("/auth/hosted-access/request", status_code=202)
+async def request_invitation(
+    body: SelfServeInvitationRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+) -> SelfServeInvitationRequestAccepted:
+    """Ask for an invitation to this installation for your own email.
+
+    The accept link is mailed to the address and nowhere else. Every
+    eligible-looking address gets the same 202, whether or not an account
+    or a pending invitation exists and whether or not the mail went out.
+    503 while self-serve signup is off; 429 when the per-IP, per-email, or
+    outstanding-invitation limit is reached.
+    """
+    config = load_signup_config()
+    if not _self_serve_open(config):
+        raise HTTPException(
+            status_code=503, detail="Self-serve signup is not available."
+        )
+    _enforce_self_serve_rate_limits(request, body.email, config)
+    await request_self_serve_invitation(session, email=body.email, config=config)
+    return SelfServeInvitationRequestAccepted(message=_REQUEST_ACCEPTED_MESSAGE)
+
+
+def _self_serve_open(config: SignupConfig) -> bool:
+    """Startup refuses self_serve without a transport; this keeps the door
+    shut if one is missing at runtime anyway, since a link that cannot be
+    mailed must not be issued."""
+    return config.self_serve and get_email_service().is_configured
+
+
+def _enforce_self_serve_rate_limits(
+    request: Request, email: str, config: SignupConfig
+) -> None:
+    """Per-IP and per-email sliding windows, both 429 with Retry-After.
+
+    Both are checked before either is recorded, and neither depends on
+    what is stored for the address, so a 429 says nothing about accounts.
+    """
+    self_serve_ip_rate_limiter.max_attempts = config.requests_per_hour_per_ip
+    ip_key = get_client_ip(request)
+    email_key = normalize_email(email)
+
+    retry_after = 0
+    if not self_serve_ip_rate_limiter.is_allowed(ip_key):
+        retry_after = self_serve_ip_rate_limiter.get_retry_after(ip_key)
+    if not self_serve_email_rate_limiter.is_allowed(email_key):
+        retry_after = max(
+            retry_after, self_serve_email_rate_limiter.get_retry_after(email_key)
+        )
+    if retry_after:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests. Please try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+    self_serve_ip_rate_limiter.record_attempt(ip_key)
+    self_serve_email_rate_limiter.record_attempt(email_key)
+
+
+_REQUEST_ACCEPTED_MESSAGE = "If the address is eligible, an invitation is on its way."

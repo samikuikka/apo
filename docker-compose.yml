@@ -108,6 +108,16 @@ services:
       - EMAIL_TRANSPORT_URL=${EMAIL_TRANSPORT_URL:-}
       - EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS:-}
       - EMAIL_FROM_NAME=${EMAIL_FROM_NAME:-apo}
+      # --- Self-serve signup (off by default) ---
+      # invite_only: nobody is admitted without an administrator's
+      # invitation. self_serve: a visitor can request an invitation for
+      # their own email on /join. Requires EMAIL_TRANSPORT_URL above:
+      # the backend refuses to start in self_serve mode without it, since
+      # the accept link is delivered by email only.
+      - APO_SIGNUP_MODE=${APO_SIGNUP_MODE:-invite_only}
+      - APO_SELF_SERVE_INVITE_TTL_HOURS=${APO_SELF_SERVE_INVITE_TTL_HOURS:-24}
+      - APO_SELF_SERVE_REQUESTS_PER_HOUR_PER_IP=${APO_SELF_SERVE_REQUESTS_PER_HOUR_PER_IP:-3}
+      - APO_SELF_SERVE_MAX_OUTSTANDING=${APO_SELF_SERVE_MAX_OUTSTANDING:-200}
       # --- LLM provider credentials for task runs ---
       # The backend forwards these into task subprocesses; Compose only passes
       # explicitly listed vars, so without this block setting them in .env is

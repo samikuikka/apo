@@ -4516,7 +4516,97 @@ def _migrate_to_v69() -> None:
         _add_column_if_missing(conn, "task_view", "serving_filter_json", "JSON")
 
 
-LATEST_SCHEMA_VERSION = 69
+def _migrate_to_v70() -> None:
+    """Version 70: self-serve hosted-access invitations.
+
+    ``hosted_access_invitations.origin`` tells an administrator's
+    invitation (``admin``, the value every existing row takes) from one a
+    visitor requested for their own address (``self_serve``), and
+    ``invited_by_user_id`` becomes nullable because a self-serve row has
+    no inviter. ``users.requires_email_verification`` marks the accounts
+    that must verify before signing in; existing users keep false, so a
+    NULL ``email_verified_at`` on an older account still logs in. The
+    partial index serves the outstanding-invitation count the public
+    request endpoint runs on every call. No backfill.
+    """
+    _add_self_serve_invitation_schema()
+
+
+def _add_self_serve_invitation_schema() -> None:
+    # The SQLite rebuild opens its own transaction and refuses to start
+    # inside one, so it runs before any other statement of this rung.
+    with engine.begin() as conn:
+        _make_invitation_inviter_nullable(conn)
+    with engine.begin() as conn:
+        if "hosted_access_invitations" not in _get_table_names(conn):
+            return
+        _add_column_if_missing(
+            conn, "hosted_access_invitations", "origin", "VARCHAR NOT NULL DEFAULT 'admin'"
+        )
+        _add_column_if_missing(
+            conn,
+            "users",
+            "requires_email_verification",
+            f"BOOLEAN NOT NULL DEFAULT {_sql_false(conn)}",
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_hosted_access_invitations_self_serve_outstanding "
+            "ON hosted_access_invitations(expires_at) "
+            "WHERE origin = 'self_serve' AND accepted_at IS NULL AND revoked_at IS NULL"
+        )
+
+
+def _make_invitation_inviter_nullable(conn: Connection) -> None:
+    """Drop the inviter's NOT NULL. Idempotent on SQLite and PostgreSQL.
+
+    SQLite has no ``ALTER COLUMN``, so the table is rebuilt from its own
+    DDL minus that constraint (not from the model, which may have grown
+    columns this database does not have yet), its rows copied unchanged
+    and its indexes recreated from their saved SQL, all in one transaction.
+    """
+    table = "hosted_access_invitations"
+    if table not in _get_table_names(conn):
+        return
+    column = next(
+        (c for c in inspect(conn).get_columns(table) if c["name"] == "invited_by_user_id"),
+        None,
+    )
+    if column is None or column["nullable"]:
+        return
+    if not _is_sqlite_conn(conn):
+        conn.exec_driver_sql(
+            f"ALTER TABLE {table} ALTER COLUMN invited_by_user_id DROP NOT NULL"
+        )
+        return
+
+    ddl = conn.exec_driver_sql(
+        f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table}'"
+    ).scalar_one()
+    nullable_ddl, replaced = re.subn(
+        r'(?<![\w"])("?invited_by_user_id"?\s+\w+(?:\(\d+\))?)\s+NOT\s+NULL',
+        r"\1",
+        ddl,
+        count=1,
+    )
+    if not replaced:
+        raise RuntimeError(
+            "invited_by_user_id NOT NULL not found in the hosted_access_invitations DDL"
+        )
+    index_ddl = _sqlite_index_ddl(conn, table)
+    legacy = "_hosted_access_invitations_inviter_not_null"
+
+    with _sqlite_rebuild_transaction(conn, "self-serve invitations"):
+        conn.exec_driver_sql(f"ALTER TABLE {table} RENAME TO {legacy}")
+        conn.exec_driver_sql(nullable_ddl)
+        # Same DDL, same column order.
+        conn.exec_driver_sql(f"INSERT INTO {table} SELECT * FROM {legacy}")
+        # Takes the legacy table's indexes with it, freeing their names.
+        conn.exec_driver_sql(f"DROP TABLE {legacy}")
+        for statement in index_ddl:
+            conn.exec_driver_sql(statement)
+
+
+LATEST_SCHEMA_VERSION = 70
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -4588,6 +4678,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     67: _migrate_to_v67,
     68: _migrate_to_v68,
     69: _migrate_to_v69,
+    70: _migrate_to_v70,
 }
 
 

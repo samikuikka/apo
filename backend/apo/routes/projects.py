@@ -60,6 +60,7 @@ from ..services.agent_task_stats import (
     load_run_stat_fields,
     compute_run_host_facets,
 )
+from ..services.email_verification import require_verified_email
 from ..services.project_deletion import delete_project_data
 from ..services.agent_task_stats import compute_run_metric_quantiles
 from ..services.run_labels import compute_run_label_facets
@@ -313,6 +314,8 @@ def bootstrap_project(
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    require_verified_email(user)
 
     name = body.name.strip()
     if not name:

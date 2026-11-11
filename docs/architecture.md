@@ -123,6 +123,26 @@ browser-session authority only: Project API keys and executor capability
 credentials cannot manage admission even when their creator is an
 administrator.
 
+An invitation can also be **self-serve**: with `APO_SIGNUP_MODE=self_serve`
+(validated at startup, `invite_only` by default), a visitor requests one
+for their own address on `/join`. The accept link reaches that inbox or
+nobody: no response, log line, or error path returns it, and a failed
+send is recorded on the row (`delivery_method="failed"`) so an
+administrator can resend. The public request endpoint is bounded by
+per-IP and per-email sliding windows plus an installation-wide cap on
+outstanding self-serve invitations, and answers every eligible-looking
+address with the same generic 202 so it cannot be used to enumerate
+accounts. Acceptance is the same single transaction as an admin
+invitation, except the created account carries
+`requires_email_verification` and signs in only after the emailed code;
+a self-serve request never rotates an admin-issued link. That gate is
+shared by every password-based entry point (`/auth/verify-password` and
+the two CLI bootstrap endpoints), so the CLI cannot mint a key for an
+account that still owes its code. Invitation previews carry the token in
+the query string, so the backend redacts `token=` values from uvicorn's
+access log; a reverse proxy in front of apo keeps its own log and needs
+its own redaction.
+
 Every path that admits a person by email (hosted-access invitations,
 project invitations, admin user creation) refuses disposable inbox
 domains before anything is persisted: the email's domain is matched

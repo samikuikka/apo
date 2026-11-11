@@ -150,7 +150,7 @@ Email is **off by default** (log-only). The platform works fully without it — 
 **Without email configured:**
 
 - **Signup is instant** — email verification is off by default (`AUTH_EMAIL_VERIFICATION_REQUIRED=false`), so new accounts are active immediately.
-- **Invitations are copy-link** — the dashboard hands you a join link to paste to a teammate (Slack, email, whatever). They accept at `/accept-invitation?token=…` and join, or create an account if they don't have one yet.
+- **Invitations are copy-link**: the dashboard hands you a join link to paste to a teammate (Slack, email, whatever). They accept at `/accept-invitation?token=…` and join, or create an account if they don't have one yet. The copy-link fallback is for admin-issued invitations only; a self-serve request (below) is always mailed.
 - **Password reset is admin-assisted** — ask the user to submit the **Forgot
   password** form, then read the generated link from the backend logs:
 
@@ -178,6 +178,8 @@ EMAIL_FROM_NAME=apo
 - Port `465` = implicit TLS, `587` = STARTTLS (auto-detected; override with `EMAIL_SMTP_TLS=true/false`).
 
 Turning it on instantly lights up all senders: invitation emails, verification codes (set `AUTH_EMAIL_VERIFICATION_REQUIRED=true` if you want to require them), password-reset links, and hosted-access admission emails. Without email configured, hosted-access invitations still work — the admin settings page shows a one-time copyable `/join` link to share privately.
+
+**Self-serve signup is off by default.** Set `APO_SIGNUP_MODE=self_serve` and the `/join` page grows a request form: a visitor enters their email, the installation mails them an invitation (24 h, single use), and accepting creates their account and first Project with no admin action. The link appears nowhere except that email, and the new account must enter an emailed code before it can sign in. Setting any other value fails startup, and switching back to `invite_only` closes the form on the next page load while already-mailed links keep working until they expire. The door requires email delivery: the backend refuses to start in `self_serve` mode with `EMAIL_TRANSPORT_URL` unset.
 
 **Disposable email domains are refused.** Every admission path (hosted-access invitations, project invitations, admin user creation) rejects throwaway inbox domains like mailinator or 10minutemail with a 422, using a blocklist bundled with the backend. If it wrongly blocks a domain you consider legitimate, allow it explicitly and restart the backend (the value is read once at startup):
 

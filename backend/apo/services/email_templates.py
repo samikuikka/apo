@@ -267,3 +267,45 @@ Click the link below to get started:
 apo
 """
     return html, text
+
+
+def render_self_serve_access_email(
+    invite_url: str,
+    ttl_hours: int,
+) -> tuple[str, str]:
+    """Returns (html, text) for a self-serve admission email.
+
+    Nobody invited the recipient: someone typed this address into the
+    request form. The copy says so, and tells a recipient who did not ask
+    that ignoring the message is enough.
+    """
+    intro = (
+        "Someone asked for access to apo with this email address. "
+        + f'Accepting creates <strong style="color: {_FG};">your own Project</strong> on this '
+        + "apo installation, a private workspace for your tasks, runs, and evaluations."
+    )
+    expiry = f"This link works once and expires in {ttl_hours} hours."
+    ignore = "If you didn't ask for this, you can safely ignore this email."
+    body = (
+        _paragraph(intro)
+        + _paragraph("Click the button below to get started:")
+        + _primary_button("Create your Project", invite_url)
+        + _fallback_link(invite_url)
+        + _footer_note(f"{expiry} {ignore}")
+    )
+    html = _layout("Your apo invitation", body)
+
+    text = f"""\
+Your apo invitation
+
+Someone asked for access to apo with this email address. Accepting creates your own Project on this apo installation, a private workspace for your tasks, runs, and evaluations.
+
+Click the link below to get started:
+
+{invite_url}
+
+{expiry} {ignore}
+
+apo
+"""
+    return html, text

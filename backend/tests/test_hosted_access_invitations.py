@@ -478,7 +478,7 @@ class TestTokenHygiene:
                 row.token_hash,
                 row.email,
                 row.id,
-                row.invited_by_user_id,
+                row.invited_by_user_id or "",
             ):
                 assert token not in field
         for record in caplog.records:
@@ -587,7 +587,7 @@ class TestPublicAcceptanceRoutes:
         assert preview.json() == {
             "valid": True,
             "reason": None,
-            "email": "public@example.com",
+            "email": "p***c@example.com",
             "requires_login": False,
             "requires_account_creation": True,
         }

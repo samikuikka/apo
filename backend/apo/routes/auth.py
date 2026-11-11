@@ -55,6 +55,7 @@ from ..services.email_templates import (
     render_verification_email,
 )
 from ..services.email_admission import require_admissible_email
+from ..services.email_verification import require_verified_email
 from ..services.installation_admin import require_installation_admin
 from ..services.user_quotas import apply_quota_updates, effective_daily_span_quota
 
@@ -164,7 +165,7 @@ def _hash_otp(code: str) -> str:
     return hashlib.sha256(code.encode()).hexdigest()
 
 
-async def _create_and_send_otp(user: UserDB, session: Session) -> None:
+async def create_and_send_otp(user: UserDB, session: Session) -> None:
     """Generate a new OTP, store its hash, and send via email."""
     code = _generate_otp()
     token = EmailVerificationTokenDB(
@@ -264,7 +265,7 @@ async def setup(body: SetupRequest, session: Session = Depends(get_session)) -> 
         ) from exc
 
     if verification_required:
-        await _create_and_send_otp(user, session)
+        await create_and_send_otp(user, session)
         return {"status": "verification_required", "email": user.email}
 
     if user.email_verified_at is None:
@@ -320,11 +321,12 @@ def verify_password_endpoint(
             _account_rate_limiter.record_attempt(email_key)
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
-        if _is_email_verification_required() and user.email_verified_at is None:
-            raise HTTPException(
-                status_code=403,
-                detail={"message": "Email verification required", "code": "EMAIL_NOT_VERIFIED"},
-            )
+        # The per-user flag gates self-serve accounts without turning on
+        # the global flag, which would lock out every older account whose
+        # email_verified_at was never set.
+        require_verified_email(
+            user, required_for_everyone=_is_email_verification_required()
+        )
 
         member_project_ids = list_projects_for_user(session, user.id)
         accessible_projects: list[VerifyPasswordProject] = []
@@ -452,7 +454,7 @@ async def resend_verification(
         session.add(t)
     session.commit()
 
-    await _create_and_send_otp(user, session)
+    await create_and_send_otp(user, session)
 
     return {"message": message}
 

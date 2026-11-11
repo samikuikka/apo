@@ -67,6 +67,10 @@ PUBLIC_PATHS: tuple[str, ...] = (
     # acceptance requires the session before its route runs.
     "/auth/hosted-access/preview",
     "/auth/hosted-access/accept/create-account",
+    # self-serve admission: a visitor with no account asks for an
+    # invitation, and the join page asks whether the form is on offer.
+    "/auth/hosted-access/request",
+    "/auth/hosted-access/mode",
     "/v1/api-keys/bootstrap",
     # CLI first-project bootstrap: authenticates via email + password in the
     # handler (mirrors /v1/api-keys/bootstrap). Must be reachable without a
