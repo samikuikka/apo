@@ -62,8 +62,22 @@ function FullSummary({
   summary: ServingSummaryData;
   onSelect?: (identity: ServingIdentity) => void;
 }) {
-  const hidden = summary.total_groups - summary.groups.length;
   const coverage = costCoverageLabel(summary.cost_coverage);
+  // No call reported who served it: a table of empty identities says nothing.
+  if (summary.state === "unknown") {
+    return (
+      <section aria-label="Observed serving" className="space-y-1.5 text-xs text-muted-foreground">
+        <p className="font-mono tabular-nums">
+          {`${summary.calls} calls \u00b7 serving not reported`}
+          {summary.errored_calls > 0 && (
+            <span className="text-destructive">{` \u00b7 ${summary.errored_calls} errored`}</span>
+          )}
+        </p>
+        {coverage && <p>Cost coverage: {coverage}</p>}
+      </section>
+    );
+  }
+  const hidden = summary.total_groups - summary.groups.length;
   const rowKeys = distinctRowKeys(summary.groups.map((group) => groupKey(group.identity)));
   return (
     <section aria-label="Observed serving" className="space-y-1.5">
@@ -137,7 +151,7 @@ function GroupRow({
   group: ServingGroup;
   onSelect?: (identity: ServingIdentity) => void;
 }) {
-  const label = servingIdentityLabel(group.identity) || "Unknown";
+  const label = servingIdentityLabel(group.identity) || "Not reported";
   return (
     <TableRow className="border-border/60">
       <TableCell>
@@ -179,7 +193,7 @@ function GroupRow({
       </TableCell>
       <TableCell>
         <span className="flex flex-wrap gap-1">
-          {group.rate_scopes.map((scoped) => (
+          {group.rate_scopes.filter((scoped) => scoped.scope !== "unknown").map((scoped) => (
             <Badge key={scoped.scope} variant="secondary" className="h-5 px-1.5 text-[10px] font-normal">
               {scopeLabel(scoped.scope)}
               {scoped.whole_call_rate.samples > 0 && (
@@ -197,7 +211,7 @@ function GroupRow({
 }
 
 function StateBadge({ state }: { state: ServingSummaryData["state"] }) {
-  // State, not decoration: only incomplete/unknown evidence gets a hue.
+  // State, not decoration: only incomplete evidence gets a hue.
   const tone =
     state === "partial"
       ? "bg-warning/10 text-warning"
@@ -208,13 +222,11 @@ function StateBadge({ state }: { state: ServingSummaryData["state"] }) {
     <span className={cn("inline-flex h-5 items-center px-2 text-[11px] font-medium", tone)}>
       {state === "no_data"
         ? "No serving data"
-        : state === "unknown"
-          ? "Unknown serving"
-          : state === "uniform"
-            ? "Uniform"
-            : state === "mixed"
-              ? "Mixed"
-              : "Partial"}
+        : state === "uniform"
+          ? "Uniform"
+          : state === "mixed"
+            ? "Mixed"
+            : "Partial"}
     </span>
   );
 }

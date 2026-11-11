@@ -242,31 +242,9 @@ export function costCoverageLabel(coverage: CostCoverage | null | undefined): st
   return parts.join(" \u00b7 ");
 }
 
-/** Plain-English reason a streaming rate is absent. */
-export const STREAMING_REASON_LABELS: Record<
-  NonNullable<GenerationRates["streaming_unavailable_reason"]>,
-  string
-> = {
-  missing_timing: "no first-content timing",
-  invalid_timing: "invalid timing window",
-  missing_usage: "no output usage",
-  scope_mismatch: "token and timing scopes differ",
-  unknown_scope: "token scope unknown",
-  incomplete_call: "call did not complete",
-  aggregate_only: "aggregate wrapper",
-};
-
-/** Human label for the human-unfriendly wire reasons. */
-export function streamingReasonLabel(
-  reason: GenerationRates["streaming_unavailable_reason"],
-): string | null {
-  if (reason == null) return null;
-  return STREAMING_REASON_LABELS[reason] ?? reason;
-}
-
 /** The compact one-line serving cell for a run/batch row:
  * uniform -> the identity label; mixed -> "Mixed \u00b7 N setups"; unknown ->
- * "Unknown"; no_data -> "No data"; partial -> the dominant shape with its
+ * "Not reported"; no_data -> "No data"; partial -> the dominant shape with its
  * qualifier. Empty string when the summary carries no readable state. */
 export function servingCompactLabel(summary: ServingSummary): string {
   const hidden = totalSetupCount(summary);
@@ -274,10 +252,10 @@ export function servingCompactLabel(summary: ServingSummary): string {
     case "no_data":
       return "No data";
     case "unknown":
-      return "Unknown";
+      return "Not reported";
     case "uniform": {
       const label = summary.groups[0] ? servingIdentityLabel(summary.groups[0].identity) : "";
-      return label || "Unknown";
+      return label || "Not reported";
     }
     case "mixed":
       return `Mixed \u00b7 ${hidden} setups`;

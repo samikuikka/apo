@@ -1,10 +1,10 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { Fragment } from "react";
+
 import {
   formatTokPerS,
   servingIdentityLabel,
-  streamingReasonLabel,
   type GenerationRates,
   type ServingIdentity,
 } from "@/lib/serving-types";
@@ -17,10 +17,16 @@ export interface GenerationServingDetailsProps {
 /**
  * One generation call's serving evidence (issue #307): who served it and how
  * fast it decoded. Both props come straight from the observation detail API;
- * either may be null on old backends, and null renders nothing.
+ * either may be null on old backends. Only reported values render, and a call
+ * that reported nothing renders nothing.
  */
 export function GenerationServingDetails({ identity, rates }: GenerationServingDetailsProps) {
-  if (!identity && !rates) return null;
+  const label = identity ? servingIdentityLabel(identity) : "";
+  const rows = [
+    ...(identity ? identityRows(identity) : []),
+    ...(rates ? rateRows(rates) : []),
+  ];
+  if (!label && rows.length === 0) return null;
   return (
     <section
       aria-label="Serving"
@@ -28,84 +34,72 @@ export function GenerationServingDetails({ identity, rates }: GenerationServingD
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className="text-xs font-semibold text-foreground">Serving</span>
-        {identity && (
-          <span className="font-mono text-[12px] text-muted-foreground">
-            {servingIdentityLabel(identity) || "Unknown"}
-          </span>
+        {label && (
+          <span className="font-mono text-[12px] text-muted-foreground">{label}</span>
         )}
       </div>
-      <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1 text-[11px]">
-        {identity && <IdentityRows identity={identity} />}
-        {rates && <RatesRows rates={rates} />}
-      </dl>
+      {rows.length > 0 && (
+        <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1 text-[11px]">
+          {rows.map(([rowLabel, value]) => (
+            <Fragment key={rowLabel}>
+              <dt className="text-muted-foreground/70">{rowLabel}</dt>
+              <dd className="truncate font-mono text-foreground">{value}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      )}
     </section>
   );
 }
 
-/** One label/value row; the value renders as an em dash when unreported. */
-function Row({
-  label,
-  value,
-  mono = true,
-}: {
-  label: string;
-  value: string | null | undefined;
-  mono?: boolean;
-}) {
-  return (
-    <>
-      <dt className="text-muted-foreground/70">{label}</dt>
-      <dd className={cn("truncate text-foreground", mono && "font-mono")}>{value ?? "\u2014"}</dd>
-    </>
-  );
+type Row = [label: string, value: string];
+
+function reported(rows: [string, string | null | undefined][]): Row[] {
+  return rows.filter((row): row is Row => typeof row[1] === "string" && row[1].length > 0);
 }
 
-function IdentityRows({ identity }: { identity: ServingIdentity }) {
-  return (
-    <>
-      {identity.model && <Row label="Model" value={identity.model} />}
-      <Row label="API Provider" value={identity.api_provider} />
-      <Row label="Serving Host" value={identity.serving_host} />
-      <Row label="Route" value={identity.route} />
-      <Row label="Requested Tier" value={identity.requested_service_tier} />
-      <Row label="Served Tier" value={identity.service_tier} />
-      {identity.request_model && <Row label="Request Model" value={identity.request_model} />}
-      {identity.response_model && <Row label="Response Model" value={identity.response_model} />}
-    </>
-  );
+function identityRows(identity: ServingIdentity): Row[] {
+  // The shown model is the response model when reported, so a request model
+  // that differs from it is a gateway fallback.
+  const differs = (value: string | null | undefined) =>
+    value && value !== identity.model ? value : null;
+  return reported([
+    ["Model", identity.model],
+    ["API Provider", identity.api_provider],
+    ["Serving Host", identity.serving_host],
+    ["Route", identity.route],
+    ["Requested Tier", identity.requested_service_tier],
+    ["Served Tier", identity.service_tier],
+    ["Request Model", differs(identity.request_model)],
+    ["Response Model", differs(identity.response_model)],
+  ]);
 }
 
-function RatesRows({ rates }: { rates: GenerationRates }) {
-  const streamingReason = streamingReasonLabel(rates.streaming_unavailable_reason);
-  return (
-    <>
-      {rates.time_to_first_token_ms != null && (
-        <Row
-          label="Time To First Token"
-          value={`${Math.round(rates.time_to_first_token_ms)} ms`}
-        />
-      )}
-      {rates.whole_call_output_tokens_per_second != null && (
-        <Row
-          label="Whole-Call Rate"
-          value={formatTokPerS(rates.whole_call_output_tokens_per_second)}
-        />
-      )}
-      {rates.streaming_output_tokens_per_second != null && (
-        <Row
-          label="Streaming Rate"
-          value={formatTokPerS(rates.streaming_output_tokens_per_second)}
-        />
-      )}
-      {rates.output_token_scope !== "unknown" && (
-        <Row
-          label="Token Scope"
-          value={rates.output_token_scope === "text" ? "Text" : "All Output"}
-        />
-      )}
-      {streamingReason && (
-        <Row label="Streaming Unavailable" value={streamingReason} mono={false} />
-      )}
-    </>
-  );
+function rateRows(rates: GenerationRates): Row[] {
+  return reported([
+    [
+      "Time To First Token",
+      rates.time_to_first_token_ms != null ? `${Math.round(rates.time_to_first_token_ms)} ms` : null,
+    ],
+    [
+      "Whole-Call Rate",
+      rates.whole_call_output_tokens_per_second != null
+        ? formatTokPerS(rates.whole_call_output_tokens_per_second)
+        : null,
+    ],
+    [
+      "Streaming Rate",
+      rates.streaming_output_tokens_per_second != null
+        ? formatTokPerS(rates.streaming_output_tokens_per_second)
+        : null,
+    ],
+    [
+      "Token Scope",
+      rates.output_token_scope === "unknown"
+        ? null
+        : rates.output_token_scope === "text"
+          ? "Text"
+          : "All Output",
+    ],
+  ]);
 }
