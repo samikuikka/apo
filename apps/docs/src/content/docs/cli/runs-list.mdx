@@ -1,12 +1,12 @@
 ---
 title: "apo runs list"
-description: "List past runs from the backend, filtered by task, status, model, effort, or serving provider."
+description: "List past runs from the backend, filtered by task, status, model, effort, serving route, cost, or duration."
 ---
 
 import TerminalDemo from '../../../components/demos/TerminalDemo.astro';
 import TerminalOutput from '../../../components/demos/TerminalOutput.astro';
 
-List task runs from the backend. Filter by task, status, model, effort, or serving provider.
+List task runs from the backend. Filter by task, status, model, effort, serving route, cost, or duration.
 
 <TerminalDemo
   command="apo runs list"
@@ -24,7 +24,7 @@ List task runs from the backend. Filter by task, status, model, effort, or servi
 ## Synopsis
 
 ```bash
-apo runs list [--task <id>] [--status <s>] [--model <m>] [--effort <e>] [--provider <p>] [--limit <n>] [--environment <name>] [--label <key>:<id>]
+apo runs list [--task <id>] [--status <s>] [--model <m>] [--effort <e>] [--provider <p>] [--observed-model <m>] [--host <h>] [--route <r>] [--service-tier <t>] [--serving-unknown <dim>] [--serving-mode <m>] [--limit <n>] [--environment <name>] [--label <key>:<id>] [--cost-min <usd>] [--cost-max <usd>] [--duration-min <s>] [--duration-max <s>]
 ```
 
 ## Options
@@ -36,9 +36,21 @@ apo runs list [--task <id>] [--status <s>] [--model <m>] [--effort <e>] [--provi
 | `--model <m>` | all | Filter by adapter-reported model. Repeatable; OR within model, AND with `--effort`. |
 | `--effort <e>` | all | Filter by adapter-reported effort. Repeatable; OR within effort, AND with `--model`. |
 | `--provider <p>` | all | Filter by observed serving provider or route, e.g. `fireworks` or `openrouter:nitro`. Repeatable. |
+| `--observed-model <m>` | all | Filter by the model the run actually served (not the adapter's ask). Repeatable; joins the same-request serving filter below. |
+| `--host <h>` | all | Filter by observed serving host, e.g. `baseten`. Repeatable. |
+| `--route <r>` | all | Filter by observed serving route, e.g. `nitro`. Repeatable. |
+| `--service-tier <t>` | all | Filter by served priority class, e.g. `priority`. Repeatable. |
+| `--serving-unknown <dim>` | - | Also match calls missing a dimension: `model`, `provider`, `host`, `route`, or `service_tier`. Repeatable, comma-joined values allowed. |
+| `--serving-mode <m>` | `contains` | `contains`: a run needs one matching call. `only`: every call must match with one identical setup. |
 | `--environment <name>` | all | Filter by the batch's environment. Repeatable; matches any of the listed environments (OR). |
 | `--label <key>:<id>` | all | Filter by the batch's label, e.g. `team:platforms`. Repeatable; OR within a key, AND across keys. |
+| `--cost-min <usd>` | - | Keep runs whose batch cost sum is at least this many dollars. |
+| `--cost-max <usd>` | - | Keep runs whose batch cost sum is at most this many dollars. |
+| `--duration-min <s>` | - | Keep runs whose batch ran at least this many seconds. |
+| `--duration-max <s>` | - | Keep runs whose batch ran at most this many seconds. |
 | `--limit <n>` | backend default | Maximum runs to list. |
+
+The serving flags form one same-request predicate: repeated values are OR within a dimension, dimensions are AND on one request. `--provider` joins that predicate whenever any other serving dimension is set; alone it matches a run whose trace calls report that provider or route. `--serving-mode only` demands every call match one identical setup, which is how you prove a run never left the route you picked; the default `contains` keeps runs with at least one matching call. The backend rejects negative or non-numeric range values with a 422.
 
 ## Output
 
@@ -54,7 +66,7 @@ apo runs list [--task <id>] [--status <s>] [--model <m>] [--effort <e>] [--provi
   ]}
 />
 
-`Result` is `PASS` or `FAIL` when a verdict exists, `NO VERDICT` when the judge gave no verdict for the only non-passing checks, and `-` while the run is still going or when it errored (an execution error, or most generations errored). `Generations` appears as `17/22 error` when model generations ended in error (see [Verdict validity](/concepts/tests/#verdict-validity)); `Cost` is suffixed `partial` when errored generations or unpriced calls were excluded from the total. The `Execution` column shows the adapter-reported model and effort. The `Hosts` column shows the serving provider or route each run actually used (empty when the tracer did not report one). Pass `--json` for machine-readable output.
+`Result` is `PASS` or `FAIL` when a verdict exists, `NO VERDICT` when the judge gave no verdict for the only non-passing checks, and `-` while the run is still going or when it errored (an execution error, or most generations errored). `Generations` appears as `17/22 error` when model generations ended in error (see [Verdict validity](/concepts/tests/#verdict-validity)); `Cost` is suffixed `partial` when errored generations or unpriced calls were excluded from the total. The `Execution` column shows the adapter-reported model and effort. The `Hosts` column shows the serving provider or route each run actually used (empty when the tracer did not report one). A `Serving` column appears only when the response carries serving data: the serving identity tuple (e.g. `fireworks · priority`) for a run served by one setup, `mixed · N` when several setups served it, and a `partial` marker when the summary is incomplete. Pass `--json` for machine-readable output.
 
 ## See also
 

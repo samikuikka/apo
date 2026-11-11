@@ -254,6 +254,7 @@ deployments that also raised the backend memory limit.
 | `APO_SELF_SERVE_INVITE_TTL_HOURS` | `24` | How long a self-serve invitation link stays valid. |
 | `APO_SELF_SERVE_REQUESTS_PER_HOUR_PER_IP` | `3` | Self-serve requests one IP may send per hour. |
 | `APO_SELF_SERVE_MAX_OUTSTANDING` | `200` | Cap on unaccepted, unexpired self-serve invitations installation-wide; above it the request endpoint answers 429 until rows are accepted or expire. |
+| `APO_DISPOSABLE_DOMAIN_ALLOWLIST` | - (bundled list only) | Comma-separated domains exempt from the bundled disposable-email blocklist (a shipped snapshot of throwaway-inbox domains). Every path that admits a person by email (hosted-access invitations, project invitations, admin user creation) refuses disposable domains; the first-run `/auth/setup` bootstrap is exempt. A domain matches exactly or as a dot-suffix (`sub.mailinator.com` is caught, `notmailinator.com` is not), and major consumer providers are never blocked. An invalid value fails startup instead of passing silently. |
 | `APO_TRUSTED_PROXY_RANGES` | loopback + private (`127.0.0.0/8, ::1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, fc00::/7`) | Comma-separated CIDR ranges whose direct peers are trusted proxies. Client-IP resolution (login lockout, ingest rate limits) honors `x-forwarded-for` only when the connection's peer address falls inside these ranges — otherwise the peer address itself is used, so a spoofed header from an untrusted host changes nothing. When you front apo with your own nginx/Traefik (see [Publish on a Domain](/self-hosting/public-server/)), set this to the proxy's address or range; narrower is safer. |
 | `ADMIN_API_KEY` | - | Admin-level API key for privileged routes. |
 
@@ -351,6 +352,12 @@ per-user policy.
 
 The span override applies on the next request after the PATCH; the count
 caps are checked before anything is written.
+
+User responses from the `/auth/users` endpoints (list, create, PATCH) also
+carry `effective_daily_span_quota`: the value ingest enforces for that
+account, resolved with the rule above (the per-user override when set, else
+`APO_USER_DAILY_SPAN_QUOTA`, `0` = unlimited). Read it instead of
+re-deriving the precedence client-side.
 
 Readiness (`/health/ready`) fails when the selected write backend is unusable.
 Rows persist `storage_backend` so changing the write backend never reinterprets
