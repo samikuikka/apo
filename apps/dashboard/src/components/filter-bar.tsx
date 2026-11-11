@@ -106,6 +106,8 @@ export interface FilterBarProps {
   /** Autocomplete suggestions for the search input, shown as a dropdown. */
   searchSuggestions?: { insert: string; label: string; count?: number }[];
   onSuggestionClick?: (insert: string) => void;
+  /** Called when Enter is pressed in the search input (token commit). */
+  onSearchSubmit?: () => void;
   /** Shown when any dimension is in play; the bar computes "active" itself. */
   onClearAll?: () => void;
   /** Page-specific right side (result count, expand-all, reset link…). */
@@ -127,6 +129,9 @@ export function FilterBar(props: FilterBarProps) {
           <Input
             value={props.query ?? ""}
             onChange={(e) => props.onQueryChange?.(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") props.onSearchSubmit?.();
+            }}
             placeholder={props.searchPlaceholder ?? "Filter…"}
             aria-label="Search"
             data-testid={props.searchTestId}

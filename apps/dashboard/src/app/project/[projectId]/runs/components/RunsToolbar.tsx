@@ -78,34 +78,54 @@ export function RunsToolbar({
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  // Free text debounces to ?q= as it always did. Filter tokens apply ONLY
+  // on Enter or a suggestion click, never mid-typing: the parser would
+  // otherwise turn a half-typed "customer:a" into a premature filter.
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearchInput(value);
       setSuggestions(suggestTokens(value, labelFacets));
-      setShowSuggestions(suggestions.length > 0);
+      setShowSuggestions(suggestTokens(value, labelFacets).length > 0);
       clearTimeout(searchTimer.current);
       searchTimer.current = setTimeout(() => {
+        // Token-looking words (a known key with a colon, cost>/duration>,
+        // env:) must never hit the text search: the backend would look for
+        // the literal string "customer:acme" in batch ids and find nothing,
+        // flashing the list empty while the user is still typing. Only the
+        // words that don't look like tokens go to ?q=.
         const parsed = parseSearchTokens(value, labelFacets);
-        if (parsed.tokens.length > 0) {
-          // Tokens become filters; only the remaining text stays as ?q=.
-          onTokensParsed(parsed.tokens, parsed.text);
-          setSearchInput(parsed.text);
-        } else {
-          updateUrl({ q: value || null, page: null });
-        }
+        updateUrl({ q: parsed.text || null, page: null });
       }, 350);
     },
-    [updateUrl, labelFacets, onTokensParsed],
+    [updateUrl, labelFacets],
   );
+  const applyTokens = useCallback(() => {
+    const parsed = parseSearchTokens(searchInput, labelFacets);
+    if (parsed.tokens.length > 0) {
+      onTokensParsed(parsed.tokens, parsed.text);
+      setSearchInput(parsed.text);
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [searchInput, labelFacets, onTokensParsed]);
   const applySuggestion = useCallback(
     (suggestion: SearchSuggestion) => {
       const words = searchInput.split(/\s+/).filter(Boolean);
       words.pop(); // replace the partial word with the completed token
       const completed = [...words, suggestion.insert].join(" ");
+      setSearchInput(completed);
+      setSuggestions([]);
       setShowSuggestions(false);
-      handleSearchChange(completed);
+      // Apply immediately: a suggestion click is an explicit commit.
+      const parsed = parseSearchTokens(completed, labelFacets);
+      if (parsed.tokens.length > 0) {
+        onTokensParsed(parsed.tokens, parsed.text);
+        setSearchInput(parsed.text);
+      } else {
+        updateUrl({ q: completed || null, page: null });
+      }
     },
-    [searchInput, handleSearchChange],
+    [searchInput, labelFacets, onTokensParsed, updateUrl],
   );
 
   const selectedEffort = selectedEfforts.size === 1 ? Array.from(selectedEfforts)[0] ?? null : null;
@@ -149,6 +169,7 @@ export function RunsToolbar({
           searchTestId="runs-search-input"
           searchSuggestions={showSuggestions ? suggestions : undefined}
           onSuggestionClick={(insert) => applySuggestion({ insert, label: insert })}
+          onSearchSubmit={applyTokens}
           onClearAll={onClearFilters}
           trailing={
             <>
