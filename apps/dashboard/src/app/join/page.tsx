@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import AuthShell from "@/components/auth/auth-shell"
 import { PasswordRules } from "@/components/auth/password-rules"
+import JoinRequestForm from "@/components/join/join-request-form"
 import { validatePassword } from "@/lib/password-policy"
 import { Button } from "@/components/ui/button"
 import { ErrorBanner } from "@/components/ui/error-banner"
@@ -22,8 +23,11 @@ import { Label } from "@/components/ui/label"
 import {
   acceptHostedAccessCreateAccount,
   acceptHostedAccessExistingAccount,
+  fetchSignupMode,
+  maskEmail,
   previewHostedAccessToken,
   type HostedAccessPreview,
+  type SignupMode,
 } from "@/lib/hosted-access-api"
 
 export default function JoinPage() {
@@ -44,6 +48,9 @@ type ViewState =
 
 type JoinState = {
   view: ViewState
+  // null until the mode probe answers, so the no-token page does not flash
+  // "no invitation" before it knows whether to offer the request form.
+  signupMode: SignupMode | null
   name: string
   password: string
   confirmPassword: string
@@ -57,6 +64,7 @@ type JoinAction =
   | { type: "PREVIEW_INVALID"; reason: string | null }
   | { type: "PREVIEW_LOADED"; preview: HostedAccessPreview }
   | { type: "PREVIEW_FAILED" }
+  | { type: "MODE_LOADED"; mode: SignupMode }
   | {
       type: "SET_FIELD"
       field: "name" | "password" | "confirmPassword" | "projectName"
@@ -68,6 +76,7 @@ type JoinAction =
 
 const initialJoinState: JoinState = {
   view: { kind: "loading" },
+  signupMode: null,
   name: "",
   password: "",
   confirmPassword: "",
@@ -97,6 +106,8 @@ function joinReducer(state: JoinState, action: JoinAction): JoinState {
         ...state,
         view: { kind: "error", message: "Unable to reach server." },
       }
+    case "MODE_LOADED":
+      return { ...state, signupMode: action.mode }
     case "SET_FIELD":
       return { ...state, [action.field]: action.value }
     case "SUBMIT_START":
@@ -121,6 +132,7 @@ function JoinForm() {
   const [state, dispatch] = useReducer(joinReducer, initialJoinState)
   const {
     view,
+    signupMode,
     name,
     password,
     confirmPassword,
@@ -128,6 +140,22 @@ function JoinForm() {
     submitting,
     formError,
   } = state
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchSignupMode(controller.signal)
+      .then((mode) => {
+        if (!controller.signal.aborted) dispatch({ type: "MODE_LOADED", mode })
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          dispatch({ type: "MODE_LOADED", mode: "invite_only" })
+        }
+      })
+    return () => {
+      controller.abort()
+    }
+  }, [])
 
   useEffect(() => {
     if (!token) {
@@ -177,10 +205,17 @@ function JoinForm() {
         password,
         project_name: projectName.trim(),
       })
+      // A self-serve account cannot sign in until it enters the code the
+      // server just mailed, so it goes to the verification page instead.
+      if (result.email_verification_required) {
+        router.push(`/verify-email?email=${encodeURIComponent(result.email)}`)
+        return
+      }
       // Auto-sign-in with the credentials just submitted, then land on
-      // the new Project's task list.
+      // the new Project's task list. The address comes from the accept
+      // response: the preview only carries a masked one.
       const signInResult = await signIn("credentials", {
-        email: view.preview.email ?? "",
+        email: result.email,
         password,
         redirect: false,
         redirectTo: `/project/${result.project_id}/tasks`,
@@ -242,6 +277,25 @@ function JoinForm() {
   }
 
   if (view.kind === "invalid") {
+    const selfServe = signupMode === "self_serve"
+    if (view.reason === "missing") {
+      if (signupMode === null) {
+        return (
+          <AuthShell>
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            </div>
+          </AuthShell>
+        )
+      }
+      if (selfServe) {
+        return (
+          <AuthShell>
+            <JoinRequestForm />
+          </AuthShell>
+        )
+      }
+    }
     const headline =
       view.reason === "expired"
         ? "This invitation has expired"
@@ -257,9 +311,17 @@ function JoinForm() {
         <div className="text-center">
           <AlertCircle className="mx-auto mb-3 size-8 text-muted-foreground" />
           <h1 className="text-[18px] font-semibold">{headline}</h1>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Ask the apo administrator for a new invitation link.
-          </p>
+          {selfServe ? (
+            <Link href="/join">
+              <Button type="button" className="mt-5 h-10 w-full">
+                Request a new invitation
+              </Button>
+            </Link>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Ask the apo administrator for a new invitation link.
+            </p>
+          )}
           <Link href="/login">
             <Button type="button" variant="outline" className="mt-5 h-10 w-full">
               Back to sign in
@@ -401,9 +463,11 @@ function ExistingAccountView({
   onAccept: () => void
 }) {
   const signedIn = sessionStatus === "authenticated"
+  // The preview carries a masked address, so the session email is masked
+  // the same way and the two masks compared. This only picks the view: the
+  // server checks the real addresses when the invitation is accepted.
   const emailMatches =
-    !!sessionEmail &&
-    sessionEmail.toLowerCase() === (preview.email ?? "").toLowerCase()
+    !!sessionEmail && !!preview.email && maskEmail(sessionEmail) === preview.email
   return (
     <AuthShell>
       <JoinHeader />
@@ -440,7 +504,7 @@ function ExistingAccountView({
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
             You&rsquo;re signed in as{" "}
-            <span className="font-medium text-foreground">{preview.email}</span>.
+            <span className="font-medium text-foreground">{sessionEmail}</span>.
             Accepting creates a new Project that only you own.
           </p>
           <ProjectNameField
@@ -531,7 +595,7 @@ function CreateAccountForm({
           </Label>
           <Input
             id="email"
-            type="email"
+            type="text"
             value={preview.email ?? ""}
             readOnly
             className="h-10 bg-muted/40 text-muted-foreground"

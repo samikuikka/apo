@@ -28,6 +28,7 @@ import {
   revokeHostedAccessInvitation,
   type HostedAccessInvitationSummary,
 } from "@/lib/hosted-access-api";
+import { toast } from "sonner";
 import { auth } from "@/auth";
 import { HostedAccessAdmin } from "../hosted-access-admin";
 import HostedAccessSettingsPage from "@/app/settings/hosted-access/page";
@@ -39,6 +40,7 @@ function invitation(
     id: "inv-1",
     email: "friend@example.com",
     delivery_method: "link_only",
+    origin: "admin",
     expires_at: "2099-01-01T00:00:00Z",
     created_at: "2026-08-15T00:00:00Z",
     invited_by_user_id: "admin-1",
@@ -54,6 +56,8 @@ beforeEach(() => {
   vi.mocked(createHostedAccessInvitation).mockReset();
   vi.mocked(resendHostedAccessInvitation).mockReset();
   vi.mocked(revokeHostedAccessInvitation).mockReset();
+  vi.mocked(toast.success).mockClear();
+  vi.mocked(toast.error).mockClear();
 });
 
 describe("HostedAccessAdmin", () => {
@@ -105,6 +109,45 @@ describe("HostedAccessAdmin", () => {
     await waitFor(() => {
       expect(revokeHostedAccessInvitation).toHaveBeenCalledWith("inv-1");
     });
+  });
+
+  it("shows a self-serve request with its origin and delivery failure", () => {
+    render(
+      <HostedAccessAdmin
+        initialInvitations={[
+          invitation({
+            email: "walkin@example.com",
+            origin: "self_serve",
+            invited_by_user_id: null,
+            delivery_method: "failed",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/Requested/)).toBeDefined();
+    expect(screen.queryByText(/Invited/)).toBeNull();
+    expect(screen.getByText("Delivery failed")).toBeDefined();
+  });
+
+  it("reports a resend whose email was not sent", async () => {
+    vi.mocked(resendHostedAccessInvitation).mockResolvedValue({
+      invitation: invitation(),
+      invite_url: null,
+      delivery_status: "failed",
+    });
+
+    render(<HostedAccessAdmin initialInvitations={[invitation()]} />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: /resend/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "Invitation email not sent. Check the email transport, then resend",
+      );
+    });
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it("hides actions on already-accepted invitations", () => {

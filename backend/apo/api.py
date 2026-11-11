@@ -60,6 +60,18 @@ async def lifespan(app: FastAPI):
     import asyncio
     set_event_loop(asyncio.get_event_loop())
     init_email_service()
+    # self_serve promises delivery by email only, so a transport must be
+    # there before anything can be requested; refusing here is the loud
+    # boot-time failure instead of a 503 per request.
+    from .services.email import get_email_service
+    from .services.signup_config import (
+        load_signup_config,
+        validate_self_serve_delivery,
+    )
+
+    validate_self_serve_delivery(
+        load_signup_config(), email_configured=get_email_service().is_configured
+    )
     # Off the loop: the v26 deliverables backfill drives an async placement
     # helper with ``asyncio.run``, which refuses to start a loop when one is
     # already running in this thread. Calling it inline here crashed startup
@@ -181,6 +193,13 @@ def create_app() -> FastAPI:
         )
         apo_logger.addHandler(handler)
 
+    # Uvicorn configures its loggers before it imports the app, so the
+    # filter added here survives; invitation tokens in query strings must
+    # not reach the access log.
+    from .services.access_log import install_access_log_redaction
+
+    install_access_log_redaction()
+
     # validate transport limits at app construction (not lazily).
     transport_limits = load_telemetry_transport_limits()
 
@@ -198,6 +217,11 @@ def create_app() -> FastAPI:
     from .services.export_budget import load_export_byte_limits
 
     load_export_byte_limits()
+    # An unknown signup mode or a bad self-serve limit must stop startup:
+    # a typo here would otherwise decide who can create an account.
+    from .services.signup_config import load_signup_config
+
+    load_signup_config()
 
     # validate admission limits and construct the controller.
     admission_limits = load_telemetry_admission_limits()

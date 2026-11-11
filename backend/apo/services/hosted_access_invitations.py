@@ -5,17 +5,24 @@ routes stay thin. Admission is installation-level: issuing an invitation
 creates no User, Project, or membership; acceptance materializes exactly
 one invitee-owned Project in a single transaction.
 
+An invitation has one of two origins. ``admin`` rows are issued by an
+Installation Administrator, who may receive the accept link to share
+out-of-band when email is unavailable. ``self_serve`` rows are requested
+by a visitor for their own address: the link reaches that inbox or
+nobody, so it is never returned or logged, and the account it creates
+must verify its email before it can sign in.
+
 Token mechanics — generation, hashing, expiry, accept URLs, and
 best-effort email delivery with a ``link_only`` fallback — live in
 ``invitation_tokens`` and are shared with the project-invitation flow;
 the raw token is returned exactly once to the caller (for delivery /
 copy-link) and compared only as a SHA-256 hash afterwards.
 
-Acceptance owns one transaction: user (when new), Project, owner
-membership, and invitation consumption are staged with ``flush`` only
-and committed once. Any failure rolls the whole acceptance back, leaving
-the invitation active and creating neither a partial User nor an
-ownerless Project.
+Acceptance owns one transaction: it first claims the invitation with a
+conditional update, then stages the user (when new), Project, and owner
+membership with ``flush`` only, and commits once. Any failure rolls the
+whole acceptance back, leaving the invitation active and creating
+neither a partial User nor an ownerless Project.
 
 Authorization (who may issue/list/revoke) is delegated to the
 installation-admin guard; this service never consults Project
@@ -27,10 +34,13 @@ membership.
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Final, cast
 from uuid import uuid4
 
 from fastapi import HTTPException
+from sqlalchemy import func, update
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from ..auth import hash_password, validate_password_strength
@@ -48,7 +58,10 @@ from ..models.schemas import (
     HostedAccessInvitationSummary,
 )
 from .email_admission import require_admissible_email
-from .email_templates import render_hosted_access_email
+from .email_templates import (
+    render_hosted_access_email,
+    render_self_serve_access_email,
+)
 from .invitation_tokens import (
     build_invite_url,
     expiry_from_now,
@@ -62,12 +75,19 @@ from .invitation_tokens import (
     send_invitation_email,
     utcnow,
 )
+from .signup_config import SignupConfig, load_signup_config
 
 # Env-tunable admission lifetime, defaulting to 7 days like Project
 # Invitations. Long enough for a slow invitee without dangling tokens.
 HOSTED_ACCESS_INVITATION_TTL_HOURS: Final[int] = int(
     os.environ.get("HOSTED_ACCESS_INVITATION_TTL_HOURS", "168")
 )
+
+# How long after a delivered self-serve invitation a repeat request for
+# the same address is a silent no-op. Five minutes covers a double submit
+# and slow mail without making someone who lost the message wait long, and
+# keeps the request form from being used to flood a third party's inbox.
+SELF_SERVE_REREQUEST_WINDOW_MINUTES: Final[int] = 5
 
 _PROJECT_NAME_MAX_LENGTH: Final[int] = 100
 
@@ -88,6 +108,19 @@ def _validate_project_name(project_name: str) -> str:
             ),
         )
     return cleaned
+
+
+def mask_email(email: str) -> str:
+    """Mask an address for the public preview: ``john@x.com`` -> ``j***n@x.com``.
+
+    The recipient still recognizes their own address; someone holding only
+    a pasted link does not learn it. Local parts of one or two characters
+    keep just the first, since both ends would be the whole thing. The
+    dashboard masks the session email the same way to compare the two.
+    """
+    local, _, domain = email.rpartition("@")
+    tail = local[-1] if len(local) > 2 else ""
+    return f"{local[:1]}***{tail}@{domain}"
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +173,7 @@ def _to_summary(invitation: HostedAccessInvitationDB) -> HostedAccessInvitationS
         delivery_method=invitation.delivery_method,
         expires_at=invitation.expires_at,
         created_at=invitation.created_at,
+        origin="self_serve" if _is_self_serve(invitation) else "admin",
         invited_by_user_id=invitation.invited_by_user_id,
         accepted_at=invitation.accepted_at,
         accepted_by_user_id=invitation.accepted_by_user_id,
@@ -157,21 +191,75 @@ async def _try_send_email(
     session: Session, invitation: HostedAccessInvitationDB, raw_token: str
 ) -> bool:
     """Attempt admission-invitation delivery. Returns ``True`` if actually sent."""
-    inviter = session.get(UserDB, invitation.invited_by_user_id)
-    inviter_name = (inviter.name if inviter and inviter.name else None) or "An apo administrator"
+    if _is_self_serve(invitation):
+        ttl_hours = _ttl_hours(invitation)
+        subject = "Your apo invitation"
 
-    def render(invite_url: str) -> tuple[str, str]:
-        return render_hosted_access_email(
-            invite_url=invite_url, inviter_name=inviter_name
+        def render(invite_url: str) -> tuple[str, str]:
+            return render_self_serve_access_email(
+                invite_url=invite_url, ttl_hours=ttl_hours
+            )
+    else:
+        inviter = (
+            session.get(UserDB, invitation.invited_by_user_id)
+            if invitation.invited_by_user_id
+            else None
         )
+        inviter_name = (inviter.name if inviter else None) or "An apo administrator"
+        subject = "You're invited to apo"
+
+        def render(invite_url: str) -> tuple[str, str]:
+            return render_hosted_access_email(
+                invite_url=invite_url, inviter_name=inviter_name
+            )
 
     return await send_invitation_email(
         to_email=invitation.email,
-        subject="You're invited to apo",
+        subject=subject,
         invite_url=build_invite_url(raw_token, _ACCEPT_PATH),
         render=render,
         invitation_id=invitation.id,
         log_label="Hosted access",
+    )
+
+
+async def _deliver(
+    session: Session, invitation: HostedAccessInvitationDB, raw_token: str
+) -> bool:
+    """Send the invitation and record how it went on the row."""
+    delivered = await _try_send_email(session, invitation, raw_token)
+    if not _is_self_serve(invitation):
+        await reconcile_delivery_method(session, invitation, delivered)
+        return delivered
+    delivery_method = "email" if delivered else "failed"
+    if invitation.delivery_method != delivery_method:
+        invitation.delivery_method = delivery_method
+        session.add(invitation)
+        session.commit()
+        session.refresh(invitation)
+    return delivered
+
+
+def _issued_response(
+    invitation: HostedAccessInvitationDB, invite_url: str, delivered: bool
+) -> CreateHostedAccessInvitationResponse:
+    """The administrator-facing result of a create or resend.
+
+    The copy-link fallback exists for admin-issued rows only. A self-serve
+    link belongs to the inbox that asked for it, so an undelivered one is
+    reported as ``failed`` and its URL is dropped here, for administrators
+    as well.
+    """
+    if _is_self_serve(invitation):
+        return CreateHostedAccessInvitationResponse(
+            invitation=_to_summary(invitation),
+            invite_url=None,
+            delivery_status="sent" if delivered else "failed",
+        )
+    return CreateHostedAccessInvitationResponse(
+        invitation=_to_summary(invitation),
+        invite_url=None if delivered else invite_url,
+        delivery_status="sent" if delivered else "link_only",
     )
 
 
@@ -193,11 +281,7 @@ async def create_or_refresh_hosted_access_invitation(
     second one. No User, Project, or membership row is touched. The raw
     token is returned exactly once in the response (copy-link fallback).
     """
-    normalized = normalize_email(email)
-    if not normalized or "@" not in normalized:
-        raise HTTPException(
-            status_code=422, detail="A valid email address is required"
-        )
+    normalized = _require_email_shape(email)
     require_admissible_email(normalized)
 
     raw_token, token_hash = generate_token()
@@ -208,6 +292,9 @@ async def create_or_refresh_hosted_access_invitation(
     if existing is not None:
         existing.token_hash = token_hash
         existing.invited_by_user_id = invited_by_user_id
+        # An administrator re-inviting a self-serve address now vouches
+        # for it, so the row takes the admin rules from here on.
+        existing.origin = "admin"
         existing.expires_at = expires_at
         existing.updated_at = utcnow()
         session.add(existing)
@@ -226,14 +313,65 @@ async def create_or_refresh_hosted_access_invitation(
         session.commit()
         session.refresh(invitation)
 
-    delivered = await _try_send_email(session, invitation, raw_token)
-    await reconcile_delivery_method(session, invitation, delivered)
+    delivered = await _deliver(session, invitation, raw_token)
+    return _issued_response(invitation, invite_url, delivered)
 
-    return CreateHostedAccessInvitationResponse(
-        invitation=_to_summary(invitation),
-        invite_url=None if delivered else invite_url,
-        delivery_status="sent" if delivered else "link_only",
-    )
+
+async def request_self_serve_invitation(
+    session: Session,
+    *,
+    email: str,
+    config: SignupConfig,
+) -> None:
+    """Issue a self-serve invitation for ``email`` and mail the accept link.
+
+    Returns nothing on purpose: the caller answers every request the same
+    way, so the response cannot say whether the address has an account, a
+    pending invitation, or a delivery problem. The checks that do raise
+    (malformed or disposable address, outstanding cap) depend only on the
+    address text or on installation-wide state, never on what is stored
+    for that address, and run before anything address-specific is read.
+    """
+    normalized = _require_email_shape(email)
+    require_admissible_email(normalized)
+    _require_outstanding_capacity(session, config.max_outstanding)
+
+    existing_user = session.exec(
+        select(UserDB).where(UserDB.email == normalized)
+    ).first()
+    if existing_user is not None:
+        return
+
+    raw_token, token_hash = generate_token()
+    expires_at = expiry_from_now(config.invite_ttl_hours)
+
+    invitation = find_active_hosted_access_invitation(session, normalized)
+    if invitation is None:
+        invitation = HostedAccessInvitationDB(
+            email=normalized,
+            invited_by_user_id=None,
+            origin="self_serve",
+            token_hash=token_hash,
+            delivery_method="email",
+            expires_at=expires_at,
+        )
+    elif _self_serve_may_refresh(invitation):
+        invitation.token_hash = token_hash
+        invitation.expires_at = expires_at
+        invitation.updated_at = utcnow()
+    else:
+        return
+    session.add(invitation)
+    try:
+        session.commit()
+    except IntegrityError:
+        # A concurrent request for the same address won the one-active-row
+        # index and is delivering its invitation; this one has nothing to add.
+        session.rollback()
+        return
+    session.refresh(invitation)
+
+    _ = await _deliver(session, invitation, raw_token)
 
 
 async def resend_hosted_access_invitation(
@@ -253,18 +391,12 @@ async def resend_hosted_access_invitation(
     raw_token, invite_url = rotate_token(
         session,
         invitation,
-        ttl_hours=HOSTED_ACCESS_INVITATION_TTL_HOURS,
+        ttl_hours=_ttl_hours(invitation),
         accept_path=_ACCEPT_PATH,
     )
 
-    delivered = await _try_send_email(session, invitation, raw_token)
-    await reconcile_delivery_method(session, invitation, delivered)
-
-    return CreateHostedAccessInvitationResponse(
-        invitation=_to_summary(invitation),
-        invite_url=None if delivered else invite_url,
-        delivery_status="sent" if delivered else "link_only",
-    )
+    delivered = await _deliver(session, invitation, raw_token)
+    return _issued_response(invitation, invite_url, delivered)
 
 
 def revoke_hosted_access_invitation(
@@ -350,7 +482,7 @@ def preview_hosted_access_invitation(
     return HostedAccessInvitationPreview(
         valid=True,
         reason=None,
-        email=invitation.email,
+        email=mask_email(invitation.email),
         requires_login=existing_user is not None,
         requires_account_creation=existing_user is None,
     )
@@ -361,19 +493,52 @@ def preview_hosted_access_invitation(
 # ---------------------------------------------------------------------------
 
 
+def _claim(session: Session, invitation: HostedAccessInvitationDB) -> None:
+    """Consume the invitation, or 409 when another accept got there first.
+
+    Two requests can both pass ``_require_acceptable`` before either
+    writes. Reading and then writing would let both through and mint two
+    Projects, so the write itself carries the condition: only one UPDATE
+    can match ``accepted_at IS NULL`` and the other sees zero rows. It is
+    the first write of the acceptance so the loser stops before staging
+    anything.
+    """
+    now = utcnow()
+    result = session.exec(
+        update(HostedAccessInvitationDB)
+        .where(
+            as_column(HostedAccessInvitationDB.id) == invitation.id,
+            as_column(cast(object, HostedAccessInvitationDB.accepted_at)).is_(None),
+            as_column(cast(object, HostedAccessInvitationDB.revoked_at)).is_(None),
+        )
+        .values(accepted_at=now, updated_at=now)
+    )
+    if result.rowcount != 1:
+        raise HTTPException(
+            status_code=409, detail="Invitation has already been accepted or revoked"
+        )
+    session.refresh(invitation)
+
+
 def _stage_new_user(
-    session: Session, *, email: str, name: str, password: str
+    session: Session, *, email: str, name: str, password: str, self_serve: bool
 ) -> UserDB:
-    """Stage the invited non-admin User. Follows Project Invitation
-    acceptance semantics: the delivered invitation satisfies the email
-    challenge, so ``email_verified_at`` is set."""
+    """Stage the invited non-admin User.
+
+    An admin-issued invitation follows Project Invitation acceptance
+    semantics: an administrator chose the address and delivered the link,
+    which satisfies the email challenge, so ``email_verified_at`` is set.
+    Nobody vouched for a self-serve address, so that account starts
+    unverified and is flagged to verify before its first sign-in.
+    """
     user = UserDB(
         email=email,
         name=name,
         password_hash=hash_password(password),
         is_admin=False,
         is_active=True,
-        email_verified_at=utcnow(),
+        email_verified_at=None if self_serve else utcnow(),
+        requires_email_verification=self_serve,
     )
     session.add(user)
     session.flush()
@@ -422,8 +587,7 @@ def _stage_accepted(
     user_id: str,
     project_id: str,
 ) -> None:
-    """Stage invitation consumption in the same transaction."""
-    invitation.accepted_at = utcnow()
+    """Record who accepted the claimed invitation, and into which Project."""
     invitation.accepted_by_user_id = user_id
     invitation.accepted_project_id = project_id
     invitation.updated_at = utcnow()
@@ -446,10 +610,11 @@ def accept_hosted_access_create_account(
 ) -> AcceptHostedAccessResponse:
     """Create a brand-new User and their own Project from a valid token.
 
-    One transaction: the staged User, Project, owner membership, and
-    invitation consumption commit together or not at all.
+    One transaction: the invitation claim, the staged User, Project, and
+    owner membership commit together or not at all.
     """
     invitation = _require_acceptable(_resolve_token(session, raw_token))
+    self_serve = _is_self_serve(invitation)
 
     password_error = validate_password_strength(password)
     if password_error:
@@ -478,8 +643,13 @@ def accept_hosted_access_create_account(
     require_admissible_email(invitation.email)
 
     try:
+        _claim(session, invitation)
         user = _stage_new_user(
-            session, email=invitation.email, name=name_clean, password=password
+            session,
+            email=invitation.email,
+            name=name_clean,
+            password=password,
+            self_serve=self_serve,
         )
         project = _stage_project(
             session, name=project_name_clean, created_by=user.id
@@ -491,15 +661,18 @@ def accept_hosted_access_create_account(
             session, invitation, user_id=user.id, project_id=project.id
         )
         session.commit()
-    except HTTPException:
-        session.rollback()
-        raise
     except Exception:
         session.rollback()
         raise
 
     session.refresh(project)
-    return AcceptHostedAccessResponse(status="accepted", project_id=project.id)
+    session.refresh(user)
+    return AcceptHostedAccessResponse(
+        status="accepted",
+        project_id=project.id,
+        email=user.email,
+        email_verification_required=self_serve,
+    )
 
 
 def accept_hosted_access_existing_account(
@@ -513,8 +686,8 @@ def accept_hosted_access_existing_account(
 
     The signed-in User's normalized email must match the invitation
     email; a mismatch is a 409 that consumes nothing. One transaction:
-    Project, owner membership, and invitation consumption commit
-    together or not at all.
+    the invitation claim, Project, and owner membership commit together
+    or not at all.
     """
     invitation = _require_acceptable(_resolve_token(session, raw_token))
 
@@ -536,6 +709,7 @@ def accept_hosted_access_existing_account(
         )
 
     try:
+        _claim(session, invitation)
         project = _stage_project(
             session, name=project_name_clean, created_by=accepting_user.id
         )
@@ -549,26 +723,101 @@ def accept_hosted_access_existing_account(
             project_id=project.id,
         )
         session.commit()
-    except HTTPException:
-        session.rollback()
-        raise
     except Exception:
         session.rollback()
         raise
 
     session.refresh(project)
-    return AcceptHostedAccessResponse(status="accepted", project_id=project.id)
+    session.refresh(accepting_user)
+    return AcceptHostedAccessResponse(
+        status="accepted", project_id=project.id, email=accepting_user.email
+    )
+
+
+# ---------------------------------------------------------------------------
+# Origin rules
+# ---------------------------------------------------------------------------
+
+
+def _is_self_serve(invitation: HostedAccessInvitationDB) -> bool:
+    return invitation.origin == "self_serve"
+
+
+def _ttl_hours(invitation: HostedAccessInvitationDB) -> int:
+    if _is_self_serve(invitation):
+        return load_signup_config().invite_ttl_hours
+    return HOSTED_ACCESS_INVITATION_TTL_HOURS
+
+
+def _require_email_shape(email: str) -> str:
+    """Normalize an address, or 422 when it cannot be one."""
+    normalized = normalize_email(email)
+    local, _, domain = normalized.rpartition("@")
+    if not local or not domain or any(char.isspace() for char in normalized):
+        raise HTTPException(
+            status_code=422, detail="A valid email address is required"
+        )
+    return normalized
+
+
+def _require_outstanding_capacity(session: Session, max_outstanding: int) -> None:
+    """429 when too many self-serve invitations are waiting to be accepted.
+
+    Expired rows do not count: they can no longer be accepted, and
+    counting them would let one burst of requests shut the door until an
+    administrator revoked them by hand.
+    """
+    outstanding = session.exec(
+        select(func.count())
+        .select_from(HostedAccessInvitationDB)
+        .where(
+            HostedAccessInvitationDB.origin == "self_serve",
+            as_column(cast(object, HostedAccessInvitationDB.accepted_at)).is_(None),
+            as_column(cast(object, HostedAccessInvitationDB.revoked_at)).is_(None),
+            as_column(HostedAccessInvitationDB.expires_at) > utcnow(),
+        )
+    ).one()
+    if outstanding >= max_outstanding:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests. Please try again later.",
+            # Places free up as invitations are accepted or expire, at no
+            # fixed time; an hour matches the request limiter's window.
+            headers={"Retry-After": "3600"},
+        )
+
+
+def _self_serve_may_refresh(invitation: HostedAccessInvitationDB) -> bool:
+    """Whether a repeat request may rotate this active invitation.
+
+    Never an admin-issued one: anyone can type an address into the public
+    form, and rotating would kill the link the administrator handed out.
+    A self-serve one is rotated unless a link was delivered moments ago.
+    """
+    if not _is_self_serve(invitation):
+        return False
+    if invitation.delivery_method != "email" or is_expired(invitation):
+        return True
+    window = timedelta(minutes=SELF_SERVE_REREQUEST_WINDOW_MINUTES)
+    return utcnow() - _as_utc(invitation.updated_at) >= window
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 __all__ = [
     "HOSTED_ACCESS_INVITATION_TTL_HOURS",
+    "SELF_SERVE_REREQUEST_WINDOW_MINUTES",
     "accept_hosted_access_create_account",
     "accept_hosted_access_existing_account",
     "create_or_refresh_hosted_access_invitation",
     "find_active_hosted_access_invitation",
     "get_hosted_access_invitation",
     "list_hosted_access_invitations",
+    "mask_email",
     "preview_hosted_access_invitation",
+    "request_self_serve_invitation",
     "resend_hosted_access_invitation",
     "revoke_hosted_access_invitation",
 ]

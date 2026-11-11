@@ -469,6 +469,8 @@ _DROPPED_COLUMNS: list[tuple[str, str]] = [
     ("users", "daily_span_quota"),
     ("users", "max_projects"),
     ("users", "max_api_keys"),
+    # self-serve invitations
+    ("users", "requires_email_verification"),
     # Constrained columns: dropped on Postgres only (see ``_drop_column``).
     ("run_metrics", "project"),  # v9
     ("agent_task_batch_runs", "requested_by_user_id"),  # v16

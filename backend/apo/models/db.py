@@ -1251,6 +1251,11 @@ class UserDB(SQLModel, table=True):
     is_admin: bool = Field(default=False)
     is_active: bool = Field(default=True, index=True)
     email_verified_at: datetime | None = Field(default=None)
+    # Accounts older than the email-verification gate carry a NULL
+    # email_verified_at and must keep logging in, so NULL alone cannot mean
+    # "must verify". This flag marks the accounts that do: the ones created
+    # from a self-serve invitation, which no administrator vouched for.
+    requires_email_verification: bool = Field(default=False)
     token_invalid_before: datetime | None = Field(default=None)
     # Per-user caps an installation admin sets (PATCH /auth/users/{id}).
     # NULL = no per-user policy: the span quota inherits
@@ -1412,14 +1417,20 @@ class ProjectInvitationDB(SQLModel, table=True):
     )
 
 
+_SELF_SERVE_OUTSTANDING = (
+    "origin = 'self_serve' AND accepted_at IS NULL AND revoked_at IS NULL"
+)
+
+
 class HostedAccessInvitationDB(SQLModel, table=True):
     """Installation-level admission invitation.
 
-    Lets an Installation Administrator admit one person to the APO
-    installation; acceptance creates or reuses the invited User and
-    materializes exactly one new invitee-owned Project. Admission is
-    never Project membership: no Project exists at issue time and the
-    issuer gains nothing.
+    Admits one person to the APO installation, either issued by an
+    Installation Administrator (``origin="admin"``) or requested by the
+    visitor for their own email (``origin="self_serve"``); acceptance
+    creates or reuses the invited User and materializes exactly one new
+    invitee-owned Project. Admission is never Project membership: no
+    Project exists at issue time and the issuer gains nothing.
 
     The raw token is never persisted — only its SHA-256 hash. At most
     one *active* (``accepted_at IS NULL AND revoked_at IS NULL``) row may
@@ -1437,13 +1448,28 @@ class HostedAccessInvitationDB(SQLModel, table=True):
             sqlite_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
             postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
         ),
+        # Serves the outstanding-cap count the public request endpoint runs
+        # on every call, without scanning accepted and admin-issued rows.
+        Index(
+            "ix_hosted_access_invitations_self_serve_outstanding",
+            "expires_at",
+            sqlite_where=text(_SELF_SERVE_OUTSTANDING),
+            postgresql_where=text(_SELF_SERVE_OUTSTANDING),
+        ),
     )
 
     id: str = Field(primary_key=True, default_factory=lambda: uuid4().hex[:20])
     email: str = Field(index=True)
     token_hash: str = Field(unique=True, index=True)
-    invited_by_user_id: str = Field(foreign_key="users.id", index=True)
-    delivery_method: str = Field(default="email")  # "email" | "link_only"
+    # NULL for self-serve rows: the visitor requested the invitation, so
+    # there is no inviter to name.
+    invited_by_user_id: str | None = Field(
+        default=None, foreign_key="users.id", index=True
+    )
+    origin: str = Field(default="admin")  # "admin" | "self_serve"
+    # "failed" is self-serve only: the link is never handed to anyone, so a
+    # send that did not go out has no "link_only" fallback to record.
+    delivery_method: str = Field(default="email")  # "email" | "link_only" | "failed"
     expires_at: datetime = Field(sa_column=Column(UTCDateTime, index=True))
     accepted_at: datetime | None = Field(
         default=None, sa_column=Column(UTCDateTime, index=True)

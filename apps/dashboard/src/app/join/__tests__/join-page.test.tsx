@@ -22,10 +22,12 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/hosted-access-api", () => ({
+vi.mock("@/lib/hosted-access-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/hosted-access-api")>()),
   previewHostedAccessToken: vi.fn(),
   acceptHostedAccessCreateAccount: vi.fn(),
   acceptHostedAccessExistingAccount: vi.fn(),
+  fetchSignupMode: vi.fn().mockResolvedValue("invite_only"),
 }));
 
 import { signIn } from "next-auth/react";
@@ -39,7 +41,7 @@ import JoinPage from "../page";
 const validPreview = {
   valid: true,
   reason: null,
-  email: "invitee@example.com",
+  email: "i***e@example.com",
   requires_login: false,
   requires_account_creation: true,
 };
@@ -63,7 +65,7 @@ describe("/join new-account flow", () => {
     expect(screen.getByLabelText("Password")).toBeDefined();
     expect(screen.getByLabelText("Confirm password")).toBeDefined();
     expect(screen.getByLabelText("Project name")).toBeDefined();
-    expect(screen.getByDisplayValue("invitee@example.com")).toBeDefined();
+    expect(screen.getByDisplayValue("i***e@example.com")).toBeDefined();
   });
 
   it("accepts, signs in, and lands on the new Project's tasks", async () => {
@@ -71,6 +73,8 @@ describe("/join new-account flow", () => {
     vi.mocked(acceptHostedAccessCreateAccount).mockResolvedValue({
       status: "accepted",
       project_id: "proj-new-1",
+      email: "invitee@example.com",
+      email_verification_required: false,
     });
 
     render(<JoinPage />);
@@ -109,7 +113,7 @@ describe("/join existing-account flow", () => {
   const existingPreview = {
     valid: true,
     reason: null,
-    email: "known@example.com",
+    email: "k***n@example.com",
     requires_login: true,
     requires_account_creation: false,
   };

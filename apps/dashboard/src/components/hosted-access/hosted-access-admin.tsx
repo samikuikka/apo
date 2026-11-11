@@ -91,6 +91,8 @@ function statusOf(invitation: Invitation): {
     return { label: "Accepted", className: "text-success" }
   if (new Date(invitation.expires_at) < new Date())
     return { label: "Expired", className: "text-warning" }
+  if (invitation.delivery_method === "failed")
+    return { label: "Delivery failed", className: "text-destructive" }
   return { label: "Pending", className: "text-foreground" }
 }
 
@@ -211,7 +213,13 @@ export function HostedAccessAdmin({
     try {
       const result = await resendHostedAccessInvitation(invitationId)
       applyDelivery(result)
-      toast.success("Invitation resent — the previous link no longer works")
+      // A self-serve link is mailed or nothing: there is no copy-link to
+      // fall back on, so an unsent one is a failure the admin must see.
+      if (result.delivery_status === "failed") {
+        toast.error("Invitation email not sent. Check the email transport, then resend")
+      } else {
+        toast.success("Invitation resent. The previous link no longer works")
+      }
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to resend invitation",
@@ -308,7 +316,8 @@ export function HostedAccessAdmin({
                         {invitation.email}
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        Invited <DateTimeText value={invitation.created_at} /> ·{" "}
+                        {invitation.origin === "self_serve" ? "Requested" : "Invited"}{" "}
+                        <DateTimeText value={invitation.created_at} /> ·{" "}
                         Expires <DateTimeText value={invitation.expires_at} /> ·{" "}
                         <span className={status.className}>{status.label}</span>
                         {invitation.accepted_at && (
