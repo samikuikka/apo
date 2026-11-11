@@ -42,7 +42,6 @@ from apo.models.execution import EXECUTOR_PROTOCOL_VERSION
 from apo.services.executor_auth import ATTEMPT_LEASE_SECONDS
 from apo.services.lifecycle import TASK_RUN_TERMINAL
 
-# Attempt statuses.
 QUEUED = "queued"
 LEASED = "leased"
 RUNNING = "running"
@@ -119,23 +118,17 @@ class CurrentAttemptLease:
 
 @dataclass(frozen=True)
 class ClaimedAttempt:
-    """Result of a successful claim: the leased row + the fenced lease."""
-
     attempt: TaskExecutionAttemptDB
     lease: CurrentAttemptLease
 
 
 @dataclass(frozen=True)
 class HeartbeatResponse:
-    """Heartbeat renewal result: whether the Executor should stop."""
-
     cancel_requested: bool
 
 
 @dataclass(frozen=True)
 class RecoveryCounts:
-    """Reaper outcome counts by recovery action."""
-
     requeued: int
     lost: int
     failed_unavailable: int
@@ -175,7 +168,6 @@ def _lock_executor_for_claim(
 
 
 def _sequential_blocker(session: Session, attempt: TaskExecutionAttemptDB) -> bool:
-    """True if a lower sequence_index attempt in the same Batch is non-terminal."""
     blockers = session.exec(
         select(TaskExecutionAttemptDB).where(
             as_column(TaskExecutionAttemptDB.batch_run_id) == attempt.batch_run_id,
@@ -399,7 +391,6 @@ def _pool_for(session: Session, attempt: TaskExecutionAttemptDB):
 
 
 def _require_current(session: Session, lease: CurrentAttemptLease) -> TaskExecutionAttemptDB:
-    """Load the attempt and verify the lease matches its current generation."""
     attempt = session.get(TaskExecutionAttemptDB, lease.attempt_id)
     if attempt is None:
         raise LeaseError("not_found", "attempt not found")
@@ -435,7 +426,7 @@ def start_attempt(
     """
     attempt = _require_current(session, lease)
     if attempt.status == RUNNING:
-        return attempt  # idempotent re-start at the same generation
+        return attempt
     transition_attempt(attempt, RUNNING)
     attempt.phase = "preparing"
     attempt.started_at = _now()
@@ -712,8 +703,6 @@ def _finalize_logical_run(
     from apo.services.run_events import emit_batch_run_event, emit_task_run_event
 
     update_batch_run_status(session, batch)
-    # resolve the pending Schedule Occurrence when the Batch reaches
-    # a terminal state through recovery/cancellation.
     from apo.services.schedule_occurrences import resolve_occurrence_if_terminal
     resolve_occurrence_if_terminal(session, batch)
     emit_task_run_event(attempt.project, task_run)
@@ -820,8 +809,6 @@ __all__ = [
 ]
 
 
-# ── background reaper (asyncio task; mirrors trace_ingestion_queue) ───────
-
 import asyncio  # noqa: E402
 
 from apo.db import engine  # noqa: E402
@@ -883,7 +870,6 @@ def start_lease_reaper() -> None:
 
 
 async def stop_lease_reaper() -> None:
-    """Stop the background lease reaper."""
     global _reaper_task, _reaper_stop
     if _reaper_stop is not None:
         _ = _reaper_stop.set()

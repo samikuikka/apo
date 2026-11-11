@@ -113,7 +113,7 @@ async def persist_json_deliverable(
     # Project-level daily storage budget: same accept moment, one choke
     # point shared with artifact intents.
     enforce_project_storage_quota(session, project_id=project, pending_bytes=size)
-    record_project_storage(session, project, size_bytes=size)
+    await record_project_storage(session, project, size_bytes=size)
 
     if size <= INLINE_THRESHOLD_BYTES:
         row = AgentTaskDeliverableDB(
@@ -499,7 +499,7 @@ async def create_artifact_upload_intent(
     # obligation is visible before any byte streams. Idempotent re-posts
     # returned above, so retries never double-count.
     enforce_project_storage_quota(session, project_id=project, pending_bytes=size_bytes)
-    record_project_storage(session, project, size_bytes=size_bytes)
+    await record_project_storage(session, project, size_bytes=size_bytes)
 
     row = AgentTaskDeliverableDB(
         id=_new_id(),

@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ModelFilterMenu } from "@/components/model-filter-menu";
 import type { ModelPickerOption } from "@/lib/model-filter-options";
+import type { SearchSuggestion } from "@/lib/search-tokens";
 import { FilterPicker } from "@/components/filter-picker";
 import { shortModel } from "@/lib/run-configuration";
 import { ALL_SINCE_VALUE, sinceOptionsFor } from "@/lib/since-window";
@@ -104,8 +105,8 @@ export interface FilterBarProps {
   searchPlaceholder?: string;
   searchTestId?: string;
   /** Autocomplete suggestions for the search input, shown as a dropdown. */
-  searchSuggestions?: { insert: string; label: string; count?: number }[];
-  onSuggestionClick?: (insert: string) => void;
+  searchSuggestions?: SearchSuggestion[];
+  onSuggestionClick?: (suggestion: SearchSuggestion) => void;
   /** Called when Enter is pressed in the search input (token commit). */
   onSearchSubmit?: () => void;
   /** Shown when any dimension is in play; the bar computes "active" itself. */
@@ -143,7 +144,7 @@ export function FilterBar(props: FilterBarProps) {
                 <button
                   key={suggestion.insert}
                   type="button"
-                  onClick={() => props.onSuggestionClick?.(suggestion.insert)}
+                  onClick={() => props.onSuggestionClick?.(suggestion)}
                   className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-muted/60"
                 >
                   <span className="truncate font-mono">{suggestion.label}</span>

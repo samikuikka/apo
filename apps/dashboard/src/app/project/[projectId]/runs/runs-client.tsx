@@ -366,7 +366,6 @@ export function RunsClient({
     });
   }, []);
 
-  // Compare selection (max 2 runs, sliding window when a third is picked).
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const compareIdSet = useMemo(() => new Set(compareIds), [compareIds]);
   const toggleCompare = useCallback((id: string) => {

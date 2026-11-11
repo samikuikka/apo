@@ -20,7 +20,6 @@ import type { RunLabelFacets } from "@/lib/agent-task-api";
 import type { RunMetricFilters } from "@/lib/run-metric-filters";
 import type { RunScope } from "@/lib/run-scope";
 
-/** A structured filter token extracted from the search text. */
 export type SearchToken =
   | { kind: "label"; key: string; id: string }
   | { kind: "environment"; value: string }
@@ -83,10 +82,6 @@ export function parseSearchTokens(
       continue;
     }
 
-    // An unknown `key:value` pair with a colon could still be an env: it
-    // matches when the value is a known environment (e.g. `prod` typed as
-    // `x:prod` is unlikely; `env:prod` already matched above). Otherwise
-    // it stays free text so the backend's text search can try it.
     words.push(word);
   }
 
@@ -171,7 +166,9 @@ export interface SearchSuggestion {
 /**
  * Suggests completions for the last word of the input, based on the facets'
  * dimensions and values. Returns empty when the word has no colon and no
- * recognized prefix (the user is just typing free text).
+ * recognized prefix (the user is just typing free text). A word that already
+ * names a complete value is not re-suggested: completing what is fully typed
+ * adds nothing.
  */
 export function suggestTokens(
   input: string,
@@ -182,14 +179,16 @@ export function suggestTokens(
 
   const suggestions: SearchSuggestion[] = [];
 
-  // `key:` or `key:par` → matching values of that dimension.
   const labelMatch = LABEL_RE.exec(lastWord);
   if (labelMatch) {
     const [, key, partial] = labelMatch;
     const facet = (facets?.labels ?? []).find((f) => f.key === key);
     if (facet) {
       for (const value of facet.values) {
-        if (value.id.toLowerCase().startsWith(partial.toLowerCase())) {
+        const completes =
+          value.id.toLowerCase().startsWith(partial.toLowerCase()) &&
+          value.id.toLowerCase() !== partial.toLowerCase();
+        if (completes) {
           suggestions.push({
             insert: `${key}:${value.id}`,
             label: `${key}:${value.name}`,
@@ -201,11 +200,13 @@ export function suggestTokens(
     }
   }
 
-  // `env:` or `env:pro` → matching environments.
   const envMatch = /^(?:env|environment):(.*)$/i.exec(lastWord);
   if (envMatch) {
     for (const bucket of facets?.environments ?? []) {
-      if (bucket.value.toLowerCase().startsWith(envMatch[1].toLowerCase())) {
+      const completes =
+        bucket.value.toLowerCase().startsWith(envMatch[1].toLowerCase()) &&
+        bucket.value.toLowerCase() !== envMatch[1].toLowerCase();
+      if (completes) {
         suggestions.push({
           insert: `env:${bucket.value}`,
           label: `environment: ${bucket.value}`,
@@ -216,7 +217,6 @@ export function suggestTokens(
     return suggestions.slice(0, 6);
   }
 
-  // Bare prefix matching a dimension key: `cust` → suggest `customer:`.
   const prefix = lastWord.toLowerCase();
   for (const facet of facets?.labels ?? []) {
     if (facet.key.toLowerCase().startsWith(prefix) && prefix.length >= 2) {

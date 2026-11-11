@@ -28,6 +28,7 @@ Invariants:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -189,7 +190,7 @@ async def create_result_evidence_intent(
     enforce_project_storage_quota(
         session, project_id=attempt.project, pending_bytes=size_bytes
     )
-    record_project_storage(session, attempt.project, size_bytes=size_bytes)
+    await record_project_storage(session, attempt.project, size_bytes=size_bytes)
 
     row = AgentTaskResultEvidenceDB(
         id=_new_id(),
@@ -453,9 +454,15 @@ async def delete_result_evidence(
                     await store.delete(row.storage_key)
                 except Exception:  # noqa: BLE001 - row removal must not wedge
                     pass
-    for row in rows:
-        session.delete(row)
-    session.flush()
+
+    def _delete_rows() -> None:
+        for row in rows:
+            session.delete(row)
+        session.flush()
+
+    # The DELETEs wait for SQLite's write lock; off the event loop so that
+    # wait cannot freeze the service behind a running projection batch.
+    await asyncio.to_thread(_delete_rows)
     return len(rows)
 
 

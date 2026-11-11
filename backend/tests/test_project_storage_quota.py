@@ -279,7 +279,7 @@ class TestEvidenceParts:
 
 
 class TestAccounting:
-    def test_record_survives_missing_table(self, monkeypatch: MonkeyPatch) -> None:
+    async def test_record_survives_missing_table(self, monkeypatch: MonkeyPatch) -> None:
         monkeypatch.setenv("APO_PROJECT_DAILY_STORAGE_QUOTA", "1000")
         with Session(file_engine) as session:
             session.execute(text("DROP TABLE project_daily_usage"))
@@ -287,7 +287,7 @@ class TestAccounting:
 
             # Fail open: enforcement reads 0 instead of erroring, and the
             # record write is dropped without raising.
-            storage_quota.record_project_storage(session, "p1", size_bytes=10)
+            await storage_quota.record_project_storage(session, "p1", size_bytes=10)
             assert (
                 storage_quota.enforce_project_storage_quota(
                     session, project_id="p1", pending_bytes=10
@@ -305,11 +305,11 @@ class TestAccounting:
             )
             session.commit()
 
-    def test_rollup_row_written(self) -> None:
+    async def test_rollup_row_written(self) -> None:
         with Session(file_engine) as session:
             _seed_project(session, "p1")
-            storage_quota.record_project_storage(session, "p1", size_bytes=100)
-            storage_quota.record_project_storage(session, "p1", size_bytes=50)
+            await storage_quota.record_project_storage(session, "p1", size_bytes=100)
+            await storage_quota.record_project_storage(session, "p1", size_bytes=50)
             row = session.get(ProjectDailyUsageDB, ("p1", NOW.strftime("%Y-%m-%d")))
             assert row is not None
             assert row.byte_count == 150
