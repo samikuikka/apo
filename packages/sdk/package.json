@@ -130,6 +130,6 @@
     "@opentelemetry/sdk-trace-base": "^2.9.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "ai": "^7.0.101",
-    "zod": "^3.22.0"
+    "zod": "^4.6.7"
   }
 }
