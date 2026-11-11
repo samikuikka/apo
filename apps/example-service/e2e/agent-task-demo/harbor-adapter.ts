@@ -87,7 +87,7 @@ const officialVerdictSchema = z.object({
   benchmark_task_revision: z.literal(TASK_REVISION),
   harbor_version: z.literal(HARBOR_VERSION),
   reward: z.number().finite(),
-  rewards: z.record(z.unknown()),
+  rewards: z.record(z.string(), z.unknown()),
 });
 
 export const harborAdapter = defineAdapter({
