@@ -23,7 +23,7 @@ List recent traces (observability runs) from the backend. These are the call-tre
 ## Synopsis
 
 ```bash
-apo traces list [--task <id>] [--limit <n>] [--service <name>] [--operation <name>] [--span-text <text>] [--attr <expr>...]
+apo traces list [--task <id>] [--limit <n>] [--service <name>] [--operation <name>] [--span-text <text>] [--attr <expr>...] [--environment <name>] [--label <key>:<id>...]
 ```
 
 ## Options
@@ -36,6 +36,8 @@ apo traces list [--task <id>] [--limit <n>] [--service <name>] [--operation <nam
 | `--operation <name>` | all | Filter by root span name (exact match). |
 | `--span-text <text>` | - | Free-text search over span names and attributes. |
 | `--attr <expr>` | - | Span-attribute predicate, repeatable: `key=v`, `key!=v`, `key>v`, `key>=v`, `key<v`, `key<=v`, `key~=v` (contains), `key?` (exists), `'key in a,b'`. |
+| `--environment <name>` | all | Filter by trace environment. Repeatable; matches any of the listed environments (OR). |
+| `--label <key>:<id>` | all | Filter by the parent run's batch label, e.g. `customer:acme`. A trace matches through its parent run's batch. Repeatable; OR within a key, AND across keys. |
 
 Predicates are none-of-trace semantics: `http.status_code!=500` matches traces where **no** span carried a 500. See [Send service traces](/guides/send-service-traces/) for the search surface these filters mirror in the dashboard.
 
@@ -45,6 +47,7 @@ Predicates are none-of-trace semantics: `http.status_code!=500` matches traces w
 apo traces list --limit 10
 apo traces list --service billing-api --attr http.status_code>=500
 apo traces list --attr customer.tier in enterprise,pro --span-text timeout
+apo traces list --label customer:acme --limit 10
 ```
 
 ## Output
