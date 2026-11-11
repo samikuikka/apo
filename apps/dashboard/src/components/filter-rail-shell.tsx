@@ -19,7 +19,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
  */
 
 const railVisibleListeners = new Set<() => void>();
-const railVisibleCache = new Map<string, boolean>();
 
 function subscribeRailVisible(onChange: () => void) {
   railVisibleListeners.add(onChange);
@@ -50,7 +49,6 @@ export function useFilterRailVisible(storageKey: string): [boolean, (next: boole
   const stored = useSyncExternalStore(subscribeRailVisible, read, () => null);
   const setVisible = useCallback(
     (next: boolean) => {
-      railVisibleCache.set(storageKey, next);
       try {
         window.localStorage.setItem(storageKey, String(next));
       } catch {

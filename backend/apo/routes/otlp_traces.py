@@ -41,7 +41,6 @@ router = APIRouter(prefix="/api/public/otel", tags=["otel"])
 def _build_partial_success(
     rejected: int, errors: list[dict[str, str]]
 ) -> dict[str, object] | None:
-    """Build the OTLP partialSuccess object, or None when nothing was rejected."""
     if rejected == 0:
         return None
     return {
@@ -71,7 +70,6 @@ async def receive_otlp_traces(
     Returns a standard OTLP ``ExportTraceServiceResponse`` whose encoding
     matches the request encoding.
     """
-    # Read the raw body
     body = await request.body()
     content_type = request.headers.get("content-type", "application/json")
     encoding = request.headers.get("content-encoding")
@@ -90,11 +88,9 @@ async def receive_otlp_traces(
         if byte_rejection is not None:
             return rate_limit_response(byte_rejection)
 
-    # Normalize content type (strip charset suffix)
     if ";" in content_type:
         content_type = content_type.split(";")[0].strip()
 
-    # Get project from authenticated credentials (set by middleware).
     project_id = getattr(request.state, "project", None)
     if not isinstance(project_id, str) or not project_id:
         raise HTTPException(
@@ -108,7 +104,6 @@ async def receive_otlp_traces(
     # the decompressed/span caps for post-decode admission.
     limits = load_telemetry_transport_limits()
 
-    # Build the authenticated ingestion context.
     from ..models.trace_ingestion import TraceIngestionContext
 
     context = TraceIngestionContext.for_request_state(
@@ -190,17 +185,13 @@ async def receive_otlp_traces(
                 exc_info=True,
             )
 
-    # Schedule the projection as a background task — the response returns
-    # immediately after the inbox commit, and the worker projects async.
     background_tasks.add_task(_project_batch)
 
-    # Add headers for observability
     response.headers["X-Otlp-Accepted"] = str(result.accepted)
     response.headers["X-Otlp-Rejected"] = str(result.rejected)
     response.headers["X-Otlp-Batch-Id"] = result.batch_id
     response.headers["X-Otlp-Mode"] = "async"
 
-    # Encode the response to match the request encoding.
     if content_type == "application/x-protobuf":
         from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
             ExportTraceServiceResponse,
@@ -218,7 +209,6 @@ async def receive_otlp_traces(
             headers=response.headers,
         )
 
-    # Default: OTLP/JSON response.
     otlp_response: dict[str, object] = {}
     if partial is not None:
         otlp_response["partialSuccess"] = partial

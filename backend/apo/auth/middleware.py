@@ -146,13 +146,11 @@ def _cookie_origin_allowed(request: Request) -> bool:
 
 
 def _allowed_frontend_origins() -> set[str]:
-    """The origins the dashboard may be served from (FRONTEND_URL)."""
     raw = os.environ.get("FRONTEND_URL", "http://localhost:3000")
     return {part.strip().rstrip("/") for part in raw.split(",") if part.strip()}
 
 
 def _is_demo_enabled() -> bool:
-    """APO_DEMO_ENABLED=false removes the demo (and anonymous access) entirely."""
     return os.environ.get("APO_DEMO_ENABLED", "true").strip().lower() not in (
         "false",
         "0",
@@ -197,8 +195,6 @@ def _authenticate_anonymous_demo(request: Request) -> AuthContext | JSONResponse
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Validates JWT cookies, service tokens, or API keys on every non-public request."""
-
     @override
     async def dispatch(
         self,
@@ -275,20 +271,18 @@ def _is_public(path: str) -> bool:
 def _is_open_dev_bypass_allowed() -> bool:
     """Whether the open-dev (unauthenticated) bypass may be used.
 
-    Behavior 2: the bypass is allowed ONLY in the ``development``
-    profile with an empty ``AUTH_SECRET``. Release profiles (``local``,
-    ``server``) must fail closed — a missing or weak secret yields 401s
-    on protected routes, never open access.
+    The bypass is allowed ONLY in the ``development`` profile with an
+    empty ``AUTH_SECRET``. Release profiles (``local``, ``server``) must
+    fail closed — a missing or weak secret yields 401s on protected
+    routes, never open access.
 
-    We read the profile live (not at module load) so tests and runtime
-    env changes are honored. ``AUTH_SECRET`` is module-level (imported
-    from ``apo.auth``); a weak secret here means the middleware cannot
-    authenticate anyone, so the route must fail closed.
+    The profile is read live (not at module load) so runtime env changes
+    are honored. A weak secret means the middleware cannot authenticate
+    anyone, so the route must fail closed.
     """
     profile = os.environ.get("APO_DEPLOYMENT_PROFILE", "").strip().lower()
     if profile not in ("", "development"):
         return False
-    # Development profile (or unset): allow open-dev only with no secret.
     return (AUTH_SECRET or "") == ""
 
 
@@ -302,19 +296,17 @@ def _warn_no_secret() -> None:
 
 
 def _authenticate(request: Request) -> AuthContext | None:
-    # 1. Cookie auth (dashboard) — highest priority
     cookie_token = _get_session_cookie(request)
     if cookie_token:
         cookie_user = _authenticate_cookie(cookie_token)
         if cookie_user is not None:
             return cookie_user
 
-    # 2. Basic auth (two-key model: pk:sk) — full access
     basic_credentials = _get_basic_auth(request)
     if basic_credentials:
         return _authenticate_basic(basic_credentials[0], basic_credentials[1])
 
-    # 3. Bearer auth (legacy single-key, service token, or attempt token).
+    # Bearer auth (legacy single-key, service token, or attempt token):
     # a Bearer value beginning with ``pk-apo-`` is a public
     # identifier, not secret material. It is rejected here — before any DB
     # lookup, before ``last_used_at`` updates, and before auth-state
@@ -475,11 +467,6 @@ def _is_before(token_iat: datetime, cutoff: datetime) -> bool:
 
 
 def _get_basic_auth(request: Request) -> tuple[str, str] | None:
-    """Extract and decode Basic auth credentials from the Authorization header.
-
-    Returns a (public_key, secret_key) tuple if the header contains valid
-    Basic auth, None otherwise. Handles malformed input gracefully.
-    """
     auth_header = request.headers.get("authorization", "")
     if not auth_header.startswith("Basic "):
         return None
@@ -505,10 +492,6 @@ def _get_basic_auth(request: Request) -> tuple[str, str] | None:
 
 
 def _authenticate_basic(public_key: str, secret_key: str) -> AuthContext | None:
-    """Validate a public:secret key pair sent via Basic auth.
-
-    Grants the key's stored scope (full or ingest).
-    """
     with Session(engine) as session:
         api_key = validate_basic_auth(public_key, secret_key, session)
         if api_key is None:
@@ -578,7 +561,6 @@ def _authenticate_bearer(token: str) -> AuthContext | None:
         if is_public_key(token):
             return None
 
-        # Legacy single-key Bearer (sk-xxx): full scope from key record
         api_key = validate_legacy_bearer(token, session)
         if api_key is None:
             return None
@@ -611,11 +593,7 @@ def _authenticate_bearer(token: str) -> AuthContext | None:
 
 
 def _is_expired(expires_at: datetime | None) -> bool:
-    """Check if an API key has expired based on its expires_at value.
-
-    Returns True if expires_at is set and in the past.
-    Expired keys are treated the same as invalid (no info leakage).
-    """
+    """Expired keys are treated the same as invalid (no info leakage)."""
     if expires_at is None:
         return False
     now = datetime.now(timezone.utc).replace(tzinfo=None)

@@ -84,8 +84,9 @@ export function RunsToolbar({
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearchInput(value);
-      setSuggestions(suggestTokens(value, labelFacets));
-      setShowSuggestions(suggestTokens(value, labelFacets).length > 0);
+      const next = suggestTokens(value, labelFacets);
+      setSuggestions(next);
+      setShowSuggestions(next.length > 0);
       clearTimeout(searchTimer.current);
       searchTimer.current = setTimeout(() => {
         updateUrl({ q: value || null, page: null });
@@ -105,7 +106,7 @@ export function RunsToolbar({
   const applySuggestion = useCallback(
     (suggestion: SearchSuggestion) => {
       const words = searchInput.split(/\s+/).filter(Boolean);
-      words.pop(); // replace the partial word with the completed token
+      words.pop();
       const completed = [...words, suggestion.insert].join(" ");
       setSearchInput(completed);
       setSuggestions([]);
@@ -162,7 +163,7 @@ export function RunsToolbar({
           searchPlaceholder="Search or type a filter: customer:acme, cost>0.50, env:prod..."
           searchTestId="runs-search-input"
           searchSuggestions={showSuggestions ? suggestions : undefined}
-          onSuggestionClick={(insert) => applySuggestion({ insert, label: insert })}
+          onSuggestionClick={applySuggestion}
           onSearchSubmit={applyTokens}
           onClearAll={onClearFilters}
           trailing={

@@ -556,7 +556,6 @@ def start_trace_ingestion_worker() -> None:
 
 
 async def stop_trace_ingestion_worker() -> None:
-    """Stop the in-process queue worker."""
     global _worker_task, _worker_stop
     if _worker_stop is not None:
         _worker_stop.set()

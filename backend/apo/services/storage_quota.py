@@ -22,6 +22,7 @@ counter write must never fail an already-accepted upload.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import threading
@@ -134,42 +135,56 @@ def enforce_project_storage_quota(
         raise _StorageQuotaExceeded(limit=quota, used=used, reset_at=reset_at)
 
 
-def record_project_storage(session: Session, project_id: str, *, size_bytes: int) -> None:
+async def record_project_storage(session: Session, project_id: str, *, size_bytes: int) -> None:
     """UPSERT-increment today's project storage row. Never raises
-    (non-fatal by design, see module docstring); owns its transaction."""
+    (non-fatal by design, see module docstring); owns its transaction.
+
+    The UPSERT commits on its own connection and waits for SQLite's write
+    lock behind whatever holds it (a projection batch can, for seconds);
+    it runs in a worker thread so callers on the event loop never wait
+    for that lock on the loop thread.
+    """
     if not project_id or size_bytes <= 0:
         return
     day, _reset = _utc_day()
     try:
-        with Session(session.bind) as own:
-            own.execute(
-                text(
-                    "INSERT INTO project_daily_usage "
-                    "(project_id, day, byte_count, request_count, updated_at) "
-                    "VALUES (:p, :d, :b, 1, :now) "
-                    "ON CONFLICT (project_id, day) DO UPDATE SET "
-                    "byte_count = byte_count + :b, "
-                    "request_count = request_count + 1, "
-                    "updated_at = :now"
-                ),
-                {
-                    "p": project_id,
-                    "d": day,
-                    "b": size_bytes,
-                    "now": datetime.now(timezone.utc),
-                },
-            )
-            own.commit()
-        with _lock:
-            cached = _today_bytes.get(project_id)
-            if cached and cached[0] == day:
-                _today_bytes[project_id] = (day, cached[1] + size_bytes, time.monotonic())
+        await asyncio.to_thread(
+            _upsert_project_storage, session, project_id, day, size_bytes
+        )
     except Exception:  # noqa: BLE001 — an accepted upload must not fail on us
         logger.warning(
             "failed to record storage usage for project %s (accepted upload unaffected)",
             project_id,
             exc_info=True,
         )
+
+
+def _upsert_project_storage(
+    session: Session, project_id: str, day: str, size_bytes: int
+) -> None:
+    with Session(session.bind) as own:
+        own.execute(
+            text(
+                "INSERT INTO project_daily_usage "
+                "(project_id, day, byte_count, request_count, updated_at) "
+                "VALUES (:p, :d, :b, 1, :now) "
+                "ON CONFLICT (project_id, day) DO UPDATE SET "
+                "byte_count = byte_count + :b, "
+                "request_count = request_count + 1, "
+                "updated_at = :now"
+            ),
+            {
+                "p": project_id,
+                "d": day,
+                "b": size_bytes,
+                "now": datetime.now(timezone.utc),
+            },
+        )
+        own.commit()
+    with _lock:
+        cached = _today_bytes.get(project_id)
+        if cached and cached[0] == day:
+            _today_bytes[project_id] = (day, cached[1] + size_bytes, time.monotonic())
 
 
 def today_project_storage(session: Session, project_id: str) -> dict[str, Any] | None:

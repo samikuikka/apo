@@ -7,10 +7,6 @@ itself (one-time enrollment token, long-lived ``apo_ex_`` credential, or a
 ``task_execution_attempt`` JWT) inside each handler via Depends — the path is
 public to the user/api-key auth middleware so the two credential models stay
 isolated. Every response carries ``X-Apo-Executor-Protocol: 1``.
-
-This is a foundation spec: the routes are registered and Project scoped, but no
-production run entry point queues through them until the bundled executor ships a proven
-Executor.
 """
 
 from __future__ import annotations
@@ -72,7 +68,6 @@ class ResultRequest(BaseModel):
     stdout_tail: str | None = None
     stderr_tail: str | None = None
     error_message: str | None = None
-    # the adapter's resolved model/effort for this attempt.
     run_configuration: AgentTaskRunConfiguration | None = None
     # out-of-band evidence part ids (issue #251); resolved server-side into
     # the transcript/checks/deliverables they stand in for.
@@ -88,9 +83,6 @@ class FailureRequest(BaseModel):
     stderr_tail: str | None = None
 
 
-# ── auth dependencies ─────────────────────────────────────────────────────
-
-
 def _bearer_token(request: Request) -> str:
     auth = request.headers.get("authorization", "")
     if not auth.lower().startswith("bearer "):
@@ -101,7 +93,6 @@ def _bearer_token(request: Request) -> str:
 def require_attempt_lease(
     request: Request, session: Session = Depends(get_session)
 ) -> CurrentAttemptLease:
-    """Decode the task_execution_attempt JWT and verify it against live DB state."""
     token = _bearer_token(request)
     try:
         claims = decode_attempt_jwt(token)
@@ -114,8 +105,6 @@ def require_attempt_lease(
     if not isinstance(raw_gen, int):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid attempt token")
     raw_executor = claims.get("executor_id")
-    # Caller Attempts have no persistent Executor (executor_id is None); preserve
-    # None rather than stringifying it so the own-only check matches the row.
     lease = CurrentAttemptLease(
         attempt_id=attempt_id,
         lease_generation=raw_gen,
@@ -125,9 +114,6 @@ def require_attempt_lease(
     if attempt is None or attempt.lease_generation != lease.lease_generation:
         raise HTTPException(status.HTTP_409_CONFLICT, detail={"kind": "lease_stale"})
     return lease
-
-
-# ── endpoints ─────────────────────────────────────────────────────────────
 
 
 @router.post("/attempts/{attempt_id}/start")

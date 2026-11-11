@@ -37,7 +37,6 @@ from apo.services.execution_leases import (
     transition_attempt,
 )
 
-# Bounded diagnostic tails: 64 KiB each.
 DIAGNOSTIC_TAIL_BYTES = 64 * 1024
 
 _VALID_FAILURE_KINDS = frozenset(
@@ -73,8 +72,6 @@ class FinalizationError(Exception):
 
 @dataclass(frozen=True)
 class AttemptResultBody:
-    """Bounded result payload reported by an Executor."""
-
     completion_id: str
     pass_result: bool
     adapter_name: str | None = None
@@ -86,7 +83,6 @@ class AttemptResultBody:
     stdout_tail: str | None = None
     stderr_tail: str | None = None
     error_message: str | None = None
-    # adapter-reported model/effort.
     run_configuration: AgentTaskRunConfiguration | None = None
     # Out-of-band evidence parts (issue #251): ids of attempt-scoped parts
     # whose resolved bytes stand in for the inline transcript/checks/
@@ -147,7 +143,7 @@ def _check_completion_idempotency(
         raise CompletionConflict("completion_id already used by another attempt")
     if attempt.completion_id == completion_id and attempt.status == terminal_status:
         if attempt.completion_sha256 == digest:
-            return True  # idempotent replay
+            return True
         raise CompletionConflict("completion_id replayed with a different body")
     if attempt.completion_id is not None and attempt.completion_id != completion_id:
         raise CompletionConflict("attempt already finalized with a different completion_id")
@@ -215,7 +211,6 @@ def finalize_attempt_failure(
     lease: CurrentAttemptLease,
     body: AttemptFailureBody,
 ) -> TaskExecutionAttemptDB:
-    """Apply an operational failure: attempt failed, Task Run errored."""
     if body.failure_kind not in _VALID_FAILURE_KINDS:
         raise FinalizationError("bad_failure_kind", f"unknown failure kind {body.failure_kind!r}")
     # Same reads-then-writes race as finalize_attempt_result: the projector's
@@ -299,8 +294,6 @@ def _finalize_task_run(
     task_run.completed_at = datetime.now(timezone.utc)
     session.add(task_run)
     update_batch_run_status(session, batch)
-    # when the Batch just became terminal, resolve its pending
-    # Schedule Occurrence (delivered vs missed) and clear the active pointer.
     from apo.services.schedule_occurrences import resolve_occurrence_if_terminal
     resolve_occurrence_if_terminal(session, batch)
 
@@ -309,7 +302,6 @@ def _emit_finalization_events(
     session: Session,
     attempt: TaskExecutionAttemptDB,
 ) -> None:
-    """Publish the same lifecycle events as the former subprocess path."""
     from apo.services.run_events import emit_batch_run_event, emit_task_run_event
 
     task_run = session.get(AgentTaskRunDB, attempt.task_run_id)
@@ -369,11 +361,11 @@ async def finalize_attempt_with_deliverables(
     Raises ``CompletionConflict`` / ``ResultEvidenceError`` / ``ValueError``
     / ``LeaseError`` — the caller maps these to HTTP responses.
     """
-    # No write lock is taken here. This coroutine suspends between its
+    # No write lock is taken up front. This coroutine suspends between its
     # stretches, and a lock held across a suspension freezes the service: an
-    # on-loop writer (the heartbeat routes) waits out busy_timeout on the loop
-    # thread while the holder needs that loop to go on. finalize_attempt_result
-    # takes the lock itself, inside its worker thread, and commits there.
+    # on-loop writer waits out busy_timeout on the loop thread while the
+    # holder needs that loop to go on. Each stretch that writes takes the
+    # lock itself, inside its worker thread, and commits there.
     # Issue #174: the body digest and the finalization SQL are seconds of sync
     # work over multi-MB result bodies. Run them off the event loop so one
     # heavy finalize cannot freeze heartbeats and every other request behind
@@ -409,7 +401,10 @@ async def finalize_attempt_with_deliverables(
                     value=value,
                     store=store,
                 )
-            session.flush()
+            # The flush emits the queued INSERTs and UPDATEs; like every
+            # write here it waits for SQLite's write lock, so it runs off
+            # the event loop.
+            await asyncio.to_thread(session.flush)
 
     # The stored completion digest is over the WIRE body (refs, not their
     # resolved contents) so a replay after staging cleanup hashes identically.
@@ -424,8 +419,9 @@ async def finalize_attempt_with_deliverables(
         from apo.services.result_evidence import delete_result_evidence
 
         try:
-            await delete_result_evidence(session, attempt_id=lease.attempt_id)
-            session.commit()
+            removed = await delete_result_evidence(session, attempt_id=lease.attempt_id)
+            if removed:
+                await asyncio.to_thread(session.commit)
         except Exception:  # noqa: BLE001 - the result is already recorded
             import logging
 

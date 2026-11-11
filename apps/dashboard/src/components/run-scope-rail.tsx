@@ -202,12 +202,6 @@ export function RailToggle({
   );
 }
 
-/**
- * Rail visibility, remembered per browser. The external-store pattern keeps
- * the server snapshot neutral (null means visible) so hydration never
- * mismatches; storage events keep other tabs in sync.
- */
-
 function ScopeRailBody({
   facets,
   scope,

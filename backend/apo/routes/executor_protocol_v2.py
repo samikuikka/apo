@@ -58,20 +58,14 @@ router = APIRouter(prefix="/v1/executor-protocol/v2", tags=["executor-protocol-v
 
 PROTOCOL_VERSION = 2
 
-#: replace the route-level magic timeouts with shared constants. The
-#: Attempt JWT covers the max task timeout plus finalization grace; the task
-#: timeout is the single assignment budget enforced by the connector parent.
+#: The Attempt JWT covers the max task timeout plus finalization grace; the
+#: task timeout is the single assignment budget enforced by the connector
+#: parent.
 _SOURCE_OWNED_JWT_TTL_SECONDS = 2 * 60 * 60
 _SOURCE_OWNED_TASK_TIMEOUT_SECONDS = 60 * 60
 
 
-# ---------------------------------------------------------------------------
-# Auth dependencies
-# ---------------------------------------------------------------------------
-
-
 def _require_executor(request: Request, session: Session = Depends(get_session)) -> ExecutorDB:
-    """Authenticate an executor credential from the Authorization header."""
     auth = request.headers.get("authorization", "")
     if not auth.startswith("Bearer "):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail={"kind": "executor_credential_invalid"})
@@ -86,7 +80,6 @@ def _require_attempt_lease(
     request: Request,
     session: Session = Depends(get_session),
 ) -> CurrentAttemptLease:
-    """Validate the Attempt JWT from the Authorization header."""
     auth = request.headers.get("authorization", "")
     if not auth.startswith("Bearer "):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
@@ -100,11 +93,6 @@ def _require_attempt_lease(
         lease_generation=attempt.lease_generation,
         executor_id=attempt.executor_id or "",
     )
-
-
-# ---------------------------------------------------------------------------
-# Schemas
-# ---------------------------------------------------------------------------
 
 
 class EnrollV2Request(BaseModel):
@@ -175,11 +163,6 @@ class SourceAttestationResponse(BaseModel):
     content_sha256: str
 
 
-# ---------------------------------------------------------------------------
-# Enrollment
-# ---------------------------------------------------------------------------
-
-
 @router.post("/enroll", response_model=EnrollV2Response)
 def enroll_v2(
     body: EnrollV2Request,
@@ -204,11 +187,6 @@ def enroll_v2(
         heartbeat_interval_seconds=hb,
         lease_ttl_seconds=lease_ttl,
     )
-
-
-# ---------------------------------------------------------------------------
-# Heartbeat
-# ---------------------------------------------------------------------------
 
 
 @router.post("/heartbeat")
@@ -238,11 +216,6 @@ def heartbeat_v2(
     session.add(executor)
     session.commit()
     return eligibility
-
-
-# ---------------------------------------------------------------------------
-# Claims
-# ---------------------------------------------------------------------------
 
 
 @router.post("/claims", response_model=SourceOwnedAssignment | None)
@@ -286,7 +259,6 @@ def claims_v2(
         return None
 
     attempt = claimed.attempt
-    # Issue the fenced Attempt JWT via the shared creator.
     from ..services.executor_auth import create_attempt_jwt
 
     attempt_jwt = create_attempt_jwt(
@@ -323,11 +295,6 @@ def claims_v2(
         result_evidence_max_total_bytes=max_total,
         run_metadata=batch_run.run_metadata if batch_run else None,
     )
-
-
-# ---------------------------------------------------------------------------
-# Source attestation
-# ---------------------------------------------------------------------------
 
 
 @router.post("/attempts/{attempt_id}/source-attestation", response_model=SourceAttestationResponse)
@@ -375,7 +342,6 @@ def source_attestation(
 
     _pin_executed_definition(session, attempt, body.task_definition)
 
-    # Create attested revision
     revision = TaskRevisionDB(
         id=uuid4().hex[:16],
         project=attempt.project,
@@ -426,11 +392,6 @@ def _pin_executed_definition(
     session.add(task_run)
 
 
-# ---------------------------------------------------------------------------
-# Shared attempt lifecycle (alias v1 routes)
-# ---------------------------------------------------------------------------
-
-
 class StartRequest(BaseModel):
     driver_kind: str = "source-owned-ts"
     runtime: dict[str, object] | None = None
@@ -453,7 +414,6 @@ def attempt_start_v2(
     if attempt is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "attempt not found")
 
-    # source-owned attempts require attestation before start
     if attempt.assignment_kind == "source_owned" and attempt.task_revision_id is None:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -493,11 +453,6 @@ def attempt_heartbeat_v2(
     except LeaseError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, detail={"kind": "stale_generation", "message": str(exc)})
     return {"cancel_requested": resp.cancel_requested}
-
-
-# ---------------------------------------------------------------------------
-# Shared finalization (v2 aliases of the v1 result/failure routes)
-# ---------------------------------------------------------------------------
 
 
 class AttemptResultRequest(BaseModel):
