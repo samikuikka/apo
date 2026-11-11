@@ -511,7 +511,7 @@ importers:
         specifier: ^7.0.101
         version: 7.0.101(zod@3.25.76)
       zod:
-        specifier: ^3.22.0
+        specifier: ^3.25.76 || ^4.1.8
         version: 3.25.76
     devDependencies:
       '@codspeed/vitest-plugin':
