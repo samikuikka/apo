@@ -440,6 +440,77 @@ class TestRequest:
         assert response.status_code == 422
         assert self_serve.sent == []
 
+    @pytest.mark.parametrize(
+        "email",
+        [
+            # A comma list rode one SMTP send into many inboxes, matched no
+            # blocklist entry, and dodged the per-email limit.
+            "victim@corp.example,attacker@gmail.com",
+            "burner@mailinator.com,nobody@gmail.com",
+            "a@b.com;c@d.com",
+            "one@@two.com",
+            "no-dot@localhost",
+            "a@" + "b" * 260 + ".com",
+        ],
+    )
+    def test_one_address_per_request_no_lists_or_oversize(
+        self, client: TestClient, session: Session, self_serve: CapturingEmailService, email: str
+    ) -> None:
+        response = client.post(REQUEST_PATH, json={"email": email})
+
+        assert response.status_code == 422
+        assert self_serve.sent == []
+        assert _invitations(session) == []
+
+    def test_request_supersedes_an_expired_admin_invitation(
+        self, client: TestClient, session: Session, self_serve: CapturingEmailService
+    ) -> None:
+        """An expired admin link admits nobody, and nothing else ever clears
+        the row; without superseding, the address's requests 202 forever
+        while no link is ever sent."""
+        admin = _make_user(session, "admin@example.com", is_admin=True)
+        asyncio.run(
+            create_or_refresh_hosted_access_invitation(
+                session, email="vip@example.com", invited_by_user_id=admin.id
+            )
+        )
+        [invitation] = _invitations(session)
+        invitation.expires_at = utcnow() - timedelta(hours=1)
+        session.add(invitation)
+        session.commit()
+
+        response = client.post(REQUEST_PATH, json={"email": "vip@example.com"})
+
+        assert response.status_code == 202
+        assert response.json() == {"message": GENERIC_MESSAGE}
+        [invitation] = _invitations(session)
+        assert invitation.origin == "self_serve"
+        assert invitation.invited_by_user_id is None
+        assert invitation.expires_at > utcnow()
+        [admin_mail, self_serve_mail] = self_serve.sent
+        assert self_serve_mail["to"] == "vip@example.com"
+        token = _token_from(self_serve_mail)
+        assert hashlib.sha256(token.encode()).hexdigest() == invitation.token_hash
+        assert admin_mail["to"] == "vip@example.com"
+
+    def test_overlong_name_on_accept_is_rejected(self, session: Session) -> None:
+        """The name is echoed into the mailed verification code; an unbounded
+        one lets a stranger push their own text through the operator's mail
+        domain."""
+        token = _admin_invite_token(session, "verbose@example.com")
+
+        with pytest.raises(HTTPException) as rejected:
+            accept_hosted_access_create_account(
+                session,
+                raw_token=token,
+                name="x" * 121,
+                password=PASSWORD,
+                project_name="Verbose Project",
+            )
+
+        assert rejected.value.status_code == 422
+        assert session.exec(select(UserDB).where(UserDB.email == "verbose@example.com")).first() is None
+
 
 # ---------------------------------------------------------------------------
 # Access log

@@ -15,7 +15,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlmodel import Session, col, delete, select
 
 from ..auth import _dummy_hash, verify_password
-from ..services.email_verification import require_verified_email
+from ..services.email_verification import (
+    email_verification_required_for_everyone,
+    require_verified_email,
+)
 from ..services.ingest_quota import today_usage
 from ..auth.api_key_auth import generate_key_pair
 from ..auth.api_key_cache import (
@@ -450,7 +453,9 @@ def bootstrap_api_key(
     if not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    require_verified_email(user)
+    require_verified_email(
+        user, required_for_everyone=email_verification_required_for_everyone()
+    )
 
     scope = _validate_scope(body.scope)
 

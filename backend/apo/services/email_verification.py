@@ -8,6 +8,8 @@ around through the others.
 
 from __future__ import annotations
 
+import os
+
 from fastapi import HTTPException
 
 from ..models.db import UserDB
@@ -31,4 +33,17 @@ def require_verified_email(user: UserDB, *, required_for_everyone: bool = False)
         )
 
 
-__all__ = ["require_verified_email"]
+def email_verification_required_for_everyone() -> bool:
+    """Whether the installation-wide flag applies the gate to every account.
+
+    Every password entry point passes this to ``required_for_everyone`` so
+    they agree; one that skipped it would let an unverified account walk
+    around sign-in through the CLI bootstrap routes.
+    """
+    return (
+        os.environ.get("AUTH_EMAIL_VERIFICATION_REQUIRED", "false").strip().lower()
+        == "true"
+    )
+
+
+__all__ = ["email_verification_required_for_everyone", "require_verified_email"]
