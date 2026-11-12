@@ -23,6 +23,8 @@ import { join, dirname, resolve, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
+import { assertVersionNotRegressed } from "../../../scripts/npm-version-guard.mjs";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_DIR = resolve(__dirname, "..");
 const REPO_ROOT = resolve(PKG_DIR, "..", "..");
@@ -242,6 +244,7 @@ function verifyPublint(installedPkgDir, consumerDir) {
 }
 
 function main() {
+  assertVersionNotRegressed(PKG_DIR);
   const sourceManifest = readJson(join(PKG_DIR, "package.json"));
   const sourceVersion = sourceManifest.version;
   console.log(`Verifying @apo-ai/cli@${sourceVersion} from ${PKG_DIR}`);
