@@ -77,6 +77,16 @@ class StreamLimiter:
         with self._lock:
             return self._open.get(identity, 0)
 
+    def at_cap(self, identity: str) -> bool:
+        """Whether ``identity`` already holds every slot it may hold.
+
+        A peek, not an acquire: routes use it to refuse an over-cap caller
+        before paying for the initial events a stream that never starts
+        would carry. ``try_acquire`` remains the enforcing check.
+        """
+        with self._lock:
+            return self._open.get(identity, 0) >= self.max_streams_per_identity
+
     def tracked_identity_count(self) -> int:
         """Test/debug: number of identities with at least one open stream."""
         with self._lock:

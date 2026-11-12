@@ -95,6 +95,20 @@ def format_sse_event(
     return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
 
 
+def reject_if_stream_cap_reached(request: Request) -> None:
+    """Refuse an over-cap caller before a route builds its initial events.
+
+    A caller hammering past its stream cap would otherwise pay for a full
+    threadpool read of the stream's current state before the 429 lands.
+    ``sse_streaming_response`` still enforces the cap when it acquires; the
+    gap between this peek and that acquire only lets one racing request
+    through, never blocks a legitimate one.
+    """
+    limiter = get_stream_limiter()
+    if limiter.at_cap(_stream_identity(request)):
+        raise StreamCapExceeded(limiter.max_streams_per_identity)
+
+
 def sse_streaming_response(
     request: Request,
     subscribe: Callable[[], AsyncIterator[str]],

@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session
 
 from .bootstrap import bootstrap_initial_user
-from .db import init_db, engine
+from .db import init_db, engine, is_sqlite
 from .services.email import init_email_service
 from .services.run_events import set_event_loop
 from .routes import (
@@ -233,6 +233,12 @@ def create_app() -> FastAPI:
     from .services.user_quotas import load_default_creation_caps
 
     load_default_creation_caps()
+    # The SQLite page-cache budget is read per connection, so an invalid
+    # value must stop startup here, not 500 on the first database session.
+    if is_sqlite():
+        from .db import sqlite_cache_size_kib
+
+        sqlite_cache_size_kib()
 
     # validate admission limits and construct the controller.
     admission_limits = load_telemetry_admission_limits()

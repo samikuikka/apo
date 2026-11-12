@@ -66,6 +66,32 @@ SQLITE_BUSY_TIMEOUT_MS = 30_000
 SQLITE_CACHE_SIZE_KIB = 65_536
 
 
+def sqlite_cache_size_kib() -> int:
+    """Per-connection page-cache budget in KiB (``APO_SQLITE_CACHE_KIB``).
+
+    The default (64 MiB, negative = KiB) keeps big scans and sorts from
+    re-reading evicted pages; the 2 MiB SQLite default thrashes on the
+    hot list queries. The budget is PER CONNECTION and this engine uses
+    NullPool (one connection per session), so concurrent heavy queries
+    multiply it: ~15 of them at the default already spend 960 MiB and a
+    1 GiB container must also hold the working set. Operators raising
+    concurrency or shrinking the container scale this with the env var;
+    an invalid value fails instead of passing silently.
+    """
+    raw = os.environ.get("APO_SQLITE_CACHE_KIB")
+    if raw is None or not raw.strip():
+        return SQLITE_CACHE_SIZE_KIB
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        raise ValueError(
+            f"APO_SQLITE_CACHE_KIB must be a positive base-10 integer (got {raw!r})"
+        ) from None
+    if value <= 0:
+        raise ValueError(f"APO_SQLITE_CACHE_KIB must be a positive integer (got {value})")
+    return value
+
+
 def attach_sqlite_pragmas(target_engine: object) -> None:
     """Register the per-connection PRAGMA hook on a SQLite engine.
 
@@ -83,8 +109,9 @@ def attach_sqlite_pragmas(target_engine: object) -> None:
         cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA synchronous=NORMAL")
-        # 64 MiB (negative = KiB): the 2 MiB default makes big scans and sorts re-read evicted pages.
-        cursor.execute(f"PRAGMA cache_size=-{SQLITE_CACHE_SIZE_KIB}")
+        # Read the env fresh so operators (and tests) can change it without
+        # restart, next to the max_page_count handling below.
+        cursor.execute(f"PRAGMA cache_size=-{sqlite_cache_size_kib()}")
         # max_page_count is a PER-CONNECTION limit (the database file does not
         # remember it) and this engine uses NullPool, so it must be set
         # on every new connection or the hard cap is decorative. Read the

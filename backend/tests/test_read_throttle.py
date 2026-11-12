@@ -1,7 +1,10 @@
+# pyright: reportAttributeAccessIssue=false, reportPrivateLocalImportUsage=false, reportUnknownMemberType=false, reportUnknownParameterType=false
+
 """Read-throttle middleware — heavy list reads get a generous per-identity cap."""
 
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -170,3 +173,51 @@ def test_throttle_covers_the_g5_blind_spots() -> None:
         statuses = [call(path).status_code for _ in range(3)]
         assert statuses == [200, 200, 429], f"{method.upper()} {path}: {statuses}"
 
+
+
+def test_anonymous_identity_keys_by_resolved_client_ip() -> None:
+    # Behind the ingress the socket peer is the proxy; keying anonymous
+    # visitors by it puts every demo poller into one shared window.
+    from apo.middleware.read_throttle import _identity_for
+    from starlette.requests import Request as StarletteRequest
+
+    def _request(headers: dict[str, str], peer: str) -> StarletteRequest:
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/v1/runs",
+            "headers": [
+                (key.lower().encode(), value.encode())
+                for key, value in headers.items()
+            ],
+            "client": (peer, 51234),
+            "query_string": b"",
+        }
+        return StarletteRequest(scope)
+
+    # 10.0.0.9 is inside the default trusted-proxy ranges, so the forwarded
+    # first hop decides the identity.
+    proxy = _request({"x-forwarded-for": "203.0.113.7"}, "10.0.0.9")
+    assert _identity_for(proxy) == "ip:203.0.113.7"
+    other = _request({"x-forwarded-for": "198.51.100.2"}, "10.0.0.9")
+    assert _identity_for(other) == "ip:198.51.100.2"
+
+    # An untrusted peer is keyed by itself; a spoofed header changes nothing.
+    direct = _request({"x-forwarded-for": "203.0.113.7"}, "203.0.113.99")
+    assert _identity_for(direct) == "ip:203.0.113.99"
+
+
+def test_retry_after_shrinks_with_the_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import apo.middleware.read_throttle as read_throttle_module
+
+    now = [1000.0]
+    monkeypatch.setattr(read_throttle_module.time, "monotonic", lambda: now[0])
+
+    throttle = ReadThrottle(max_requests=1, window_seconds=60)
+    assert throttle.is_allowed("ip:1.1.1.1")
+    assert throttle.retry_after("ip:1.1.1.1") == 60
+
+    now[0] += 59.2
+    assert throttle.retry_after("ip:1.1.1.1") == 1

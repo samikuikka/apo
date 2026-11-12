@@ -57,7 +57,11 @@ export function useLazyConversation(
       })
       .catch(fail);
     return () => controller.abort();
-  }, [requestKey, loaded, traceRunId, projectId]);
+    // `loaded` and `errors` are read only to skip an already-settled key; the
+    // render below resolves from the same state, so listing them as deps
+    // would re-run (and re-abort) this effect after every resolution.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey, traceRunId, projectId]);
 
   if (!enabled) return { status: "idle" };
   // A running task may receive its trace ID on a later page refresh; until

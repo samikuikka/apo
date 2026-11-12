@@ -101,6 +101,20 @@ def metrics_of_runs(scope: RunScope, runs: Any) -> list[ColumnElement[bool]]:
     return _rows_of_runs(scope, _METRICS, runs)
 
 
+def calls_of_page_rows(
+    scope: RunScope, rows: Sequence[tuple[str, str]]
+) -> ColumnElement[bool]:
+    """Calls of exactly these ``(run_id, project)`` page rows."""
+    return _rows_of_page(scope, _CALLS, rows)
+
+
+def metrics_of_page_rows(
+    scope: RunScope, rows: Sequence[tuple[str, str]]
+) -> ColumnElement[bool]:
+    """Metrics of exactly these ``(run_id, project)`` page rows."""
+    return _rows_of_page(scope, _METRICS, rows)
+
+
 def status_conditions(scope: RunScope) -> RunStatusConditions:
     """Run status as the list derives it from call levels.
 
@@ -184,6 +198,21 @@ def _rows_of_runs(scope: RunScope, table: _Dependent, runs: Any) -> list[ColumnE
             runs.with_only_columns(RUN_ID_COL, RUN_PROJECT_COL)
         )
     return [*_project_predicates(scope, table.project), belongs]
+
+
+def _rows_of_page(
+    scope: RunScope, table: _Dependent, rows: Sequence[tuple[str, str]]
+) -> ColumnElement[bool]:
+    # Hydration holds the page's run rows, not a SELECT over them. Same key
+    # rule as _rows_of_runs: a pinned project makes the trace id exact, so a
+    # scalar IN probes one materialized list; without a pin the id alone is
+    # ambiguous across projects and the (run_id, project) pair decides.
+    if scope.project:
+        return and_(
+            table.run_id.in_([run_id for run_id, _project in rows]),
+            *_project_predicates(scope, table.project),
+        )
+    return tuple_(table.run_id, table.project).in_(rows)
 
 
 def _project_predicates(

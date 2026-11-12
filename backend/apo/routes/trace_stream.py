@@ -4,7 +4,9 @@ Provides a streaming endpoint that clients connect to for receiving
 live trace events: trace:created, span:created, span:updated, trace:completed.
 """
 
-# pyright: reportCallIssue=false, reportCallInDefaultInitializer=false, reportDeprecated=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
+# pyright: reportCallIssue=false, reportCallInDefaultInitializer=false, reportDeprecated=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false
+
+import asyncio
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import defer
@@ -14,7 +16,11 @@ from ..db import get_session
 from ..models.columns import CALL_LIGHT, LOGGED_CALL_CREATED_AT_COL
 from ..models.db import LoggedCallDB, RunDB
 from ..services.project_memberships import enforce_project_role_from_request
-from ..services.sse import format_sse_event, sse_streaming_response
+from ..services.sse import (
+    format_sse_event,
+    reject_if_stream_cap_reached,
+    sse_streaming_response,
+)
 from ..services.trace_broadcaster import get_trace_broadcaster
 
 router = APIRouter(prefix="/v1/traces", tags=["Trace Streaming"])
@@ -55,13 +61,29 @@ async def stream_trace_events(
     # Authorize before any broadcaster access or
     # initial-event construction. A cross-Project denial returns JSON
     # 403/404 before the text/event-stream response is created.
-    _ = enforce_project_role_from_request(
-        request, session, project, minimum_role="viewer"
+    #
+    # Authorization and the initial events are blocking SQL, so each runs in
+    # a worker thread: on the event loop, one slow read here would stall
+    # every other request. The request session is safe to hand over: SQLite
+    # opens with check_same_thread=False and each call is fully awaited
+    # before the session is touched again. The route itself stays async
+    # because it awaits the broadcaster and returns a live stream.
+    await asyncio.to_thread(
+        enforce_project_role_from_request,
+        request,
+        session,
+        project,
+        minimum_role="viewer",
     )
+
+    # Refuse an over-cap caller before the threadpool read below runs.
+    reject_if_stream_cap_reached(request)
 
     broadcaster = await get_trace_broadcaster()
 
-    initial_events = _build_initial_events(trace_id, project, session)
+    initial_events = await asyncio.to_thread(
+        _build_initial_events, trace_id, project, session
+    )
 
     return sse_streaming_response(
         request,

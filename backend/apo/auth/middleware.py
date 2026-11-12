@@ -187,13 +187,12 @@ def _authenticate_anonymous_demo(request: Request) -> AuthContext | JSONResponse
     # (Caddy/Next rewrites/cloudflared) the peer is the proxy for everyone,
     # and keying on it gives all anonymous visitors one shared bucket.
     client_ip = get_client_ip(request)
-    if not _anonymous_demo_limiter.is_allowed(client_ip):
+    if not _anonymous_demo_limiter.allow_and_record(client_ip):
         return JSONResponse(
             status_code=429,
             content={"detail": "Too many requests"},
             headers={"Retry-After": "60"},
         )
-    _anonymous_demo_limiter.record_attempt(client_ip)
     return {"auth_method": "anonymous"}
 
 
