@@ -55,7 +55,10 @@ from ..services.email_templates import (
     render_verification_email,
 )
 from ..services.email_admission import require_admissible_email
-from ..services.email_verification import require_verified_email
+from ..services.email_verification import (
+    email_verification_required_for_everyone,
+    require_verified_email,
+)
 from ..services.installation_admin import require_installation_admin
 from ..services.user_quotas import apply_quota_updates, effective_daily_span_quota
 
@@ -147,14 +150,6 @@ def _utcnow_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _is_email_verification_required() -> bool:
-    """Check if AUTH_EMAIL_VERIFICATION_REQUIRED is enabled."""
-    return (
-        os.environ.get("AUTH_EMAIL_VERIFICATION_REQUIRED", "false").strip().lower()
-        == "true"
-    )
-
-
 def _generate_otp() -> str:
     """Generate a cryptographically random 6-digit code."""
     return str(secrets.randbelow(900000) + 100000)
@@ -244,7 +239,7 @@ async def setup(body: SetupRequest, session: Session = Depends(get_session)) -> 
             status_code=409, detail="A user with this email already exists"
         )
 
-    verification_required = _is_email_verification_required()
+    verification_required = email_verification_required_for_everyone()
 
     # The browser-setup user IS the installation admin (#152): without one,
     # Settings -> Hosted access and the invitation API are unreachable.
@@ -325,7 +320,7 @@ def verify_password_endpoint(
         # the global flag, which would lock out every older account whose
         # email_verified_at was never set.
         require_verified_email(
-            user, required_for_everyone=_is_email_verification_required()
+            user, required_for_everyone=email_verification_required_for_everyone()
         )
 
         member_project_ids = list_projects_for_user(session, user.id)

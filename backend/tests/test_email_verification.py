@@ -374,6 +374,52 @@ class TestLoginGating:
         assert isinstance(detail, dict)
         assert detail["code"] == "EMAIL_NOT_VERIFIED"
 
+    def test_bootstrap_endpoints_share_the_gate(
+        self,
+        client: TestClient,
+        session: Session,
+        mock_email_service: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The CLI bootstrap routes turn a password into access too; an
+        unverified account must not walk around sign-in through them."""
+        client.post(
+            "/auth/setup",
+            json={
+                "email": "admin@test.com",
+                "password": "SecurePass123",
+                "name": "Admin",
+            },
+        )
+        user = session.exec(select(UserDB)).first()
+        assert user is not None
+        user.email_verified_at = None
+        session.add(user)
+        session.commit()
+
+        monkeypatch.setenv("AUTH_EMAIL_VERIFICATION_REQUIRED", "true")
+
+        key_resp = client.post(
+            "/v1/api-keys/bootstrap",
+            json={
+                "email": "admin@test.com",
+                "password": "SecurePass123",
+                "project": "proj",
+            },
+        )
+        project_resp = client.post(
+            "/v1/projects/bootstrap",
+            json={
+                "email": "admin@test.com",
+                "password": "SecurePass123",
+                "name": "fresh-project",
+            },
+        )
+        assert key_resp.status_code == 403
+        assert key_resp.json()["detail"]["code"] == "EMAIL_NOT_VERIFIED"
+        assert project_resp.status_code == 403
+        assert project_resp.json()["detail"]["code"] == "EMAIL_NOT_VERIFIED"
+
 
 # ---- Resend verification tests ----
 
