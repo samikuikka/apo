@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Check,
   ChevronDown,
@@ -211,12 +211,51 @@ function ScopeRailBody({
   onApplyParams,
   currentParams,
 }: ScopeRailProps) {
+  // Optimistic scope/metrics: set instantly on click so the checkbox
+  // checks and the chip appears without waiting for the server round-trip
+  // the URL write triggers. Reverts to the URL's value once the URL
+  // catches up (the effect below clears the override when the props match
+  // what we optimistically set). If the server round-trip produces a
+  // different value, the URL's value wins and the optimistic one is
+  // simply dropped.
+  const [optimisticScope, setOptimisticScope] = useState<RunScope | null>(null);
+  const [optimisticMetrics, setOptimisticMetrics] = useState<RunMetricFilters | null>(null);
+  const renderScope = optimisticScope ?? scope;
+  const renderMetrics = optimisticMetrics ?? metrics;
+
+  // Clear the optimistic override once the URL catches up. The prev-compare
+  // pattern runs during render, no effect needed.
+  const [prevScope, setPrevScope] = useState(scope);
+  if (prevScope !== scope) {
+    setPrevScope(scope);
+    setOptimisticScope(null);
+  }
+  const [prevMetrics, setPrevMetrics] = useState(metrics);
+  if (prevMetrics !== metrics) {
+    setPrevMetrics(metrics);
+    setOptimisticMetrics(null);
+  }
+
+  const handleScopeChange = useCallback(
+    (next: RunScope) => {
+      setOptimisticScope(next);
+      onScopeChange(next);
+    },
+    [onScopeChange],
+  );
+  const handleMetricsChange = useCallback(
+    (next: RunMetricFilters) => {
+      setOptimisticMetrics(next);
+      onMetricsChange?.(next);
+    },
+    [onMetricsChange],
+  );
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const dims = useMemo(() => runScopeDimensions(facets, scope), [facets, scope]);
   const visible = useMemo(() => filterRunScopeDimensions(dims, query), [dims, query]);
-  const chips = runScopeChips(scope, dims);
+  const chips = runScopeChips(renderScope, dims);
 
   const toggleSection = (key: string) =>
     setCollapsed((prev) => {
@@ -243,8 +282,8 @@ function ScopeRailBody({
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {metrics !== undefined && onMetricsChange !== undefined && (
           <MetricSections
-            metrics={metrics}
-            onMetricsChange={onMetricsChange}
+            metrics={renderMetrics!}
+            onMetricsChange={handleMetricsChange}
             costQuantiles={facets?.metrics?.cost}
             durationQuantiles={facets?.metrics?.duration_seconds}
           />
@@ -257,7 +296,7 @@ function ScopeRailBody({
         {visible.map((dim) => {
           const isOpen = query !== "" || !collapsed.has(dim.key);
           const picked =
-            dim.key === ENVIRONMENT_DIMENSION ? scope.environments : (scope.labels[dim.key] ?? []);
+            dim.key === ENVIRONMENT_DIMENSION ? renderScope.environments : (renderScope.labels[dim.key] ?? []);
           return (
             <div key={dim.key} className="border-b border-border">
               <button
@@ -289,7 +328,7 @@ function ScopeRailBody({
                         role="checkbox"
                         aria-checked={checked}
                         aria-label={`${dim.label} ${value.name}`}
-                        onClick={() => onScopeChange(toggleRunScopeValue(scope, dim.key, value.id))}
+                        onClick={() => handleScopeChange(toggleRunScopeValue(renderScope, dim.key, value.id))}
                         className="flex w-full cursor-pointer items-center gap-2 py-1 text-left text-[12px] hover:bg-muted/60"
                       >
                         <span
@@ -322,7 +361,7 @@ function ScopeRailBody({
                 key={`${chip.key}:${chip.id}`}
                 dimension={chip.label}
                 value={chip.name}
-                onRemove={() => onScopeChange(toggleRunScopeValue(scope, chip.key, chip.id))}
+                onRemove={() => handleScopeChange(toggleRunScopeValue(renderScope, chip.key, chip.id))}
               />
             ))}
             {metrics !== undefined &&
@@ -332,15 +371,15 @@ function ScopeRailBody({
                   dimension={range.metric}
                   value={range.text}
                   onRemove={() =>
-                    onMetricsChange?.(clearMetricRange(metrics, range.kind))
+                    handleMetricsChange(clearMetricRange(metrics, range.kind))
                   }
                 />
               ))}
             <button
               type="button"
               onClick={() => {
-                onScopeChange({ environments: [], labels: {} });
-                onMetricsChange?.(EMPTY_METRIC_FILTERS);
+                handleScopeChange({ environments: [], labels: {} });
+                handleMetricsChange(EMPTY_METRIC_FILTERS);
               }}
               className="text-[12px] text-muted-foreground underline underline-offset-4 hover:text-foreground"
             >
