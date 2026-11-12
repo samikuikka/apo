@@ -5,7 +5,7 @@ are per-account overrides set by an installation admin. This module is
 the single owner of their semantics so the ingest guardrails and the
 creation routes cannot drift apart: ``effective_daily_span_quota``
 resolves a per-user override against the APO_USER_DAILY_SPAN_QUOTA
-installation default, and the two ``enforce_*`` helpers raise 429 when
+installation default, and the two ``enforce_*`` helpers raise 403 when
 the account already holds its cap of live rows.
 
 The creation caps default to small numbers rather than unlimited

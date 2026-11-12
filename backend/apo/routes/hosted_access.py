@@ -67,7 +67,10 @@ _SELF_SERVE_REQUESTS_PER_HOUR_PER_EMAIL = 3
 # The per-IP ceiling comes from APO_SELF_SERVE_REQUESTS_PER_HOUR_PER_IP and
 # is applied on each request, so it tracks the validated configuration.
 self_serve_ip_rate_limiter = LoginRateLimiter(
-    max_attempts=3, window_seconds=_SELF_SERVE_WINDOW_SECONDS
+    # Overwritten from APO_SELF_SERVE_REQUESTS_PER_HOUR_PER_IP on every
+    # request (same 3/hour default); this value only shapes the window.
+    max_attempts=_SELF_SERVE_REQUESTS_PER_HOUR_PER_EMAIL,
+    window_seconds=_SELF_SERVE_WINDOW_SECONDS,
 )
 self_serve_email_rate_limiter = LoginRateLimiter(
     max_attempts=_SELF_SERVE_REQUESTS_PER_HOUR_PER_EMAIL,
@@ -229,11 +232,6 @@ async def accept_existing_account(
         accepting_user_id=user_id,
         project_name=body.project_name,
     )
-
-
-# ---------------------------------------------------------------------------
-# Self-serve endpoints (public, no token)
-# ---------------------------------------------------------------------------
 
 
 @router.get("/auth/hosted-access/mode")

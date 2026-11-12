@@ -370,7 +370,7 @@ def get_run_details(
 ):
     """Trace detail for one run, slim by default: calls (heavy I/O columns
     deferred, metadata reduced to its ``eventType`` key; first/last calls
-    carry short previews), stored + derived metrics, derived status — the
+    carry short previews), stored + derived metrics, derived status; the
     response carries a ``slim_calls: true`` marker. ``?slim=false`` ships
     the full payloads and projection capabilities. ``?include=messages``
     needs the heavy columns anyway and forces the full shape;
@@ -409,7 +409,7 @@ def get_run_details(
         # the whole accumulated conversation in every generation's input, so
         # the full payload grows quadratically with trace length (measured:
         # 281 calls → 18 MB). Metadata shrinks to its eventType key,
-        # extracted beside the rows. Keep cost_breakdown/raw_usage loaded —
+        # extracted beside the rows. Keep cost_breakdown/raw_usage loaded:
         # the costs/tokens tabs aggregate them and they are a few ints per
         # call. session.execute, not session.exec: sqlmodel unwraps an
         # entity-led select to bare entities, which would drop the key.

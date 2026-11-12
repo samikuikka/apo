@@ -94,8 +94,8 @@ UnavailableReason = Literal[
 
 # Exactly the columns the serving rollups read: identity (model, provider,
 # host, route, tier), accounting and observation type, timing, tokens, and
-# cost scalars. Every other column stays off the wire — payloads, messages,
-# tool bodies, metadata — and ``raiseload`` turns a read of an unloaded
+# cost scalars. Every other column stays off the wire (payloads, messages,
+# tool bodies, metadata), and ``raiseload`` turns a read of an unloaded
 # column into an error instead of a silent per-row lazy load, so the diet
 # cannot regress quietly.
 _SERVING_COLUMNS = (

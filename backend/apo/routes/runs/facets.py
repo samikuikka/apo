@@ -6,8 +6,8 @@ Each facet is one aggregate statement over the filtered-runs SELECT with its
 own dimension's filter removed (the sidebar shows alternatives, not echoes).
 The filtered runs are never materialized: a Python id list is one extra
 statement per facet, stops working past SQLite's host-parameter limit on a
-large project, and — because the old aggregates filtered by run id with no
-project predicate — counted another project's copy of a shared trace id.
+large project, and (because the old aggregates filtered by run id with no
+project predicate) counted another project's copy of a shared trace id.
 """
 
 from typing import Any

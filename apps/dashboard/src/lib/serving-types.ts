@@ -242,10 +242,6 @@ export function costCoverageLabel(coverage: CostCoverage | null | undefined): st
   return parts.join(" \u00b7 ");
 }
 
-/** The compact one-line serving cell for a run/batch row:
- * uniform -> the identity label; mixed -> "Mixed \u00b7 N setups"; unknown ->
- * "Not reported"; no_data -> "No data"; partial -> the dominant shape with its
- * qualifier. Empty string when the summary carries no readable state. */
 export function servingCompactLabel(summary: ServingSummary): string {
   const hidden = totalSetupCount(summary);
   switch (summary.state) {

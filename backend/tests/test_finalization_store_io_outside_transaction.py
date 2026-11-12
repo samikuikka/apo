@@ -1,4 +1,4 @@
-# pyright: reportAny=false, reportPrivateUsage=false, reportUnusedCallResult=false
+# pyright: reportAny=false, reportPrivateUsage=false, reportUnusedCallResult=false, reportAttributeAccessIssue=false
 
 """Deliverable placement must not run inside SQLite's write transaction.
 
@@ -20,7 +20,6 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from _pytest.monkeypatch import MonkeyPatch
 from sqlmodel import Session, col, select, text
 
 import apo.services.execution_finalization as fin
@@ -77,7 +76,7 @@ def leased_attempt():
 
 
 async def test_result_deliverables_are_stored_before_the_write_transaction(
-    monkeypatch: MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with Session(engine) as session:
         store = _use_recording_store(monkeypatch, session)
@@ -103,7 +102,7 @@ async def test_result_deliverables_are_stored_before_the_write_transaction(
 
 
 async def test_interrupted_finalize_loses_nothing_and_the_retry_records_once(
-    monkeypatch: MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Objects first, rows with the terminal state: a failure between the two
     leaves no row behind, and the executor's retry of the same completion
@@ -168,7 +167,7 @@ async def test_persisting_deliverables_never_opens_a_write_transaction() -> None
 
 
 async def test_rows_pending_on_the_session_still_claim_names_and_bytes(
-    monkeypatch: MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unflushed rows used to be seen through autoflush; the checks that
     relied on it must still see them."""
@@ -244,7 +243,7 @@ def _write_transaction_open(session: Session) -> bool:
 
 
 def _use_recording_store(
-    monkeypatch: MonkeyPatch, session: Session
+    monkeypatch: pytest.MonkeyPatch, session: Session
 ) -> RecordingStore:
     store = RecordingStore(session)
     monkeypatch.setattr(

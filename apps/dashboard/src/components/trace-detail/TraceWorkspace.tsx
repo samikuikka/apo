@@ -66,7 +66,7 @@ async function downloadTrace(run: TraceDetail, projectId?: string) {
   if (run.calls.length > 50) {
     toast.info(`Downloading trace with ${run.calls.length} observations`);
   }
-  // The workspace may hold a slim fetch (call metadata only) — an explicit
+  // The workspace may hold a slim fetch (call metadata only); an explicit
   // export must carry the full payloads, so re-fetch with slim=false.
   const data = run.slim_calls
     ? await getTraceDetail(run.run.id, projectId, undefined, { slim: false })
