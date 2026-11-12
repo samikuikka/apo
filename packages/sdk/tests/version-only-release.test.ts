@@ -39,3 +39,17 @@ describe("version-only npm release detection", () => {
     ).toBe(false);
   });
 });
+
+describe("npm version-regression guard", () => {
+  it("flags a manifest lower than the published version and allows everything else", async () => {
+    const { publishedVersionIsHigher } = await import(
+      "../../../scripts/npm-version-guard.mjs"
+    );
+    expect(publishedVersionIsHigher("0.17.1", "0.18.1")).toBe(true);
+    expect(publishedVersionIsHigher("0.18.2", "0.18.1")).toBe(false);
+    expect(publishedVersionIsHigher("0.18.1", "0.18.1")).toBe(false);
+    expect(publishedVersionIsHigher("1.0.0-rc.1", "1.0.0")).toBe(true);
+    expect(publishedVersionIsHigher("0.18.1", "1.0.0-rc.1")).toBe(true);
+    expect(publishedVersionIsHigher("not-semver", "0.18.1")).toBe(false);
+  });
+});
