@@ -82,7 +82,7 @@ interface TraceDetailTransport {
 export interface GetTraceDetailOptions {
   /** `slim: true` (the default here): omit per-call input/output/tool
    * payloads (agentic traces ship megabytes of accumulated history
-   * otherwise) — the selected call's full payload is fetched separately
+   * otherwise); the selected call's full payload is fetched separately
    * via `getCallDetail`. `slim: false` fetches the full payloads. */
   slim?: boolean;
 }

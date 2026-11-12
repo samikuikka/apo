@@ -12,8 +12,8 @@ by a visitor for their own address: the link reaches that inbox or
 nobody, so it is never returned or logged, and the account it creates
 must verify its email before it can sign in.
 
-Token mechanics — generation, hashing, expiry, accept URLs, and
-best-effort email delivery with a ``link_only`` fallback — live in
+Token mechanics (generation, hashing, expiry, accept URLs, and
+best-effort email delivery with a ``link_only`` fallback) live in
 ``invitation_tokens`` and are shared with the project-invitation flow;
 the raw token is returned exactly once to the caller (for delivery /
 copy-link) and compared only as a SHA-256 hash afterwards.
@@ -559,8 +559,9 @@ def _stage_project(session: Session, *, name: str, created_by: str) -> ProjectDB
     """Stage the one Project this admission materializes.
 
     Deliberately not subject to ``enforce_project_count_limit``: the
-    invitation is admin-issued admission, so the account's max_projects
-    cap does not block the one project that admission exists to create.
+    invitation is admission (admin-issued or self-serve), so the account's
+    max_projects cap does not block the one project admission exists to
+    create.
     """
     project = ProjectDB(
         id=uuid4().hex[:12],
@@ -575,7 +576,7 @@ def _stage_project(session: Session, *, name: str, created_by: str) -> ProjectDB
 def _stage_owner_membership(
     session: Session, *, project_id: str, user_id: str
 ) -> ProjectMembershipDB:
-    """Stage the invitee's ``owner`` membership — the only membership
+    """Stage the invitee's ``owner`` membership, the only membership
     acceptance ever creates (the issuer receives none)."""
     now = utcnow()
     membership = ProjectMembershipDB(
@@ -743,11 +744,6 @@ def accept_hosted_access_existing_account(
     return AcceptHostedAccessResponse(
         status="accepted", project_id=project.id, email=accepting_user.email
     )
-
-
-# ---------------------------------------------------------------------------
-# Origin rules
-# ---------------------------------------------------------------------------
 
 
 def _is_self_serve(invitation: HostedAccessInvitationDB) -> bool:

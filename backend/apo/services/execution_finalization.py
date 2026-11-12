@@ -428,7 +428,6 @@ async def finalize_attempt_with_deliverables(
                     )
                 )
 
-
     # The stored completion digest is over the WIRE body (refs, not their
     # resolved contents) so a replay after staging cleanup hashes identically.
     wire_digest = _body_digest({"kind": "result", "body": asdict(body)})

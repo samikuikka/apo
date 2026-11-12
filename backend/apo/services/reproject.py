@@ -110,7 +110,7 @@ def reproject_trace(
                     span.span_id,
                     exc_info=True,
                 )
-            if chunk.spent():
+            if chunk.tick():
                 chunk = _yield_write_lock(session)
 
         _ = flush_run_aggregates(session)
@@ -167,7 +167,7 @@ def reproject_project(
                 # one bad span cannot reopen the snapshot hazard for the
                 # rest of the chunk.
                 begin_immediate(session)
-            if chunk.spent():
+            if chunk.tick():
                 chunk = _yield_write_lock(session)
 
         _ = flush_run_aggregates(session)
@@ -184,7 +184,7 @@ class _ChunkBudget:
         self._spans: int = 0
         self._started: float = time.monotonic()
 
-    def spent(self) -> bool:
+    def tick(self) -> bool:
         """Count one projected span; True once the transaction must end."""
         self._spans += 1
         return (

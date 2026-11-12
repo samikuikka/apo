@@ -1,4 +1,4 @@
-# pyright: reportAny=false, reportUnusedCallResult=false
+# pyright: reportAny=false, reportUnusedCallResult=false, reportAttributeAccessIssue=false
 
 """Result finalization must not hold SQLite's write lock across loop awaits.
 
@@ -20,7 +20,6 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from _pytest.monkeypatch import MonkeyPatch
 from sqlmodel import Session
 
 import apo.services.execution_finalization as fin
@@ -53,7 +52,7 @@ def _heartbeat_like_write() -> float:
 
 
 async def test_loop_side_write_is_not_starved_while_a_result_finalizes(
-    monkeypatch: MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def slow_precheck(
         session: Session, *, lease: CurrentAttemptLease, body: AttemptResultBody
@@ -137,7 +136,7 @@ def _seed_running_attempt() -> str:
 
 
 async def test_result_survives_a_concurrent_commit_during_precheck(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.pytest.MonkeyPatch,
 ) -> None:
     """The precheck's read snapshot must not ride into the finalize write.
 

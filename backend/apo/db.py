@@ -258,14 +258,9 @@ def _drop_column_if_exists(conn, table_name: str, column_name: str) -> bool:
 
 
 def _create_index_if_not_exists(conn, index_name: str, table_name: str, columns: str) -> None:
-    if is_sqlite():
-        conn.exec_driver_sql(
-            f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({columns});"
-        )
-    else:
-        conn.exec_driver_sql(
-            f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({columns});"
-        )
+    conn.exec_driver_sql(
+        f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({columns});"
+    )
 
 
 def _create_index_if_columns_exist(
