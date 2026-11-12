@@ -170,9 +170,8 @@ class RequestBudgetMiddleware(BaseHTTPMiddleware):
         window they charge nothing shared: each address can only lock
         out itself.
         """
-        if not limiter.is_allowed(address):
+        if not limiter.allow_and_record(address):
             return _public_limit_response(limiter, address)
-        limiter.record_attempt(address)
         return await call_next(request)
 
     def _consume(self, identity: str | None) -> AdmissionRejection | None:

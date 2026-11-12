@@ -657,13 +657,12 @@ def _validate_driver_kind(driver_kind: str) -> None:
 
 
 def _enforce_rate_limit(limiter: LoginRateLimiter, key: str) -> None:
-    if not limiter.is_allowed(key):
+    if not limiter.allow_and_record(key):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             "too many enrollment token requests",
             headers={"Retry-After": str(limiter.get_retry_after(key))},
         )
-    limiter.record_attempt(key)
 
 
 def _pool_detail(session: Session, project_id: str, pool: ExecutorPoolDB) -> dict[str, object]:

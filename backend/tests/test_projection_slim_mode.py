@@ -10,6 +10,7 @@ job.
 """
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, cast
 
@@ -20,7 +21,11 @@ from sqlmodel import Session, col, select, text
 from apo.db import engine, reset_apo_file_db
 from apo.models.db import LoggedCallDB, OtlpSpanDB, RunDB
 from apo.routes.admin import _run_projection_backfill, _projection_jobs
-from apo.routes.runs.list_query import _fetch_io_previews
+from apo.routes.runs.list_query import (
+    RunListFilters,
+    RunListPagination,
+    list_run_summaries,
+)
 from apo.services.otlp_receiver import OtlpReceiver
 from apo.services.trace_projector import get_trace_projector
 from apo.services.projection_io import (
@@ -244,12 +249,9 @@ class TestPreviewWrites:
         assert run.input_preview_call_row_id == gen.row_id
         assert run.output_preview_call_row_id == gen.row_id
 
-        assert _fetch_io_previews(session, [TRACE], "p1") == {
-            TRACE: {
-                "input": run.input_preview,
-                "output": run.output_preview,
-            }
-        }
+        summary = _listed_summary(session)
+        assert summary.input_preview == run.input_preview
+        assert summary.output_preview == run.output_preview
 
     def test_generation_beats_earlier_non_generation(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
@@ -614,9 +616,9 @@ class TestPairedEraUpgrade:
         session.add(run)
         session.commit()
 
-        previews = _fetch_io_previews(session, [TRACE], "p1")
-        assert previews[TRACE]["input"] is None
-        assert "root reply" in (previews[TRACE]["output"] or "")
+        summary = _listed_summary(session)
+        assert summary.input_preview is None
+        assert "root reply" in (summary.output_preview or "")
 
 
 # ---------------------------------------------------------------------------
@@ -886,6 +888,28 @@ def _span(session: Session, span_id: str) -> OtlpSpanDB:
     return span
 
 
+def _listed_summary(session: Session) -> Any:
+    """The one seeded trace's summary, exactly as the runs list renders it."""
+    page = list_run_summaries(
+        session,
+        RunListFilters(project="p1"),
+        RunListPagination(page=0, page_size=10, sort_by=None, sort_order=None),
+    )
+    assert len(page.data) == 1
+    return page.data[0]
+
+
+def _call_payload_reads(statements: list[str]) -> list[str]:
+    """Statements that materialize a call's I/O payload columns.
+
+    The list path does read ``logged_calls`` (metric rollups, level
+    counts), but only diet columns; the payload columns are what make one
+    list render haul megabytes of JSON.
+    """
+    pattern = re.compile(r"logged_calls\.(?:input|output|messages)\b")
+    return [s for s in statements if "FROM logged_calls" in s and pattern.search(s)]
+
+
 class TestListPreviews:
     def test_list_reads_never_touch_call_io(
         self, session: Session, monkeypatch: pytest.MonkeyPatch
@@ -895,21 +919,13 @@ class TestListPreviews:
         _ingest(session, _gen_payload(GEN1, "list prompt", "list answer"))
         session.commit()
 
-        statements: list[str] = []
+        statements = self._list_with_capture(session)
 
-        def _capture(_conn, _cursor, statement, _params, *_a, **_kw):
-            statements.append(statement)
-
-        bind = session.get_bind()
-        event.listen(bind, "before_cursor_execute", _capture)
-        try:
-            previews = _fetch_io_previews(session, [TRACE], "p1")
-        finally:
-            event.remove(bind, "before_cursor_execute", _capture)
-        assert previews[TRACE]["input"] is not None
-        io_reads = [s for s in statements if "FROM logged_calls" in s]
+        summary = _listed_summary(session)
+        assert summary.input_preview is not None
+        io_reads = _call_payload_reads(statements)
         assert not io_reads, (
-            "list rendering must not query logged_calls; "
+            "list rendering must not read call I/O payloads; "
             f"saw: {io_reads}"
         )
 
@@ -929,6 +945,17 @@ class TestListPreviews:
         session.add(run)
         session.commit()
 
+        # The old value may remain in an upgraded installation's .env.
+        # It is intentionally ignored: list reads are preview-only.
+        monkeypatch.setenv("APO_LIST_READ", "legacy")
+        statements = self._list_with_capture(session)
+
+        summary = _listed_summary(session)
+        assert summary.input_preview is None
+        assert summary.output_preview is None
+        assert not _call_payload_reads(statements)
+
+    def _list_with_capture(self, session: Session) -> list[str]:
         statements: list[str] = []
 
         def _capture(_conn, _cursor, statement, _params, *_a, **_kw):
@@ -937,15 +964,10 @@ class TestListPreviews:
         bind = session.get_bind()
         event.listen(bind, "before_cursor_execute", _capture)
         try:
-            # The old value may remain in an upgraded installation's .env.
-            # It is intentionally ignored: list reads are preview-only.
-            monkeypatch.setenv("APO_LIST_READ", "legacy")
-            previews = _fetch_io_previews(session, [TRACE], "p1")
+            _listed_summary(session)
         finally:
             event.remove(bind, "before_cursor_execute", _capture)
-
-        assert previews[TRACE] == {"input": None, "output": None}
-        assert not [s for s in statements if "FROM logged_calls" in s]
+        return statements
 
 
 # ---------------------------------------------------------------------------

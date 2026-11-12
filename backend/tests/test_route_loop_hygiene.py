@@ -30,7 +30,7 @@ from apo.models.db import (
     ProjectTaskInventoryDB,
     ProjectTaskSourceDB,
 )
-from apo.routes import agent_task_runs, otlp_traces, projects, run_events
+from apo.routes import agent_task_runs, otlp_traces, projects, run_events, trace_stream
 from tests._sse_stream_client import (
     authed_asgi_app,
     close_stream,
@@ -110,6 +110,27 @@ async def test_run_events_stream_builds_its_initial_state_off_the_event_loop(
 
     stream = await open_stream(
         authed_asgi_app(USER_ID), "/v1/events", f"project={PROJECT_ID}"
+    )
+    await close_stream(stream)
+
+    assert stream.status == 200
+    assert authorized_on_loop == [False]
+    assert built_on_loop == [False]
+
+
+async def test_trace_stream_builds_its_initial_state_off_the_event_loop(
+    session: Session, monkeypatch: MonkeyPatch
+) -> None:
+    seed_member_project(session, user_id=USER_ID, project_id=PROJECT_ID)
+    authorized_on_loop = _spy_on_loop(
+        monkeypatch, trace_stream, "enforce_project_role_from_request"
+    )
+    built_on_loop = _spy_on_loop(monkeypatch, trace_stream, "_build_initial_events")
+
+    stream = await open_stream(
+        authed_asgi_app(USER_ID),
+        "/v1/traces/loop-hygiene-trace/stream",
+        f"project={PROJECT_ID}",
     )
     await close_stream(stream)
 

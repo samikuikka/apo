@@ -22,6 +22,7 @@ admission middleware, so ``request.state`` carries the identity.
 
 from __future__ import annotations
 
+import math
 import os
 import re
 import threading
@@ -31,6 +32,8 @@ from collections.abc import Awaitable, Callable
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+
+from ..auth.client_ip import get_client_ip
 
 # Exact (method, path) pairs for the heavy routes. Two are not lists:
 #   - Run detail (GET /v1/runs/{id}) loads every call of the run with its
@@ -87,6 +90,22 @@ class ReadThrottle:
             self._hits[identity] = hits
             return True
 
+    def retry_after(self, identity: str) -> int:
+        """Seconds until the sliding window admits ``identity`` again.
+
+        The oldest hit inside the window is the first to leave it, so the
+        window reopens for one more request when it expires.
+        """
+        if self.max_requests <= 0:
+            return 1
+        now = time.monotonic()
+        cutoff = now - self.window_seconds
+        with self._lock:
+            hits = [t for t in self._hits.get(identity, []) if t > cutoff]
+        if not hits:
+            return 1
+        return max(1, math.ceil(hits[0] + self.window_seconds - now))
+
 
 def _identity_for(request: Request) -> str:
     """The auth identity when present, else the client address."""
@@ -95,7 +114,11 @@ def _identity_for(request: Request) -> str:
         if value:
             return f"{attr}:{value}"
     if request.client is not None:
-        return f"ip:{request.client.host}"
+        # The resolved address, not the socket peer: behind the ingress the
+        # peer is the proxy, and keying every anonymous visitor by it puts
+        # them all into one shared window (a few demo pollers would 429 the
+        # demo for everyone).
+        return f"ip:{get_client_ip(request)}"
     return "unknown"
 
 
@@ -124,7 +147,7 @@ class ReadThrottleMiddleware(BaseHTTPMiddleware):
             status_code=429,
             content={"detail": "Read rate limit exceeded for this endpoint."},
             headers={
-                "Retry-After": str(self._throttle.window_seconds),
+                "Retry-After": str(self._throttle.retry_after(identity)),
                 "X-RateLimit-Limit": str(self._throttle.max_requests),
             },
         )

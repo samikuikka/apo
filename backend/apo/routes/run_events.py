@@ -18,7 +18,11 @@ from ..services.run_events import (
     EVENT_TASK_RUN_TRACE_CLAIMED,
     get_run_event_broadcaster,
 )
-from ..services.sse import format_sse_event, sse_streaming_response
+from ..services.sse import (
+    format_sse_event,
+    reject_if_stream_cap_reached,
+    sse_streaming_response,
+)
 
 router = APIRouter(prefix="/v1", tags=["Run Events"])
 
@@ -64,6 +68,9 @@ async def stream_run_events(
         project,
         minimum_role="viewer",
     )
+
+    # Refuse an over-cap caller before the threadpool read below runs.
+    reject_if_stream_cap_reached(request)
 
     broadcaster = await get_run_event_broadcaster()
     initial_events = await asyncio.to_thread(_build_initial_events, project, session)

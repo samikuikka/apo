@@ -10,6 +10,7 @@ the HTTP response; everything from the ``select(RunDB)`` onward lives
 here.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -38,8 +39,6 @@ from ...models.columns import (
     RUN_TASK_ID_COL,
     RUN_USER_ID_COL,
     RUN_METRIC_NAME_COL,
-    RUN_METRIC_PROJECT_COL,
-    RUN_METRIC_RUN_ID_COL,
     RUN_METRIC_SCORE_COL,
 )
 from ...services.projection_io import has_preview_payload
@@ -48,7 +47,9 @@ from ...services.trace_search import apply_trace_search
 from .metrics import calculate_run_metrics_from_calls
 from .run_call_scope import (
     RunScope,
+    calls_of_page_rows,
     metric_runs,
+    metrics_of_page_rows,
     model_predicate,
     runs_with_metrics,
     scope_runs,
@@ -157,7 +158,7 @@ def list_run_summaries(
         else 0
     )
 
-    summaries = _hydrate_summaries(session, runs, filters.project)
+    summaries = _hydrate_summaries(session, runs, scope)
     return PaginatedRunSummary(
         data=summaries,
         total_count=total_count,
@@ -301,31 +302,35 @@ def _get_sort_column(field: str | None) -> ColumnElement[object]:
 
 
 def _hydrate_summaries(
-    session: Session, runs: list[RunDB], project: str | None
+    session: Session, runs: list[RunDB], scope: RunScope
 ) -> list[RunSummary]:
-    run_ids = [r.id for r in runs]
+    # Trace ids collide across projects, so every hydration map is keyed by
+    # the (run_id, project) pair of the page row it answers for. A run-id
+    # key alone would let another project's copy of the trace decide this
+    # row's status, metrics, and previews.
+    page_rows = [(run.id, run.project) for run in runs]
 
-    metrics_by_run = _load_metrics_by_run(session, run_ids, project)
-    calls_by_run = _load_calls_for_runs_without_metrics(
-        session, runs, metrics_by_run, project
+    metrics_by_row = _load_metrics_by_run(session, page_rows, scope)
+    calls_by_row = _load_calls_for_runs_without_metrics(
+        session, runs, metrics_by_row, scope
     )
-    levels_by_run = _load_levels_for_runs_needing_status(
-        session, runs, metrics_by_run, calls_by_run, project
+    levels_by_row = _load_levels_for_runs_needing_status(
+        session, runs, metrics_by_row, calls_by_row, scope
     )
-    preview_by_run = _fetch_io_previews(session, run_ids, project)
 
     summaries: list[RunSummary] = []
     for run in runs:
-        stored = metrics_by_run.get(run.id, [])
+        key = (run.id, run.project)
+        stored = metrics_by_row.get(key, [])
         calls_for_metrics: list[LoggedCallDB] = []
         if not stored and run.call_count > 0:
-            calls_for_metrics = calls_by_run.get(run.id, [])
+            calls_for_metrics = calls_by_row.get(key, [])
             metrics = calculate_run_metrics_from_calls(calls_for_metrics, run.id)
         else:
             metrics = stored
 
         error_count, warning_count = _count_levels(
-            run, calls_for_metrics, levels_by_run.get(run.id, [])
+            run, calls_for_metrics, levels_by_row.get(key, [])
         )
         status = (
             "error" if error_count > 0 else "warning" if warning_count > 0 else "success"
@@ -357,36 +362,44 @@ def _hydrate_summaries(
                 error_count=error_count,
                 warning_count=warning_count,
                 metrics=[RunMetric.model_validate(m) for m in metrics],
-                input_preview=preview_by_run.get(run.id, {}).get("input"),
-                output_preview=preview_by_run.get(run.id, {}).get("output"),
+                input_preview=_preview_or_none(run.input_preview),
+                output_preview=_preview_or_none(run.output_preview),
             )
         )
     return summaries
 
 
+def _preview_or_none(preview: str | None) -> str | None:
+    # The page rows already carry the stored previews. ``has_preview_payload``
+    # keeps a pre-v40 poisoned slot rendering empty until the resumable
+    # backfill repairs it; there is deliberately no fallback to full call
+    # I/O, which made one list render materialize tens of megabytes of JSON.
+    return preview if has_preview_payload(preview) else None
+
+
 def _load_metrics_by_run(
-    session: Session, run_ids: list[str], project: str | None
-) -> dict[str, list[RunMetricDB]]:
-    if not run_ids:
+    session: Session, page_rows: Sequence[tuple[str, str]], scope: RunScope
+) -> dict[tuple[str, str], list[RunMetricDB]]:
+    if not page_rows:
         return {}
-    query = select(RunMetricDB).where(RUN_METRIC_RUN_ID_COL.in_(run_ids))
-    if project is not None:
-        query = query.where(RUN_METRIC_PROJECT_COL == project)
-    result: dict[str, list[RunMetricDB]] = {}
+    query = select(RunMetricDB).where(metrics_of_page_rows(scope, page_rows))
+    result: dict[tuple[str, str], list[RunMetricDB]] = {}
     for m in session.exec(query).all():
         if m.run_id is not None:
-            result.setdefault(m.run_id, []).append(m)
+            result.setdefault((m.run_id, m.project), []).append(m)
     return result
 
 
 def _load_calls_for_runs_without_metrics(
     session: Session,
     runs: list[RunDB],
-    metrics_by_run: dict[str, list[RunMetricDB]],
-    project: str | None,
-) -> dict[str, list[LoggedCallDB]]:
+    metrics_by_row: dict[tuple[str, str], list[RunMetricDB]],
+    scope: RunScope,
+) -> dict[tuple[str, str], list[LoggedCallDB]]:
     needing = [
-        r.id for r in runs if not metrics_by_run.get(r.id) and r.call_count > 0
+        (r.id, r.project)
+        for r in runs
+        if not metrics_by_row.get((r.id, r.project)) and r.call_count > 0
     ]
     if not needing:
         return {}
@@ -400,6 +413,7 @@ def _load_calls_for_runs_without_metrics(
             load_only(
                 LoggedCallDB.id,  # pyright: ignore[reportArgumentType]
                 LoggedCallDB.run_id,  # pyright: ignore[reportArgumentType]
+                LoggedCallDB.project,  # pyright: ignore[reportArgumentType]
                 LoggedCallDB.level,  # pyright: ignore[reportArgumentType]
                 LoggedCallDB.observation_type,  # pyright: ignore[reportArgumentType]
                 LoggedCallDB.latency_ms,  # pyright: ignore[reportArgumentType]
@@ -410,43 +424,39 @@ def _load_calls_for_runs_without_metrics(
                 raiseload=True,
             )
         )
-        .where(LOGGED_CALL_RUN_ID_COL.in_(needing))
+        .where(calls_of_page_rows(scope, needing))
     )
-    if project is not None:
-        query = query.where(LOGGED_CALL_PROJECT_COL == project)
-    result: dict[str, list[LoggedCallDB]] = {}
+    result: dict[tuple[str, str], list[LoggedCallDB]] = {}
     for c in session.exec(query).all():
         if c.run_id is not None:
-            result.setdefault(c.run_id, []).append(c)
+            result.setdefault((c.run_id, c.project), []).append(c)
     return result
 
 
 def _load_levels_for_runs_needing_status(
     session: Session,
     runs: list[RunDB],
-    metrics_by_run: dict[str, list[RunMetricDB]],
-    calls_by_run: dict[str, list[LoggedCallDB]],
-    project: str | None,
-) -> dict[str, list[tuple[str, str]]]:
+    metrics_by_row: dict[tuple[str, str], list[RunMetricDB]],
+    calls_by_row: dict[tuple[str, str], list[LoggedCallDB]],
+    scope: RunScope,
+) -> dict[tuple[str, str], list[tuple[str, str]]]:
     needing = [
-        r.id
+        (r.id, r.project)
         for r in runs
-        if not calls_by_run.get(r.id)
+        if not calls_by_row.get((r.id, r.project))
         and r.call_count > 0
-        and metrics_by_run.get(r.id)
+        and metrics_by_row.get((r.id, r.project))
     ]
     if not needing:
         return {}
-    query = select(LoggedCallDB.level, LoggedCallDB.id, LoggedCallDB.run_id).where(
-        LOGGED_CALL_RUN_ID_COL.in_(needing)
-    )
-    if project is not None:
-        query = query.where(LOGGED_CALL_PROJECT_COL == project)
-    result: dict[str, list[tuple[str, str]]] = {}
+    query = select(
+        LoggedCallDB.level, LoggedCallDB.id, LoggedCallDB.run_id, LoggedCallDB.project
+    ).where(calls_of_page_rows(scope, needing))
+    result: dict[tuple[str, str], list[tuple[str, str]]] = {}
     for row in session.exec(query).all():
         rid = row[2]
         if rid is not None:
-            result.setdefault(rid, []).append((row[0], row[1]))
+            result.setdefault((rid, row[3]), []).append((row[0], row[1]))
     return result
 
 
@@ -474,35 +484,3 @@ def _count_levels(
 
 def _escape_like_text(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-def _fetch_io_previews(
-    session: Session, run_ids: list[str], project: str | None
-) -> dict[str, dict[str, str | None]]:
-    if not run_ids:
-        return {}
-
-    # Trace lists consume only the small write-time projection on ``runs``.
-    # Missing or pre-v40 poisoned slots render empty until the resumable admin
-    # backfill repairs them. Falling through to full call I/O made one list
-    # render materialize tens of megabytes of JSON and OOM production.
-    query = select(
-        as_column(RunDB.id),
-        as_column(RunDB.input_preview),
-        as_column(RunDB.output_preview),
-    ).where(as_column(RunDB.id).in_(run_ids))
-    if project is not None:
-        query = query.where(as_column(RunDB.project) == project)
-
-    previews: dict[str, dict[str, str | None]] = {
-        rid: {"input": None, "output": None} for rid in run_ids
-    }
-    for row in cast("list[tuple[object, ...]]", cast(object, session.exec(query).all())):
-        run_id = str(row[0])
-        input_preview = cast("str | None", row[1])
-        output_preview = cast("str | None", row[2])
-        previews[run_id] = {
-            "input": input_preview if has_preview_payload(input_preview) else None,
-            "output": output_preview if has_preview_payload(output_preview) else None,
-        }
-    return previews

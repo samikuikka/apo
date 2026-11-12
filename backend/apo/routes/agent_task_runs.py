@@ -275,9 +275,12 @@ def _load_primary_models(
         ).all()
         structural_models = {"agent-task", "unknown", ""}
         for call in calls:
+            # A NULL model must not claim the slot: it would store None in a
+            # dict[str, str] and hide every later real GENERATION model.
             if (
                 call.run_id is not None
                 and call.run_id not in model_map
+                and call.model is not None
                 and call.model not in structural_models
             ):
                 model_map[call.run_id] = call.model

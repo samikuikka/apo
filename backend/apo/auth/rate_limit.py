@@ -45,17 +45,34 @@ class LoginRateLimiter:
         with self._lock:
             now = monotonic()
             cutoff = now - self.window_seconds
-            attempts = self._attempts.get(key, [])
-            attempts = [t for t in attempts if t > cutoff]
+            attempts = [t for t in self._attempts.get(key, []) if t > cutoff]
+            if attempts:
+                self._attempts[key] = attempts
+            else:
+                # A key whose every attempt left the window holds no state;
+                # forgetting it keeps a once-seen address from holding a
+                # slot forever (and dodging eviction below).
+                self._attempts.pop(key, None)
+            return len(attempts) < self.max_attempts
+
+    def allow_and_record(self, key: str) -> bool:
+        """Check and record under one lock acquisition.
+
+        The two-step is_allowed + record_attempt let concurrent requests
+        for one key all pass the check before any of them recorded, so a
+        burst overshot the window by however many raced. This method cannot.
+        """
+        with self._lock:
+            now = monotonic()
+            cutoff = now - self.window_seconds
+            attempts = [t for t in self._attempts.get(key, []) if t > cutoff]
+            allowed = len(attempts) < self.max_attempts
+            if allowed:
+                attempts.append(now)
             self._attempts[key] = attempts
-
-            if len(attempts) >= self.max_attempts:
-                return False
-
             if len(self._attempts) > MAX_ENTRIES:
-                self._evict_oldest()
-
-            return True
+                self._evict_oldest_batch()
+            return allowed
 
     def record_attempt(self, key: str) -> None:
         """Record a login attempt for the given key."""
@@ -64,6 +81,8 @@ class LoginRateLimiter:
             if key not in self._attempts:
                 self._attempts[key] = []
             self._attempts[key].append(now)
+            if len(self._attempts) > MAX_ENTRIES:
+                self._evict_oldest_batch()
 
     def get_retry_after(self, key: str) -> int:
         """Returns seconds until the next attempt is allowed."""
@@ -80,15 +99,21 @@ class LoginRateLimiter:
             retry_after = oldest_in_window + self.window_seconds - now
             return max(1, int(retry_after) + 1)
 
-    def _evict_oldest(self) -> None:
-        oldest_key: str | None = None
-        oldest_time: float = float("inf")
-        for key, timestamps in self._attempts.items():
-            if timestamps and timestamps[0] < oldest_time:
-                oldest_time = timestamps[0]
-                oldest_key = key
-        if oldest_key is not None:
-            del self._attempts[oldest_key]
+    def _evict_oldest_batch(self) -> None:
+        """Drop the oldest tenth of the tracked keys, in one pass.
+
+        Eviction runs on the recording path only, in batches. Scanning for
+        the single oldest key on every check let a rotating-address flood
+        (thousands of fresh addresses, all passing their own windows) turn
+        each request into an O(addresses) scan under the global lock and
+        serialize every caller on it.
+        """
+        ordered = sorted(
+            self._attempts.items(),
+            key=lambda item: item[1][0] if item[1] else float("inf"),
+        )
+        for key, _timestamps in ordered[: max(1, MAX_ENTRIES // 10)]:
+            del self._attempts[key]
 
 
 login_rate_limiter = LoginRateLimiter()

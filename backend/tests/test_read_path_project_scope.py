@@ -23,7 +23,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from apo.models import LoggedCallDB, RunDB, RunMetricDB
 from apo.routes.runs.list_query import (
@@ -567,3 +567,63 @@ def test_load_call_rows_ships_only_the_serving_columns(session: Session) -> None
         )
     ).all()
     assert summarize_calls(rows) == summarize_calls(full_rows)
+
+
+# ---------------------------------------------------------------------------
+# Membership-mode hydration answers per project, even for a shared trace id
+# ---------------------------------------------------------------------------
+
+
+def _summaries(session: Session, **filters: Any) -> list[Any]:
+    return list_run_summaries(
+        session,
+        RunListFilters(**filters),
+        RunListPagination(page=0, page_size=100, sort_by=None, sort_order="asc"),
+    ).data
+
+
+def _set_input_preview(session: Session, run_id: str, project: str, preview: str) -> None:
+    row = session.exec(
+        select(RunDB).where(RunDB.id == run_id, RunDB.project == project)
+    ).one()
+    row.input_preview = preview
+    session.add(row)
+    session.commit()
+
+
+def test_membership_hydration_never_crosses_projects(session: Session) -> None:
+    # A member of SMALL only: the SHARED row must be hydrated from small's
+    # copy (a clean DEFAULT call, no stored metric), never from big's ERROR
+    # call, big-only metric, or preview text.
+    seed_two_projects(session)
+    _set_input_preview(session, SHARED, SMALL, "small-input")
+    _set_input_preview(session, SHARED, BIG, "big-secret")
+
+    page = _summaries(session, allowed_projects=[SMALL])
+    shared = next(run for run in page if run.id == SHARED)
+
+    assert shared.project == SMALL
+    assert shared.status == "success"
+    assert shared.error_count == 0
+    assert "big-only-metric" not in [m.metric_name for m in shared.metrics]
+    assert shared.input_preview == "small-input"
+
+
+def test_membership_hydration_splits_shared_id_copies(session: Session) -> None:
+    # A member of both: the page holds both copies of SHARED, and each is
+    # hydrated from its own project's rows.
+    seed_two_projects(session)
+    _set_input_preview(session, SHARED, SMALL, "small-input")
+    _set_input_preview(session, SHARED, BIG, "big-input")
+
+    page = _summaries(session, allowed_projects=[BIG, SMALL])
+    by_project = {run.project: run for run in page if run.id == SHARED}
+
+    assert sorted(by_project) == sorted((BIG, SMALL))
+    assert by_project[SMALL].status == "success"
+    assert by_project[SMALL].error_count == 0
+    assert by_project[SMALL].input_preview == "small-input"
+    assert by_project[BIG].status == "error"
+    assert by_project[BIG].error_count == 1
+    assert [m.metric_name for m in by_project[BIG].metrics] == ["big-only-metric"]
+    assert by_project[BIG].input_preview == "big-input"

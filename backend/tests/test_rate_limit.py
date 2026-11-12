@@ -134,6 +134,41 @@ class TestLoginRateLimiterMemoryCap:
 
         assert "oldest-key" not in limiter._attempts
 
+    def test_checks_alone_never_grow_or_scan_the_map(self) -> None:
+        # A rotating-address flood used to make every is_allowed call scan
+        # the whole map once it crossed the cap: eviction must live on the
+        # recording path, and a bare check must not even create an entry.
+        limiter = LoginRateLimiter()
+        limiter.max_attempts = 100
+
+        for i in range(20_000):
+            limiter.is_allowed(f"1.2.3.{i}")
+
+        assert limiter._attempts == {}
+
+
+class TestAllowAndRecord:
+    def test_allows_and_counts_under_the_cap(self) -> None:
+        limiter = LoginRateLimiter()
+        limiter.max_attempts = 2
+
+        assert limiter.allow_and_record("1.1.1.1") is True
+        assert limiter.allow_and_record("1.1.1.1") is True
+        assert limiter.allow_and_record("1.1.1.1") is False
+        assert len(limiter._attempts["1.1.1.1"]) == 2
+
+    def test_rejected_call_records_nothing(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        clock = _install_fake_clock(monkeypatch)
+        limiter = LoginRateLimiter()
+        limiter.max_attempts = 1
+
+        assert limiter.allow_and_record("1.1.1.1") is True
+        clock.advance(1.0)
+        assert limiter.allow_and_record("1.1.1.1") is False
+        assert len(limiter._attempts["1.1.1.1"]) == 1
+
 
 class TestLoginRateLimiterRecordAttempt:
     def test_records_attempt_for_key(self) -> None:
