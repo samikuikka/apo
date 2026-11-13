@@ -52,4 +52,15 @@ describe("npm version-regression guard", () => {
     expect(publishedVersionIsHigher("0.18.1", "1.0.0-rc.1")).toBe(true);
     expect(publishedVersionIsHigher("not-semver", "0.18.1")).toBe(false);
   });
+
+  it("compares prereleases of the same release tuple per semver", async () => {
+    const { publishedVersionIsHigher } = await import(
+      "../../../scripts/npm-version-guard.mjs"
+    );
+    expect(publishedVersionIsHigher("1.0.0-rc.1", "1.0.0-rc.2")).toBe(true);
+    expect(publishedVersionIsHigher("1.0.0-rc.2", "1.0.0-rc.1")).toBe(false);
+    expect(publishedVersionIsHigher("1.0.0-rc.2", "1.0.0-rc.2")).toBe(false);
+    expect(publishedVersionIsHigher("1.0.0-rc", "1.0.0-rc.1")).toBe(true);
+    expect(publishedVersionIsHigher("1.0.0-beta.2", "1.0.0-rc.1")).toBe(true);
+  });
 });
