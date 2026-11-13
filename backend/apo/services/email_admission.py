@@ -34,9 +34,13 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
+from .invitation_tokens import normalize_email
+
 DISPOSABLE_DOMAINS_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "disposable-email-domains.json"
 )
+
+MAX_EMAIL_LENGTH = 254
 
 ALLOWLIST_ENV = "APO_DISPOSABLE_DOMAIN_ALLOWLIST"
 
@@ -187,6 +191,35 @@ def require_admissible_email(email: str) -> None:
         )
 
 
+def require_email_shape(email: str) -> str:
+    """Normalize an address, or 422 when it cannot be one.
+
+    Exactly one address, one ``@``, no list separators. A comma list rode
+    a single SMTP send into many inboxes, matched no disposable-domain
+    blocklist entry (the whole string is not a blocked domain), and
+    bypassed the per-email request limit (the limit key was the whole
+    string). One address per request; anyone wanting more gets to ask
+    again.
+    """
+    if email.count("@") != 1 or any(sep in email for sep in (",", ";")):
+        raise HTTPException(
+            status_code=422, detail="A valid email address is required"
+        )
+    normalized = normalize_email(email)
+    local, _, domain = normalized.rpartition("@")
+    if (
+        not local
+        or not domain
+        or "." not in domain
+        or len(normalized) > MAX_EMAIL_LENGTH
+        or any(char.isspace() for char in normalized)
+    ):
+        raise HTTPException(
+            status_code=422, detail="A valid email address is required"
+        )
+    return normalized
+
+
 __all__ = [
     "ALLOWLIST_ENV",
     "DISPOSABLE_DOMAINS_PATH",
@@ -196,4 +229,5 @@ __all__ = [
     "get_disposable_domain_matcher",
     "is_disposable_email",
     "require_admissible_email",
+    "require_email_shape",
 ]

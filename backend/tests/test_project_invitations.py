@@ -176,6 +176,27 @@ class TestCreateInvitation:
         assert invitation is not None
         assert invitation.email == "mixed@example.com"
 
+    def test_comma_list_address_is_rejected(self, session: Session) -> None:
+        # A comma list rode one SMTP send into many inboxes while the
+        # disposable-domain check only saw the last segment; one address
+        # per request, on every invitation path.
+        owner = _make_user(session, "owner@test.com")
+        project = _make_project(session, owner)
+
+        with pytest.raises(HTTPException) as exc_info:
+            _invite(
+                session,
+                project_id=project.id,
+                email="victim@corp.example,attacker@gmail.com",
+                invited_by_user_id=owner.id,
+            )
+
+        assert exc_info.value.status_code == 422
+        rows = list(
+            session.exec(select(ProjectInvitationDB)).all()
+        )
+        assert rows == []
+
     def test_invalid_role_rejected(self, session: Session) -> None:
         owner = _make_user(session, "owner@test.com")
         project = _make_project(session, owner)
