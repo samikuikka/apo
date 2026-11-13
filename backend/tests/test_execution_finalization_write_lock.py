@@ -136,7 +136,7 @@ def _seed_running_attempt() -> str:
 
 
 async def test_result_survives_a_concurrent_commit_during_precheck(
-    monkeypatch: pytest.pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The precheck's read snapshot must not ride into the finalize write.
 
