@@ -333,6 +333,69 @@ describe("metric sections", () => {
   });
 });
 
+describe("optimistic application", () => {
+  const facetsWithMetrics: RunLabelFacets = {
+    ...facets,
+    metrics: {
+      cost: { p20: 0.08, p50: 0.23, p80: 0.61 },
+      duration_seconds: { p20: 30, p50: 90, p80: 300 },
+    },
+  };
+  const baseMetrics: RunMetricFilters = {
+    cost: { min: null, max: null },
+    durationSeconds: { min: null, max: null },
+  };
+
+  it("a value click checks the box before the URL round-trip lands", () => {
+    // onScopeChange never updates the props here, so a checked box can
+    // only come from the optimistic override.
+    render(
+      <ScopeRail facets={facets} scope={EMPTY_RUN_SCOPE} onScopeChange={vi.fn()} onClose={vi.fn()} />,
+    );
+    const box = screen.getByRole("checkbox", { name: "customer Acme" });
+    expect(box.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(box);
+    expect(box.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("a cost preset shows its chip in the same frame", () => {
+    render(
+      <ScopeRail
+        facets={facetsWithMetrics}
+        scope={EMPTY_RUN_SCOPE}
+        onScopeChange={vi.fn()}
+        metrics={baseMetrics}
+        onMetricsChange={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Remove Cost under $0.08" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Cheapest 20%/ }));
+    expect(screen.getByRole("button", { name: "Remove Cost under $0.08" })).toBeInTheDocument();
+  });
+
+  it("the URL's value wins once its round-trip lands", () => {
+    const onScopeChange = vi.fn();
+    const { rerender } = render(
+      <ScopeRail facets={facets} scope={EMPTY_RUN_SCOPE} onScopeChange={onScopeChange} onClose={vi.fn()} />,
+    );
+    const box = screen.getByRole("checkbox", { name: "customer Acme" });
+    fireEvent.click(box);
+    expect(box.getAttribute("aria-checked")).toBe("true");
+
+    // The server round-trip lands with a different value: the override
+    // is dropped and the URL's answer is what renders.
+    const urlScope = parseRunScope(new URLSearchParams("label=customer:c-2"));
+    rerender(
+      <ScopeRail facets={facets} scope={urlScope} onScopeChange={onScopeChange} onClose={vi.fn()} />,
+    );
+    expect(box.getAttribute("aria-checked")).toBe("false");
+    expect(
+      screen.getByRole("checkbox", { name: "customer Globex" }).getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+});
+
 describe("saved views", () => {
   function renderWithSaved() {
     const onApplyParams = vi.fn();
