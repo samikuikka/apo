@@ -58,6 +58,10 @@ _PROTECTED_READS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("GET", re.compile(r"^/v1/agent-task-batch-runs/[^/]+$")),
 )
 
+# Cap on tracked identities in ReadThrottle._hits; exceeded, the oldest
+# tenth of the map is evicted in one pass.
+MAX_IDENTITIES = 10_000
+
 
 class ReadThrottle:
     """Sliding-window limiter keyed by caller identity."""
@@ -88,6 +92,8 @@ class ReadThrottle:
                 return False
             hits.append(now)
             self._hits[identity] = hits
+            if len(self._hits) > MAX_IDENTITIES:
+                self._evict_oldest_batch()
             return True
 
     def retry_after(self, identity: str) -> int:
@@ -105,6 +111,22 @@ class ReadThrottle:
         if not hits:
             return 1
         return max(1, math.ceil(hits[0] + self.window_seconds - now))
+
+    def _evict_oldest_batch(self) -> None:
+        """Drop the oldest tenth of the tracked identities, in one pass.
+
+        Anonymous demo traffic keys by client IP, so a crawler flood creates
+        a fresh identity per request; without eviction every one-shot
+        identity holds a dict slot for the process lifetime. Eviction runs
+        on the recording path only, in batches, mirroring the login
+        limiter's shape.
+        """
+        ordered = sorted(
+            self._hits.items(),
+            key=lambda item: item[1][0] if item[1] else float("inf"),
+        )
+        for identity, _timestamps in ordered[: max(1, MAX_IDENTITIES // 10)]:
+            del self._hits[identity]
 
 
 def _identity_for(request: Request) -> str:

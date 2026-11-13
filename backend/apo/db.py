@@ -79,7 +79,7 @@ def sqlite_cache_size_kib() -> int:
     an invalid value fails instead of passing silently.
     """
     raw = os.environ.get("APO_SQLITE_CACHE_KIB")
-    if raw is None or not raw.strip():
+    if raw is None:
         return SQLITE_CACHE_SIZE_KIB
     try:
         value = int(raw.strip())
