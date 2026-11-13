@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { RunsClient } from "@/app/project/[projectId]/runs/runs-client";
@@ -320,5 +320,24 @@ describe("Runs page environment and label filters", () => {
     expect(replace).toHaveBeenCalledWith("/project/acme/runs?label=customer%3Ac-2", {
       scroll: false,
     });
+  });
+
+  it("keeps a filter written moments earlier when another write lands before the URL does", async () => {
+    // The mocked useSearchParams never updates after replace, exactly like
+    // the real prop during the server round-trip. The second write comes
+    // from a different controller (the metric input writes only cost_*),
+    // so it must build on the first write's base, not the stale URL.
+    const user = userEvent.setup();
+    renderRuns("");
+
+    await user.click(screen.getByRole("checkbox", { name: "Environment prod" }));
+    const costMin = screen.getByLabelText("Cost minimum");
+    await user.type(costMin, "0.5");
+    fireEvent.blur(costMin);
+
+    expect(replace).toHaveBeenLastCalledWith(
+      "/project/acme/runs?environment=prod&cost_min=0.5",
+      { scroll: false },
+    );
   });
 });

@@ -92,19 +92,33 @@ export function RunsClient({
   const clientNow = useClientNow();
   const sourceUnconfigured = taskSource === null && totalCount === 0;
 
+  // URL writes build on the freshest params, not the `searchParams` prop:
+  // the prop lags a write by one server round-trip, so two clicks inside
+  // that window would both compute from the same stale base and the first
+  // click's param would be silently dropped. `writtenParams` carries our
+  // own pending write; the prev-compare drops it once the URL (our write
+  // or an external change: back/forward, Clear Filters) lands in the prop.
+  const [prevParams, setPrevParams] = useState(searchParams);
+  const [writtenParams, setWrittenParams] = useState<URLSearchParams | null>(null);
+  if (searchParams !== prevParams) {
+    setPrevParams(searchParams);
+    setWrittenParams(null);
+  }
   // A string[] value writes a repeated param (`?label=a:1&label=b:2`).
   const updateUrl = useCallback(
     (updates: Record<string, string | string[] | null>) => {
-      const params = new URLSearchParams(searchParams.toString());
+      const base = writtenParams ?? new URLSearchParams(searchParams.toString());
+      const params = new URLSearchParams(base.toString());
       for (const [key, value] of Object.entries(updates)) {
         params.delete(key);
         if (Array.isArray(value)) for (const item of value) params.append(key, item);
         else if (value) params.set(key, value);
       }
+      setWrittenParams(params);
       const qs = params.toString();
       router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
     },
-    [router, pathname, searchParams],
+    [router, pathname, searchParams, writtenParams],
   );
 
   // Toolbar filter values, all derived from the URL the parent owns.

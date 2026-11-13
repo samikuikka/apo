@@ -569,11 +569,6 @@ def test_load_call_rows_ships_only_the_serving_columns(session: Session) -> None
     assert summarize_calls(rows) == summarize_calls(full_rows)
 
 
-# ---------------------------------------------------------------------------
-# Membership-mode hydration answers per project, even for a shared trace id
-# ---------------------------------------------------------------------------
-
-
 def _summaries(session: Session, **filters: Any) -> list[Any]:
     return list_run_summaries(
         session,
