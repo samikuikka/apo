@@ -213,18 +213,14 @@ function ScopeRailBody({
 }: ScopeRailProps) {
   // Optimistic scope/metrics: set instantly on click so the checkbox
   // checks and the chip appears without waiting for the server round-trip
-  // the URL write triggers. Reverts to the URL's value once the URL
-  // catches up (the effect below clears the override when the props match
-  // what we optimistically set). If the server round-trip produces a
-  // different value, the URL's value wins and the optimistic one is
-  // simply dropped.
+  // the URL write triggers. The prev-compare below drops the override
+  // when the URL's props change, so the URL's value always wins.
   const [optimisticScope, setOptimisticScope] = useState<RunScope | null>(null);
   const [optimisticMetrics, setOptimisticMetrics] = useState<RunMetricFilters | null>(null);
   const renderScope = optimisticScope ?? scope;
   const renderMetrics = optimisticMetrics ?? metrics;
 
-  // Clear the optimistic override once the URL catches up. The prev-compare
-  // pattern runs during render, no effect needed.
+  // The prev-compare runs during render; no effect is needed.
   const [prevScope, setPrevScope] = useState(scope);
   if (prevScope !== scope) {
     setPrevScope(scope);
@@ -351,7 +347,8 @@ function ScopeRailBody({
             </div>
           );
         })}
-        {(chips.length > 0 || (metrics !== undefined && metricChips(metrics).length > 0)) && (
+        {(chips.length > 0 ||
+          (metrics !== undefined && metricChips(renderMetrics ?? metrics).length > 0)) && (
           <div className="mt-4 flex flex-wrap items-center gap-1.5">
             <span className="w-full text-[11px] uppercase tracking-wide text-foreground/50">
               Active
@@ -365,13 +362,13 @@ function ScopeRailBody({
               />
             ))}
             {metrics !== undefined &&
-              metricChips(metrics).map((range) => (
+              metricChips(renderMetrics!).map((range) => (
                 <FilterChip
                   key={`${range.metric}:${range.text}`}
                   dimension={range.metric}
                   value={range.text}
                   onRemove={() =>
-                    handleMetricsChange(clearMetricRange(metrics, range.kind))
+                    handleMetricsChange(clearMetricRange(renderMetrics!, range.kind))
                   }
                 />
               ))}
