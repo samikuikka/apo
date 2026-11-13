@@ -22,9 +22,29 @@ export function publishedVersionIsHigher(local, published) {
   if (a.major !== b.major) return a.major < b.major;
   if (a.minor !== b.minor) return a.minor < b.minor;
   if (a.patch !== b.patch) return a.patch < b.patch;
-  // Equal release tuple: a prerelease of the same tuple is lower than the
-  // release (1.0.0-rc.1 < 1.0.0), otherwise they are the same version.
-  return a.pre !== null && b.pre === null;
+  // Equal release tuple: prerelease rules. A prerelease is lower than the
+  // release (1.0.0-rc.1 < 1.0.0), and two prereleases of the same tuple
+  // compare per semver identifiers (1.0.0-rc.1 < 1.0.0-rc.2).
+  if (a.pre === null || b.pre === null) return a.pre !== null && b.pre === null;
+  return prereleaseIsLower(a.pre, b.pre);
+}
+
+function prereleaseIsLower(a, b) {
+  const aIds = a.split(".");
+  const bIds = b.split(".");
+  const shared = Math.min(aIds.length, bIds.length);
+  for (let i = 0; i < shared; i++) {
+    const aNum = /^\d+$/.test(aIds[i]);
+    const bNum = /^\d+$/.test(bIds[i]);
+    if (aNum && bNum) {
+      if (Number(aIds[i]) !== Number(bIds[i])) return Number(aIds[i]) < Number(bIds[i]);
+    } else if (aNum !== bNum) {
+      return aNum; // numeric identifiers sort below alphanumeric ones
+    } else if (aIds[i] !== bIds[i]) {
+      return aIds[i] < bIds[i];
+    }
+  }
+  return aIds.length < bIds.length; // rc < rc.1: fewer identifiers is lower
 }
 
 function parse(version) {
