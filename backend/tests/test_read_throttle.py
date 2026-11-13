@@ -221,3 +221,20 @@ def test_retry_after_shrinks_with_the_window(
 
     now[0] += 59.2
     assert throttle.retry_after("ip:1.1.1.1") == 1
+
+
+def test_fresh_identities_cannot_grow_the_map_without_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Anonymous demo traffic keys by client IP, so a crawler creates a
+    # fresh identity per request; the map must evict instead of growing
+    # for the process lifetime.
+    import apo.middleware.read_throttle as read_throttle_module
+
+    monkeypatch.setattr(read_throttle_module, "MAX_IDENTITIES", 50)
+    throttle = ReadThrottle(max_requests=10, window_seconds=60)
+
+    for i in range(400):
+        assert throttle.is_allowed(f"ip:198.18.{i // 250}.{i % 250}")
+
+    assert len(throttle._hits) <= 50

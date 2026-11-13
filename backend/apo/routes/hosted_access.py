@@ -80,14 +80,13 @@ self_serve_email_rate_limiter = LoginRateLimiter(
 
 def _enforce_public_rate_limit(request: Request) -> None:
     ip = get_client_ip(request)
-    if not hosted_access_rate_limiter.is_allowed(ip):
+    if not hosted_access_rate_limiter.allow_and_record(ip):
         retry_after = hosted_access_rate_limiter.get_retry_after(ip)
         raise HTTPException(
             status_code=429,
             detail="Too many requests. Please try again later.",
             headers={"Retry-After": str(retry_after)},
         )
-    hosted_access_rate_limiter.record_attempt(ip)
 
 
 # ---------------------------------------------------------------------------
@@ -282,28 +281,34 @@ def _enforce_self_serve_rate_limits(
 ) -> None:
     """Per-IP and per-email sliding windows, both 429 with Retry-After.
 
-    Both are checked before either is recorded, and neither depends on
-    what is stored for the address, so a 429 says nothing about accounts.
+    Each window checks and records under one lock, so a burst of
+    concurrent requests for one key cannot all pass before any records.
+    The email window goes first: an address at its cap must not also
+    burn the caller's IP window. Neither key depends on account state,
+    so a 429 says nothing about accounts.
     """
     self_serve_ip_rate_limiter.max_attempts = config.requests_per_hour_per_ip
     ip_key = get_client_ip(request)
     email_key = normalize_email(email)
 
-    retry_after = 0
-    if not self_serve_ip_rate_limiter.is_allowed(ip_key):
-        retry_after = self_serve_ip_rate_limiter.get_retry_after(ip_key)
-    if not self_serve_email_rate_limiter.is_allowed(email_key):
-        retry_after = max(
-            retry_after, self_serve_email_rate_limiter.get_retry_after(email_key)
-        )
-    if retry_after:
+    if not self_serve_email_rate_limiter.allow_and_record(email_key):
         raise HTTPException(
             status_code=429,
             detail="Too many requests. Please try again later.",
-            headers={"Retry-After": str(retry_after)},
+            headers={
+                "Retry-After": str(
+                    self_serve_email_rate_limiter.get_retry_after(email_key)
+                )
+            },
         )
-    self_serve_ip_rate_limiter.record_attempt(ip_key)
-    self_serve_email_rate_limiter.record_attempt(email_key)
+    if not self_serve_ip_rate_limiter.allow_and_record(ip_key):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests. Please try again later.",
+            headers={
+                "Retry-After": str(self_serve_ip_rate_limiter.get_retry_after(ip_key))
+            },
+        )
 
 
 _REQUEST_ACCEPTED_MESSAGE = "If the address is eligible, an invitation is on its way."

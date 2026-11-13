@@ -288,19 +288,22 @@ def verify_password_endpoint(
     ip = get_client_ip(request)
     email_key = f"account:{body.email.lower()}"
 
-    retry_after = 0
-    if not login_rate_limiter.is_allowed(ip):
-        retry_after = max(retry_after, login_rate_limiter.get_retry_after(ip))
-    if not _account_rate_limiter.is_allowed(email_key):
-        retry_after = max(retry_after, _account_rate_limiter.get_retry_after(email_key))
-    if retry_after:
+    # The IP window checks and records under one lock (a burst cannot all
+    # pass before any records). The account window stays a pure check here:
+    # only failed passwords record against it below, so a successful login
+    # never spends the account budget.
+    if not login_rate_limiter.allow_and_record(ip):
         raise HTTPException(
             status_code=429,
             detail="Too many login attempts",
-            headers={"Retry-After": str(retry_after)},
+            headers={"Retry-After": str(login_rate_limiter.get_retry_after(ip))},
         )
-
-    login_rate_limiter.record_attempt(ip)
+    if not _account_rate_limiter.is_allowed(email_key):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts",
+            headers={"Retry-After": str(_account_rate_limiter.get_retry_after(email_key))},
+        )
 
     user = session.exec(
         select(UserDB).where(UserDB.email == body.email)
