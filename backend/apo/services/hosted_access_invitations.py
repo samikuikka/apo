@@ -57,7 +57,7 @@ from ..models.schemas import (
     HostedAccessInvitationPreview,
     HostedAccessInvitationSummary,
 )
-from .email_admission import require_admissible_email
+from .email_admission import require_admissible_email, require_email_shape
 from .email_templates import (
     render_hosted_access_email,
     render_self_serve_access_email,
@@ -281,7 +281,7 @@ async def create_or_refresh_hosted_access_invitation(
     second one. No User, Project, or membership row is touched. The raw
     token is returned exactly once in the response (copy-link fallback).
     """
-    normalized = _require_email_shape(email)
+    normalized = require_email_shape(email)
     require_admissible_email(normalized)
 
     raw_token, token_hash = generate_token()
@@ -332,7 +332,7 @@ async def request_self_serve_invitation(
     address text or on installation-wide state, never on what is stored
     for that address, and run before anything address-specific is read.
     """
-    normalized = _require_email_shape(email)
+    normalized = require_email_shape(email)
     require_admissible_email(normalized)
     _require_outstanding_capacity(session, config.max_outstanding)
 
@@ -756,37 +756,7 @@ def _ttl_hours(invitation: HostedAccessInvitationDB) -> int:
     return HOSTED_ACCESS_INVITATION_TTL_HOURS
 
 
-MAX_EMAIL_LENGTH = 254
 MAX_INVITEE_NAME_LENGTH = 120
-
-
-def _require_email_shape(email: str) -> str:
-    """Normalize an address, or 422 when it cannot be one.
-
-    Exactly one address, one ``@``, no list separators. A comma list rode
-    a single SMTP send into many inboxes, matched no disposable-domain
-    blocklist entry (the whole string is not a blocked domain), and
-    bypassed the per-email request limit (the limit key was the whole
-    string). One address per request; anyone wanting more gets to ask
-    again.
-    """
-    if email.count("@") != 1 or any(sep in email for sep in (",", ";")):
-        raise HTTPException(
-            status_code=422, detail="A valid email address is required"
-        )
-    normalized = normalize_email(email)
-    local, _, domain = normalized.rpartition("@")
-    if (
-        not local
-        or not domain
-        or "." not in domain
-        or len(normalized) > MAX_EMAIL_LENGTH
-        or any(char.isspace() for char in normalized)
-    ):
-        raise HTTPException(
-            status_code=422, detail="A valid email address is required"
-        )
-    return normalized
 
 
 def _require_invitee_name_length(name: str) -> None:

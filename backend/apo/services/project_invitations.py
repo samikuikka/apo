@@ -42,7 +42,7 @@ from ..models.schemas import (
     InvitationTokenPreviewResponse,
     ProjectInvitationSummary,
 )
-from .email_admission import require_admissible_email
+from .email_admission import require_admissible_email, require_email_shape
 from .email_templates import render_invitation_email
 from .invitation_tokens import (
     build_invite_url,
@@ -230,11 +230,7 @@ async def create_or_refresh_invitation(
             detail="Cannot invite at a role above your own",
         )
 
-    normalized = normalize_email(body.email)
-    if not normalized or "@" not in normalized:
-        raise HTTPException(
-            status_code=422, detail="A valid email address is required"
-        )
+    normalized = require_email_shape(body.email)
     require_admissible_email(normalized)
 
     # Block invites to existing members of the project.
