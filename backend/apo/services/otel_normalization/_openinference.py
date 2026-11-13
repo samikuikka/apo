@@ -3,7 +3,7 @@
 Handles ``openinference.span.kind`` attributes from Arize Phoenix / LangChain.
 """
 
-# pyright: reportExplicitAny=false, reportUnusedParameter=false
+# pyright: reportAny=false, reportExplicitAny=false, reportUnusedParameter=false
 
 from __future__ import annotations
 

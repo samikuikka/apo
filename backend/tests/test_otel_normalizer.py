@@ -109,6 +109,21 @@ class TestObservationTypeClassification:
         assert result.tool_parameters == {"query": "explicit"}
         assert result.tool_result == {"documents": [{"content": "x"}]}
 
+    def test_openinference_retriever_maps_the_query_when_only_the_result_is_genai(self):
+        # Each channel yields to gen_ai independently: an explicit result
+        # must not also cost the span its input.value query.
+        span = _make_span(
+            attributes={
+                "openinference.span.kind": "RETRIEVER",
+                "gen_ai.tool.call.result": '{"documents": [{"content": "x"}]}',
+                "input.value": "vacation days",
+                "retrieval.documents.0.content": "ignored",
+            }
+        )
+        result = normalize_span(span)
+        assert result.tool_parameters == {"query": "vacation days"}
+        assert result.tool_result == {"documents": [{"content": "x"}]}
+
     def test_gen_ai_tool_name(self):
         """gen_ai.tool.name presence → TOOL."""
         span = _make_span(attributes={"gen_ai.tool.name": "search"})
