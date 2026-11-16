@@ -202,7 +202,6 @@ def test_anonymous_identity_keys_by_resolved_client_ip() -> None:
     other = _request({"x-forwarded-for": "198.51.100.2"}, "10.0.0.9")
     assert _identity_for(other) == "ip:198.51.100.2"
 
-    # An untrusted peer is keyed by itself; a spoofed header changes nothing.
     direct = _request({"x-forwarded-for": "203.0.113.7"}, "203.0.113.99")
     assert _identity_for(direct) == "ip:203.0.113.99"
 

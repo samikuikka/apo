@@ -605,8 +605,6 @@ def test_membership_hydration_never_crosses_projects(session: Session) -> None:
 
 
 def test_membership_hydration_splits_shared_id_copies(session: Session) -> None:
-    # A member of both: the page holds both copies of SHARED, and each is
-    # hydrated from its own project's rows.
     seed_two_projects(session)
     _set_input_preview(session, SHARED, SMALL, "small-input")
     _set_input_preview(session, SHARED, BIG, "big-input")

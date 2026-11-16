@@ -252,6 +252,7 @@ function ScopeRailBody({
   const dims = useMemo(() => runScopeDimensions(facets, scope), [facets, scope]);
   const visible = useMemo(() => filterRunScopeDimensions(dims, query), [dims, query]);
   const chips = runScopeChips(renderScope, dims);
+  const metricRangeChips = metrics !== undefined ? metricChips(renderMetrics ?? metrics) : [];
 
   const toggleSection = (key: string) =>
     setCollapsed((prev) => {
@@ -347,8 +348,7 @@ function ScopeRailBody({
             </div>
           );
         })}
-        {(chips.length > 0 ||
-          (metrics !== undefined && metricChips(renderMetrics ?? metrics).length > 0)) && (
+        {(chips.length > 0 || metricRangeChips.length > 0) && (
           <div className="mt-4 flex flex-wrap items-center gap-1.5">
             <span className="w-full text-[11px] uppercase tracking-wide text-foreground/50">
               Active
@@ -361,17 +361,16 @@ function ScopeRailBody({
                 onRemove={() => handleScopeChange(toggleRunScopeValue(renderScope, chip.key, chip.id))}
               />
             ))}
-            {metrics !== undefined &&
-              metricChips(renderMetrics!).map((range) => (
-                <FilterChip
-                  key={`${range.metric}:${range.text}`}
-                  dimension={range.metric}
-                  value={range.text}
-                  onRemove={() =>
-                    handleMetricsChange(clearMetricRange(renderMetrics!, range.kind))
-                  }
-                />
-              ))}
+            {metricRangeChips.map((range) => (
+              <FilterChip
+                key={`${range.metric}:${range.text}`}
+                dimension={range.metric}
+                value={range.text}
+                onRemove={() =>
+                  handleMetricsChange(clearMetricRange(renderMetrics!, range.kind))
+                }
+              />
+            ))}
             <button
               type="button"
               onClick={() => {

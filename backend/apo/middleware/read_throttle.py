@@ -32,6 +32,7 @@ from collections.abc import Awaitable, Callable
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp
 
 from ..auth.client_ip import get_client_ip
 
@@ -58,8 +59,6 @@ _PROTECTED_READS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("GET", re.compile(r"^/v1/agent-task-batch-runs/[^/]+$")),
 )
 
-# Cap on tracked identities in ReadThrottle._hits; exceeded, the oldest
-# tenth of the map is evicted in one pass.
 MAX_IDENTITIES = 10_000
 
 
@@ -71,13 +70,13 @@ class ReadThrottle:
         max_requests: int | None = None,
         window_seconds: int | None = None,
     ) -> None:
-        self.max_requests = max_requests if max_requests is not None else int(
+        self.max_requests: int = max_requests if max_requests is not None else int(
             os.environ.get("APO_READ_RATE_LIMIT_MAX", "120")
         )
-        self.window_seconds = window_seconds if window_seconds is not None else int(
+        self.window_seconds: int = window_seconds if window_seconds is not None else int(
             os.environ.get("APO_READ_RATE_LIMIT_WINDOW_SECONDS", "60")
         )
-        self._lock = threading.Lock()
+        self._lock: threading.Lock = threading.Lock()
         self._hits: dict[str, list[float]] = {}
 
     def is_allowed(self, identity: str) -> bool:
@@ -147,9 +146,9 @@ def _identity_for(request: Request) -> str:
 class ReadThrottleMiddleware(BaseHTTPMiddleware):
     """Reject excess calls to the protected heavy-read routes with 429."""
 
-    def __init__(self, app, throttle: ReadThrottle) -> None:
+    def __init__(self, app: ASGIApp, throttle: ReadThrottle) -> None:
         super().__init__(app)
-        self._throttle = throttle
+        self._throttle: ReadThrottle = throttle
 
     async def dispatch(
         self,
