@@ -383,8 +383,6 @@ describe("optimistic application", () => {
     fireEvent.click(box);
     expect(box.getAttribute("aria-checked")).toBe("true");
 
-    // The server round-trip lands with a different value: the override
-    // is dropped and the URL's answer is what renders.
     const urlScope = parseRunScope(new URLSearchParams("label=customer:c-2"));
     rerender(
       <ScopeRail facets={facets} scope={urlScope} onScopeChange={onScopeChange} onClose={vi.fn()} />,

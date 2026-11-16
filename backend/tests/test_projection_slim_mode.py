@@ -889,7 +889,6 @@ def _span(session: Session, span_id: str) -> OtlpSpanDB:
 
 
 def _listed_summary(session: Session) -> Any:
-    """The one seeded trace's summary, exactly as the runs list renders it."""
     page = list_run_summaries(
         session,
         RunListFilters(project="p1"),

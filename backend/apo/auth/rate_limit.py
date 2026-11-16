@@ -52,7 +52,7 @@ class LoginRateLimiter:
                 # A key whose every attempt left the window holds no state;
                 # forgetting it keeps a once-seen address from holding a
                 # slot forever (and dodging eviction below).
-                self._attempts.pop(key, None)
+                _ = self._attempts.pop(key, None)
             return len(attempts) < self.max_attempts
 
     def allow_and_record(self, key: str) -> bool:
