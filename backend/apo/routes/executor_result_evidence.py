@@ -104,7 +104,6 @@ async def _create_intent(
             size_bytes=body.size_bytes,
             sha256=body.sha256,
         )
-        session.commit()
     except ResultEvidenceError as exc:
         session.rollback()
         raise HTTPException(
@@ -187,7 +186,6 @@ async def upload_result_evidence(
             body_stream=body_stream(),
             declared_size=declared_size,
         )
-        session.commit()
     except ResultEvidenceError as exc:
         session.rollback()
         raise HTTPException(

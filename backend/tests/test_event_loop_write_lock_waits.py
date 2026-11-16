@@ -16,21 +16,32 @@ service makes during a run, and watches the loop while that write waits.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import threading
 import time
-from collections.abc import Awaitable, Callable
+import uuid
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, text
 from starlette.requests import Request
 from starlette.responses import Response
 
 import apo.auth.middleware as middleware
 from apo.api import app
 from apo.db import begin_immediate, engine
-from apo.models.db import ProjectDB
-from apo.services import execution_leases
+from apo.models.db import (
+    AgentTaskBatchRunDB,
+    AgentTaskRunDB,
+    ProjectDB,
+    TaskExecutionAttemptDB,
+)
+from apo.routes.executor_result_evidence import EvidenceIntentRequest, create_intent_v2
+from apo.services import execution_leases, result_evidence
+from apo.services.artifact_stores.registry import get_store
+from apo.services.execution_leases import CurrentAttemptLease
 from apo.services.executor_auth import generate_enrollment_token
 from apo.services.trace_ingestion_queue import DbBackedQueue
 
@@ -203,4 +214,120 @@ async def test_executor_heartbeat_waits_off_the_loop() -> None:
             assert response.status_code == 200, response.text
 
         stall, took = await _longest_loop_stall_during(heartbeat)
+    _assert_waited_off_the_loop(stall, took)
+
+
+@pytest.fixture
+def running_attempt() -> Iterator[TaskExecutionAttemptDB]:
+    suffix = uuid.uuid4().hex[:8]
+    now = datetime.now(timezone.utc)
+    project = f"{PROJECT}-{suffix}"
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(ProjectDB(id=project, name=project))
+        batch = AgentTaskBatchRunDB(
+            id=f"bch-{suffix}",
+            project=project,
+            selection_type="tasks",
+            status="queued",
+            execution_target_json={"kind": "source_owned"},
+            created_at=now,
+        )
+        session.add(batch)
+        session.flush()
+        run = AgentTaskRunDB(
+            id=f"run-{suffix}",
+            batch_run_id=batch.id,
+            task_id="t",
+            task_path="p",
+            sequence_index=0,
+            status="pending",
+        )
+        session.add(run)
+        session.flush()
+        attempt = TaskExecutionAttemptDB(
+            id=f"att-{suffix}",
+            project=project,
+            batch_run_id=batch.id,
+            task_run_id=run.id,
+            sequence_index=0,
+            target_kind="pool",
+            assignment_kind="source_owned",
+            status="running",
+            phase="running",
+            queue_expires_at=now + timedelta(hours=1),
+            lease_generation=1,
+            lease_expires_at=now + timedelta(minutes=5),
+        )
+        session.add(attempt)
+        session.commit()
+    yield attempt
+    # Other modules on this file DB clear whole tables; rows left here would
+    # hold foreign keys into them.
+    with Session(engine) as session:
+        for table, column, value in (
+            ("agent_task_result_evidence", "attempt_id", attempt.id),
+            ("task_execution_attempts", "id", attempt.id),
+            ("agent_task_runs", "id", run.id),
+            ("agent_task_batch_runs", "id", batch.id),
+        ):
+            session.execute(text(f"DELETE FROM {table} WHERE {column} = :v"), {"v": value})
+        session.commit()
+
+
+async def test_result_evidence_intent_waits_off_the_loop(
+    monkeypatch: pytest.MonkeyPatch,
+    running_attempt: TaskExecutionAttemptDB,
+) -> None:
+    """The intent's own INSERT, not only its storage counter, must wait in a thread.
+
+    The counter write goes first and already waits off the loop, so with one
+    lock holder it would absorb the whole wait. Under back-to-back projection
+    the lock is taken again before the INSERT; skipping the counter here puts
+    the INSERT behind the held lock the same way.
+    """
+
+    async def no_counter(_session: Session, _project: str, *, size_bytes: int) -> None:
+        return None
+
+    monkeypatch.setattr(result_evidence, "record_project_storage", no_counter)
+    attempt = running_attempt
+    lease = CurrentAttemptLease(attempt_id=attempt.id, lease_generation=1, executor_id="")
+    body = EvidenceIntentRequest(slot="transcript", size_bytes=3, sha256=hashlib.sha256(b"abc").hexdigest())
+    with Session(engine) as session:
+        stall, took = await _longest_loop_stall_during(
+            lambda: create_intent_v2(attempt.id, body, lease, session)
+        )
+    _assert_waited_off_the_loop(stall, took)
+
+
+async def test_result_evidence_upload_waits_off_the_loop(
+    running_attempt: TaskExecutionAttemptDB,
+) -> None:
+    attempt = running_attempt
+    content = b"abc"
+    store = get_store(None)
+
+    async def body_stream() -> AsyncIterator[bytes]:
+        yield content
+
+    with Session(engine) as session:
+        part = await result_evidence.create_result_evidence_intent(
+            session,
+            store,
+            attempt=attempt,
+            slot="transcript",
+            deliverable_name=None,
+            size_bytes=len(content),
+            sha256=hashlib.sha256(content).hexdigest(),
+        )
+        stall, took = await _longest_loop_stall_during(
+            lambda: result_evidence.complete_result_evidence_upload(
+                session,
+                store,
+                attempt=attempt,
+                evidence_id=part.id,
+                body_stream=body_stream(),
+                declared_size=len(content),
+            )
+        )
     _assert_waited_off_the_loop(stall, took)

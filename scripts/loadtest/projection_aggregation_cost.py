@@ -64,14 +64,13 @@ def _measure(size: int, index: int) -> dict[str, float | int]:
     from sqlmodel import Session
 
     from apo.db import engine, init_db
-    from apo.services import reproject, trace_projector
+    from apo.services import projection_chunks, reproject, trace_projector
     from apo.services.otlp_receiver import OtlpReceiver
     from apo.services.trace_ingestion_queue import QueueWorker
 
     init_db()
     # Time the projection work, not the deliberate pauses between chunks.
-    if hasattr(reproject, "REPROJECT_CHUNK_PAUSE_SECONDS"):
-        reproject.REPROJECT_CHUNK_PAUSE_SECONDS = 0.0
+    projection_chunks.PROJECTION_CHUNK_PAUSE_SECONDS = 0.0
 
     aggregations = _count_aggregations(trace_projector)
     trace_id = format(index + 1, "032x")

@@ -136,6 +136,8 @@ async def create_result_evidence_intent(
 ) -> AgentTaskResultEvidenceDB:
     """Open one evidence-part upload, idempotent on matching metadata.
 
+    Commits the new part.
+
     Raises :class:`ResultEvidenceError` with a route-mappable ``kind`` for
     every rule: non-running attempt, bad slot/name, over-limit size, or a
     same-slot intent with conflicting metadata.
@@ -212,7 +214,7 @@ async def create_result_evidence_intent(
     )
     session.add(row)
     try:
-        session.flush()
+        await _commit_off_loop(session)
     except IntegrityError:
         # A concurrent intent won the (attempt, slot_key) race. Re-read:
         # matching metadata is the idempotent success the loser wants.
@@ -240,7 +242,7 @@ async def complete_result_evidence_upload(
     body_stream: AsyncIterator[bytes],
     declared_size: int | None,
 ) -> AgentTaskResultEvidenceDB:
-    """Stream part bytes into the store, verify, and mark the row ready.
+    """Stream part bytes into the store, verify, and commit the row as ready.
 
     The store independently counts and hashes; a size or digest mismatch
     leaves the row pending and raises a typed error (route maps to 422).
@@ -304,8 +306,19 @@ async def complete_result_evidence_upload(
     row.status = "ready"
     row.ready_at = datetime.now(timezone.utc)
     session.add(row)
-    session.flush()
+    await _commit_off_loop(session)
     return row
+
+
+async def _commit_off_loop(session: Session) -> None:
+    """Write and commit the session's pending rows in a worker thread.
+
+    The write waits for SQLite's write lock behind whatever holds it (a
+    projection batch can, for seconds), and that wait must not be the event
+    loop's. It commits in the same stretch: a flush alone would bring the
+    write lock back to the loop with it.
+    """
+    await asyncio.to_thread(session.commit)
 
 
 @dataclass
