@@ -22,13 +22,12 @@ once per span.
 from __future__ import annotations
 
 import logging
-import time
 
 from sqlmodel import Session, select, text
 
 from ..db import begin_immediate, engine
 from ..models.db import OtlpSpanDB
-from .trace_ingestion_queue import PROJECTION_COMMIT_CHUNK
+from .projection_chunks import ProjectionPass
 from .trace_projector import (
     deferred_run_aggregates,
     flush_run_aggregates,
@@ -36,19 +35,6 @@ from .trace_projector import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Longest one reproject transaction holds SQLite's write lock before it
-# commits, whatever its span count: a chunk of spans with large payloads must
-# not hold the lock for as long as 32 of them take.
-REPROJECT_CHUNK_BUDGET_SECONDS = 0.25
-# How long the write lock stays free between two reproject transactions.
-# Committing and retaking it at once leaves a gap too short for a waiting
-# writer to notice, so a client looping reproject requests could hold the
-# lock for as long as it liked while every other writer ran into
-# busy_timeout. SQLite's busy handler polls at most every 100 ms, so each
-# pause this long gives a waiting writer an even chance or better; over the
-# chunks of even one large trace it cannot stay locked out.
-REPROJECT_CHUNK_PAUSE_SECONDS = 0.05
 
 
 def reproject_trace(
@@ -78,14 +64,18 @@ def reproject_trace(
     projector = get_trace_projector()
     count = 0
 
-    with Session(engine) as session, deferred_run_aggregates(session):
+    with (
+        Session(engine) as session,
+        deferred_run_aggregates(session),
+        ProjectionPass(session) as chunks,
+    ):
         # Reprojection runs on a live backend (admin preview-backfill while
         # OTLP ingestion projects concurrently). The projector reads run/call
         # state before each write, so take SQLite's write lock before the
-        # first read (the queue-worker pattern) or a competing commit can
-        # turn those writes into lock failures the per-span handler below
-        # would swallow as silent under-projection.
-        begin_immediate(session)
+        # first read (the queue-worker pattern, which the pass does on
+        # entry) or a competing commit can turn those writes into lock
+        # failures the per-span handler below would swallow as silent
+        # under-projection.
         spans = session.exec(
             select(OtlpSpanDB)
             .where(
@@ -99,7 +89,6 @@ def reproject_trace(
             logger.info("No canonical spans found for trace %s in project %s", trace_id, project_id)
             return 0
 
-        chunk = _ChunkBudget()
         for span in spans:
             try:
                 projector.project(span, session, cost_mode=cost_mode)
@@ -110,8 +99,7 @@ def reproject_trace(
                     span.span_id,
                     exc_info=True,
                 )
-            if chunk.tick():
-                chunk = _yield_write_lock(session)
+            chunks.span_done()
 
         _ = flush_run_aggregates(session)
         session.commit()
@@ -140,10 +128,14 @@ def reproject_project(
     projector = get_trace_projector()
     count = 0
 
-    with Session(engine) as session, deferred_run_aggregates(session):
+    with (
+        Session(engine) as session,
+        deferred_run_aggregates(session),
+        ProjectionPass(session) as chunks,
+    ):
         # Same live-backend race as reproject_trace: per-span reads then
-        # writes, so take the write lock before the first read here too.
-        begin_immediate(session)
+        # writes, so the pass holds the write lock before the first read
+        # here too.
         spans = session.exec(
             select(OtlpSpanDB)
             .where(OtlpSpanDB.project_id == project_id)
@@ -151,7 +143,6 @@ def reproject_project(
             .limit(limit)
         ).all()
 
-        chunk = _ChunkBudget()
         for span in spans:
             try:
                 projector.project(span, session, cost_mode=cost_mode)
@@ -167,46 +158,10 @@ def reproject_project(
                 # one bad span cannot reopen the snapshot hazard for the
                 # rest of the chunk.
                 begin_immediate(session)
-            if chunk.tick():
-                chunk = _yield_write_lock(session)
+            chunks.span_done()
 
         _ = flush_run_aggregates(session)
         session.commit()
 
     logger.info("Reprojected %d span(s) for project %s", count, project_id)
     return count
-
-
-class _ChunkBudget:
-    """What one reproject transaction may do before it gives up the lock."""
-
-    def __init__(self) -> None:
-        self._spans: int = 0
-        self._started: float = time.monotonic()
-
-    def tick(self) -> bool:
-        """Count one projected span; True once the transaction must end."""
-        self._spans += 1
-        return (
-            self._spans >= PROJECTION_COMMIT_CHUNK
-            or time.monotonic() - self._started >= REPROJECT_CHUNK_BUDGET_SECONDS
-        )
-
-
-def _yield_write_lock(session: Session) -> _ChunkBudget:
-    """End the chunk, leave the write lock free for a moment, take it again.
-
-    Chunked commits bound how long reproject holds SQLite's single write
-    lock, and the re-take keeps the next chunk's reads protected. Lock
-    exhaustion surfaces HERE and propagates: the caller (per-trace admin
-    worker, or the HTTP client) decides retry vs failure.
-    """
-    session.commit()
-    _pause_between_chunks()
-    begin_immediate(session)
-    return _ChunkBudget()
-
-
-def _pause_between_chunks() -> None:
-    """Wait with the write lock released so a queued writer can take it."""
-    time.sleep(REPROJECT_CHUNK_PAUSE_SECONDS)

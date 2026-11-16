@@ -35,9 +35,10 @@ from sqlalchemy import func
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, select, update
 
-from ..db import begin_immediate, engine
+from ..db import engine
 from ..models.db import OtlpIngestBatchDB, OtlpSpanDB
 from .otlp_receiver import OtlpReceiver
+from .projection_chunks import ProjectionPass
 
 logger = logging.getLogger(__name__)
 QUEUE_LEASE_SECONDS = int(os.environ.get("APO_TRACE_QUEUE_LEASE_SECONDS", "300"))
@@ -46,10 +47,6 @@ QUEUE_LEASE_SECONDS = int(os.environ.get("APO_TRACE_QUEUE_LEASE_SECONDS", "300")
 REQUEUE_BACKOFF_SECONDS = float(
     os.environ.get("APO_TRACE_QUEUE_REQUEUE_BACKOFF_SECONDS", "1.0")
 )
-# Spans projected between commits. Chunked commits bound how long one
-# projection batch holds SQLite's single write lock, so concurrent OTLP
-# accepts interleave instead of starving behind a whole 2048-span batch.
-PROJECTION_COMMIT_CHUNK = 32
 
 
 def _is_write_lock_contention(exc: BaseException) -> bool:
@@ -437,13 +434,16 @@ class QueueWorker:
         # Run rollups are deferred for the whole batch: recomputing them per
         # span made a batch of spans landing on a completed run quadratic in
         # trace size, all of it inside the write lock.
-        with Session(engine) as session, deferred_run_aggregates(session):
+        with (
+            Session(engine) as session,
+            deferred_run_aggregates(session),
             # This transaction writes for its whole life (per-span savepoints
-            # read run/call state, then write). Take SQLite's write lock
-            # before the first read so the savepoints can never need the WAL
-            # snapshot upgrade that fails instantly under concurrent writers
-            # (SQLITE_BUSY_SNAPSHOT bypasses busy_timeout).
-            begin_immediate(session)
+            # read run/call state, then write). The pass takes SQLite's write
+            # lock before the first read so the savepoints can never need the
+            # WAL snapshot upgrade that fails instantly under concurrent
+            # writers (SQLITE_BUSY_SNAPSHOT bypasses busy_timeout).
+            ProjectionPass(session) as chunks,
+        ):
             batch = session.get(OtlpIngestBatchDB, batch_id)
             if batch is None:
                 raise ValueError(f"Batch {batch_id} not found")
@@ -468,7 +468,6 @@ class QueueWorker:
                     service_task_run_id=batch.verified_task_run_id,
                 )
 
-            seen = 0
             for rs in decoded.get("resourceSpans", []):
                 for ss in rs.get("scopeSpans", []):
                     for span_data in ss.get("spans", []):
@@ -502,16 +501,14 @@ class QueueWorker:
                                 span_id,
                                 exc_info=True,
                             )
-                        seen += 1
-                        # Commit every chunk so one long projection batch
-                        # cannot monopolize SQLite's single write lock: OTLP
-                        # accepts interleave between chunks instead of timing
-                        # out behind minutes of projection work. A crash
-                        # between chunks leaves the batch on its lease, whose
-                        # expiry requeues it; re-projection is idempotent.
-                        if seen % PROJECTION_COMMIT_CHUNK == 0:
-                            session.commit()
-                            begin_immediate(session)
+                        # Chunks end in a commit so one long projection
+                        # batch cannot monopolize SQLite's single write lock:
+                        # heartbeats, result submissions and OTLP accepts
+                        # interleave between chunks instead of timing out
+                        # behind minutes of projection work. A crash between
+                        # chunks leaves the batch on its lease, whose expiry
+                        # requeues it; re-projection is idempotent.
+                        chunks.span_done()
             # Once per run the batch touched, in the batch's last transaction:
             # the state this pass leaves behind matches per-span refreshes. A
             # pass that dies before this point leaves the batch on its lease
