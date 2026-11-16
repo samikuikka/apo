@@ -36,6 +36,26 @@ test("called-read-file", (t) => {
   t.calledTool("read_file", { input: { path: "invoice.txt" } });
 });
 
+test("per-file-and-values", (t) => {
+  // Each file is read at most once. A total-count bound cannot see the
+  // duplication failure mode: the same path re-read in a loop while the
+  // overall count still looks plausible.
+  t.maxToolCallsPer(
+    1,
+    "read_file",
+    (call) => (call.input as { path?: string } | undefined)?.path,
+    { keyLabel: "path" },
+  );
+  t.everyToolCall(
+    "compute",
+    (call) =>
+      /^[\d\s+\-*/().]+$/.test(
+        String((call.input as { expression?: string } | undefined)?.expression ?? ""),
+      ),
+    { label: "compute expressions are pure arithmetic" },
+  );
+});
+
 test("called-extract-entities", (t) => {
   t.calledTool("extract_entities");
 });

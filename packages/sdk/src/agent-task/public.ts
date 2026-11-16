@@ -81,6 +81,8 @@ export type {
   NotTestContext,
   NameMatcher,
   ToolCallOptions,
+  ToolCallsPerOptions,
+  ToolCallKey,
   DocumentMatcher,
   RetrievedOptions,
   GroundedOptions,
@@ -302,3 +304,8 @@ export type {
 export { connectMcpServers } from "./checks/mcp-tools.ts";
 export { expandSecretPlaceholders } from "./checks/mcp-tools.ts";
 export { resolveMcpServerPaths } from "./checks/mcp-tools.ts";
+
+// ── Trace projection types used in assertion signatures ─────────────────
+// TraceToolCall is the parameter of ToolCallKey and everyToolCall predicates,
+// so authors typing helper functions against the public entry need it here.
+export type { TraceToolCall } from "./trace-projection/view.ts";

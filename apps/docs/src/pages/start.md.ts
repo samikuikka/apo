@@ -420,6 +420,11 @@ test("answer-is-accurate", async (t, { deliverables }) => {
 - \`t.calledTool(name, opts?)\`, asserts a tool was called (reads the trace)
 - \`t.noFailedActions()\`, asserts no tool or subagent errored (anti-flail)
 - \`t.maxToolCalls(n)\`, asserts at most N tool calls (anti-flail)
+- \`t.maxToolCallsPer(limit, name, key)\`, asserts at most N calls of a
+  tool per key, e.g. once per file or order (anti-duplication); fails
+  closed when a call yields no key
+- \`t.everyToolCall(name, predicate)\`, asserts every matching call's
+  values satisfy the predicate (right action, right values)
 - \`t.toolOrder([names])\`, asserts tools appeared in this order
 - \`t.check(value, matcher)\`, asserts on a deliverable value. **Requires a
   Matcher**: use \`satisfies(fn, label)\`, \`includes(needle)\`,

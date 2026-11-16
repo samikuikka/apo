@@ -18,6 +18,8 @@ const T_METHODS = [
 	"toolOrder",
 	"usedNoTools",
 	"maxToolCalls",
+	"maxToolCallsPer",
+	"everyToolCall",
 	"noFailedActions",
 	"loadedSkill",
 	"calledSubagent",
