@@ -23,6 +23,8 @@ These read the run's trace, what the agent *did*. Fast, deterministic, free.
 | [`t.toolOrder(names)`](#ttoolordernames) | The named tools appear, in this order (subsequence). |
 | [`t.usedNoTools()`](#tusednotools) | No tool calls happened at all. |
 | [`t.maxToolCalls(n)`](#tmaxtoolcallsn) | At most `n` tool calls, anti-flail. |
+| [`t.maxToolCallsPer(limit, name, key, opts?)`](#tmaxtoolcallsperlimit-name-key-opts) | At most `limit` matching tool calls per key, anti-duplication. |
+| [`t.everyToolCall(name, predicate, opts?)`](#teverytoolcallname-predicate-opts) | Every matching tool call satisfies the predicate. |
 | [`t.noFailedActions()`](#tnofailedactions) | No tool or subagent call reported an error, anti-flail. |
 | [`t.loadedSkill(skill)`](#tloadedskillskill) | A skill was loaded. |
 | [`t.calledSubagent(agent)`](#tcalledsubagentagent) | A subagent delegation happened. |
@@ -59,6 +61,21 @@ These read the run's trace, what the agent *did*. Fast, deterministic, free.
 
 - **Signature:** `(n: number) → void`
 - **Asserts:** at most `n` tool calls, anti-flail.
+
+### `t.maxToolCallsPer(limit, name, key, opts?)`
+
+- **Signature:** `(limit: number, name: NameMatcher, key: (call: TraceToolCall) => string | number | undefined, opts?: { keyLabel?: string }) → void`
+- **Asserts:** at most `limit` calls of the matching tool *per key* the `key` function derives from each call, e.g. one `read_file` per file, one refund per order. A total-count bound cannot see one entity being hit repeatedly while the overall count stays plausible.
+- **Fails closed** when a matching call yields no key: an unkeyable call records a failure instead of being skipped, because the calls the key function cannot read may be exactly the duplicating ones.
+- `{ keyLabel }` names the grouping in failure messages ("per path"), so a failure reads like the domain rule.
+- Keys are grouped by string form: a numeric `1` and a `"1"` land in the same group. For an upper bound this is the safe direction, merged groups only inflate counts.
+
+### `t.everyToolCall(name, predicate, opts?)`
+
+- **Signature:** `(name: NameMatcher, predicate: (call: TraceToolCall) => boolean, opts?: { label?: string }) → void`
+- **Asserts:** every matching tool call satisfies `predicate`: the right action with the right values, checked per call. `calledTool`'s `{ input }` option only filters which calls match; this requires each matching call's values to hold.
+- **Fails closed** on zero matching calls: "every call satisfies P" is vacuously true over no calls, and a verdict built on evidence that does not exist is not a pass. Pair it with `t.calledTool` when zero calls is acceptable.
+- The predicate runs once per call, synchronously; a throw surfaces as a check error, never a pass.
 
 ### `t.noFailedActions()`
 
@@ -450,8 +467,8 @@ Every `t.*` assertion is gated by an **evidence capability**: whether the trace 
 
 | Capability | `available` | `partial` | `unavailable` |
 |---|---|---|---|
-| Positive (`calledTool`, `loadedSkill`, `calledSubagent`, `messageIncludes`) | normal evaluation | `unsupported` (inconclusive) | `unsupported` |
-| Negative / upper-bound (`notCalledTool`, `usedNoTools`, `maxToolCalls`, `maxTurns`, `maxDurationMs`) | normal evaluation | `unsupported` (absence is inconclusive) | `unsupported` |
+| Positive (`calledTool`, `everyToolCall`, `loadedSkill`, `calledSubagent`, `messageIncludes`) | normal evaluation | `unsupported` (inconclusive) | `unsupported` |
+| Negative / upper-bound (`notCalledTool`, `usedNoTools`, `maxToolCalls`, `maxToolCallsPer`, `maxTurns`, `maxDurationMs`) | normal evaluation | `unsupported` (absence is inconclusive) | `unsupported` |
 | `noFailedActions` | normal evaluation | `unsupported` (inconclusive) | `unsupported` |
 | `retrieved` | normal evaluation | `unsupported` when an in-scope retrieval returned an unrecognized shape (the match could be hiding there) | `unsupported` |
 | `not.retrieved` | normal evaluation | `unsupported` (absence of evidence is not evidence of absence) | `unsupported` |

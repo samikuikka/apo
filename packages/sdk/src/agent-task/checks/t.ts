@@ -9,7 +9,12 @@
  * Received) instead of only a prose message.
  */
 
-import { TraceView, type TokenKind, type TraceRetrieval } from "../trace-projection/view.ts";
+import {
+  TraceView,
+  type TokenKind,
+  type TraceRetrieval,
+  type TraceToolCall,
+} from "../trace-projection/view.ts";
 import type { TraceProjectionDocument } from "../trace-projection/retrieval.ts";
 import type { TraceProjectionCapabilities } from "../trace-projection/types.ts";
 import type { AssertionOutcome, SecondJudgeEvidence } from "../run/types.ts";
@@ -59,6 +64,25 @@ export type ToolCallOptions = {
   output?: ValueMatcher<unknown>;
   status?: "ok" | "error";
 };
+
+/**
+ * Options for the per-key tool call bound. `keyLabel` names the grouping in
+ * failure messages ("per path", "per order") so a failure reads like the
+ * domain rule it encodes, not like an internal key.
+ */
+export type ToolCallsPerOptions = {
+  keyLabel?: string;
+};
+
+/**
+ * The key a `maxToolCallsPer` bound groups matching calls by. Returning
+ * `undefined` means no key could be derived from the call: the assertion
+ * fails closed on that instead of skipping the call, because a bound that
+ * silently ignores the calls it cannot key is vacuous. Keys are grouped by
+ * string form, so a numeric `1` and a `"1"` land in the same group; for an
+ * upper bound that is the safe direction, merged groups only inflate counts.
+ */
+export type ToolCallKey = (call: TraceToolCall) => string | number | undefined;
 
 /** Scope for duration budgets: the whole run, or one Task Turn (1-based). */
 export type DurationBudgetOptions = {
@@ -213,6 +237,32 @@ export interface TestContext {
   usedNoTools(): void;
   /** Asserts at most `n` tool calls — anti-flail. */
   maxToolCalls(n: number): void;
+  /**
+   * Asserts at most `limit` matching tool calls per key (anti-duplication).
+   * The key function groups matching calls (e.g. `(call) => call.input.path`),
+   * and every group's count must be ≤ limit: one refund per order, one read
+   * per file. A total-count bound cannot see one entity being hit repeatedly
+   * while the overall count stays plausible. Fails closed when a matching
+   * call yields no key (see {@link ToolCallKey}).
+   */
+  maxToolCallsPer(
+    limit: number,
+    name: NameMatcher,
+    key: ToolCallKey,
+    opts?: ToolCallsPerOptions,
+  ): void;
+  /**
+   * Asserts every matching tool call satisfies `predicate`: the right action
+   * with the right values, per call. `calledTool`'s `input` option only
+   * filters which calls match; this requires each matching call's values to
+   * hold. Fails closed on vacuity: zero matching calls is a failure, not a
+   * vacuous pass (pair it with `calledTool` when zero calls is acceptable).
+   */
+  everyToolCall(
+    name: NameMatcher,
+    predicate: (call: TraceToolCall) => boolean,
+    opts?: { label?: string },
+  ): void;
   /** Asserts no tool/subagent call reported an error — anti-flail. */
   noFailedActions(): void;
   /**
@@ -409,6 +459,8 @@ export const TEST_METHOD_NAMES = [
   "toolOrder",
   "usedNoTools",
   "maxToolCalls",
+  "maxToolCallsPer",
+  "everyToolCall",
   "noFailedActions",
   "retrieved",
   "maxRetrievals",
@@ -451,7 +503,13 @@ function describeName(m: NameMatcher): string {
 
 function matchName(name: string, m: NameMatcher): boolean {
   if (typeof m === "string") return name === m;
-  if (m instanceof RegExp) return m.test(name);
+  if (m instanceof RegExp) {
+    // A /g regex advances lastIndex across the per-call filter, alternately
+    // matching, which silently halves counts. Strip the flag so every call
+    // is tested from the start.
+    if (m.global) return new RegExp(m.source, m.flags.replace("g", "")).test(name);
+    return m.test(name);
+  }
   return m(name);
 }
 
@@ -1215,6 +1273,96 @@ export function createTraceTestContext(
       });
     },
 
+    maxToolCallsPer(limit, name, key, opts) {
+      const keyLabel = opts?.keyLabel ?? "key";
+      const id = `maxToolCallsPer(${limit}, ${describeName(name)}, per ${keyLabel})`;
+      if (!isAvailable("tools")) {
+        unsupported(id, "tools");
+        return;
+      }
+      requireBudget("maxToolCallsPer", limit);
+      const matching = view.toolCalls.filter((call) => matchName(call.name, name));
+      const grouped = groupToolCallsByKey(matching, key);
+      if (grouped.unkeyed > 0) {
+        // A bound that skips the calls it cannot key would pass while exactly
+        // those calls may hold the duplication, so this fails closed.
+        rec.record(
+          id,
+          false,
+          `${grouped.unkeyed} matching ${describeName(name)} call(s) had no ${keyLabel}; cannot verify the per-${keyLabel} bound`,
+          {
+            expected: `≤ ${limit} ${describeName(name)} call(s) per ${keyLabel}`,
+            received: `no ${keyLabel}: ${describeValue(grouped.firstUnkeyed?.input)}`,
+          },
+        );
+        return;
+      }
+      const violating = [...grouped.counts].filter(([, count]) => count > limit);
+      const pass = violating.length === 0;
+      const worst = violating.sort((a, b) => b[1] - a[1])[0];
+      const maxPerKey = Math.max(0, ...grouped.counts.values());
+      rec.record(
+        id,
+        pass,
+        pass
+          ? ""
+          : `expected ≤ ${limit} ${describeName(name)} call(s) per ${keyLabel}; ${displayKey(worst[0])} got ${worst[1]}`,
+        {
+          expected: `≤ ${limit} ${describeName(name)} call(s) per ${keyLabel}`,
+          received: pass
+            ? `${matching.length} call(s) across ${grouped.counts.size} ${keyLabel}(s), max ${maxPerKey} per ${keyLabel}`
+            : violating
+                .slice(0, 5)
+                .map(([k, count]) => `${displayKey(k)}: ${count}`)
+                .join(", ") + (violating.length > 5 ? ", ..." : ""),
+        },
+      );
+    },
+
+    everyToolCall(name, predicate, opts) {
+      const label = opts?.label ?? `everyToolCall(${describeName(name)})`;
+      if (!isAvailable("tools")) {
+        unsupported(label, "tools");
+        return;
+      }
+      const matching = view.toolCalls.filter((call) => matchName(call.name, name));
+      if (matching.length === 0) {
+        // "Every call satisfies P" is vacuously true over no calls; a verdict
+        // built on evidence that does not exist is not a pass (same instinct
+        // as afterSteer refusing to run inner assertions against nothing).
+        rec.record(label, false, `no ${describeName(name)} calls to check; an every-call predicate is not vacuously true`, {
+          expected: `every ${describeName(name)} call satisfies the predicate`,
+          received: "0 matching calls",
+        });
+        return;
+      }
+      // One pass over the calls: the author's predicate may be expensive, and
+      // finding the first offender and counting violations separately would
+      // run it twice per call.
+      let firstOffender = -1;
+      let failed = 0;
+      for (let i = 0; i < matching.length; i++) {
+        if (!predicate(matching[i]!)) {
+          failed += 1;
+          if (firstOffender === -1) firstOffender = i;
+        }
+      }
+      const pass = firstOffender === -1;
+      rec.record(
+        label,
+        pass,
+        pass
+          ? ""
+          : `${failed} of ${matching.length} ${describeName(name)} call(s) violated the predicate; first offender: ${describeValue(matching[firstOffender]!.input)}`,
+        {
+          expected: `every ${describeName(name)} call satisfies the predicate`,
+          received: pass
+            ? `${matching.length} matching call(s), all satisfied`
+            : `call ${firstOffender + 1} of ${matching.length}: ${describeValue(matching[firstOffender]!.input)}`,
+        },
+      );
+    },
+
     noFailedActions() {
       if (!isAvailable("errors")) {
         unsupported("noFailedActions", "errors");
@@ -1553,6 +1701,38 @@ function recordTokenBudget(
     expected,
     received,
   });
+}
+
+/** An empty-string key renders invisibly in failure lines; name it instead. */
+function displayKey(k: string): string {
+  return k === "" ? "(empty)" : k;
+}
+
+/**
+ * Group matching calls by their key for `maxToolCallsPer`. Keys are grouped
+ * by string form (a numeric 1 and a "1" land in the same group). Calls the
+ * key function cannot key are counted separately, with the first one kept
+ * as failure evidence, so the caller can fail closed instead of silently
+ * excluding them. The key function runs exactly once per call.
+ */
+function groupToolCallsByKey(
+  matching: readonly TraceToolCall[],
+  key: ToolCallKey,
+): { counts: Map<string, number>; unkeyed: number; firstUnkeyed?: TraceToolCall } {
+  const counts = new Map<string, number>();
+  let unkeyed = 0;
+  let firstUnkeyed: TraceToolCall | undefined;
+  for (const call of matching) {
+    const k = key(call);
+    if (k === undefined) {
+      unkeyed += 1;
+      firstUnkeyed ??= call;
+      continue;
+    }
+    const group = String(k);
+    counts.set(group, (counts.get(group) ?? 0) + 1);
+  }
+  return { counts, unkeyed, firstUnkeyed };
 }
 
 function matchesTraceToolCall(

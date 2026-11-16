@@ -15,6 +15,8 @@ export const TEST_METHOD_NAMES = [
   "toolOrder",
   "usedNoTools",
   "maxToolCalls",
+  "maxToolCallsPer",
+  "everyToolCall",
   "noFailedActions",
   "retrieved",
   "maxRetrievals",
