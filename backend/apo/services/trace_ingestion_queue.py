@@ -1,9 +1,10 @@
 """Durable trace ingestion queue.
 
 Decouples OTLP acceptance from projection. The receiver persists the raw
-batch, enqueues its ``batch_id``, and returns an OTLP response immediately.
-A worker claims batches from the queue, processes them (persist canonical
-spans + project into product tables), and marks them complete or failed.
+batch and its canonical spans, enqueues the ``batch_id``, and returns an
+OTLP response immediately. A worker claims batches from the queue, projects
+their canonical spans into the product tables, and marks them complete,
+partial or failed.
 
 First implementation is DB-backed (polling via status field on
 ``OtlpIngestBatchDB``). Replaceable with Redis/SQS without changing the
@@ -11,6 +12,7 @@ protocol — just swap ``DbBackedQueue`` for ``RedisQueue`` etc.
 
 Status lifecycle:
     accepted → queued → processing → projected (success)
+                                   → partial (projected with rejections)
                                    → failed (error, can be re-enqueued for retry)
 """
 
@@ -66,8 +68,6 @@ _R = TypeVar("_R")
 
 
 def _off_loop(fn: Callable[_P, _R]) -> Callable[_P, CoroutineType[object, object, _R]]:
-    """Expose a blocking method as a coroutine that runs in a worker thread."""
-
     @wraps(fn)
     async def run(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         return await asyncio.to_thread(fn, *args, **kwargs)
@@ -78,7 +78,6 @@ def _off_loop(fn: Callable[_P, _R]) -> Callable[_P, CoroutineType[object, object
 class TraceIngestionQueue(Protocol):
     """Protocol for the trace ingestion queue.
 
-    Implementations may be DB-backed (default), Redis-backed, or SQS-backed.
     The receiver and worker depend only on this interface.
     """
 
@@ -134,9 +133,7 @@ class DbBackedQueue:
     """DB-backed implementation using ``OtlpIngestBatchDB.status`` as the queue.
 
     No external Redis/SQS needed — works with SQLite and Postgres. Polling-
-    based: the worker calls ``claim_next`` in a loop. For high-volume
-    deployments, swap this for a ``RedisQueue`` that implements the same
-    protocol.
+    based: the worker calls ``claim_next`` in a loop.
 
     Every operation is blocking SQL, and its write waits for SQLite's write
     lock for up to ``busy_timeout`` while a projection batch holds it. Each
@@ -146,7 +143,6 @@ class DbBackedQueue:
 
     @_off_loop
     def enqueue(self, batch_id: str) -> None:
-        """Set batch status to 'queued' so the worker can find it."""
         with Session(engine) as session:
             session.exec(
                 update(OtlpIngestBatchDB)
@@ -161,12 +157,6 @@ class DbBackedQueue:
 
     @_off_loop
     def claim_next(self) -> str | None:
-        """Atomically claim the oldest 'queued' batch.
-
-        Uses a single conditional UPDATE with RETURNING to ensure atomicity
-        even under concurrent workers. The UPDATE only succeeds if the row
-        is still 'queued', and we check the rowcount to confirm ownership.
-        """
         with Session(engine) as session:
             batch = session.exec(
                 select(OtlpIngestBatchDB)
@@ -189,7 +179,6 @@ class DbBackedQueue:
                 )
             )
 
-            # Check rowcount — if 0, another worker claimed it first
             if result.rowcount == 0:
                 return None
 
@@ -244,7 +233,6 @@ class DbBackedQueue:
     def mark_failed(
         self, batch_id: str, error: str, rejected: int = 0
     ) -> None:
-        """Mark a batch as 'failed' with an error message."""
         with Session(engine) as session:
             batch = session.get(OtlpIngestBatchDB, batch_id)
             if batch is None:
@@ -260,7 +248,6 @@ class DbBackedQueue:
     def mark_partial(
         self, batch_id: str, rejected: int, error: str
     ) -> None:
-        """Record projection failures without hiding successful projections."""
         with Session(engine) as session:
             batch = session.get(OtlpIngestBatchDB, batch_id)
             if batch is None:
@@ -294,7 +281,6 @@ class DbBackedQueue:
 
     @_off_loop
     def recover_stale(self) -> int:
-        """Requeue only processing batches whose worker lease expired."""
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=QUEUE_LEASE_SECONDS)
         with Session(engine) as session:
             result = session.exec(
@@ -337,10 +323,6 @@ class QueueWorker:
         self._queue: TraceIngestionQueue = queue or DbBackedQueue()
 
     async def process_one(self) -> bool:
-        """Process a single batch from the queue.
-
-        Returns True if a batch was processed, False if the queue was empty.
-        """
         batch_id = await self._queue.claim_next()
         if batch_id is None:
             return False
@@ -349,7 +331,6 @@ class QueueWorker:
         return True
 
     async def process_batch(self, batch_id: str) -> bool:
-        """Claim and process one exact batch accepted by the caller."""
         claimed = await self._queue.claim(batch_id)
         if not claimed:
             return False
@@ -419,12 +400,6 @@ class QueueWorker:
             )
 
     def _process_batch(self, batch_id: str) -> BatchProjectionResult:
-        """Project already-persisted canonical spans for this batch.
-
-        The receiver persisted spans to ``OtlpSpanDB`` during ingest with
-        ``project_immediately=False``. This method reads the batch payload,
-        finds the canonical spans, and projects each one through the projector.
-        """
         from .trace_projector import (
             deferred_run_aggregates,
             flush_run_aggregates,
@@ -501,13 +476,6 @@ class QueueWorker:
                                 span_id,
                                 exc_info=True,
                             )
-                        # Chunks end in a commit so one long projection
-                        # batch cannot monopolize SQLite's single write lock:
-                        # heartbeats, result submissions and OTLP accepts
-                        # interleave between chunks instead of timing out
-                        # behind minutes of projection work. A crash between
-                        # chunks leaves the batch on its lease, whose expiry
-                        # requeues it; re-projection is idempotent.
                         chunks.span_done()
             # Once per run the batch touched, in the batch's last transaction:
             # the state this pass leaves behind matches per-span refreshes. A

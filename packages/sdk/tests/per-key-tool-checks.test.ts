@@ -178,9 +178,22 @@ describe("maxToolCallsPer", () => {
       toolObs("read_file", { path: "a.txt" }),
     ];
     const result = await runOneCheck((t) => {
-      // A global regex advances lastIndex across the per-call filter and
-      // counts only every other call if matchName does not strip the flag.
       t.maxToolCallsPer(1, /read_file/g, pathKey);
+    });
+    expect(result.pass).toBe(false);
+    const messages = result.assertions.map((a) => a.reasoning).join("\n");
+    expect(messages).toContain("4");
+  });
+
+  it("treats a /y RegExp like any other matcher, not alternating matches", async () => {
+    currentObservations = [
+      toolObs("read_file", { path: "a.txt" }),
+      toolObs("read_file", { path: "a.txt" }),
+      toolObs("read_file", { path: "a.txt" }),
+      toolObs("read_file", { path: "a.txt" }),
+    ];
+    const result = await runOneCheck((t) => {
+      t.maxToolCallsPer(1, /^read_file/y, pathKey);
     });
     expect(result.pass).toBe(false);
     const messages = result.assertions.map((a) => a.reasoning).join("\n");

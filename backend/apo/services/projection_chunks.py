@@ -26,24 +26,15 @@ from sqlmodel import Session
 
 from ..db import SQLITE_BUSY_TIMEOUT_MS, begin_immediate
 
-# Spans projected between commits. Chunked commits bound how long one
-# projection pass holds SQLite's single write lock, so concurrent writers
-# interleave instead of starving behind a whole 2048-span batch.
+# Spans projected between commits.
 PROJECTION_COMMIT_CHUNK = 32
 # Longest one projection transaction holds the write lock before it commits,
 # whatever its span count: a chunk of spans with large payloads must not
 # hold the lock for as long as 32 of them take.
 PROJECTION_CHUNK_BUDGET_SECONDS = 0.25
-# Longest the write lock stays free after a projection transaction. A full
-# chunk pauses this long, a shorter one in proportion to how long it held
-# the lock, so a pass leaves the lock free for about a sixth of its time
-# and a one-span batch does not pay a full chunk's pause.
-# Committing and retaking the lock at once leaves a gap too short for a
-# waiting writer to notice, so passes running back to back could hold the
-# lock for as long as there was work while every other writer ran into
-# busy_timeout. SQLite's busy handler polls at most every 100 ms and each
-# poll finds the lock free that fraction of the time, so a waiting writer
-# gets in within a few polls.
+# Longest the write lock stays free after a projection transaction.
+# SQLite's busy handler polls at most every 100 ms, so a gap of this
+# length is one a waiting writer will notice.
 PROJECTION_CHUNK_PAUSE_SECONDS = 0.05
 # A pass that cannot get its turn for this long stops waiting and competes
 # for the write lock directly, where busy_timeout bounds it as before: the
@@ -89,7 +80,6 @@ class ProjectionPass:
         self._release_turn()
 
     def span_done(self) -> None:
-        """Count one projected span; end the chunk once it is over budget."""
         self._spans += 1
         if (
             self._spans >= PROJECTION_COMMIT_CHUNK
@@ -122,6 +112,5 @@ class ProjectionPass:
 
 
 def pause_with_lock_released(held_seconds: float) -> None:
-    """Wait with the write lock released so a queued writer can take it."""
     share = min(held_seconds / PROJECTION_CHUNK_BUDGET_SECONDS, 1.0)
     time.sleep(PROJECTION_CHUNK_PAUSE_SECONDS * share)

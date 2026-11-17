@@ -11,12 +11,9 @@ Usage::
 
 This reads canonical spans from ``OtlpSpanDB``, runs each through the normalizer
 and projector (which upserts into ``RunDB`` / ``LoggedCallDB``), and returns the
-number of spans projected. Safe to run against a live backend: every
-transaction takes SQLite's write lock up front, is bounded in spans and in
-time, and is followed by a pause with the lock released, so concurrent OTLP
-ingestion and every other writer interleave even when reprojections run back
-to back. Run rollups are recomputed once per run at the end of the pass, not
-once per span.
+number of spans projected. Safe to run against a live backend:
+:mod:`apo.services.projection_chunks` explains how the pass shares SQLite's
+write lock with concurrent writers.
 """
 
 from __future__ import annotations
@@ -133,9 +130,6 @@ def reproject_project(
         deferred_run_aggregates(session),
         ProjectionPass(session) as chunks,
     ):
-        # Same live-backend race as reproject_trace: per-span reads then
-        # writes, so the pass holds the write lock before the first read
-        # here too.
         spans = session.exec(
             select(OtlpSpanDB)
             .where(OtlpSpanDB.project_id == project_id)
