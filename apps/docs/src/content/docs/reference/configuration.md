@@ -301,6 +301,8 @@ purges the OTLP spans of what it deletes.
 | `APO_REQUEST_BUDGET_IDENTITY_BURST` | `600` | Burst capacity for the per-identity request budget above. `0` disables the per-identity dimension. |
 | `APO_REQUEST_BUDGET_GLOBAL_PER_MINUTE` | `12000` | Installation-wide aggregate: sustained requests per minute across ALL callers combined, authenticated or not. Bounds a fleet of distinct identities whose combined rate would otherwise saturate the backend. `0` disables the global dimension. |
 | `APO_REQUEST_BUDGET_GLOBAL_BURST` | `2000` | Burst capacity for the global request budget above. `0` disables the global dimension. |
+| `APO_SLOW_REQUEST_MS` | `1000` | Requests slower than this to start responding are logged as a WARNING naming the method, path (query string never included), status, and duration. Gives "the dashboard was slow" episodes server-side evidence in `docker compose logs backend`. `0` disables. |
+| `APO_LOOP_STALL_WARN_MS` | `500` | The backend serves everything on one event loop; when that loop stops turning for at least this long, a watchdog logs the stall duration. A stall line followed by slow-request lines is the signature of a blocking code path. `0` disables the watchdog. |
 
 See [Self-Hosting → Data Growth and Retention](/self-hosting/data-growth/)
 for what accumulates, how the tiers work, and recommended settings.

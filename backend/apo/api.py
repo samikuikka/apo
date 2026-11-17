@@ -115,12 +115,15 @@ async def lifespan(app: FastAPI):
         start_window_evaluator,
         stop_window_evaluator,
     )
+    from .services.loop_watchdog import start_loop_watchdog, stop_loop_watchdog
     start_schedule_dispatcher()
     start_retention_loop()
     start_trace_ingestion_worker()
     start_lease_reaper()
     start_window_evaluator()
+    start_loop_watchdog()
     yield
+    stop_loop_watchdog()
     await stop_lease_reaper()
     await stop_trace_ingestion_worker()
     await stop_window_evaluator()
@@ -251,7 +254,7 @@ def create_app() -> FastAPI:
     app.state.public_readiness_probe = PublicReadinessProbe()
 
     # Middleware execution order (outer → inner):
-    #   SecurityHeaders → RequestSize → Auth → RequestBudget →
+    #   RequestTiming → SecurityHeaders → RequestSize → Auth → RequestBudget →
     #   TelemetryAdmission → ReadThrottle → CORS → router
     # Starlette's add_middleware is last-added-outermost, so RequestBudget,
     # TelemetryAdmission and ReadThrottle are added AFTER Auth here to run
@@ -309,6 +312,19 @@ def create_app() -> FastAPI:
         RequestSizeMiddleware, otlp_limits=transport_limits, body_limits=body_limits
     )
     app.add_middleware(SecurityHeadersMiddleware)
+
+    # Added last so it wraps the whole stack (outermost): the timing line
+    # must include what auth, throttles, and the handler together cost.
+    # Threshold loading here shares the fail-fast contract of the other
+    # limit loaders: an invalid value stops startup.
+    from .middleware.request_timing import (
+        RequestTimingMiddleware,
+        load_slow_request_threshold_ms,
+    )
+
+    app.add_middleware(
+        RequestTimingMiddleware, threshold_ms=load_slow_request_threshold_ms()
+    )
 
     app.include_router(health.router)
     app.include_router(ingestion.router)
