@@ -9,6 +9,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ServingSummary } from "../ServingSummary";
+import { ServingDisclosure } from "../ServingDisclosure";
 import { GenerationServingDetails } from "../GenerationServingDetails";
 import type {
   CostCoverage,
@@ -269,6 +270,44 @@ describe("ServingSummary", () => {
       );
       expect(screen.getByText("4/6 task runs with evidence")).toBeInTheDocument();
     });
+  });
+});
+
+describe("ServingDisclosure", () => {
+  it("stays collapsed to one line until opened, then shows the table", async () => {
+    render(
+      <ServingDisclosure
+        summary={summary({
+          state: "mixed",
+          calls: 40,
+          groups: [
+            group({ identity: identity({ api_provider: "openrouter" }), calls: 40 }),
+            group({ identity: identity({ api_provider: "fireworks" }), calls: 2 }),
+          ],
+          total_groups: 2,
+        })}
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: /Observed serving/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("40 calls \u00b7 Mixed \u00b7 2 setups")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByText("openrouter")).toBeInTheDocument();
+  });
+
+  it("carries the not-reported state and errored calls on the collapsed line", () => {
+    render(
+      <ServingDisclosure
+        summary={summary({ state: "unknown", calls: 40, errored_calls: 2, groups: [group({ calls: 40 })], total_groups: 1 })}
+      />,
+    );
+    expect(screen.getByText("40 calls \u00b7 Not reported")).toBeInTheDocument();
+    expect(screen.getByText("2 errored")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 });
 
