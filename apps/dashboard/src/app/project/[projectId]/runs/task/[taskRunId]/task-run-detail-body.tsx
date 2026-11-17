@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useUrlParam } from "@/hooks/use-url-state";
 import { ConversationTranscript } from "@/components/agent-task-execution/conversation-transcript";
 import { DeliverablesPanel } from "@/components/agent-task-execution/deliverables-panel";
-import { ServingSummary } from "@/components/serving/ServingSummary";
+import { ServingDisclosure } from "@/components/serving/ServingDisclosure";
 import type { DeliverableSummary } from "@/lib/agent-task-deliverables-api";
 import type { CheckResult, TaskDefinitionRevisionSummary, TaskNote } from "@/lib/agent-task-api";
 import type { ServingSummary as ServingSummaryData } from "@/lib/serving-types";
@@ -108,13 +108,11 @@ export function TaskRunDetailBody({
           <>
             {/* Observed serving evidence (issue #307): the setups this run's
              * model calls actually served under, with speed and cost
-             * coverage. The identity rows are plain text: the traces page has
-             * no per-identity filter vocabulary to deep-link into. */}
-            {serving && (
-              <Panel>
-                <ServingSummary summary={serving} />
-              </Panel>
-            )}
+             * coverage. Collapsed behind one line — the checks, not the
+             * serving forensics, are what the page opens on. The identity
+             * rows are plain text: the traces page has no per-identity
+             * filter vocabulary to deep-link into. */}
+            {serving && <ServingDisclosure summary={serving} />}
 
             {checks.length > 0 && (
               <div className="flex items-center justify-between text-[12px]">
