@@ -162,6 +162,32 @@ export function ExpandableCheckItem({
     return () => window.removeEventListener("keydown", handler);
   }, [selectedAssertion, setAssertionParam]);
 
+  // Verdict detail for expands that carry no code block: the reasoning and
+  // judge/embedding strips the block view replaces with gutter marks.
+  const verdictDetail = (
+    <>
+      {reasoning && (
+        <p
+          className={cn(
+            "whitespace-pre-wrap text-[13px] leading-relaxed",
+            passed ? "text-foreground" : noVerdict ? "text-warning" : "text-destructive",
+          )}
+        >
+          {reasoning}
+        </p>
+      )}
+      {judgeMeta && (
+        <JudgeStrip judge={judgeMeta} checkPass={passed} traceHref={judgeTraceHref} />
+      )}
+      {embeddingMeta && (
+        <EmbeddingStrip embedding={embeddingMeta} checkPass={passed} traceHref={embeddingTraceHref} />
+      )}
+      {!reasoning && !judgeMeta && !embeddingMeta && (
+        <p className="text-[12px] text-muted-foreground">No additional details</p>
+      )}
+    </>
+  );
+
   return (
     <div
       className={cn(
@@ -310,11 +336,15 @@ export function ExpandableCheckItem({
                 </button>
               </div>
             )}
-            {checkBlock ? (
+            {checksSource ? (
               <>
                 <div className="overflow-hidden border border-border">
                   <CodeViewer
-                    code={checkBlock.code}
+                    // Helper/factory-registered checks (ids generated inside an
+                    // imported helper, no anchor line recorded) have no literal
+                    // block in the eval file — degrade to the whole file rather
+                    // than nothing, the same way the compare view does.
+                    code={checkBlock?.code ?? checksSource.content}
                     language={checksSource?.language ?? "typescript"}
                     diagnostics={diagnostics}
                     onDiagnosticClick={(line) => {
@@ -343,29 +373,12 @@ export function ExpandableCheckItem({
                     </>
                   )}
                 </div>
+                {/* Nothing in a whole-file fallback can be line-marked, so the
+                    verdict detail the block view omits stays visible below. */}
+                {!checkBlock && verdictDetail}
               </>
             ) : (
-              <>
-                {reasoning && (
-                  <p
-                    className={cn(
-                      "whitespace-pre-wrap text-[13px] leading-relaxed",
-                      passed ? "text-foreground" : noVerdict ? "text-warning" : "text-destructive",
-                    )}
-                  >
-                    {reasoning}
-                  </p>
-                )}
-                {judgeMeta && (
-                  <JudgeStrip judge={judgeMeta} checkPass={passed} traceHref={judgeTraceHref} />
-                )}
-                {embeddingMeta && (
-                  <EmbeddingStrip embedding={embeddingMeta} checkPass={passed} traceHref={embeddingTraceHref} />
-                )}
-                {!reasoning && !judgeMeta && !embeddingMeta && (
-                  <p className="text-[12px] text-muted-foreground">No additional details</p>
-                )}
-              </>
+              verdictDetail
             )}
           </div>
         </div>
