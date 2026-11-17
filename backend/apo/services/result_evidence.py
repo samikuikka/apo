@@ -53,16 +53,11 @@ from apo.services.storage_quota import (
 
 SLOTS = frozenset({"transcript", "checks", "deliverable"})
 
-_DEFAULT_MAX_ITEM_BYTES = 100 * 1024 * 1024  # 100 MiB per part
+_DEFAULT_MAX_ITEM_BYTES = 100 * 1024 * 1024
 _DEFAULT_MAX_TOTAL_BYTES = 512 * 1024 * 1024  # 512 MiB logical per attempt
-# How long an unfinalized part may linger before maintenance reaps it —
-# measured against the attempt's terminal state, never age alone, because
-# a live attempt may legitimately run for days.
+# Seconds an unfinalized part may linger before maintenance reaps it
+# (terminal attempts only — see cleanup_stale_result_evidence).
 _DEFAULT_STALE_TTL_SECONDS = 86_400
-# Finalization's own work bounds: one result may reference at most this
-# many parts, and resolution materializes at most this many logical bytes
-# (verified + parsed) before landing them — a bound on the memory one
-# finalization can consume, independent of the staging budget.
 _DEFAULT_RESOLVE_MAX_BYTES = 256 * 1024 * 1024
 _MAX_REFS_PER_RESULT = 1000
 _MAX_PARTS_PER_ATTEMPT = 1000
@@ -370,7 +365,6 @@ async def resolve_result_evidence(
     for ref in refs:
         row = session.get(AgentTaskResultEvidenceDB, ref)
         if row is None or row.attempt_id != attempt_id:
-            # Cross-project/run/attempt references are opaque misses.
             raise ResultEvidenceError("not_found", f"evidence part {ref} not found for this attempt")
         if row.status != "ready":
             raise ResultEvidenceError(
@@ -504,9 +498,7 @@ def cleanup_stale_result_evidence(session: Session) -> int:
     """Reap staging rows older than the TTL; returns rows removed.
 
     A synchronous sweep (object deletion is best-effort here — the orphan
-    reaper collects any objects left behind). Live uploads have nothing to
-    fear from a 24 h TTL: attempts are hour-scale and finalization removes
-    staging immediately.
+    reaper collects any objects left behind).
     """
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=stale_evidence_ttl_seconds())
     # Age alone must never reap a live attempt's staging: an executor may

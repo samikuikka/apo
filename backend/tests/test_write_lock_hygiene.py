@@ -122,10 +122,7 @@ def test_concurrent_batches_wait_for_the_write_lock_one_at_a_time(
 ) -> None:
     """Batches projected at once must not all queue in SQLite's busy handler.
 
-    SQLite gives a released lock to whichever waiter polls first. Every
-    projection waiting there is one more waiter a heartbeat has to beat at
-    every chunk boundary, so its wait grows with the number of batches in
-    flight. Between a pass asking for the lock and its pause after the
+    Between a pass asking for the write lock and its pause after the
     commit, no other pass may be asking for it or holding it.
     """
     batches = 4
@@ -211,7 +208,6 @@ def test_inline_projection_still_aggregates_per_span(
 def _count_run_aggregate_calls(
     monkeypatch: MonkeyPatch,
 ) -> list[str]:
-    """Record every whole-run aggregate recomputation, then run the real one."""
     calls: list[str] = []
     original = trace_projector._compute_run_aggregates
 

@@ -491,7 +491,6 @@ export const TEST_METHOD_NAMES = [
  */
 type _TestMethodNamesComplete<T = keyof TestContext> =
   Exclude<T, (typeof TEST_METHOD_NAMES)[number]> extends never ? true : never;
-// If this line errors, a TestContext method is not listed in TEST_METHOD_NAMES.
 const _testMethodNamesComplete: _TestMethodNamesComplete = true;
 
 function describeName(m: NameMatcher): string {
@@ -504,10 +503,12 @@ function describeName(m: NameMatcher): string {
 function matchName(name: string, m: NameMatcher): boolean {
   if (typeof m === "string") return name === m;
   if (m instanceof RegExp) {
-    // A /g regex advances lastIndex across the per-call filter, alternately
-    // matching, which silently halves counts. Strip the flag so every call
-    // is tested from the start.
-    if (m.global) return new RegExp(m.source, m.flags.replace("g", "")).test(name);
+    // A /g or /y regex advances lastIndex across the per-call filter,
+    // alternately matching, which silently halves counts. Strip the flag so
+    // every call is tested from the start.
+    if (m.global || m.sticky) {
+      return new RegExp(m.source, m.flags.replace(/[gy]/g, "")).test(name);
+    }
     return m.test(name);
   }
   return m(name);
@@ -842,8 +843,6 @@ function createJudgeMethod(
     try {
       const { pass, reasoning, judge, unavailable } = await traced;
       if (isTraceableSpanId(judgeSpanId)) judge.span_id = judgeSpanId;
-      // Raw verdict + ground-truth polarity, mirroring t.agent: the recorded
-      // pass is agreement under `expect`, not what the judge concluded.
       if (!unavailable) judge.verdict_pass = pass;
       if (opts?.expect) judge.expected_verdict = opts.expect;
       // Verdict polarity (`expect`): only when the author pins a ground
@@ -891,7 +890,6 @@ function createJudgeMethod(
   };
 }
 
-/** Assemble the judge-call context from the threaded scope, if any. */
 function judgeScopeToContext(scope: JudgeScope | undefined): JudgeCallContext | undefined {
   if (!scope) return undefined;
   const deliverableNames = scope.readDeliverableNames?.();
@@ -1284,8 +1282,6 @@ export function createTraceTestContext(
       const matching = view.toolCalls.filter((call) => matchName(call.name, name));
       const grouped = groupToolCallsByKey(matching, key);
       if (grouped.unkeyed > 0) {
-        // A bound that skips the calls it cannot key would pass while exactly
-        // those calls may hold the duplication, so this fails closed.
         rec.record(
           id,
           false,
@@ -1327,9 +1323,6 @@ export function createTraceTestContext(
       }
       const matching = view.toolCalls.filter((call) => matchName(call.name, name));
       if (matching.length === 0) {
-        // "Every call satisfies P" is vacuously true over no calls; a verdict
-        // built on evidence that does not exist is not a pass (same instinct
-        // as afterSteer refusing to run inner assertions against nothing).
         rec.record(label, false, `no ${describeName(name)} calls to check; an every-call predicate is not vacuously true`, {
           expected: `every ${describeName(name)} call satisfies the predicate`,
           received: "0 matching calls",

@@ -37,9 +37,7 @@ test("called-read-file", (t) => {
 });
 
 test("per-file-and-values", (t) => {
-  // Each file is read at most once. A total-count bound cannot see the
-  // duplication failure mode: the same path re-read in a loop while the
-  // overall count still looks plausible.
+  // Each file is read at most once.
   t.maxToolCallsPer(
     1,
     "read_file",
