@@ -336,49 +336,43 @@ export function ExpandableCheckItem({
                 </button>
               </div>
             )}
-            {checksSource ? (
-              <>
-                <div className="overflow-hidden border border-border">
-                  <CodeViewer
-                    // Helper/factory-registered checks (ids generated inside an
-                    // imported helper, no anchor line recorded) have no literal
-                    // block in the eval file — degrade to the whole file rather
-                    // than nothing, the same way the compare view does.
-                    code={checkBlock?.code ?? checksSource.content}
-                    language={checksSource?.language ?? "typescript"}
-                    diagnostics={diagnostics}
-                    onDiagnosticClick={(line) => {
-                      setSelectedLine(selectedLine === line ? null : line);
-                    }}
-                  />
-                  {selectedAssertion && (
-                    <>
-                      <button
-                        type="button"
-                        className="fixed inset-0 z-40 cursor-default"
-                        aria-label="Close assertion drawer"
-                        onClick={() => setSelectedLine(null)}
+            {checkBlock && checksSource ? (
+              <div className="overflow-hidden border border-border">
+                <CodeViewer
+                  code={checkBlock.code}
+                  language={checksSource.language ?? "typescript"}
+                  diagnostics={diagnostics}
+                  onDiagnosticClick={(line) => {
+                    setSelectedLine(selectedLine === line ? null : line);
+                  }}
+                />
+                {selectedAssertion && (
+                  <>
+                    <button
+                      type="button"
+                      className="fixed inset-0 z-40 cursor-default"
+                      aria-label="Close assertion drawer"
+                      onClick={() => setSelectedLine(null)}
+                    />
+                    <div className="fixed inset-y-0 right-0 top-12 z-50 flex w-[480px] max-w-[90vw] flex-col border-l border-border bg-card shadow-2xl">
+                      <AssertionDrawer
+                        assertion={selectedAssertion}
+                        onClose={() => setSelectedLine(null)}
+                        traceHref={judgeSpanTraceHref(
+                          projectId,
+                          traceRunId,
+                          selectedAssertion.judge?.span_id ?? selectedAssertion.embedding?.span_id,
+                        )}
                       />
-                      <div className="fixed inset-y-0 right-0 top-12 z-50 flex w-[480px] max-w-[90vw] flex-col border-l border-border bg-card shadow-2xl">
-                        <AssertionDrawer
-                          assertion={selectedAssertion}
-                          onClose={() => setSelectedLine(null)}
-                          traceHref={judgeSpanTraceHref(
-                            projectId,
-                            traceRunId,
-                            selectedAssertion.judge?.span_id ?? selectedAssertion.embedding?.span_id,
-                          )}
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-                {/* Nothing in a whole-file fallback can be line-marked, so the
-                    verdict detail the block view omits stays visible below. */}
-                {!checkBlock && verdictDetail}
-              </>
+                    </div>
+                  </>
+                )}
+              </div>
             ) : (
-              verdictDetail
+              <>
+                {checksSource && <StoredSourceDisclosure source={checksSource} />}
+                {verdictDetail}
+              </>
             )}
           </div>
         </div>
@@ -393,6 +387,39 @@ export function ExpandableCheckItem({
         />
       )}
     </div>
+  );
+}
+
+//─ Source disclosure for unpinpointable checks ────────────────────────
+
+/**
+ * A check whose block can't be pinpointed (its id is generated inside an
+ * imported helper, and only the eval entry file is stored) shows an
+ * explanation, not the file. The stored file rides behind this disclosure:
+ * rendered directly it reads as "this is the check's code", which it is not.
+ */
+function StoredSourceDisclosure({ source }: { source: TaskFileContentResponse }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="border border-border/60">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+      >
+        Check code is not in the stored source — registered from an imported file
+        <span className="ml-auto shrink-0 opacity-60">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-border/60">
+          <CodeViewer
+            code={source.content}
+            language={source.language ?? "typescript"}
+          />
+        </div>
+      )}
+    </section>
   );
 }
 

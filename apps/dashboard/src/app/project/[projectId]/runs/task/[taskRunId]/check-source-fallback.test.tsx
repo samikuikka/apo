@@ -1,9 +1,10 @@
 /**
- * Whole-file fallback for check source on the run page: a check whose id has
- * no literal block in the eval file (helper/factory-registered checks — ids
- * generated inside an imported helper, no anchor line recorded) still shows
- * the file rather than nothing, with the verdict detail below it. The block
- * path (check id appears literally) keeps showing only that block.
+ * Source display for check expands whose block can't be pinpointed: ids
+ * generated inside an imported helper (helper/factory-registered checks, no
+ * anchor line recorded) never appear literally in the eval file. Such a check
+ * shows an explanation with the stored file behind a disclosure — never the
+ * file presented as the check's code. The literal-block path still shows only
+ * that block.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -57,24 +58,30 @@ function expand(item: CheckResult, checksSource: TaskFileContentResponse | null)
   fireEvent.click(screen.getByText(String(item.id)).closest("button")!);
 }
 
-describe("ExpandableCheckItem check-source fallback", () => {
-  it("shows the whole file when the check id has no literal block", () => {
+describe("ExpandableCheckItem unpinpointable source", () => {
+  it("shows the explanation, not the file, when the id has no literal block", () => {
     expand({ id: "dabstep-005-computed-via-python", pass: true } as CheckResult, SOURCE);
 
+    expect(screen.getByText(/Check code is not in the stored source/)).toBeInTheDocument();
+    expect(screen.queryByTestId("code-viewer")).not.toBeInTheDocument();
+  });
+
+  it("reveals the stored file only when the disclosure is opened", () => {
+    expand({ id: "dabstep-005-computed-via-python", pass: true } as CheckResult, SOURCE);
+
+    fireEvent.click(screen.getByRole("button", { name: /Check code is not in the stored source/ }));
     const viewer = screen.getByTestId("code-viewer");
-    // The file the run recorded, not nothing — the id lives in an imported
-    // helper, so no block can be pinpointed.
     expect(viewer).toHaveTextContent("trajectoryChecks(check");
   });
 
-  it("keeps the reasoning visible below a whole-file fallback", () => {
+  it("keeps the reasoning visible without opening the disclosure", () => {
     expand(
       { id: "dabstep-005-upstream-answer", pass: false, reasoning: "expected NL, got DE" } as CheckResult,
       SOURCE,
     );
 
-    expect(screen.getByTestId("code-viewer")).toHaveTextContent("trajectoryChecks(check");
     expect(screen.getByText(/expected NL, got DE/)).toBeInTheDocument();
+    expect(screen.queryByTestId("code-viewer")).not.toBeInTheDocument();
   });
 
   it("shows only the check's own block when the id appears literally", () => {
@@ -95,15 +102,17 @@ describe("ExpandableCheckItem check-source fallback", () => {
     expect(viewer).toHaveTextContent("document-state");
     expect(viewer).toHaveTextContent("t.check(1");
     expect(viewer).not.toHaveTextContent("other-check");
+    expect(screen.queryByText(/Check code is not in the stored source/)).not.toBeInTheDocument();
   });
 
-  it("renders no viewer when the source itself is unavailable", () => {
+  it("renders no explanation when the source itself is unavailable", () => {
     expand(
       { id: "dabstep-005-computed-via-python", pass: false, reasoning: "expected NL, got DE" } as CheckResult,
       null,
     );
 
     expect(screen.queryByTestId("code-viewer")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Check code is not in the stored source/)).not.toBeInTheDocument();
     expect(screen.getByText(/expected NL, got DE/)).toBeInTheDocument();
   });
 });
