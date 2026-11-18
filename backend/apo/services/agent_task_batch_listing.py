@@ -176,11 +176,6 @@ def list_batch_run_summaries(
     )
 
 
-# ---------------------------------------------------------------------------
-# Filter building
-# ---------------------------------------------------------------------------
-
-
 def _single_project(filters: BatchRunListFilters) -> str | None:
     """The one project this listing is scoped to, if it is scoped to one.
 
@@ -428,11 +423,6 @@ def _compute_provider_facets(
     ]
 
 
-# ---------------------------------------------------------------------------
-# Model facets
-# ---------------------------------------------------------------------------
-
-
 def _compute_model_facets(
     session: Session,
     base: SelectOfScalar[AgentTaskBatchRunDB],
@@ -473,11 +463,6 @@ def _compute_model_facets(
         )
         for model, efforts in sorted(by_model.items())
     ]
-
-
-# ---------------------------------------------------------------------------
-# Hydration
-# ---------------------------------------------------------------------------
 
 
 def _hydrate_batch_summaries(

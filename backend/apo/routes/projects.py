@@ -480,16 +480,6 @@ def _assert_not_demo(project_id: str) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Project-scoped agent tasks
-# ---------------------------------------------------------------------------
-#
-# Canonical task list/detail endpoints, reading from the persisted
-# inventory table instead of doing a live filesystem scan on every
-# request. Run stats are attached by joining ``AgentTaskRunDB`` rows
-# through the project's batch runs.
-
-
 def _compute_run_stats(runs: Sequence[RunStatFields]) -> AgentTaskRunStats:
     """Aggregate a task's runs into a stats summary.
 

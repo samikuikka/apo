@@ -15,7 +15,7 @@ Key behaviours:
   SHA, subpath) so historical runs can be explained even after the
   source moves on.
 - Historical ``AgentTaskRunDB`` rows do not depend on these rows
-  staying current — they snapshot the inventory id and commit SHA at
+  staying current: they snapshot the inventory id and commit SHA at
   creation time, so a task disappearing from inventory never breaks an
   old run.
 """
@@ -92,7 +92,7 @@ def replace_inventory(
 ) -> list[ProjectTaskInventoryDB]:
     """Atomically replace the project's inventory with ``discovered``.
 
-    Implements behaviour #5 ("sync is replace-in-place"): all existing
+    Sync is replace-in-place: all existing
     rows for the project/source are deleted, then fresh rows are written
     that carry the new provenance snapshot. Adaptive scheduling state for
     tasks that left the snapshot is pruned (a schedule's ``next_run_at``
@@ -114,7 +114,7 @@ def replace_inventory(
     }
     # First-seen provenance survives the replace keyed by task_id (issue #444):
     # a re-sync of an unchanged source must not reset a task's first appearance.
-    # The description is deliberately NOT carried forward — it is re-read from
+    # The description is deliberately NOT carried forward. It is re-read from
     # the eval source on every sync, so the row always states the current text
     # (including its removal).
     prior = {row.task_id: row for row in existing}
@@ -252,11 +252,6 @@ def task_source_inventory_is_stale(
     )
 
 
-# ---------------------------------------------------------------------------
-# Serialization
-# ---------------------------------------------------------------------------
-
-
 def to_summary(row: ProjectTaskInventoryDB) -> AgentTaskSummary:
     """Convert an inventory row into the public ``AgentTaskSummary`` shape.
 
@@ -308,7 +303,7 @@ def attach_publisher_labels(
 
     Mutates in place (the same shape as the route-side ``run_stats``
     enrichment): name when the user set one, else email. Unknown ids keep
-    ``None`` — a deleted publisher is silence, not an error.
+    ``None``: a deleted publisher is silence, not an error.
     """
     from sqlmodel import col
 

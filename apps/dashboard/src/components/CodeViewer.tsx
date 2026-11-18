@@ -80,11 +80,9 @@ const apoHighlighter = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 );
 
-// ── Diagnostic-line hover affordance ──────────────────────────────────
 // Lights up the diagnostic line under the cursor (red for errors, neutral
 // for passing assertions) and turns the whole line into a click target, so
 // the drawer is discoverable without aiming for the tiny wavy underline.
-// Mirrors the landing-page RunDetailMock's "Inspect" affordance.
 
 const setDiagLines = StateEffect.define<ReadonlyMap<number, "error" | "info">>();
 const diagLinesField = StateField.define<ReadonlyMap<number, "error" | "info">>({
