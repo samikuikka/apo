@@ -56,7 +56,7 @@ SLOTS = frozenset({"transcript", "checks", "deliverable"})
 _DEFAULT_MAX_ITEM_BYTES = 100 * 1024 * 1024
 _DEFAULT_MAX_TOTAL_BYTES = 512 * 1024 * 1024  # 512 MiB logical per attempt
 # Seconds an unfinalized part may linger before maintenance reaps it
-# (terminal attempts only — see cleanup_stale_result_evidence).
+# (terminal attempts only; see cleanup_stale_result_evidence).
 _DEFAULT_STALE_TTL_SECONDS = 86_400
 _DEFAULT_RESOLVE_MAX_BYTES = 256 * 1024 * 1024
 _MAX_REFS_PER_RESULT = 1000
@@ -525,7 +525,7 @@ def cleanup_stale_result_evidence(session: Session) -> int:
 
 
 class _PartVerificationError(Exception):
-    """Internal: stored bytes no longer match the row's declared digest."""
+    ...
 
 
 def _verify_and_parse(raw: bytes, size_bytes: int, sha256: str) -> object:

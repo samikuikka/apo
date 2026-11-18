@@ -2,7 +2,7 @@
  * Source display for check expands whose block can't be pinpointed: ids
  * generated inside an imported helper (helper/factory-registered checks, no
  * anchor line recorded) never appear literally in the eval file. Such a check
- * shows an explanation with the stored file behind a disclosure — never the
+ * shows an explanation with the stored file behind a disclosure: never the
  * file presented as the check's code. The literal-block path still shows only
  * that block.
  */

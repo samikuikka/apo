@@ -1,7 +1,5 @@
 # pyright: reportAttributeAccessIssue=false, reportPrivateLocalImportUsage=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportUnusedFunction=false
 
-"""Request timing middleware: slow requests get named, streams do not."""
-
 from __future__ import annotations
 
 import asyncio

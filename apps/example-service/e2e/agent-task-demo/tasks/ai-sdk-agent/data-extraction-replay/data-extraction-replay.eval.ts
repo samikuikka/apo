@@ -37,7 +37,6 @@ test("called-read-file", (t) => {
 });
 
 test("per-file-and-values", (t) => {
-  // Each file is read at most once.
   t.maxToolCallsPer(
     1,
     "read_file",
