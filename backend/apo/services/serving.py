@@ -336,7 +336,6 @@ class _GroupAccumulator:
     def __init__(self) -> None:
         self.calls: int = 0
         self.errored_calls: int = 0
-        # scope -> {"whole": [values], "stream": [values]}
         self.scopes: dict[ServingScope, dict[Literal["whole", "stream"], list[float]]] = {}
 
     def add(self, call: ServingCall) -> None:

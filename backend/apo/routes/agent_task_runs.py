@@ -296,7 +296,6 @@ def _load_primary_models(
                 as_column(cast(object, LoggedCallDB.project)) == project,
             )
             .order_by(
-                # GENERATION first (0), everything else after (1).
                 as_column(cast(object, LoggedCallDB.observation_type)) != "GENERATION",
                 asc(as_column(cast(object, LoggedCallDB.created_at))),
             )
@@ -304,14 +303,17 @@ def _load_primary_models(
         structural_models = {"agent-task", "unknown", ""}
         for call in calls:
             # A NULL model must not claim the slot: it would store None in a
-            # dict[str, str] and hide every later real GENERATION model.
+            # dict[str, str] and hide every later real GENERATION model. The
+            # column is nullable even though the ORM type says str, so the
+            # value is read through object to keep the isinstance guard live.
+            model = cast(object, call.model)
             if (
                 call.run_id is not None
                 and call.run_id not in model_map
-                and call.model is not None
-                and call.model not in structural_models
+                and isinstance(model, str)
+                and model not in structural_models
             ):
-                model_map[call.run_id] = call.model
+                model_map[call.run_id] = model
 
     return model_map
 
@@ -486,11 +488,6 @@ def _build_task_run_detail(
     )
 
 
-# ============================================================================
-# Batch Run Endpoints
-# ============================================================================
-
-
 @router.post(
     "/agent-task-batch-runs",
     response_model=AgentTaskBatchRunDetail,
@@ -590,9 +587,8 @@ async def create_agent_task_batch_run(
     )
 
 
-# ============================================================================
-# Cancellation routes (idempotent; must precede any catch-all)
-# ============================================================================
+# Cancellation routes. Declared above the catch-all task-id route so these
+# paths match first.
 
 
 @router.post("/agent-task-runs/{task_run_id}/cancel")
@@ -650,9 +646,8 @@ async def cancel_agent_task_batch_run(
     return {"ok": True, "cancelled": len(attempts)}
 
 
-# ============================================================================
-# Deletion routes (terminal runs only; must precede any catch-all)
-# ============================================================================
+# Deletion routes. Declared above the catch-all task-id route so these
+# paths match first.
 
 
 @router.delete("/agent-task-runs/{task_run_id}")
@@ -723,11 +718,7 @@ async def delete_agent_task_batch_run(
     return {"ok": True, **counts}
 
 
-# ============================================================================
-# Cancellation routes (idempotent; must precede any catch-all)
-# ============================================================================
 # Caller Executor create-and-claim
-# ============================================================================
 
 
 class CallerCreateRequest(BaseModel):
@@ -1112,11 +1103,6 @@ def get_agent_task_batch_run(
         serving=batch_serving,
         run_servings=run_servings,
     )
-
-
-# ============================================================================
-# Task Run Endpoints
-# ============================================================================
 
 
 @router.get("/agent-task-runs", response_model=list[AgentTaskRunSummary])

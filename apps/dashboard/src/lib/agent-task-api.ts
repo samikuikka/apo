@@ -294,7 +294,6 @@ export interface AgentTaskRunSummary {
   total_checks: number;
   passed_checks: number;
   failed_checks: number;
-  /** Checks inside total that produced no verdict (judge error), not fails. */
   /** Why an `error` run has no verdict (issue #323); absent on older backends. */
   no_verdict_reason?: NoVerdictReason | null;
   /** Tests whose effective result differs from the recorded one. */
