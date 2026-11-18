@@ -17,6 +17,7 @@ import { DeliverablesView } from "./deliverables-view";
 import { useLazyConversation } from "./use-lazy-conversation";
 import { useCheckSource } from "./use-check-source";
 import { Panel } from "./panel";
+import { WholeTestFile } from "./whole-test-file";
 import { TaskRunTabStrip, type TaskRunTab, type TaskRunTabId } from "./task-run-tab-strip";
 
 // ── Main body ────────────────────────────────────────────────────────────
@@ -75,15 +76,6 @@ export function TaskRunDetailBody({
     sourceType,
   });
 
-  const notes = notesForRun(taskNotes);
-  // A Test keeps its newest Note inline at the point of failure; the rest
-  // sit behind the "+N more" line and in the notes rail's drawer.
-  const { capped: cappedTestNotes, overflow: testNoteOverflow } = capTestNotes(notes.byTest);
-  const [notesRailOpen, setNotesRailOpen] = useState(false);
-  const openNotesRail = () => setNotesRailOpen(true);
-  const checksPassed = checks.filter((check) => check.pass === true).length;
-  const failedCount = checks.length - checksPassed;
-
   const tabs: TaskRunTab[] = [
     { id: "checks", label: "Checks", icon: Code2, count: checks.length },
     { id: "transcript", label: "Conversation History", icon: MessageSquare },
@@ -105,86 +97,20 @@ export function TaskRunDetailBody({
 
       <div className="space-y-4 px-6 py-5">
         {tab === "checks" && (
-          <>
-            {/* Observed serving evidence (issue #307): the setups this run's
-             * model calls actually served under, with speed and cost
-             * coverage. Collapsed behind one line: the checks, not the
-             * serving forensics, are what the page opens on. The identity
-             * rows are plain text: the traces page has no per-identity
-             * filter vocabulary to deep-link into. */}
-            {serving && <ServingDisclosure summary={serving} />}
-
-            {checks.length > 0 && (
-              <div className="flex items-center justify-between text-[12px]">
-                <div className="flex items-center gap-3">
-                  <span className="text-muted-foreground">
-                    <span className="font-medium text-foreground">{checksPassed}</span>/{checks.length} passed
-                  </span>
-                  {failedCount > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-destructive">
-                      {failedCount} failed
-                    </span>
-                  )}
-                  {(() => {
-                    // Fact line — only when a second judge ran on any check.
-                    const sj = secondJudgeSummary(checks);
-                    const judged = sj.corroborated + sj.split + sj.unsure + sj.skipped;
-                    if (judged === 0) return null;
-                    return (
-                      <span className="text-muted-foreground">
-                        Second judge: <span className="text-foreground">{sj.corroborated}</span> corroborated
-                        {sj.split > 0 && (
-                          <span className="text-warning"> · judges split on {sj.split}</span>
-                        )}
-                        {sj.unsure > 0 && <> · {sj.unsure} unsure</>}
-                        {sj.skipped > 0 && <> · {sj.skipped} skipped (value too large)</>}
-                      </span>
-                    );
-                  })()}
-                </div>
-                <span className="text-muted-foreground/60">Click to expand</span>
-              </div>
-            )}
-
-            <TaskNotesRail
-              notes={taskNotes ?? []}
-              checks={checks}
-              open={notesRailOpen}
-              onOpenChange={setNotesRailOpen}
-            />
-
-            {checksSource && (
-              <p className="text-[11px] text-muted-foreground/70">
-                Expand a code check to see its source with the failing line marked.
-              </p>
-            )}
-            {!checksSource && checks.length > 0 && sourceType === "published" && (
-              <p className="text-[11px] text-muted-foreground/70">
-                Check source remains on the machine that executed this task — a published task catalog uploads only the eval file.
-              </p>
-            )}
-
-            {checks.length > 0 && (
-              <Panel padded={false}>
-                <ChecksList
-                  checks={checks}
-                  checksSource={checksSource}
-                  correctable={correctable}
-                  taskRunId={taskRunId ?? undefined}
-                  taskId={taskId}
-                  projectId={projectId}
-                  traceRunId={traceRunId}
-                  testNotes={cappedTestNotes}
-                  testNoteOverflow={testNoteOverflow}
-                  onOpenNotes={openNotesRail}
-                />
-              </Panel>
-            )}
-
-            {checks.length === 0 && (
-              <p className="py-4 text-center text-sm text-muted-foreground">No checks recorded</p>
-            )}
-          </>
+          <ChecksTab
+            checks={checks}
+            checksSource={checksSource}
+            taskDefinition={taskDefinition}
+            taskRunId={taskRunId}
+            taskId={taskId}
+            projectId={projectId}
+            commitSha={commitSha}
+            sourceType={sourceType}
+            traceRunId={traceRunId}
+            taskNotes={taskNotes}
+            correctable={correctable}
+            serving={serving}
+          />
         )}
 
         {tab === "transcript" && (
@@ -215,5 +141,138 @@ export function TaskRunDetailBody({
         )}
       </div>
     </>
+  );
+}
+
+// ── Checks tab ───────────────────────────────────────────────────────────
+
+function ChecksTab({
+  checks,
+  checksSource,
+  taskDefinition,
+  taskRunId,
+  taskId,
+  projectId,
+  commitSha,
+  sourceType,
+  traceRunId,
+  taskNotes,
+  correctable,
+  serving,
+}: {
+  checks: CheckResult[];
+  checksSource: ReturnType<typeof useCheckSource>;
+  taskDefinition?: TaskDefinitionRevisionSummary | null;
+  taskRunId?: string | null;
+  taskId: string;
+  projectId?: string | null;
+  commitSha?: string | null;
+  sourceType?: string | null;
+  traceRunId: string | null;
+  taskNotes?: TaskNote[] | null;
+  correctable: boolean;
+  serving: ServingSummaryData | null;
+}) {
+  const notes = notesForRun(taskNotes);
+  // A Test keeps its newest Note inline at the point of failure; the rest
+  // sit behind the "+N More" line and in the notes rail's drawer.
+  const { capped: cappedTestNotes, overflow: testNoteOverflow } = capTestNotes(notes.byTest);
+  const [notesRailOpen, setNotesRailOpen] = useState(false);
+  const openNotesRail = () => setNotesRailOpen(true);
+
+  return (
+    <>
+      {/* Observed serving evidence (issue #307): the setups this run's
+       * model calls actually served under, with speed and cost
+       * coverage. Collapsed behind one line: the checks, not the
+       * serving forensics, are what the page opens on. The identity
+       * rows are plain text: the traces page has no per-identity
+       * filter vocabulary to deep-link into. */}
+      {serving && <ServingDisclosure summary={serving} />}
+
+      {checks.length > 0 && <ChecksSummaryLine checks={checks} />}
+
+      <TaskNotesRail
+        notes={taskNotes ?? []}
+        checks={checks}
+        open={notesRailOpen}
+        onOpenChange={setNotesRailOpen}
+      />
+
+      {!checksSource && checks.length > 0 && sourceType === "published" && (
+        <p className="text-[11px] text-muted-foreground/70">
+          Check source remains on the machine that executed this task; a published task catalog uploads only the eval file.
+        </p>
+      )}
+
+      {/* The whole spec behind this run sits behind one disclosure so
+       * explaining a run means reading the file the agent was graded
+       * against; it also covers the zero-checks empty state, where it
+       * turns an empty tab into the suite marked "no result in this run". */}
+      <WholeTestFile
+        checks={checks}
+        checksSource={checksSource}
+        taskDefinition={taskDefinition}
+        taskRunId={taskRunId}
+        taskId={taskId}
+        projectId={projectId}
+        commitSha={commitSha}
+        sourceType={sourceType}
+      >
+        {checks.length > 0 && (
+          <Panel padded={false}>
+            <ChecksList
+              checks={checks}
+              checksSource={checksSource}
+              correctable={correctable}
+              taskRunId={taskRunId ?? undefined}
+              taskId={taskId}
+              projectId={projectId}
+              traceRunId={traceRunId}
+              testNotes={cappedTestNotes}
+              testNoteOverflow={testNoteOverflow}
+              onOpenNotes={openNotesRail}
+            />
+          </Panel>
+        )}
+        {checks.length === 0 && (
+          <p className="py-4 text-center text-sm text-muted-foreground">No checks recorded</p>
+        )}
+      </WholeTestFile>
+    </>
+  );
+}
+
+/** Pass/failed tally plus the second-judge fact line (only when a second judge
+ *  ran on any check) that opens the Checks tab. */
+function ChecksSummaryLine({ checks }: { checks: CheckResult[] }) {
+  const checksPassed = checks.filter((check) => check.pass === true).length;
+  const failedCount = checks.length - checksPassed;
+  const sj = secondJudgeSummary(checks);
+  const judged = sj.corroborated + sj.split + sj.unsure + sj.skipped;
+  return (
+    <div className="flex items-center justify-between text-[12px]">
+      <div className="flex items-center gap-3">
+        <span className="text-muted-foreground">
+          <span className="font-medium text-foreground">{checksPassed}</span>/{checks.length} passed
+        </span>
+        {failedCount > 0 && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-destructive">
+            {failedCount} failed
+          </span>
+        )}
+        {judged > 0 && (
+          <span className="text-muted-foreground">
+            Second judge: <span className="text-foreground">{sj.corroborated}</span> corroborated
+            {sj.split > 0 && (
+              <span className="text-warning"> · judges split on {sj.split}</span>
+            )}
+            {sj.unsure > 0 && <> · {sj.unsure} unsure</>}
+            {sj.skipped > 0 && <> · {sj.skipped} skipped (value too large)</>}
+          </span>
+        )}
+      </div>
+      <span className="text-muted-foreground/60">Click to expand</span>
+    </div>
   );
 }
