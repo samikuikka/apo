@@ -542,22 +542,18 @@ def test_hydration_issues_no_per_call_statements(session: Session) -> None:
 
 
 def test_load_call_rows_ships_only_the_serving_columns(session: Session) -> None:
-    from sqlalchemy import inspect as sa_inspect
-    from sqlalchemy.exc import InvalidRequestError
     from sqlmodel import select as sm_select
 
-    from apo.services.serving import load_call_rows, summarize_calls
+    from apo.services.serving import ServingCall, load_call_rows, summarize_calls
 
     seed_two_projects(session)
     grouped = load_call_rows(session, project=SMALL, run_ids=["s-ok"])
     rows = grouped["s-ok"]
     assert rows
 
-    state = sa_inspect(rows[0])
-    for column in ("input", "messages", "output", "tool_parameters", "tool_result", "meta"):
-        assert column in state.unloaded, column
-    with pytest.raises(InvalidRequestError):
-        _ = rows[0].input
+    # The diet is structural: a row is a ServingCall tuple carrying only
+    # the serving fields, so payload columns cannot ride the query.
+    assert all(isinstance(row, ServingCall) for row in rows)
 
     # The serving columns are all there: the summary over diet rows equals
     # the summary over fully loaded rows.

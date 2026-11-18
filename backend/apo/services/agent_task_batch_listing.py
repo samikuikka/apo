@@ -40,6 +40,7 @@ from ..services.agent_task_projection import (
 from ..services.archived_models import load_archived_models
 from ..services.human_actor import user_labels
 from ..services.serving import (
+    ServingCall,
     has_serving_evidence,
     load_call_rows,
     run_matches_filter,
@@ -335,7 +336,7 @@ def _apply_serving_filter(
     for _batch_id, trace_run_id, project in children:
         if trace_run_id is not None:
             trace_ids_by_project.setdefault(project, []).append(trace_run_id)
-    calls_by_trace: dict[str, list[LoggedCallDB]] = {}
+    calls_by_trace: dict[str, list[ServingCall]] = {}
     for project, trace_ids in trace_ids_by_project.items():
         calls_by_trace.update(load_call_rows(session, project=project, run_ids=trace_ids))
 
@@ -603,7 +604,7 @@ def _batch_serving_summaries(
                     task_run.trace_run_id
                 )
 
-    calls_by_trace: dict[str, list[LoggedCallDB]] = {}
+    calls_by_trace: dict[str, list[ServingCall]] = {}
     for project, trace_ids in trace_ids_by_project.items():
         calls_by_trace.update(load_call_rows(session, project=project, run_ids=trace_ids))
 

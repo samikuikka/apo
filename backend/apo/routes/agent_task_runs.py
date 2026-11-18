@@ -81,6 +81,7 @@ from ..services.project_memberships import (
     readable_project_ids_for_request,
 )
 from ..services.serving import (
+    ServingCall,
     has_serving_evidence,
     load_call_rows,
     run_matches_filter,
@@ -146,7 +147,7 @@ def _parse_serving_filter(
 def _serving_calls_for_task_runs(
     session: Session,
     task_runs: Sequence[AgentTaskRunDB],
-) -> dict[str, list[LoggedCallDB]]:
+) -> dict[str, list[ServingCall]]:
     """Call rows for the given runs' traces, keyed by trace run id.
 
     One batched query per distinct project (a trace id may collide across
@@ -161,7 +162,7 @@ def _serving_calls_for_task_runs(
         if batch is None:
             continue
         trace_ids_by_project.setdefault(batch.project, []).append(task_run.trace_run_id)
-    calls: dict[str, list[LoggedCallDB]] = {}
+    calls: dict[str, list[ServingCall]] = {}
     for project, trace_ids in trace_ids_by_project.items():
         calls.update(load_call_rows(session, project=project, run_ids=trace_ids))
     return calls
@@ -1409,7 +1410,7 @@ def get_agent_task_run_serving(
                 raise HTTPException(status_code=404, detail="Task run not found") from exc
             raise
 
-    calls: list[LoggedCallDB] = []
+    calls: list[ServingCall] = []
     if batch is not None and task_run.trace_run_id:
         calls = load_call_rows(
             session, project=batch.project, run_ids=[task_run.trace_run_id]
