@@ -76,13 +76,7 @@ def _off_loop(fn: Callable[_P, _R]) -> Callable[_P, CoroutineType[object, object
 
 
 class TraceIngestionQueue(Protocol):
-    """Protocol for the trace ingestion queue.
-
-    The receiver and worker depend only on this interface.
-    """
-
     async def enqueue(self, batch_id: str) -> None:
-        """Mark a batch as ready for processing."""
         ...
 
     async def claim_next(self) -> str | None:
@@ -94,31 +88,25 @@ class TraceIngestionQueue(Protocol):
         ...
 
     async def claim(self, batch_id: str) -> bool:
-        """Atomically claim one exact queued batch."""
         ...
 
     async def mark_complete(self, batch_id: str) -> None:
-        """Mark a batch as successfully projected."""
         ...
 
     async def mark_failed(
         self, batch_id: str, error: str, rejected: int = 0
     ) -> None:
-        """Mark a batch as failed. Can be re-enqueued for retry."""
         ...
 
     async def mark_partial(
         self, batch_id: str, rejected: int, error: str
     ) -> None:
-        """Mark a batch projected with one or more derived failures."""
         ...
 
     async def requeue(self, batch_id: str, reason: str) -> None:
-        """Return a claimed batch to the queue for a later retry."""
         ...
 
     async def recover_stale(self) -> int:
-        """Requeue processing batches whose worker lease expired."""
         ...
 
 
@@ -525,7 +513,6 @@ _worker_stop: asyncio.Event | None = None
 
 
 def start_trace_ingestion_worker() -> None:
-    """Start the in-process durable queue worker and recover interrupted work."""
     global _worker_task, _worker_stop
     if _worker_task is not None and not _worker_task.done():
         return

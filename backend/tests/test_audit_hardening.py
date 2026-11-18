@@ -127,3 +127,15 @@ class TestApoLoggerEmitsInfo:
         assert any(
             "Reset URL: http://probe/reset" in rec.message for rec in caplog.records
         )
+
+    def test_create_app_does_not_stack_logging_handlers(self) -> None:
+        # The module-level `app = create_app()` already attached the handler;
+        # two more app builds in the same process must not add more, or every
+        # line would print once per build.
+        apo_logger = logging.getLogger("apo")
+        before = len(apo_logger.handlers)
+        from apo.api import create_app
+
+        _ = create_app()
+        _ = create_app()
+        assert len(apo_logger.handlers) == before

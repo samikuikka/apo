@@ -26,7 +26,6 @@ from sqlmodel import Session
 
 from ..db import SQLITE_BUSY_TIMEOUT_MS, begin_immediate
 
-# Spans projected between commits.
 PROJECTION_COMMIT_CHUNK = 32
 # Longest one projection transaction holds the write lock before it commits,
 # whatever its span count: a chunk of spans with large payloads must not

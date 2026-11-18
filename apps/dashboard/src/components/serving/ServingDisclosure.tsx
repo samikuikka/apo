@@ -8,9 +8,7 @@ import {
 } from "@/lib/serving-types";
 
 /**
- * The run page's serving evidence behind a disclosure, collapsed by default:
- * one quiet line of counts and state; the full setups table opens on click.
- * Serving detail is forensic — the checks come first, not this table.
+ * Serving detail is forensic: the checks come first, not this table.
  */
 export function ServingDisclosure({ summary }: { summary: ServingSummaryData }) {
   const [open, setOpen] = useState(false);

@@ -48,15 +48,12 @@ export function ExpandableCheckItem({
   index: number;
   /** This Test's Task Notes — already capped to the inline limit. */
   notes?: TaskNote[];
-  /** How many more Notes live behind the "+N more" line. */
   noteOverflow?: number;
-  /** Opens the notes rail's drawer. */
   onOpenNotes?: () => void;
   checksSource?: TaskFileContentResponse | null;
   /** Terminal + verdict-bearing + evidence present. */
   correctable?: boolean;
   taskRunId?: string;
-  /** For the judge-span deep link (issue #288): the run's project and trace. */
   projectId?: string | null;
   traceRunId?: string | null;
 }) {
@@ -79,8 +76,6 @@ export function ExpandableCheckItem({
   // judge.span_id is recorded at emission by the SDK or joined by the
   // backend for runs recorded before that.
   const judgeTraceHref = judgeSpanTraceHref(projectId, traceRunId, judgeMeta?.span_id);
-  // Same join for embedding-similarity gradings (t.semantic): check-level
-  // metadata first, else the first assertion that carries one.
   const embeddingMeta =
     item.embedding ?? item.assertions?.find((a) => a.embedding)?.embedding;
   const embeddingTraceHref = judgeSpanTraceHref(projectId, traceRunId, embeddingMeta?.span_id);
@@ -124,8 +119,6 @@ export function ExpandableCheckItem({
   // id "judge", so a bare ?assertion=judge would match every judge check.)
   const [assertionParam, setAssertionParam] = useUrlParam("assertion");
 
-  // Does the URL point at an assertion in THIS check? Only the check whose id
-  // matches the param's namespace prefix opens its drawer.
   const ownAssertionId = parseOwnAssertionId(assertionParam, id);
 
   // A shared link points at a specific assertion. If it lives in this check,
@@ -152,7 +145,6 @@ export function ExpandableCheckItem({
     setAssertionParam(buildAssertionParam(id, a?.id));
   };
 
-  // Escape closes the drawer, matching the TracePanel pattern.
   useEffect(() => {
     if (!selectedAssertion) return;
     const handler = (e: KeyboardEvent) => {
@@ -340,7 +332,7 @@ export function ExpandableCheckItem({
               <div className="overflow-hidden border border-border">
                 <CodeViewer
                   code={checkBlock.code}
-                  language={checksSource.language ?? "typescript"}
+                  language={checksSource.language}
                   diagnostics={diagnostics}
                   onDiagnosticClick={(line) => {
                     setSelectedLine(selectedLine === line ? null : line);
@@ -408,22 +400,20 @@ function StoredSourceDisclosure({ source }: { source: TaskFileContentResponse })
         onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
-        Check code is not in the stored source — registered from an imported file
+        Check code is not in the stored source: registered from an imported file
         <span className="ml-auto shrink-0 opacity-60">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
         <div className="border-t border-border/60">
           <CodeViewer
             code={source.content}
-            language={source.language ?? "typescript"}
+            language={source.language}
           />
         </div>
       )}
     </section>
   );
 }
-
-//─ Second judge row mark (measurements, not diagnoses) ────────────────
 
 /**
  * Trace-view deep link for one judgment's span (issue #288):

@@ -49,7 +49,6 @@ from apo.services.trace_projector import get_trace_projector
 PROJECT = "lock-hygiene"
 TRACE_ID = "c2240000000000000000000000000001"
 ROOT_SPAN_ID = "c000000000000001"
-# Fixed wall-clock anchor; span times are offsets from it.
 BASE_NANOS = 1_791_907_200_000_000_000
 
 Span = dict[str, object]
@@ -75,7 +74,6 @@ def clean_projection_tables():
 def test_reproject_leaves_the_write_lock_free_between_chunks(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Every chunk boundary must open an unlocked window another writer wins."""
     children = PROJECTION_COMMIT_CHUNK * 3
     _ingest([_root_span(), *(_tool_span(index) for index in range(children))])
 
@@ -96,7 +94,6 @@ def test_reproject_leaves_the_write_lock_free_between_chunks(
 def test_worker_batch_leaves_the_write_lock_free_between_chunks(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Ingest projection opens the same window after every chunk and batch."""
     children = PROJECTION_COMMIT_CHUNK * 3
     batch_id = _ingest([_root_span(), *(_tool_span(index) for index in range(children))])
 
@@ -169,7 +166,6 @@ def test_concurrent_batches_wait_for_the_write_lock_one_at_a_time(
 def test_worker_batch_aggregates_a_completed_run_once_per_pass(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """One batch of spans landing on a completed run pays one aggregation."""
     aggregate_calls = _count_run_aggregate_calls(monkeypatch)
     children = 256
     batch_id = _ingest([_root_span(), *(_tool_span(index) for index in range(children))])
@@ -186,7 +182,6 @@ def test_worker_batch_aggregates_a_completed_run_once_per_pass(
 def test_inline_projection_still_aggregates_per_span(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Callers projecting single spans outside a pass keep today's behavior."""
     aggregate_calls = _count_run_aggregate_calls(monkeypatch)
     _ingest([_root_span(), *(_tool_span(index) for index in range(3))])
 
@@ -244,7 +239,6 @@ def _db_path() -> str:
 
 
 def _ingest(spans: list[Span]) -> str:
-    """Accept spans canonically (no projection) and return the batch id."""
     payload = json.dumps(
         {
             "resourceSpans": [

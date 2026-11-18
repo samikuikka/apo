@@ -1097,9 +1097,6 @@ function createSemanticMethod(
   };
 }
 
-/**
- * Capability key → human description, for unsupported-outcome reasoning.
- */
 const CAPABILITY_LABELS: Record<keyof TraceProjectionCapabilities, string> = {
   messages: "message",
   tools: "tool",

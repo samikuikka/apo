@@ -108,7 +108,7 @@ export function TaskRunDetailBody({
           <>
             {/* Observed serving evidence (issue #307): the setups this run's
              * model calls actually served under, with speed and cost
-             * coverage. Collapsed behind one line — the checks, not the
+             * coverage. Collapsed behind one line: the checks, not the
              * serving forensics, are what the page opens on. The identity
              * rows are plain text: the traces page has no per-identity
              * filter vocabulary to deep-link into. */}

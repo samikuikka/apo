@@ -1,7 +1,5 @@
 # pyright: reportAttributeAccessIssue=false, reportPrivateLocalImportUsage=false, reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportUnannotatedClassAttribute=false
 
-"""Loop stall watchdog: a blocked serving loop is measured, not guessed."""
-
 from __future__ import annotations
 
 import asyncio
@@ -90,7 +88,6 @@ def test_start_and_stop_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
     async def scenario() -> None:
         loop_watchdog.start_loop_watchdog()
         assert loop_watchdog._watchdog_task is not None
-        # A second start must not spawn a duplicate watcher.
         first = loop_watchdog._watchdog_task
         loop_watchdog.start_loop_watchdog()
         assert loop_watchdog._watchdog_task is first

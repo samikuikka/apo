@@ -182,6 +182,10 @@ def create_app() -> FastAPI:
     # log-based flows (reading the password-reset link from
     # `docker compose logs backend`) printed nothing. Attach a real
     # handler unless one is already configured (e.g. by a test runner).
+    # The guard must also look at the apo logger itself: the module-level
+    # `app = create_app()` already attached one, and every extra
+    # create_app() call in the same process would stack another handler
+    # and print every line twice.
     import logging
     import sys
 
@@ -189,7 +193,7 @@ def create_app() -> FastAPI:
     level = logging.getLevelName(level_name)
     apo_logger = logging.getLogger("apo")
     apo_logger.setLevel(level if isinstance(level, int) else logging.INFO)
-    if not logging.getLogger().handlers:
+    if not logging.getLogger().handlers and not apo_logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(
             logging.Formatter("%(levelname)s:     %(name)s - %(message)s")
