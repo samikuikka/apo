@@ -61,8 +61,6 @@ export default function VariantFFoundry({
   const windowTotal = points.reduce((acc, p) => acc + p.totalChecks, 0);
   const windowRate = windowTotal > 0 ? windowPassed / windowTotal : null;
 
-  // Plain-language trend: graded rate of the last third of the window vs
-  // the first third, in points.
   const graded = rates.filter((r): r is number => r !== null);
   const third = Math.max(1, Math.floor(graded.length / 3));
   const early = graded.slice(0, third);
@@ -75,7 +73,9 @@ export default function VariantFFoundry({
 
   const innerW = Math.max(10, width - PAD.left - PAD.right);
   const innerH = HEIGHT - PAD.top - PAD.bottom;
-  const x = (i: number) => PAD.left + (i / (n - 1)) * innerW;
+  // n === 1 (a project's only batch run) would divide by zero and place
+  // every coordinate at NaN; a single point sits at the left edge instead.
+  const x = (i: number) => PAD.left + (i / Math.max(1, n - 1)) * innerW;
   const y = (v: number) => PAD.top + innerH - v * innerH;
 
   const segments: string[][] = [];
@@ -304,7 +304,7 @@ export default function VariantFFoundry({
           const share = era.runs / n;
           return (
             <div
-              key={`${era.label}-${era.runs}`}
+              key={era.firstIndex}
               title={`${era.title} · ${era.runs} runs`}
               className={`flex min-w-0 items-center justify-center ${share > 0.5 ? "bg-secondary" : "bg-muted"}`}
               style={{ flexGrow: era.runs }}
@@ -352,7 +352,7 @@ export default function VariantFFoundry({
 }
 
 function pctDelta(values: (number | null)[]): number | null {
-  const lastVal = [...values].reverse().find((v) => v !== null) ?? null;
+  const lastVal = values.findLast((v) => v !== null) ?? null;
   const firstVal = values.find((v) => v !== null) ?? null;
   if (lastVal === null || firstVal === null || firstVal === 0) return null;
   return Math.round(((lastVal - firstVal) / firstVal) * 100);

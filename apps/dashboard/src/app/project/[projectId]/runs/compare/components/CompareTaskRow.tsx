@@ -830,7 +830,6 @@ function CheckDiff({
   const rightModel = right?.primary_model ? shortModel(right.primary_model) : null;
   const leftLabel = leftModel ? `Run A · ${leftModel}` : "Run A";
   const rightLabel = rightModel ? `Run B · ${rightModel}` : "Run B";
-  // Commit SHA for source fetching; prefer the left run's, fall back to right.
   // The check definition should be the same across both runs of the same task.
   const commitSha = left?.task_source_commit_sha ?? right?.task_source_commit_sha ?? null;
 
