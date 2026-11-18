@@ -86,6 +86,7 @@ from ..services.serving import (
     load_call_rows,
     run_matches_filter,
     serving_groups,
+    stored_serving_summary,
     summarize_calls,
 )
 
@@ -166,6 +167,32 @@ def _serving_calls_for_task_runs(
     for project, trace_ids in trace_ids_by_project.items():
         calls.update(load_call_rows(session, project=project, run_ids=trace_ids))
     return calls
+
+
+def _stored_or_computed_servings(
+    session: Session,
+    task_runs: Sequence[AgentTaskRunDB],
+) -> dict[str, ServingSummary]:
+    """Per-trace summaries from the stored rollup, computing only the runs
+    whose column is null (never backfilled, no trace yet, or corrupt)."""
+    summaries: dict[str, ServingSummary] = {}
+    missing: list[tuple[AgentTaskRunDB, str]] = []
+    for task_run in task_runs:
+        trace_id = task_run.trace_run_id
+        if trace_id is None:
+            continue
+        stored = stored_serving_summary(task_run)
+        if stored is not None:
+            summaries[trace_id] = stored
+        else:
+            missing.append((task_run, trace_id))
+    if missing:
+        calls_by_trace = _serving_calls_for_task_runs(
+            session, [task_run for task_run, _ in missing]
+        )
+        for _, trace_id in missing:
+            summaries[trace_id] = summarize_calls(calls_by_trace.get(trace_id, []))
+    return summaries
 
 
 # Defer the heavy JSON columns on list/summary paths that only read scalars.
@@ -351,6 +378,20 @@ def _task_run_model_drift(
         )
     ).all()
     return model_drift_summary(calls, task_run.configured_model)
+
+
+def _stored_or_computed_serving(
+    session: Session, task_run: AgentTaskRunDB, project: str
+) -> ServingSummary:
+    """The run's stored rollup when present, else the compute path."""
+    stored = stored_serving_summary(task_run)
+    if stored is not None:
+        return stored
+    return summarize_calls(
+        load_call_rows(
+            session, project=project, run_ids=[task_run.trace_run_id or ""]
+        ).get(task_run.trace_run_id or "", [])
+    )
 
 
 def _build_task_run_detail(
@@ -1047,6 +1088,19 @@ def get_agent_task_batch_run(
             1 for tid in trace_ids if has_serving_evidence(calls_by_trace.get(tid, []))
         ),
     )
+    # The batch aggregate computes from the already-loaded call rows; each
+    # child reads its own stored rollup (call rows are loaded once for the
+    # aggregate, so the fallback reuses them).
+    run_servings: dict[str, ServingSummary] = {}
+    for tr in task_runs:
+        if tr.trace_run_id is None:
+            continue
+        stored = stored_serving_summary(tr)
+        run_servings[tr.trace_run_id] = (
+            stored
+            if stored is not None
+            else summarize_calls(calls_by_trace.get(tr.trace_run_id, []))
+        )
     return to_batch_run_detail(
         batch,
         task_runs,
@@ -1057,9 +1111,7 @@ def get_agent_task_batch_run(
         executor_pool_name=pool_name,
         requested_by_label=user_label(session, batch.requested_by_user_id),
         serving=batch_serving,
-        run_servings={
-            tid: summarize_calls(calls_by_trace.get(tid, [])) for tid in trace_ids
-        },
+        run_servings=run_servings,
     )
 
 
@@ -1292,15 +1344,17 @@ def list_agent_task_runs(
                 serving_filter.mode,
             )
         ][:limit]
+        # Call rows are already loaded for the predicate; the display field
+        # computes from them.
+        serving_by_trace = {
+            trace_id: summarize_calls(calls)
+            for trace_id, calls in calls_by_trace.items()
+        }
     else:
         query = query.limit(limit)
         task_runs = session.exec(query).all()
-        calls_by_trace = _serving_calls_for_task_runs(session, task_runs)
+        serving_by_trace = _stored_or_computed_servings(session, task_runs)
     batches = _load_batches(session, [tr.batch_run_id for tr in task_runs])
-    serving_by_trace = {
-        trace_id: summarize_calls(calls)
-        for trace_id, calls in calls_by_trace.items()
-    }
     summaries: list[AgentTaskRunSummary] = []
     for tr in task_runs:
         batch = batches.get(tr.batch_run_id)
@@ -1369,11 +1423,7 @@ async def get_agent_task_run(
         # A run with no linked trace reports no_data rather than null:
         # null is reserved for projections built without trace access.
         serving=(
-            summarize_calls(
-                load_call_rows(
-                    session, project=batch.project, run_ids=[task_run.trace_run_id or ""]
-                ).get(task_run.trace_run_id or "", [])
-            )
+            _stored_or_computed_serving(session, task_run, batch.project)
             if batch is not None
             else None
         ),

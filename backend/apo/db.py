@@ -4751,7 +4751,82 @@ def _migrate_to_v71() -> None:
             )
 
 
-LATEST_SCHEMA_VERSION = 71
+def _migrate_to_v72() -> None:
+    """Version 72: persisted per-run serving summary on agent_task_runs.
+
+    List and detail routes used to recompute each run's ServingSummary from
+    every logged_calls row on every request (5.8k rows and up to 1.7 s on
+    the production database). The rollup is now written at the same sites as
+    ``model_providers_json`` (finalize aggregation and the projector's
+    task-run recompute); this migration backfills it for existing traced
+    runs. Runs without a trace keep null (there is nothing to summarize,
+    and readers fall back to the compute path on null anyway).
+
+    Runs whose summary is legitimately null do not exist (a traced run with
+    zero calls stores the ``no_data`` summary), so the null filter doubles
+    as the resumability marker: an interrupted pass re-examines only the
+    unprocessed runs as cheap no-ops, the same trade-off as v53.
+    """
+    with engine.begin() as conn:
+        _add_column_if_missing(conn, "agent_task_runs", "serving_summary_json", "JSON")
+
+    import logging
+
+    from sqlmodel import Session as SQLModelSession
+    from sqlmodel import col, update as sqlmodel_update
+
+    from .models.db import AgentTaskRunDB
+    from .services.serving import load_call_rows, summarize_calls
+
+    logger = logging.getLogger(__name__)
+
+    # Only the three columns the backfill keys on: a full-row ORM load would
+    # crash on columns later migrations add and drag the fat payloads in.
+    with engine.connect() as conn:
+        task_refs = conn.exec_driver_sql(
+            "SELECT r.id, r.trace_run_id, b.project FROM agent_task_runs r "
+            "JOIN agent_task_batch_runs b ON b.id = r.batch_run_id "
+            "WHERE r.trace_run_id IS NOT NULL "
+            "AND r.serving_summary_json IS NULL"
+        ).fetchall()
+
+    batch_size = 300
+    processed = 0
+    with SQLModelSession(engine) as session:
+        for offset in range(0, len(task_refs), batch_size):
+            chunk = task_refs[offset : offset + batch_size]
+            refs_by_project: dict[str, list[tuple[str, str]]] = {}
+            for task_run_id, trace_run_id, project in chunk:
+                refs_by_project.setdefault(project, []).append(
+                    (task_run_id, trace_run_id)
+                )
+            for project, refs in refs_by_project.items():
+                # One serving-column query per distinct project in the
+                # chunk; the loader selects plain tuples, never ORM rows.
+                grouped = load_call_rows(
+                    session, project=project, run_ids=[t for _, t in refs]
+                )
+                for task_run_id, trace_run_id in refs:
+                    session.exec(
+                        sqlmodel_update(AgentTaskRunDB)
+                        .where(col(AgentTaskRunDB.id) == task_run_id)
+                        .values(
+                            serving_summary_json=summarize_calls(
+                                grouped.get(trace_run_id, [])
+                            ).model_dump(mode="json")
+                        )
+                    )
+            session.commit()
+            processed += len(chunk)
+            logger.info(
+                "Schema v72 backfill: %d/%d traced task runs", processed, len(task_refs)
+            )
+    logger.info(
+        "Schema v72: stored serving summaries on %d traced task runs", processed
+    )
+
+
+LATEST_SCHEMA_VERSION = 72
 
 _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     1: _migrate_to_baseline,
@@ -4825,6 +4900,7 @@ _SCHEMA_MIGRATIONS: dict[int, Callable[[], None]] = {
     69: _migrate_to_v69,
     70: _migrate_to_v70,
     71: _migrate_to_v71,
+    72: _migrate_to_v72,
 }
 
 

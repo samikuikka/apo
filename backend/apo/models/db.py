@@ -602,6 +602,13 @@ class AgentTaskRunDB(SQLModel, table=True):
     model_providers_json: dict[str, object] | None = Field(
         default=None, sa_column=Column(JSON)
     )
+    # Per-run ServingSummary.model_dump(mode="json") for the run's trace,
+    # written at finalize and on every projection recompute. Null until
+    # first computed (backfill or ingest); readers fall back to computing
+    # from call rows.
+    serving_summary_json: dict[str, object] | None = Field(
+        default=None, sa_column=Column("serving_summary_json", JSON)
+    )
     # adapter-reported Run Configuration. Typed, indexed product
     # dimensions — never backfilled from adapter name, env, or trace data.
     # Both columns nullable so legacy rows remain readable as "unknown".

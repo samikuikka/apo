@@ -21,17 +21,19 @@ timing are not measurements.
 
 from __future__ import annotations
 
+import logging
 import math
 import statistics
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Literal, NamedTuple, cast
 
+from pydantic import ValidationError
 from sqlalchemy import select as sa_select
 from sqlalchemy.orm import QueryableAttribute
 from sqlmodel import Session, col
 
-from ..models.db import LoggedCallDB
+from ..models.db import AgentTaskRunDB, LoggedCallDB
 from ..models.serving import (
     CostCoverage,
     GenerationRates,
@@ -46,6 +48,11 @@ from ..models.serving import (
 # Inline summaries cap: the bounded ``serving`` object on run/batch rows.
 # The breakdown endpoint pages the complete set instead of truncating.
 INLINE_GROUP_CAP = 20
+
+logger = logging.getLogger(__name__)
+
+# Corrupt stored summaries warn once per run id, not once per request.
+_CORRUPT_SUMMARY_WARNED_RUN_IDS: set[str] = set()
 
 ServingScope = Literal["text", "all_output", "unknown"]
 
@@ -691,6 +698,53 @@ def run_matches_filter(
     return True
 
 
+def to_serving_call(call: LoggedCallDB) -> ServingCall:
+    """Adapt a full entity to the serving shape for the write path."""
+    return ServingCall(
+        id=call.id,
+        run_id=call.run_id,
+        model=call.model,
+        observed_model=call.observed_model,
+        api_provider=call.api_provider,
+        serving_host=call.serving_host,
+        route=call.route,
+        service_tier=call.service_tier,
+        request_accounting=call.request_accounting,
+        observation_type=call.observation_type,
+        level=call.level,
+        created_at=call.created_at,
+        end_time=call.end_time,
+        time_to_first_token_ms=call.time_to_first_token_ms,
+        completion_tokens=call.completion_tokens,
+        output_token_scope=call.output_token_scope,
+        first_content_scope=call.first_content_scope,
+        raw_usage=call.raw_usage,
+        cost=call.cost,
+        provided_cost=call.provided_cost,
+        cost_provenance=call.cost_provenance,
+        pricing_quality=call.pricing_quality,
+    )
+
+
+def stored_serving_summary(task_run: AgentTaskRunDB) -> ServingSummary | None:
+    """Parse the stored rollup, or None when absent/unparseable."""
+    raw = task_run.serving_summary_json
+    if raw is None:
+        return None
+    try:
+        return ServingSummary.model_validate(raw)
+    except ValidationError:
+        # A corrupt value must never 500 a list; fall back to the compute
+        # path and say so once per run instead of once per request.
+        if task_run.id not in _CORRUPT_SUMMARY_WARNED_RUN_IDS:
+            _CORRUPT_SUMMARY_WARNED_RUN_IDS.add(task_run.id)
+            logger.warning(
+                "Corrupt serving_summary_json on task run %s; computing from call rows",
+                task_run.id,
+            )
+        return None
+
+
 def load_call_rows(
     session: Session,
     *,
@@ -790,5 +844,7 @@ __all__ = [
     "run_matches_filter",
     "serving_groups",
     "serving_summaries_for_runs",
+    "stored_serving_summary",
     "summarize_calls",
+    "to_serving_call",
 ]
