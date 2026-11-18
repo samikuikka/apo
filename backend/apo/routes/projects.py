@@ -523,13 +523,19 @@ def list_project_agent_tasks(
     request: Request,
     session: Session = Depends(get_session),
     grep: str | None = Query(default=None),
+    ids: list[str] | None = Query(
+        default=None,
+        description="Exact task-id membership filter; repeatable. Blank values are ignored.",
+    ),
 ):
     """List the project's tasks from persisted inventory.
 
     Replaces the legacy ``GET /v1/agent-tasks?project=...`` path for the
     active UI. Returns ``404`` if the project has no task source
-    configured yet — the dashboard should branch on the project payload
+    configured yet: the dashboard should branch on the project payload
     and prompt the user to set up a source before calling this route.
+    ``grep`` substring-matches the task's surfaces; ``ids`` is an exact
+    task-id membership filter served by SQL. Both present means AND.
     """
     _project, _role = _load_project_for_request(session, project_id, request)
 
@@ -540,8 +546,11 @@ def list_project_agent_tasks(
             detail="Project has no task source configured.",
         )
 
+    # `?ids=` parses as [""] and blanks must not empty the list: the
+    # absent-means-unfiltered rule the run list's repeatable filters use.
+    exact_ids = [value for value in ids or [] if value] or None
     # published catalogs are already in inventory; no lazy refresh.
-    rows = list_inventory_for_project(session, project_id, grep=grep)
+    rows = list_inventory_for_project(session, project_id, grep=grep, ids=exact_ids)
     summaries = [to_summary(row) for row in rows]
     if not summaries:
         return summaries

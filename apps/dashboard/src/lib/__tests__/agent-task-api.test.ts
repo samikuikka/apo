@@ -85,7 +85,7 @@ describe("getProjectAgentTask", () => {
     vi.mocked(apiClient).mockReset();
   });
 
-  it("resolves a hierarchical task id through the project collection", async () => {
+  it("resolves a hierarchical task id through an exact ids filter", async () => {
     vi.mocked(apiClient).mockResolvedValue([
       {
         id: "claude-agent/data-extraction",
@@ -108,7 +108,7 @@ describe("getProjectAgentTask", () => {
       "/v1/projects/project-1/agent-tasks",
       {
         cache: "no-store",
-        query: { grep: "claude-agent/data-extraction" },
+        query: { ids: ["claude-agent/data-extraction"] },
       },
     );
     expect(task.id).toBe("claude-agent/data-extraction");

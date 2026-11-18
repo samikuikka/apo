@@ -930,10 +930,11 @@ const NO_CACHE = { cache: "no-store" } as const;
 export const listProjectAgentTasks = (
   projectId: string,
   grep?: string,
+  ids?: string[],
 ): Promise<AgentTaskSummary[]> =>
   apiClient(`/v1/projects/${encodeURIComponent(projectId)}/agent-tasks`, {
     ...NO_CACHE,
-    query: { grep },
+    query: { grep, ids },
   });
 
 /**
@@ -960,14 +961,15 @@ interface ArchivedAgentTasksResponse {
  * Task ids are hierarchical (for example `claude-agent/data-extraction`).
  * Keeping the id in a query parameter avoids relying on encoded slashes in a
  * catch-all backend path, which can be decoded differently by SSR fetches and
- * production proxies. The exact-id check is still required because `grep` is
- * intentionally a substring search.
+ * production proxies. The exact `ids` membership filter asks for only the
+ * requested task; the find stays as a guard so a future filter relaxation
+ * cannot resolve the wrong task.
  */
 export const getProjectAgentTask = async (
   projectId: string,
   taskId: string,
 ): Promise<AgentTaskDetail> => {
-  const tasks = await listProjectAgentTasks(projectId, taskId);
+  const tasks = await listProjectAgentTasks(projectId, undefined, [taskId]);
   const task = tasks.find((candidate) => candidate.id === taskId);
   if (task) {
     return { ...task, latest_run: null };
