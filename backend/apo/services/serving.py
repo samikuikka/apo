@@ -25,10 +25,11 @@ import math
 import statistics
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Literal, NamedTuple, cast
 
-from sqlalchemy.orm import load_only
-from sqlmodel import Session, col, select
+from sqlalchemy import select as sa_select
+from sqlalchemy.orm import QueryableAttribute
+from sqlmodel import Session, col
 
 from ..models.db import LoggedCallDB
 from ..models.serving import (
@@ -51,30 +52,57 @@ ServingScope = Literal["text", "all_output", "unknown"]
 # (model, api_provider, serving_host, route, service_tier), nulls retained.
 ServingGroupKey = tuple[str | None, str | None, str | None, str | None, str | None]
 
+
+class ServingCall(NamedTuple):
+    # Field order must stay identical to ``_SERVING_COLUMNS`` below: the
+    # loader zips the column keys with each row's values by position.
+    id: str
+    run_id: str | None
+    model: str
+    observed_model: str | None
+    api_provider: str | None
+    serving_host: str | None
+    route: str | None
+    service_tier: str | None
+    request_accounting: str | None
+    observation_type: str
+    level: str
+    created_at: datetime
+    end_time: datetime | None
+    time_to_first_token_ms: float | None
+    completion_tokens: int | None
+    output_token_scope: str | None
+    first_content_scope: str | None
+    raw_usage: dict[str, int] | None
+    cost: int | None
+    provided_cost: int | None
+    cost_provenance: str | None
+    pricing_quality: str | None
+
 # Dimension names of a ServingFilter paired with the call attribute each
 # reads. ``model`` matches the grouping key's model (observed model, else
 # the legacy normalized model).
-def _call_model(call: LoggedCallDB) -> str | None:
+def _call_model(call: ServingCall) -> str | None:
     return call.observed_model or call.model or None
 
 
-def _call_api_provider(call: LoggedCallDB) -> str | None:
+def _call_api_provider(call: ServingCall) -> str | None:
     return call.api_provider
 
 
-def _call_serving_host(call: LoggedCallDB) -> str | None:
+def _call_serving_host(call: ServingCall) -> str | None:
     return call.serving_host
 
 
-def _call_route(call: LoggedCallDB) -> str | None:
+def _call_route(call: ServingCall) -> str | None:
     return call.route
 
 
-def _call_service_tier(call: LoggedCallDB) -> str | None:
+def _call_service_tier(call: ServingCall) -> str | None:
     return call.service_tier
 
 
-_DIMENSION_GETTERS: Mapping[str, Callable[[LoggedCallDB], str | None]] = {
+_DIMENSION_GETTERS: Mapping[str, Callable[[ServingCall], str | None]] = {
     "model": _call_model,
     "provider": _call_api_provider,
     "host": _call_serving_host,
@@ -95,9 +123,8 @@ UnavailableReason = Literal[
 # Exactly the columns the serving rollups read: identity (model, provider,
 # host, route, tier), accounting and observation type, timing, tokens, and
 # cost scalars. Every other column stays off the wire (payloads, messages,
-# tool bodies, metadata), and ``raiseload`` turns a read of an unloaded
-# column into an error instead of a silent per-row lazy load, so the diet
-# cannot regress quietly.
+# tool bodies, metadata); the loader selects these as plain tuples, so a
+# column not listed here is not loaded at all and the diet cannot regress.
 _SERVING_COLUMNS = (
     LoggedCallDB.id,
     LoggedCallDB.run_id,
@@ -124,7 +151,7 @@ _SERVING_COLUMNS = (
 )
 
 
-def is_request_evidence(call: LoggedCallDB) -> bool:
+def is_request_evidence(call: ServingCall) -> bool:
     """Does this row carry per-request serving evidence?
 
     A row with explicit ``request_accounting="request"`` is one physical API
@@ -142,15 +169,15 @@ def is_request_evidence(call: LoggedCallDB) -> bool:
     return False
 
 
-def is_aggregate_observation(call: LoggedCallDB) -> bool:
+def is_aggregate_observation(call: ServingCall) -> bool:
     return call.request_accounting == "aggregate"
 
 
-def _observed_model(call: LoggedCallDB) -> str | None:
+def _observed_model(call: ServingCall) -> str | None:
     return call.observed_model or call.model or None
 
 
-def group_key(call: LoggedCallDB) -> ServingGroupKey:
+def group_key(call: ServingCall) -> ServingGroupKey:
     """The serving identity tuple a call groups under, nulls retained."""
     return (
         _observed_model(call),
@@ -166,11 +193,11 @@ def _group_sort_key(key: ServingGroupKey) -> tuple[tuple[int, str], ...]:
     return tuple((0, "") if value is None else (1, value) for value in key)
 
 
-def _is_errored(call: LoggedCallDB) -> bool:
+def _is_errored(call: ServingCall) -> bool:
     return call.level == "ERROR"
 
 
-def _reasoning_tokens(call: LoggedCallDB) -> int | None:
+def _reasoning_tokens(call: ServingCall) -> int | None:
     # ``raw_usage`` is typed dict[str, int], but hand-written rows exist;
     # reading through ``object`` keeps the runtime guard meaningful.
     value: object = (call.raw_usage or {}).get("reasoning")
@@ -179,7 +206,7 @@ def _reasoning_tokens(call: LoggedCallDB) -> int | None:
     return value
 
 
-def _output_tokens(call: LoggedCallDB) -> int | None:
+def _output_tokens(call: ServingCall) -> int | None:
     """The rate numerator: completion tokens, plus reasoning when the
     reported scope says the output count includes it."""
     if call.completion_tokens is None:
@@ -198,7 +225,7 @@ def _first_content_time(start: datetime, ttft_ms: float) -> datetime:
     return start + timedelta(milliseconds=ttft_ms)
 
 
-def generation_rates(call: LoggedCallDB) -> GenerationRates:
+def generation_rates(call: ServingCall) -> GenerationRates:
     """Whole-call and streaming output rates for one generation call.
 
     ``s`` is the call start (``created_at``), ``e`` its terminal end, ``f``
@@ -257,7 +284,7 @@ def generation_rates(call: LoggedCallDB) -> GenerationRates:
 
 
 def _streaming_unavailable_reason(
-    call: LoggedCallDB,
+    call: ServingCall,
     *,
     start: datetime,
     end: datetime | None,
@@ -303,7 +330,7 @@ class _GroupAccumulator:
         # scope -> {"whole": [values], "stream": [values]}
         self.scopes: dict[ServingScope, dict[Literal["whole", "stream"], list[float]]] = {}
 
-    def add(self, call: LoggedCallDB) -> None:
+    def add(self, call: ServingCall) -> None:
         self.calls += 1
         if _is_errored(call):
             self.errored_calls += 1
@@ -369,7 +396,7 @@ def _group_identity(key: ServingGroupKey) -> ServingIdentity:
     )
 
 
-def serving_groups(calls: Sequence[LoggedCallDB]) -> list[ServingGroup]:
+def serving_groups(calls: Sequence[ServingCall]) -> list[ServingGroup]:
     """All serving groups over request-evidence calls, fully ordered.
 
     Order: descending call count, then the lexicographic identity tuple
@@ -406,7 +433,7 @@ def empty_serving_summary() -> ServingSummary:
 
 
 def summarize_calls(
-    calls: Sequence[LoggedCallDB],
+    calls: Sequence[ServingCall],
     *,
     task_runs_total: int = 1,
     task_runs_with_evidence: int | None = None,
@@ -483,12 +510,12 @@ def summarize_calls(
     )
 
 
-def _effective_cost(call: LoggedCallDB) -> int | None:
+def _effective_cost(call: ServingCall) -> int | None:
     """The single effective total (micro-USD), as the run rollup reads it."""
     return call.cost if call.cost is not None else call.provided_cost
 
 
-def cost_coverage(calls: Sequence[LoggedCallDB]) -> CostCoverage:
+def cost_coverage(calls: Sequence[ServingCall]) -> CostCoverage:
     """Classify the existing effective-cost fields by estimate quality.
 
     Sums are nullable: null means no eligible priced observation of that
@@ -593,7 +620,7 @@ def filter_is_active(serving_filter: ServingFilter) -> bool:
     return any(selection or unknown for selection, unknown in values.values())
 
 
-def call_matches_filter(call: LoggedCallDB, serving_filter: ServingFilter) -> bool:
+def call_matches_filter(call: ServingCall, serving_filter: ServingFilter) -> bool:
     """Same-request predicate: values OR within a dimension, dimensions AND.
 
     Shared by the run lists, saved views, and comparisons. The comparison
@@ -620,7 +647,7 @@ def call_matches_filter(call: LoggedCallDB, serving_filter: ServingFilter) -> bo
 
 
 def run_matches_filter(
-    calls: Sequence[LoggedCallDB],
+    calls: Sequence[ServingCall],
     serving_filter: ServingFilter,
     mode: Literal["contains", "only"] = "contains",
 ) -> bool:
@@ -669,29 +696,33 @@ def load_call_rows(
     *,
     project: str,
     run_ids: Sequence[str],
-) -> dict[str, list[LoggedCallDB]]:
+) -> dict[str, list[ServingCall]]:
     """All call rows for the given trace run ids, grouped by run id.
 
-    One query carrying only the serving columns. ``project`` scopes the
-    lookup because trace ids may collide across projects (surrogate-PK
-    design) and another project's copy of a trace must never leak into
-    this one's summary or filter.
+    One query selecting only the serving columns, returned as plain
+    ``ServingCall`` tuples (no ORM entity materialization per row).
+    ``project`` scopes the lookup because trace ids may collide across
+    projects (surrogate-PK design) and another project's copy of a trace
+    must never leak into this one's summary or filter.
     """
     unique_ids = list(dict.fromkeys(run_ids))
     if not unique_ids:
         return {}
-    rows = session.exec(
-        select(LoggedCallDB)
-        .options(load_only(*_SERVING_COLUMNS, raiseload=True))
-        .where(
+    columns = cast("tuple[QueryableAttribute[object], ...]", _SERVING_COLUMNS)
+    keys = [column.key for column in columns]
+    # session.exec is entity-typed; a column-tuple select rides the
+    # underlying execute (same as the admin and migration paths).
+    rows = session.execute(  # pyright: ignore[reportDeprecated]
+        sa_select(*columns).where(
             col(LoggedCallDB.run_id).in_(unique_ids),
             col(LoggedCallDB.project) == project,
         )
     ).all()
-    grouped: dict[str, list[LoggedCallDB]] = {}
+    grouped: dict[str, list[ServingCall]] = {}
     for row in rows:
-        if row.run_id is not None:
-            grouped.setdefault(row.run_id, []).append(row)
+        call = ServingCall(**dict(zip(keys, row, strict=True)))
+        if call.run_id is not None:
+            grouped.setdefault(call.run_id, []).append(call)
     return grouped
 
 
@@ -737,13 +768,14 @@ def batch_serving_summary(
     )
 
 
-def has_serving_evidence(calls: Sequence[LoggedCallDB]) -> bool:
+def has_serving_evidence(calls: Sequence[ServingCall]) -> bool:
     """Any request or aggregate serving evidence in this call set?"""
     return any(is_request_evidence(call) or is_aggregate_observation(call) for call in calls)
 
 
 __all__ = [
     "INLINE_GROUP_CAP",
+    "ServingCall",
     "batch_serving_summary",
     "empty_serving_summary",
     "call_matches_filter",

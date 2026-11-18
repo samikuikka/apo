@@ -561,7 +561,7 @@ def list_project_agent_tasks(
     "/{project_id}/agent-task-run-stats",
     response_model=dict[str, AgentTaskRunStats],
 )
-async def list_project_agent_task_run_stats(
+def list_project_agent_task_run_stats(
     project_id: str,
     request: Request,
     session: Session = Depends(get_session),
@@ -601,7 +601,7 @@ async def list_project_agent_task_run_stats(
     "/{project_id}/agent-task-run-config-facets",
     response_model=list[RunConfigModelFacet],
 )
-async def list_project_agent_task_run_config_facets(
+def list_project_agent_task_run_config_facets(
     project_id: str,
     request: Request,
     session: Session = Depends(get_session),
@@ -620,7 +620,7 @@ async def list_project_agent_task_run_config_facets(
     "/{project_id}/agent-task-run-host-facets",
     response_model=list[RunHostFacet],
 )
-async def list_project_agent_task_run_host_facets(
+def list_project_agent_task_run_host_facets(
     project_id: str,
     request: Request,
     model: str | None = Query(
@@ -642,7 +642,7 @@ async def list_project_agent_task_run_host_facets(
     "/{project_id}/agent-task-run-label-facets",
     response_model=RunLabelFacets,
 )
-async def list_project_agent_task_run_label_facets(
+def list_project_agent_task_run_label_facets(
     project_id: str,
     request: Request,
     session: Session = Depends(get_session),
