@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import datetime, timezone
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from ..models.db import ProjectTaskInventoryDB, ProjectTaskSourceDB
 from ..models.schemas import AgentTaskDetail, AgentTaskRunStats, AgentTaskSummary
@@ -37,17 +37,22 @@ def list_inventory_for_project(
     project_id: str,
     *,
     grep: str | None = None,
+    ids: list[str] | None = None,
 ) -> list[ProjectTaskInventoryDB]:
-    """Return inventory rows for a project, optionally filtered by grep.
+    """Return inventory rows for a project, filtered by exact ids and/or grep.
 
-    Matches ``grep`` case-insensitively against ``task_id``,
-    ``display_name``, ``folder_path``, or ``description`` — the same
+    ``ids`` is an exact task-id membership filter pushed into SQL, so the
+    inventory's ``task_id`` index serves it instead of a whole-project
+    scan. ``grep`` matches case-insensitively against ``task_id``,
+    ``display_name``, ``folder_path``, or ``description``: the same
     surfaces the dashboard's search box exposes, so a task is findable by
-    what it is for, not only by its name and path.
+    what it is for, not only by its name and path. Both present means AND.
     """
     statement = select(ProjectTaskInventoryDB).where(
         ProjectTaskInventoryDB.project == project_id
     )
+    if ids:
+        statement = statement.where(col(ProjectTaskInventoryDB.task_id).in_(ids))
     rows = session.exec(statement).all()
     if not grep:
         return list(rows)

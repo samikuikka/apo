@@ -11,7 +11,7 @@ import { fetchTaskViewConfigFacets } from "@/lib/agent-task-view-api";
 import { getProject } from "@/lib/projects-api";
 import { detailTitle } from "@/lib/page-title";
 import { isNotFoundStatus } from "@/lib/api-error";
-import { Suspense } from "react";
+import { Suspense, cache } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TaskFileBrowser } from "@/components/agent-task-files/task-file-browser";
@@ -31,6 +31,12 @@ export const dynamic = "force-dynamic";
 // hierarchical paths with slashes (e.g. "openai-agent/data-extraction").
 // Join the captured segments back into the slash-delimited id the API expects.
 const joinTaskId = (segments: string[]): string => segments.join("/");
+
+// Per-request memo so generateMetadata and the page body share one backend
+// fetch for the same task instead of issuing it twice per render.
+const resolveTask = cache((projectId: string, taskId: string) =>
+  getProjectAgentTask(projectId, taskId),
+);
 
 // The run-history scope, carried from the Tasks page's active evidence view
 // (`?model=&effort=&since=`, the same vocabulary the Runs page reads) plus
@@ -77,7 +83,7 @@ export async function generateMetadata({
   const { projectId, taskId: taskIdSegments } = await params;
   const taskId = joinTaskId(taskIdSegments);
   try {
-    const task = await getProjectAgentTask(projectId, taskId);
+    const task = await resolveTask(projectId, taskId);
     return { title: detailTitle(task.display_name, "Task") };
   } catch {
     return { title: "Task" };
@@ -141,7 +147,7 @@ export default async function TaskDetailPage({
     // an unreachable backend must surface as an error, not as a false
     // "removed from catalog".
     const [resolved, scoped, facetResult, labelFacetResult, project] = await Promise.all([
-      getProjectAgentTask(projectId, taskId).catch((error: unknown) =>
+      resolveTask(projectId, taskId).catch((error: unknown) =>
         isNotFoundStatus(error) ? null : Promise.reject(error),
       ),
       listTaskRuns(taskId, projectId, cohort, TASK_RUN_HISTORY_LIMIT),
