@@ -18,7 +18,7 @@ def test_v29_is_registered() -> None:
     # Serving identity, price selectors, the saved serving filter, and the
     # hot-query indexes took v67-v71 after this migration's era; the
     # registration itself is stable.
-    assert LATEST_SCHEMA_VERSION == 71
+    assert LATEST_SCHEMA_VERSION == 72
     assert _SCHEMA_MIGRATIONS[29].__name__ == "_migrate_to_v29"
 
 

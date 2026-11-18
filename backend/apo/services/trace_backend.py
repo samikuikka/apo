@@ -25,6 +25,7 @@ from sqlmodel import Session, select
 from ..models.db import AgentTaskRunDB, LoggedCallDB, OtlpSpanDB, RunDB
 from ..models.schemas import ModelDriftPair, ModelDriftSummary
 from .judge_span_links import JUDGE_STEP_PREFIXES
+from .serving import summarize_calls, to_serving_call
 from .trace_ownership import mark_failed, mark_persisted
 
 
@@ -469,6 +470,11 @@ class NativeTraceBackend:
         # The (model, provider/route) pairs the run actually served through
         # (issue #307) — the host dimension runs list/show and compare on.
         task_run.model_providers_json = model_providers_summary(calls)
+        # The per-run serving rollup rides the same aggregation so list and
+        # detail readers skip the per-call load entirely.
+        task_run.serving_summary_json = summarize_calls(
+            [to_serving_call(call) for call in calls]
+        ).model_dump(mode="json")
         apply_generation_rollups(
             task_run, compute_generation_rollups(calls, errored_span_ids)
         )
