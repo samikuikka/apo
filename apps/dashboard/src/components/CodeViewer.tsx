@@ -245,12 +245,13 @@ const theme = EditorView.theme({
   },
 });
 
-// Uncaps `.cm-scroller` for the fullHeight prop. Added after `theme` in the
-// extension list: same-specificity conflicts between theme entries resolve by
-// extension order, so this wins without !important (which CodeMirror's
-// injected styles can out-rank from a caller-side class).
+// Uncaps `.cm-scroller` for the fullHeight prop. The doubled class raises
+// this rule's specificity above the capped theme's: extension order between
+// two EditorView.theme entries does not decide same-specificity conflicts
+// once both modules are mounted, so the 480px rule kept winning on the live
+// page when this relied on order alone.
 const fullHeightTheme = EditorView.theme({
-  ".cm-scroller": { maxHeight: "none" },
+  ".cm-scroller.cm-scroller": { maxHeight: "none" },
 });
 
 export function CodeViewer({
