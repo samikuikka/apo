@@ -9,8 +9,8 @@ pick-two run diff (E)?
 
 **Route**: `/project/<id>/trends-prototype?trend=0|A|B|C|D|E`, where 0 is the
 Original (empty page, today's state); arrow keys flip variants; a floating
-bar at the bottom cycles them. (`?trend=`, not `?variant=` or `?monitor=`;
-the shell's status-bar and monitors prototypes own those params; on this
+bar at the bottom cycles them. (`?trend=`, not `?monitor=`; the monitors
+prototype owns that param; on this
 page our key handler claims the arrow keys so only one switcher flips.)
 Variant E adds `?base=`/`?cand=` batch run ids, defaulting to the latest
 run vs the one 10 positions earlier.

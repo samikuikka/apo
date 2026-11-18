@@ -49,7 +49,9 @@ export default function VariantAChecks({
   const innerW = Math.max(10, width - PAD.left - PAD.right);
   const innerH = HEIGHT - PAD.top - PAD.bottom;
   const n = points.length;
-  const x = (i: number) => PAD.left + (i / (n - 1)) * innerW;
+  // n === 1 (a project's only batch run) would divide by zero and place
+  // every coordinate at NaN; a single point sits at the left edge instead.
+  const x = (i: number) => PAD.left + (i / Math.max(1, n - 1)) * innerW;
   const y = (v: number) => PAD.top + innerH - v * innerH;
 
   const segments: string[][] = [];
@@ -282,10 +284,7 @@ export default function VariantAChecks({
 function lastNonNull(
   values: (number | null)[],
 ): number | null {
-  for (let i = values.length - 1; i >= 0; i--) {
-    if (values[i] !== null) return values[i];
-  }
-  return null;
+  return values.findLast((v) => v !== null) ?? null;
 }
 
 function SparkRow({

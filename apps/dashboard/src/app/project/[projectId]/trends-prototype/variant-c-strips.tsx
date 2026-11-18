@@ -29,7 +29,7 @@ export default function VariantCStrips({
   const rates = points.map(gradedRate);
   const lastRate = rates.at(-1) ?? null;
   const costs = points.map((p) => p.totalCost);
-  const lastCost = [...costs].reverse().find((c) => c !== null) ?? null;
+  const lastCost = costs.findLast((c) => c !== null) ?? null;
   const passing = taskResults.filter((t) => t.status === "passed").length;
 
   return (

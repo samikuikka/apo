@@ -42,11 +42,9 @@ export default async function TrendsPrototypePage({
   if (process.env.NODE_ENV === "production") {
     redirect(`/project/${projectId}/runs`);
   }
-  // ?trend= (not ?variant= or ?monitor=) · the shell and monitors
-  // prototypes own those params.
+  // ?trend= (not ?monitor=) · the monitors prototype owns that param.
   const raw = typeof query.trend === "string" ? query.trend.toUpperCase() : "A";
   const variant = PROTOTYPE_VARIANTS.some((v) => v.key === raw) ? raw : "A";
-  // ?data=demo · deterministic fixture instead of the two real fetches.
   const useDemo = query.data === "demo";
 
   let points: TrendPoint[] = [];
