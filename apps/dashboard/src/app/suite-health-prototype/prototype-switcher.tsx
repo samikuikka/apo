@@ -26,8 +26,8 @@ export default function PrototypeSwitcher({
           (index + dir + PROTOTYPE_VARIANTS.length) % PROTOTYPE_VARIANTS.length
         ];
       const url = new URL(window.location.href);
-      // Namespaced param: the shell (?variant=), monitors (?monitor=), and
-      // trends (?trend=) prototypes own the other switcher params.
+      // Namespaced param: the monitors (?monitor=) and trends (?trend=)
+      // prototypes own the other switcher params.
       url.searchParams.set("health", next.key);
       router.replace(`${url.pathname}${url.search}`);
     },

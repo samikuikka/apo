@@ -6,6 +6,7 @@
 import Link from "next/link";
 import {
   MIN_GRADED,
+  STUCK_STREAK,
   failingSinceLabel,
   formatDateTick,
   lastFailedLabel,
@@ -23,7 +24,7 @@ function latestOutcome(task: TaskHealth): string {
 /** The column's one value per task: last failure, or "failing since" for a
  * task currently stuck in a failure streak. Same metric, both directions. */
 function lastFailedCell(task: TaskHealth): { text: string; tone: string } {
-  if (task.failStreak >= 8 && task.graded >= MIN_GRADED) {
+  if (task.failStreak >= STUCK_STREAK && task.graded >= MIN_GRADED) {
     return { text: failingSinceLabel(task), tone: "text-destructive" };
   }
   const never = task.failed === 0 && task.graded >= MIN_GRADED;
@@ -48,8 +49,8 @@ export default function VariantBTasksEmbed({
   const windowDays = neverFailing[0]?.windowDays ?? null;
   const rows = [
     ...neverFailing,
-    ...tasks.filter((t) => t.graded >= MIN_GRADED && t.failStreak >= 8),
-    ...tasks.filter((t) => t.graded >= MIN_GRADED && t.failed > 0 && t.failStreak < 8),
+    ...tasks.filter((t) => t.graded >= MIN_GRADED && t.failStreak >= STUCK_STREAK),
+    ...tasks.filter((t) => t.graded >= MIN_GRADED && t.failed > 0 && t.failStreak < STUCK_STREAK),
   ].slice(0, 9);
 
   const reviewHref = `/suite-health-prototype?health=A&project=${projectId}${demo ? "&data=demo" : ""}`;
