@@ -330,7 +330,7 @@ function maxReasoningSub(
  *  aligned columns with identical track widths, comparing their fill lengths
  *  is a single vertical eye movement, with no tick or axis needed.
  *
- *  Null value → muted empty bar + "—" (no data), distinct from a true zero
+ *  Null value renders a muted empty bar (no data), distinct from a true zero
  *  (which on a per-row-scaled bar would misread as "free/instant"). Bars are
  *  neutral: a slower run might be doing more work, so "slower = red" would
  *  moralize wrongly. Length carries the signal; color stays out of it. */
@@ -428,7 +428,7 @@ function MetricSide({
  *  result, never the assertion's source text (which is already on the line).
  *
  *  Code vs judge differ in what's informative, so they branch (same isJudge
- *  condition as the runs page, task-run-detail-body.tsx:206):
+ *  condition as the run page's assertion drawer, assertion-drawer.tsx:30):
  *
  *  - Code assertion: `received` is a scalar (e.g. `1`, `"ok"`, `false`). It's
  *    informative on BOTH pass and fail: "length < 2" with received `1` vs
@@ -1022,12 +1022,9 @@ function CheckRow({
           )}
           <span className="truncate font-mono text-[12px] text-foreground/90">{id}</span>
         </div>
-        {/* Collapsed verdict cells are bare ✓/✗ badges. The first-line
-            reasoning that used to sit next to a ✗ was noise in a comparison:
-            tall when many checks failed, and for multi-judge checks the
-            reasoning picker (checkReasoning) showed only one of several
-            explanations anyway. The "where did it fail" signal lives in the
-            expanded source view; the "why" lives on the run page. */}
+        {/* Collapsed verdict cells are bare ✓/✗ badges: the "where did it
+            fail" signal lives in the expanded source view; the "why" lives
+            on the run page. */}
         <div className="flex min-w-0 items-center gap-2 border-l border-border px-3 py-2">
           <CheckBadge check={left} />
         </div>

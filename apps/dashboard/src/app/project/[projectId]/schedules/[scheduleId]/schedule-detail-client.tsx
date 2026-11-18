@@ -148,7 +148,6 @@ export function ScheduleDetailClient({
 
   return (
     <div className="mx-auto max-w-5xl">
-      {/* Header */}
       <div className="border-b border-border bg-background">
         <div className="px-6 py-4">
           <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
@@ -196,7 +195,6 @@ export function ScheduleDetailClient({
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex flex-wrap items-center gap-2 border-t border-border px-6 py-2.5">
           <Button
             type="button"
@@ -255,7 +253,6 @@ export function ScheduleDetailClient({
         )}
       </div>
 
-      {/* Body */}
       <div className="bg-background">
         {isAdaptive ? (
           <AdaptiveScheduleBody
@@ -380,7 +377,6 @@ function AdaptiveScheduleBody({
 
   return (
     <div>
-      {/* Next batch callout */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-6 py-3">
         <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Next batch
@@ -398,7 +394,6 @@ function AdaptiveScheduleBody({
         </span>
       </div>
 
-      {/* Per-task table */}
       {rows.length === 0 ? (
         <div className="px-6 py-10 text-center text-[13px] text-muted-foreground">
           No adaptive state yet. Tasks will appear here after the first batch run.
