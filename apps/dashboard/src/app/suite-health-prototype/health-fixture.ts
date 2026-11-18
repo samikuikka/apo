@@ -78,8 +78,7 @@ const TASKS: FixtureTask[] = [
 
 /** Deterministic health roles over the 18 real task paths. */
 export function buildDemoHealth(): TaskHealth[] {
-  const byTask = new Map<string, HealthRun[]>();
-  TASKS.forEach((task, index) => {
+  const tasks = TASKS.map((task, index) => {
     const taskId = `demo_task_${String(index + 1).padStart(2, "0")}`;
     const runs: HealthRun[] = [];
     for (let runNo = 1; runNo <= RUN_COUNT; runNo += 1) {
@@ -99,11 +98,8 @@ export function buildDemoHealth(): TaskHealth[] {
         at: new Date(FIRST_RUN_AT + (runNo - 1) * 16 * 3600_000).toISOString(),
       });
     }
-    byTask.set(taskId, runs);
+    return classifyTaskHealth(taskId, task.path, runs);
   });
-  const tasks = [...byTask.entries()].map(([taskId, runs]) =>
-    classifyTaskHealth(taskId, TASKS.find((t) => runs[0]?.taskPath === t.path)?.path ?? runs[0]?.taskPath ?? taskId, runs),
-  );
   return tasks.sort(
     (a, b) =>
       rankOf(a.state) - rankOf(b.state) || a.taskPath.localeCompare(b.taskPath),

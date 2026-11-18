@@ -8,7 +8,7 @@ from how the field actually does this.
 
 **Route**: `/suite-health-prototype?health=0|A|B&project=<id>`, arrow keys
 flip; the floating bar also carries a Data toggle. (`?health=`, not
-`?variant=`/`?monitor=`/`?trend=`; the shell, monitors, and trends prototypes
+`?monitor=`/`?trend=`; the monitors and trends prototypes
 own those params.) `?data=demo` swaps the real fetches for a deterministic
 fixture. Top-level on purpose: the project layout's auth guard sends every
 `/project/...` page to /login, and the prototype opens in any browser with

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { taskDetailHref } from "@/lib/task-routes";
 import {
   MIN_GRADED,
+  STUCK_STREAK,
   failingSinceLabel,
   formatDollars,
   lastFailedLabel,
@@ -39,8 +40,8 @@ export default function VariantAReview({ projectId, tasks, demo }: VariantProps)
   const neverFailing = eligible
     .filter((t) => t.failed === 0 && !kept.has(t.taskId))
     .sort((a, b) => b.graded - a.graded);
-  const alwaysFailing = eligible.filter((t) => t.failStreak >= 8);
-  const mixed = eligible.filter((t) => t.failed > 0 && t.failStreak < 8);
+  const alwaysFailing = eligible.filter((t) => t.failStreak >= STUCK_STREAK);
+  const mixed = eligible.filter((t) => t.failed > 0 && t.failStreak < STUCK_STREAK);
   const tooNew = tasks.filter((t) => t.graded < MIN_GRADED);
   const windowDays = neverFailing[0]?.windowDays ?? alwaysFailing[0]?.windowDays ?? null;
 

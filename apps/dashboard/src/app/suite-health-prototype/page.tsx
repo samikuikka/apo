@@ -38,8 +38,8 @@ export default async function SuiteHealthPrototypePage({
   if (process.env.NODE_ENV === "production") {
     redirect(`/project/${projectId}/tasks`);
   }
-  // ?health= (not ?variant=, ?monitor=, or ?trend=) · the shell, monitors, and
-  // trends prototypes own those params.
+  // ?health= (not ?monitor= or ?trend=) · the monitors and trends prototypes
+  // own those params.
   const raw = typeof query.health === "string" ? query.health.toUpperCase() : "A";
   const variant = PROTOTYPE_VARIANTS.some((v) => v.key === raw) ? raw : "A";
   const useDemo = query.data === "demo";
