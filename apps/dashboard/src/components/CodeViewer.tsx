@@ -33,6 +33,9 @@ interface CodeViewerProps {
   diagnostics?: CodeDiagnostic[];
   onDiagnosticClick?: (line: number, clientX: number, clientY: number) => void;
   className?: string;
+  /** Grow to the full content height instead of the 480px scrollbox cap,
+   *  for whole-file views where the page itself scrolls. */
+  fullHeight?: boolean;
 }
 
 function offsetRange(code: string, line: number, column?: number): { from: number; to: number } {
@@ -242,12 +245,21 @@ const theme = EditorView.theme({
   },
 });
 
+// Uncaps `.cm-scroller` for the fullHeight prop. Added after `theme` in the
+// extension list: same-specificity conflicts between theme entries resolve by
+// extension order, so this wins without !important (which CodeMirror's
+// injected styles can out-rank from a caller-side class).
+const fullHeightTheme = EditorView.theme({
+  ".cm-scroller": { maxHeight: "none" },
+});
+
 export function CodeViewer({
   code,
   language,
   diagnostics = EMPTY_DIAGNOSTICS,
   onDiagnosticClick,
   className,
+  fullHeight = false,
 }: CodeViewerProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -277,6 +289,7 @@ export function CodeViewer({
         hoverHighlight,
         lintGutter(),
         theme,
+        ...(fullHeight ? [fullHeightTheme] : []),
       ],
     });
     const view = new EditorView({ state, parent: host });
@@ -329,7 +342,7 @@ export function CodeViewer({
       view.destroy();
       viewRef.current = null;
     };
-  }, [code, language]);
+  }, [code, language, fullHeight]);
 
   useEffect(() => {
     const view = viewRef.current;
