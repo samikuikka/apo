@@ -26,12 +26,6 @@ interface DiagnosticTarget {
   assertionId?: string;
 }
 
-/**
- * Quiet disclosure inside the Checks tab: while closed it renders the checks
- * content as-is; while open it swaps that content for the whole `*.eval.ts`
- * as one continuous code view, with lint marks carrying the run's verdicts.
- * Clicking a marked line returns to the checks list with that check opened.
- */
 export function WholeTestFile({
   checks,
   checksSource,
@@ -52,7 +46,6 @@ export function WholeTestFile({
   projectId?: string | null;
   commitSha?: string | null;
   sourceType?: string | null;
-  /** The checks-tab content (list panel or empty state), shown while closed. */
   children: ReactNode;
 }) {
   // Open/closed is ephemeral view state: bulk expand state stays out of the URL.

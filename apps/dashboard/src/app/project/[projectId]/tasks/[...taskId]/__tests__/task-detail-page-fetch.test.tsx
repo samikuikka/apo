@@ -52,8 +52,6 @@ const taskSummary = (id: string) => ({
   run_stats: null,
 });
 
-/** Fetch stub answering the task lookup with `summary`, everything else empty.
- * A null summary answers the lookup with an empty list (the miss path). */
 const stubFetch = (summary: unknown) => {
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = String(input);

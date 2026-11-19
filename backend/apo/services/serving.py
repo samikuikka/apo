@@ -61,7 +61,7 @@ ServingGroupKey = tuple[str | None, str | None, str | None, str | None, str | No
 
 
 class ServingCall(NamedTuple):
-    # Field order must stay identical to ``_SERVING_COLUMNS`` below: the
+    # Field order must stay identical to ``SERVING_COLUMNS`` below: the
     # loader zips the column keys with each row's values by position.
     id: str
     run_id: str | None
@@ -86,9 +86,7 @@ class ServingCall(NamedTuple):
     cost_provenance: str | None
     pricing_quality: str | None
 
-# Dimension names of a ServingFilter paired with the call attribute each
-# reads. ``model`` matches the grouping key's model (observed model, else
-# the legacy normalized model).
+# The grouping key's model: observed model, else the legacy normalized model.
 def _call_model(call: ServingCall) -> str | None:
     return call.observed_model or call.model or None
 
@@ -109,6 +107,8 @@ def _call_service_tier(call: ServingCall) -> str | None:
     return call.service_tier
 
 
+# Dimension names of a ServingFilter paired with the call attribute each
+# reads, so one predicate walks every dimension uniformly.
 _DIMENSION_GETTERS: Mapping[str, Callable[[ServingCall], str | None]] = {
     "model": _call_model,
     "provider": _call_api_provider,
@@ -132,7 +132,9 @@ UnavailableReason = Literal[
 # cost scalars. Every other column stays off the wire (payloads, messages,
 # tool bodies, metadata); the loader selects these as plain tuples, so a
 # column not listed here is not loaded at all and the diet cannot regress.
-_SERVING_COLUMNS = (
+# Public because the loading benchmark compares techniques over this exact
+# column set.
+SERVING_COLUMNS = (
     LoggedCallDB.id,
     LoggedCallDB.run_id,
     LoggedCallDB.model,
@@ -727,7 +729,6 @@ def to_serving_call(call: LoggedCallDB) -> ServingCall:
 
 
 def stored_serving_summary(task_run: AgentTaskRunDB) -> ServingSummary | None:
-    """Parse the stored rollup, or None when absent/unparseable."""
     raw = task_run.serving_summary_json
     if raw is None:
         return None
@@ -762,7 +763,7 @@ def load_call_rows(
     unique_ids = list(dict.fromkeys(run_ids))
     if not unique_ids:
         return {}
-    columns = cast("tuple[QueryableAttribute[object], ...]", _SERVING_COLUMNS)
+    columns = cast("tuple[QueryableAttribute[object], ...]", SERVING_COLUMNS)
     keys = [column.key for column in columns]
     # session.exec is entity-typed; a column-tuple select rides the
     # underlying execute (same as the admin and migration paths).
@@ -829,6 +830,7 @@ def has_serving_evidence(calls: Sequence[ServingCall]) -> bool:
 
 __all__ = [
     "INLINE_GROUP_CAP",
+    "SERVING_COLUMNS",
     "ServingCall",
     "batch_serving_summary",
     "empty_serving_summary",

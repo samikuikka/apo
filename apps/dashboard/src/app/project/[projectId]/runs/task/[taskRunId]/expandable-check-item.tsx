@@ -22,7 +22,7 @@ import { EmbeddingStrip } from "./embedding-strip";
 import { TestNotes } from "./task-notes";
 import { TestResultCorrectionDialog } from "./test-result-correction-dialog";
 
-// CodeMirror is heavy — load it only when a code check is expanded.
+// CodeMirror is heavy: load it only when a code check is expanded.
 const CodeViewer = dynamic(
   () => import("@/components/CodeViewer").then((m) => m.CodeViewer),
   { ssr: false, loading: () => null },
@@ -46,7 +46,7 @@ export function ExpandableCheckItem({
 }: {
   item: CheckResult;
   index: number;
-  /** This Test's Task Notes — already capped to the inline limit. */
+  /** This Test's Task Notes, already capped to the inline limit. */
   notes?: TaskNote[];
   noteOverflow?: number;
   onOpenNotes?: () => void;
@@ -65,7 +65,7 @@ export function ExpandableCheckItem({
   const unsupported = !passed && item.outcome === "unsupported";
   const id = String(item.id ?? `Check ${index + 1}`);
   const corrected = item.correction != null && item.recorded_pass !== undefined;
-  // Which checks are expanded is bulk, ephemeral state — keep it local rather
+  // Which checks are expanded is bulk, ephemeral state: keep it local rather
   // than bloating the URL. (The focused assertion drawer is the URL-synced bit.)
   const [expanded, setExpanded] = useState(false);
   const [correctionOpen, setCorrectionOpen] = useState(false);
@@ -89,7 +89,7 @@ export function ExpandableCheckItem({
     ? buildCheckDiagnostics(item, checkBlock.startLine, checkBlock.endLine, checkBlock.code)
     : [];
 
-  // Show all assertions — both passing and failing — so users can see the
+  // Show all assertions, passing and failing, so users can see the
   // actual values (e.g. "received: 6 tool calls" when the limit was 40).
   const visibleAssertions = item.assertions ?? [];
 
@@ -113,7 +113,7 @@ export function ExpandableCheckItem({
   })();
 
   // Which line's assertion drawer is open, if any. The selection is encoded in
-  // the URL as ?assertion=<checkId>::<assertionId> — namespaced by check id so
+  // the URL as ?assertion=<checkId>::<assertionId>, namespaced by check id so
   // that opening a drawer in one check never bleeds into another. (Assertion
   // ids alone aren't unique across checks: every `t.judge` call defaults to
   // id "judge", so a bare ?assertion=judge would match every judge check.)
@@ -224,7 +224,7 @@ export function ExpandableCheckItem({
               {noVerdict && (
                 <span
                   className="shrink-0 border border-warning/40 bg-warning/10 px-1.5 py-px text-[10px] font-medium text-warning"
-                  title="The judge produced no verdict (unreachable, HTTP error, or empty reply) — the check's quality is unknown, not failed"
+                  title="The judge produced no verdict (unreachable, HTTP error, or empty reply); the check's quality is unknown, not failed"
                 >
                   No verdict
                 </span>
@@ -232,7 +232,7 @@ export function ExpandableCheckItem({
               {unsupported && (
                 <span
                   className="shrink-0 border border-border bg-muted/40 px-1.5 py-px text-[10px] font-medium text-muted-foreground"
-                  title="The trace projection lacked the evidence this check needed — it fails closed"
+                  title="The trace projection lacked the evidence this check needed, so it fails closed"
                 >
                   Unsupported
                 </span>
@@ -282,7 +282,7 @@ export function ExpandableCheckItem({
         <div className="border-t border-border px-4 pb-4 pt-3">
           <div className="max-w-[860px] space-y-3">
             {(() => {
-              // The second-judge relation is signal — the takeaway leads the
+              // The second-judge relation is signal: the takeaway leads the
               // expand (amber for splits, muted otherwise), before any detail.
               const takeaway = secondJudgeTakeaway(item);
               const agreement = secondJudgeAgreementLine(item.judge?.secondJudge);
@@ -312,7 +312,7 @@ export function ExpandableCheckItem({
                 <span className="font-mono">
                   {item.recorded_pass ? "PASS" : "FAIL"} → {passed ? "PASS" : "FAIL"}
                 </span>{" "}
-                · {new Date(item.correction.created_at).toLocaleDateString()} — reason in
+                · {new Date(item.correction.created_at).toLocaleDateString()}. Reason in
                 run notices (strip above)
               </p>
             )}
@@ -382,8 +382,6 @@ export function ExpandableCheckItem({
   );
 }
 
-//─ Source disclosure for unpinpointable checks ────────────────────────
-
 /**
  * A check whose block can't be pinpointed (its id is generated inside an
  * imported helper, and only the eval entry file is stored) shows an
@@ -401,7 +399,12 @@ function StoredSourceDisclosure({ source }: { source: TaskFileContentResponse })
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
         Check code is not in the stored source: registered from an imported file
-        <span className="ml-auto shrink-0 opacity-60">{open ? "▾" : "▸"}</span>
+        <ChevronRight
+          className={cn(
+            "ml-auto h-3 w-3 shrink-0 opacity-60 transition-transform",
+            open && "rotate-90",
+          )}
+        />
       </button>
       {open && (
         <div className="border-t border-border/60">
@@ -417,7 +420,7 @@ function StoredSourceDisclosure({ source }: { source: TaskFileContentResponse })
 
 /**
  * Trace-view deep link for one judgment's span (issue #288):
- * /traces/{run}?observation={span_id}. Null when any piece is missing —
+ * /traces/{run}?observation={span_id}. Null when any piece is missing:
  * untraced runs and ambiguous pre-emission names stay unlinked rather
  * than guessed.
  */
@@ -436,7 +439,7 @@ function judgeSpanTraceHref(
  * second judge's, number = its confidence), dim `✓✓ ·0.31` when they
  * agreed weakly, `2nd ✕` when the opinion never arrived, `2nd ⊘` when the
  * value was too large for the second judge to read. Corroborated
- * checks are silent — absence is the trust signal.
+ * checks are silent; absence is the trust signal.
  */
 function SecondJudgeMark({ check }: { check: CheckResult }) {
   const sj = check.judge?.secondJudge;
@@ -475,7 +478,7 @@ function SecondJudgeMark({ check }: { check: CheckResult }) {
     return (
       <span
         className="shrink-0 inline-flex items-center gap-0.5"
-        title="The judges' verdicts differ — the number is the second judge's confidence"
+        title="The judges' verdicts differ; the number is the second judge's confidence"
       >
         <span className={dot(primary)}>{primary ? "✓" : "✗"}</span>
         <span className={dot(secondPass)}>{secondPass ? "✓" : "✗"}</span>
@@ -488,7 +491,7 @@ function SecondJudgeMark({ check }: { check: CheckResult }) {
   return (
     <span
       className="shrink-0 inline-flex items-center gap-0.5 font-mono text-[10px] text-muted-foreground/70"
-      title="Both judges said the same, but the second was low-confidence — weak corroboration"
+      title="Both judges said the same, but the second was low-confidence, so corroboration is weak"
     >
       <span>{primary ? "✓" : "✗"}</span>
       <span>{secondPass ? "✓" : "✗"}</span>

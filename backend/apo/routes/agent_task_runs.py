@@ -383,7 +383,6 @@ def _task_run_model_drift(
 def _stored_or_computed_serving(
     session: Session, task_run: AgentTaskRunDB, project: str
 ) -> ServingSummary:
-    """The run's stored rollup when present, else the compute path."""
     stored = stored_serving_summary(task_run)
     if stored is not None:
         return stored

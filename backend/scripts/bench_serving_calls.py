@@ -12,10 +12,11 @@ script reproduces that shape on a synthetic database and compares the two
 loading techniques on identical data, alternating within one process so
 machine noise hits both sides equally:
 
-- ``orm``    — the shipped technique: entity query with ``load_only`` of
-  the serving columns (what ``apo.services.serving.load_call_rows`` does).
-- ``tuples`` — candidate: select the same columns as tuples and wrap them
-  in a ``ServingCall`` NamedTuple, no ORM machinery.
+- ``orm``    the pre-#636 technique: entity query with ``load_only`` of
+  the serving columns.
+- ``tuples`` what ships since #636 (``apo.services.serving.load_call_rows``):
+  select the same columns as tuples and wrap them in a ``ServingCall``
+  NamedTuple, no ORM machinery.
 
 Both sides feed ``summarize_calls``; the outputs must be identical, and
 the script fails if they are not. Run from ``backend/``:
@@ -25,19 +26,32 @@ the script fails if they are not. Run from ``backend/``:
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+from typing import cast
+
+# Running the file by path puts scripts/ (not backend/) on sys.path, so the
+# apo package would not resolve; the sibling scripts use the same bootstrap.
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BACKEND_ROOT))
+
 import statistics
 import tempfile
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import NamedTuple
 
-from sqlalchemy.orm import load_only
+from sqlalchemy import select as sa_select
+from sqlalchemy.orm import QueryableAttribute, load_only
 from sqlmodel import Session, SQLModel, col, create_engine, select
 
 from apo.models.db import AgentTaskBatchRunDB, AgentTaskRunDB, LoggedCallDB
-from apo.services.serving import _SERVING_COLUMNS, summarize_calls
+from apo.services.serving import (
+    SERVING_COLUMNS,
+    ServingCall,
+    summarize_calls,
+    to_serving_call,
+)
 
 PROJECT = "bench"
 TASK_ID = "template/editing-content"
@@ -50,40 +64,17 @@ PROVIDERS = ["openrouter", "baseten", "direct"]
 ROUTES = ["openrouter/auto", "baseten/llama", None]
 MODELS = ["deepseek/deepseek-v4.1-flash", "qwen/qwen3-coder", "gpt-5.2-mini"]
 
+# Same column set load_call_rows selects, typed for the two load techniques.
+COLUMNS = cast("tuple[QueryableAttribute[object], ...]", SERVING_COLUMNS)
+COLUMN_NAMES = [column.key for column in COLUMNS]
 
-class ServingCall(NamedTuple):
-    """The serving-evidence shape: exactly the columns summaries read."""
-
-    id: str
-    run_id: str
-    model: str | None
-    observed_model: str | None
-    api_provider: str | None
-    serving_host: str | None
-    route: str | None
-    service_tier: str | None
-    request_accounting: str | None
-    observation_type: str | None
-    level: str | None
-    created_at: datetime | None
-    end_time: datetime | None
-    time_to_first_token_ms: int | None
-    completion_tokens: int | None
-    output_token_scope: str | None
-    first_content_scope: str | None
-    raw_usage: dict[str, object] | None
-    cost: float | None
-    provided_cost: float | None
-    cost_provenance: str | None
-    pricing_quality: str | None
 
 
 def build_database(path: Path) -> None:
-    """Create the synthetic shape: NUM_RUNS runs, CALLS_PER_TRACE calls each."""
     engine = create_engine(f"sqlite:///{path}")
-    SQLModel.metadata.create_all(
-        engine, tables=[AgentTaskBatchRunDB.__table__, AgentTaskRunDB.__table__, LoggedCallDB.__table__]
-    )
+    # All model tables get created (untyped __table__ access aside, metadata
+    # holds them); only the three below ever receive rows.
+    SQLModel.metadata.create_all(engine)
     now = datetime.now(timezone.utc)
     batch = AgentTaskBatchRunDB(
         id="bench-batch",
@@ -118,12 +109,15 @@ def build_database(path: Path) -> None:
             for j in range(CALLS_PER_TRACE):
                 is_generation = j % 4 == 0
                 session.add(
-                    LoggedCallDB(
-                        id=f"call-{i:04d}-{j:04d}",
-                        project=PROJECT,
-                        task_id=TASK_ID,
-                        run_id=trace_id,
-                        observation_type="GENERATION" if is_generation else "TOOL",
+                LoggedCallDB(
+                    id=f"call-{i:04d}-{j:04d}",
+                    project=PROJECT,
+                    task_id=TASK_ID,
+                    run_id=trace_id,
+                    input={},
+                    messages=[],
+                    output={},
+                    observation_type="GENERATION" if is_generation else "TOOL",
                         level="DEFAULT",
                         model=MODELS[j % len(MODELS)],
                         observed_model=MODELS[j % len(MODELS)],
@@ -136,8 +130,8 @@ def build_database(path: Path) -> None:
                         end_time=now - timedelta(minutes=j, seconds=-1),
                         time_to_first_token_ms=120 + j,
                         completion_tokens=64 + j,
-                        output_token_scope="completion" if is_generation else None,
-                        cost=float(j % 17),
+                    output_token_scope="completion" if is_generation else None,
+                    cost=j % 17,
                         pricing_quality="reported" if is_generation else None,
                     )
                 )
@@ -146,10 +140,10 @@ def build_database(path: Path) -> None:
 
 
 def load_orm_entities(session: Session, trace_ids: Sequence[str]) -> dict[str, list[LoggedCallDB]]:
-    """The shipped technique, mirroring load_call_rows."""
+    """The pre-#636 technique: ORM entities with load_only."""
     rows = session.exec(
         select(LoggedCallDB)
-        .options(load_only(*_SERVING_COLUMNS, raiseload=True))
+        .options(load_only(*COLUMNS, raiseload=True))
         .where(
             col(LoggedCallDB.run_id).in_(list(trace_ids)),
             col(LoggedCallDB.project) == PROJECT,
@@ -163,17 +157,16 @@ def load_orm_entities(session: Session, trace_ids: Sequence[str]) -> dict[str, l
 
 
 def load_tuples(session: Session, trace_ids: Sequence[str]) -> dict[str, list[ServingCall]]:
-    """The candidate: plain tuples wrapped in a NamedTuple."""
-    column_names = [c.key for c in _SERVING_COLUMNS]
-    rows = session.execute(
-        select(*_SERVING_COLUMNS).where(
+    """What load_call_rows ships: plain tuples wrapped in a NamedTuple."""
+    rows = session.execute(  # pyright: ignore[reportDeprecated]
+        sa_select(*COLUMNS).where(
             col(LoggedCallDB.run_id).in_(list(trace_ids)),
             col(LoggedCallDB.project) == PROJECT,
         )
     ).all()
     grouped: dict[str, list[ServingCall]] = {}
     for row in rows:
-        call = ServingCall(**dict(zip(column_names, row, strict=True)))
+        call = ServingCall(**dict(zip(COLUMN_NAMES, row, strict=True)))
         if call.run_id is not None:
             grouped.setdefault(call.run_id, []).append(call)
     return grouped
@@ -183,11 +176,15 @@ def median_ms(samples: list[float]) -> float:
     return statistics.median(samples) * 1000.0
 
 
-def time_side(fn: Callable[[], object], samples: list[float], errors: list[str]) -> None:
+def time_side(
+    fn: Callable[[], Mapping[str, Sequence[object]]],
+    samples: list[float],
+    errors: list[str],
+) -> None:
     start = time.perf_counter()
     try:
         result = fn()
-        if not isinstance(result, dict) or sum(len(v) for v in result.values()) == 0:
+        if sum(len(v) for v in result.values()) == 0:
             errors.append("empty result")
     except Exception as exc:  # noqa: BLE001 - counted, surfaces in the report
         errors.append(repr(exc))
@@ -224,7 +221,7 @@ def main() -> None:
             orm_grouped = load_orm_entities(session, trace_ids)
             tuple_grouped = load_tuples(session, trace_ids)
             for trace_id, calls in orm_grouped.items():
-                left = summarize_calls(calls)
+                left = summarize_calls([to_serving_call(call) for call in calls])
                 right = summarize_calls(tuple_grouped.get(trace_id, []))
                 if left != right:
                     errors.append(f"summary mismatch for {trace_id}")
@@ -233,12 +230,10 @@ def main() -> None:
             for error in errors[:5]:
                 print(f"  {error}")
             print(
-                f"orm entities: median {median_ms(orm_samples):.0f} ms, "
-                f"range {min(orm_samples) * 1000:.0f}-{max(orm_samples) * 1000:.0f} ms"
+                f"orm entities: median {median_ms(orm_samples):.0f} ms, range {min(orm_samples) * 1000:.0f}-{max(orm_samples) * 1000:.0f} ms"
             )
             print(
-                f"tuples:       median {median_ms(tuple_samples):.0f} ms, "
-                f"range {min(tuple_samples) * 1000:.0f}-{max(tuple_samples) * 1000:.0f} ms"
+                f"tuples:       median {median_ms(tuple_samples):.0f} ms, range {min(tuple_samples) * 1000:.0f}-{max(tuple_samples) * 1000:.0f} ms"
             )
         engine.dispose()
 
