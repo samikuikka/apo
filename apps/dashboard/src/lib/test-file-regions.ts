@@ -55,7 +55,6 @@ function escapeRegExp(literal: string): string {
   return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** First quoted argument on a line, escapes flattened: the test/describe title. */
 function firstQuotedArg(line: string): string {
   const m = line.match(/(["'`])(?:\\.|(?!\1)[^\\])*\1/);
   if (!m) return "";
@@ -113,7 +112,6 @@ interface ScannedRegion {
   block: CheckBlock;
 }
 
-/** Find every `describe(...)` and `test(...)` opener in the file and slice its block. */
 function scanRegions(content: string): ScannedRegion[] {
   const lines = content.split("\n");
   const namesAlt = collectOpenerNames(content)
@@ -145,7 +143,6 @@ function scanRegions(content: string): ScannedRegion[] {
   return scanned;
 }
 
-/** Nest scanned blocks by containment (a stack over document order). */
 function buildTree(scanned: ScannedRegion[]): TestFileRegion[] {
   const sorted = [...scanned].sort(
     (a, b) => a.block.startLine - b.block.startLine,
@@ -188,7 +185,6 @@ function flattenRegions(regions: TestFileRegion[]): TestFileRegion[] {
   return out;
 }
 
-/** Attach recorded checks to their declaring region; unresolvable ones land in `unmapped`. */
 function mapChecksOntoRegions(
   content: string,
   regions: TestFileRegion[],
@@ -231,8 +227,6 @@ export function buildTestFileModel(
   return { source, regions, unmapped };
 }
 
-/** A region's verdict from its recorded checks: all passed, something failed,
- *  or nothing recorded in this run. */
 export function testRegionVerdict(region: TestFileRegion): TestRegionVerdict {
   if (region.checks.length === 0) return "no-result";
   return region.checks.every((c) => c.pass === true) ? "pass" : "fail";

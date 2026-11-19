@@ -12,7 +12,6 @@ import { buildSourceCandidates } from "@/lib/check-source-candidates";
 
 export interface WholeFileSourceState {
   source: TaskFileContentResponse | null;
-  /** True while the on-demand fetch is in flight (source still unknown). */
   pending: boolean;
 }
 

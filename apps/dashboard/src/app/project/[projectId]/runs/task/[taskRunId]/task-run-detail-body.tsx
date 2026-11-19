@@ -144,8 +144,6 @@ export function TaskRunDetailBody({
   );
 }
 
-// ── Checks tab ───────────────────────────────────────────────────────────
-
 function ChecksTab({
   checks,
   checksSource,
@@ -243,8 +241,6 @@ function ChecksTab({
   );
 }
 
-/** Pass/failed tally plus the second-judge fact line (only when a second judge
- *  ran on any check) that opens the Checks tab. */
 function ChecksSummaryLine({ checks }: { checks: CheckResult[] }) {
   const checksPassed = checks.filter((check) => check.pass === true).length;
   const failedCount = checks.length - checksPassed;

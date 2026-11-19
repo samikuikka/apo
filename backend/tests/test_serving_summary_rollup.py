@@ -43,11 +43,6 @@ _PROJECT = "rollup-proj"
 _TASK_ID = "template/serving-rollup"
 
 
-# ---------------------------------------------------------------------------
-# Unit: write-then-read roundtrip
-# ---------------------------------------------------------------------------
-
-
 def _rollup_call(
     span: str,
     *,
@@ -137,10 +132,6 @@ def test_write_then_read_roundtrip_equality(session: Session) -> None:
         "fireworks",
     }
 
-
-# ---------------------------------------------------------------------------
-# Unit: late spans refresh the stored summary
-# ---------------------------------------------------------------------------
 
 
 _ROOT_ATTRS: dict[str, object] = {"apo.observation.type": "AGENT"}
@@ -257,10 +248,6 @@ def test_late_span_refreshes_stored_summary(session: Session) -> None:
     }
 
 
-# ---------------------------------------------------------------------------
-# Unit: migration backfill
-# ---------------------------------------------------------------------------
-
 
 @pytest.fixture(name="migration_engine")
 def migration_engine_fixture() -> Iterator[Engine]:
@@ -350,10 +337,6 @@ def test_backfill_fills_and_matches(
         assert untraced is not None
         assert untraced.serving_summary_json is None
 
-
-# ---------------------------------------------------------------------------
-# Scene: list and detail routes serve the stored summary
-# ---------------------------------------------------------------------------
 
 
 def _ingest_two_provider_trace(session: Session) -> str:

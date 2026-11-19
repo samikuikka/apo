@@ -97,6 +97,9 @@ backend/data/artifacts/
 # Editor atomic-write temp files
 *.ts.*.ts
 
+# Merge/jj conflict leftovers (a .orig copy once landed in a merge; keep them out)
+*.orig
+
 # Spec-verification screenshots from agent sessions — evidence lives in
 # session reports, not the repo
 spec*-proof/
