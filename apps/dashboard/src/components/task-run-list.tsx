@@ -145,6 +145,7 @@ export function TaskRunRow({
           <span className="sr-only">{statusConfig.label}</span>
           <Link
             href={href}
+            prefetch={false}
             className="truncate text-[14px] font-medium text-foreground hover:text-primary"
             title={run.task_id}
           >
