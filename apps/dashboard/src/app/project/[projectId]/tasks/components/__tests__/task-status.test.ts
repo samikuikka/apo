@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentTaskRunStats, AgentTaskSummary } from "@/lib/agent-task-api";
 import { TASK_STATUS_FILTERS } from "@/lib/filter-status";
 import { STATUS_CONFIG, getTaskStatus, taskFilterStatus } from "../task-list-shared";
-import { notStartedLabel, provenanceLabel } from "../TaskCard";
+import { notStartedLabel } from "../TaskCard";
 
 function task(stats: Partial<AgentTaskRunStats>): AgentTaskSummary {
   return {
@@ -88,37 +88,3 @@ describe("a task whose only runs never started", () => {
     expect(notStartedLabel(1, true)).toBe("1 run never started");
   });
 });
-
-describe("provenanceLabel", () => {
-  it("uses the first publication, with the publisher when recorded", () => {
-    expect(
-      provenanceLabel({
-        ...baseTask(),
-        first_published_at: "2026-10-14T12:00:00Z",
-        first_published_by: "Publisher",
-      }),
-    ).toBe("Added 2026-10-14 by Publisher");
-  });
-
-  it("shows the date alone when no name is known", () => {
-    expect(provenanceLabel({ ...baseTask(), first_published_at: "2026-10-14T12:00:00Z" }))
-      .toBe("Added 2026-10-14");
-  });
-
-  it("renders nothing without any provenance (older backends)", () => {
-    expect(provenanceLabel(baseTask())).toBeNull();
-  });
-});
-
-function baseTask(): AgentTaskSummary {
-  return {
-    id: "t",
-    task_path: "t",
-    folder_path: "",
-    display_name: "t",
-    adapter_name: "a",
-    has_checks: true,
-    tags: [],
-    run_stats: null,
-  };
-}

@@ -46,7 +46,6 @@ export function TaskCard({
   const cohort = useRunCohort();
   const viewId = useRunCohortViewId();
   const s = status !== "idle" ? STATUS_CONFIG[status] : null;
-  const addedLabel = provenanceLabel(task);
   return (
     <Link
       href={withViewId(hrefWithRunCohort(taskDetailHref(projectId, task.id), cohort), viewId)}
@@ -89,12 +88,6 @@ export function TaskCard({
               <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>
             ))}
           </div>
-
-          {addedLabel && (
-            <div className="mt-1 min-w-0">
-              <p className="text-[11px] text-muted-foreground/50">{addedLabel}</p>
-            </div>
-          )}
 
           {task.state === "removed" && (
             <p className="mt-0.5 text-[11px] text-muted-foreground/50">{removedLabel(task)}</p>
@@ -158,17 +151,6 @@ export function removedLabel(task: AgentTaskSummary): string {
 export function notStartedLabel(notStarted: number, readOnly = false): string {
   if (notStarted === 0) return readOnly ? "Not run in this capture" : "Ready to run";
   return notStarted === 1 ? "1 run never started" : `${notStarted} runs never started`;
-}
-
-/**
- * The card's quiet answer to "where did this task come from" (issue #444):
- * the first publication, with the publisher when the backend recorded one.
- */
-export function provenanceLabel(task: AgentTaskSummary): string | null {
-  if (!task.first_published_at) return null;
-  const when = new Date(task.first_published_at).toISOString().slice(0, 10);
-  const who = task.first_published_by;
-  return who ? `Added ${when} by ${who}` : `Added ${when}`;
 }
 
 const TASK_ROOT = process.env.NEXT_PUBLIC_AGENT_TASK_ROOT ?? null;
