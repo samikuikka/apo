@@ -49,6 +49,7 @@ export function TaskCard({
   return (
     <Link
       href={withViewId(hrefWithRunCohort(taskDetailHref(projectId, task.id), cohort), viewId)}
+      prefetch={false}
       className={cn(
         "group/card relative block border px-2 py-3 transition-colors",
         isSel
