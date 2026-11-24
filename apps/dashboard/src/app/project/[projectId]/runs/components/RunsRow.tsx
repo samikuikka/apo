@@ -198,6 +198,7 @@ export function RunsRow({
               <span className="sr-only">{s.label}</span>
               <Link
                 href={`/project/${projectId}/runs/${batch.id}`}
+                prefetch={false}
                 className="truncate text-[14px] font-medium text-foreground hover:text-primary"
               >
                 {batchName}
@@ -354,6 +355,7 @@ export function RunsRow({
             />
             <Link
               href={`/project/${projectId}/runs/${batch.id}`}
+              prefetch={false}
               aria-label="Open batch run"
               className="text-muted-foreground transition-opacity hover:text-foreground"
             >

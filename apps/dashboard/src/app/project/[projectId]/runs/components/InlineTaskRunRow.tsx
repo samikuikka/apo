@@ -59,6 +59,7 @@ export function InlineTaskRunRow({
             <span className="sr-only">{runStatusLabel(run, statusConfig.label)}</span>
             <Link
               href={runHref}
+              prefetch={false}
               className="truncate text-[13px] font-medium text-foreground hover:text-primary"
             >
               {run.task_id}
@@ -172,6 +173,7 @@ export function InlineTaskRunRow({
           />
           <Link
             href={runHref}
+            prefetch={false}
             aria-label={`Open task run ${run.id}`}
             data-testid={`task-run-link-${run.id}`}
             className="text-muted-foreground transition-opacity hover:text-foreground"
