@@ -19,10 +19,10 @@ import {
   taskRunStatusConfig,
 } from "./task-run-list.utils";
 
-// Column widths shared by the header and every row (table-fixed layout —
+// Column widths shared by the header and every row (table-fixed layout;
 // the task-run column absorbs the remaining width). Batch and Execution
 // only exist as columns from xl up. Phones (<sm) drop Trigger, Judges and
-// Duration too — the run identity, its Started cell with row actions, and
+// Duration too: the run identity, its Started cell with row actions, and
 // the status label inside the first column are the scan-essentials; the
 // rest lives one tap away on the run page.
 const COL = {
@@ -197,13 +197,13 @@ export function TaskRunRow({
         {run.batch_run_id.slice(0, 8)}
       </TableCell>
 
-      {/* Hosts — the serving providers/routes the run actually used
-       * (issue #307); absent host renders an em dash, not "unknown". */}
+      {/* Hosts: the serving providers/routes the run actually used
+       * (issue #307); an absent host renders an em dash, not "unknown". */}
       <TableCell className="hidden max-w-[160px] xl:table-cell" style={{ width: COL.hosts }}>
         <HostLabelsCell labels={providerLabels(run.model_providers)} />
       </TableCell>
 
-      {/* Execution — model · effort. Full qualified name on hover. */}
+      {/* Execution: model · effort. Full qualified name on hover. */}
       <TableCell className="hidden max-w-[190px] xl:table-cell" style={{ width: COL.execution }}>
         <span
           className="block truncate font-mono text-[12px] tabular-nums text-muted-foreground"

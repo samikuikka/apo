@@ -333,7 +333,7 @@ function maxReasoningSub(
   const text = `max ${tokenFormat(run.max_call_reasoning_tokens)} tok`;
   const href = observationHref(projectId, run, run.max_call_reasoning_call_id);
   return href ? (
-    <Link href={href} className="underline-offset-2 hover:underline">
+    <Link href={href} prefetch={false} className="underline-offset-2 hover:underline">
       {text}
     </Link>
   ) : (
@@ -905,14 +905,15 @@ function CheckDiff({
     <div className="border-t border-border/60 bg-muted/10 px-6 py-3">
       {hasContent ? (
         <div className="overflow-hidden rounded-md border border-border">
-          {/* Column headers — explicit Run A / Run B so each cell reads in its
-              column. Model is shown as run-level context for the checks. */}
+          {/* Column headers name Run A / Run B explicitly so each cell reads
+              in its column. Model is shown as run-level context for the checks. */}
           <div className="grid grid-cols-[minmax(120px,1fr)_minmax(180px,1fr)_minmax(180px,1fr)] border-b border-border bg-card/60 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             <div className="px-3 py-1.5">Check</div>
             <div className="border-l border-border px-3 py-1.5">
               {left ? (
                 <Link
                   href={`/project/${projectId}/runs/task/${left.id}`}
+                  prefetch={false}
                   className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
                 >
                   {leftLabel} <ExternalLink className="h-3 w-3" />
@@ -925,6 +926,7 @@ function CheckDiff({
               {right ? (
                 <Link
                   href={`/project/${projectId}/runs/task/${right.id}`}
+                  prefetch={false}
                   className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
                 >
                   {rightLabel} <ExternalLink className="h-3 w-3" />

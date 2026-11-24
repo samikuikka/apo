@@ -3,8 +3,14 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { TaskCard } from "@/app/project/[projectId]/tasks/components/TaskCard";
+import { RunsRow } from "@/app/project/[projectId]/runs/components/RunsRow";
+import { InlineTaskRunRow } from "@/app/project/[projectId]/runs/components/InlineTaskRunRow";
 import { TaskRunRow } from "@/components/task-run-list";
-import type { AgentTaskRunSummary, AgentTaskSummary } from "@/lib/agent-task-api";
+import type {
+  AgentTaskBatchRunSummary,
+  AgentTaskRunSummary,
+  AgentTaskSummary,
+} from "@/lib/agent-task-api";
 
 vi.mock("next/link", () => ({
   default: ({
@@ -56,17 +62,62 @@ const run: AgentTaskRunSummary = {
   adapter_name: "claude-code",
   status: "passed",
   pass_result: true,
-  started_at: null,
-  completed_at: null,
+  started_at: "2026-11-20T10:00:00Z",
+  completed_at: "2026-11-20T10:01:00Z",
+  trace_run_id: null,
+  primary_model: null,
+  task_source_commit_sha: null,
+  error_message: null,
   total_cost: null,
   total_tokens: null,
   total_checks: 1,
   passed_checks: 1,
   failed_checks: 0,
-  errored_checks: 0,
-  error_message: null,
   trigger: null,
-} as AgentTaskRunSummary;
+  trace_persistence_status: "persisted",
+  trace_error_message: null,
+  error_category: null,
+  run_configuration: null,
+  environment: null,
+  labels: {},
+};
+
+const batch: AgentTaskBatchRunSummary = {
+  id: "batch_1",
+  project: "acme",
+  selection_type: "all",
+  selection_query: null,
+  task_root: null,
+  grep: null,
+  environment: "local",
+  status: "completed",
+  total_tasks: 2,
+  passed_tasks: 2,
+  failed_tasks: 0,
+  errored_tasks: 0,
+  total_checks: 1,
+  passed_checks: 1,
+  created_at: "2026-11-20T10:00:00Z",
+  started_at: "2026-11-20T10:00:00Z",
+  completed_at: "2026-11-20T10:01:00Z",
+  trigger: null,
+  trace_persistence_status: "persisted",
+  trace_error_message: null,
+  total_cost: null,
+  total_tokens: null,
+  configuration: { state: "unknown", configurations: [], reported_task_runs: 0, total_task_runs: 2 },
+  labels: {},
+};
+
+/** Every link a row renders must opt out: one prefetching link in a list
+ *  re-requests every destination server page as it scrolls by. */
+function expectAllLinksCold() {
+  const links = screen.getAllByRole("link");
+  expect(links.length).toBeGreaterThan(0);
+  for (const link of links) {
+    expect(link.getAttribute("data-prefetch")).toBe("false");
+  }
+}
 
 describe("detail links in high-cardinality lists", () => {
   it("does not viewport-prefetch every task detail page", () => {
@@ -81,7 +132,7 @@ describe("detail links in high-cardinality lists", () => {
       />,
     );
 
-    expect(screen.getByRole("link").getAttribute("data-prefetch")).toBe("false");
+    expectAllLinksCold();
   });
 
   it("does not viewport-prefetch every run detail page", () => {
@@ -93,8 +144,45 @@ describe("detail links in high-cardinality lists", () => {
       </table>,
     );
 
-    expect(screen.getByRole("link", { name: task.id }).getAttribute("data-prefetch")).toBe(
-      "false",
+    expectAllLinksCold();
+  });
+
+  it("does not viewport-prefetch every batch detail page", () => {
+    render(
+      <table>
+        <tbody>
+          <RunsRow
+            batch={batch}
+            clientNow={null}
+            projectId="acme"
+            compareSelected={false}
+            compareDisabled={false}
+            onToggleCompare={() => {}}
+            modelFilter={new Set()}
+            canDelete={false}
+          />
+        </tbody>
+      </table>,
     );
+
+    expectAllLinksCold();
+  });
+
+  it("does not viewport-prefetch every inline run detail page", () => {
+    render(
+      <table>
+        <tbody>
+          <InlineTaskRunRow
+            run={run}
+            projectId="acme"
+            clientNow={null}
+            canDelete={false}
+            onDeleted={() => {}}
+          />
+        </tbody>
+      </table>,
+    );
+
+    expectAllLinksCold();
   });
 });
