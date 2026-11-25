@@ -86,9 +86,9 @@ export function RunsRow({
   // earlier load is still in flight, and that older response must not win.
   // Bumping the sequence also discards whatever is in flight. A background
   // re-fetch (rows already shown) keeps them on screen, with no spinner, and
-  // leaves them in place if it fails — a live update must not blank them.
+  // leaves them in place if it fails; a live update must not blank them.
   const fetchSeqRef = useRef(0);
-  // Deleted here, so never shown again — even by a response already in flight.
+  // Deleted here, so never shown again, even by a response already in flight.
   const deletedIdsRef = useRef(new Set<string>());
   const loadTaskRuns = useCallback(
     async (background: boolean) => {
@@ -312,7 +312,7 @@ export function RunsRow({
               {(batch.unpriced_call_count ?? 0) > 0 && (
                 <span
                   className="ml-1 text-warning"
-                  title={`${batch.unpriced_call_count} call${batch.unpriced_call_count === 1 ? "" : "s"} had no pricing entry — this total is partial`}
+                  title={`${batch.unpriced_call_count} call${batch.unpriced_call_count === 1 ? "" : "s"} had no pricing entry, so this total is partial`}
                 >
                   +{batch.unpriced_call_count} unpriced
                 </span>
