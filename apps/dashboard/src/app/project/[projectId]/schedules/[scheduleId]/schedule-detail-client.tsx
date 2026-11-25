@@ -64,7 +64,7 @@ function formatInterval(days: number): string {
 }
 
 const CLIENT_NOW_INTERVAL_MS = 30_000;
-// Cached clock reading — only mutated inside the subscription so the
+// Cached clock reading, only mutated inside the subscription so the
 // useSyncExternalStore snapshot stays stable between notifications.
 let clientNowSnapshot: number = 0;
 
@@ -80,7 +80,7 @@ function subscribeToClientNow(onChange: () => void) {
 /**
  * Client-side clock for relative timestamps, refreshed every 30s. Kept as an
  * external store (same pattern as hooks/use-mobile.tsx): the hydration
- * snapshot is null — matching the server render — and flips to the client
+ * snapshot is null (matching the server render) and flips to the client
  * clock once subscribed, without a mount effect initializing state. Consumers
  * fall back to Date.now() while it is null.
  */
@@ -278,23 +278,23 @@ export function ScheduleDetailClient({
 
 /** Copy for the known "Run now" refusals: what happened + what to do.
  * Source-owned schedules hard-pause when their target breaks; pooled
- * schedules refuse while their pool is unusable — picking a pool in the
+ * schedules refuse while their pool is unusable, and picking a pool in the
  * toolbar repairs those. */
 const TRIGGER_REFUSAL_COPY: Record<string, string> = {
   execution_owner_unavailable:
-    "Run now refused — this schedule is hard-paused because its execution owner is no longer a project member. Re-add the owner, then resume the schedule.",
+    "Run now refused: this schedule is hard-paused because its execution owner is no longer a project member. Re-add the owner, then resume the schedule.",
   catalog_changed:
-    "Run now refused — this schedule is hard-paused because the task catalog changed under its selection. Review the selection against the current catalog and recreate the schedule if these tasks should keep running.",
+    "Run now refused: this schedule is hard-paused because the task catalog changed under its selection. Review the selection against the current catalog and recreate the schedule if these tasks should keep running.",
   selection_empty:
-    "Run now refused — this schedule is hard-paused because its selection contains no tasks. Review the selection and recreate the schedule if these tasks should keep running.",
+    "Run now refused: this schedule is hard-paused because its selection contains no tasks. Review the selection and recreate the schedule if these tasks should keep running.",
   executor_pool_required:
-    "Run now refused — this schedule has no executor pool. Choose a pool next to Run now, then run again.",
+    "Run now refused: this schedule has no executor pool. Choose a pool next to Run now, then run again.",
   executor_pool_disabled:
-    "Run now refused — this schedule's executor pool is disabled. Choose an available pool next to Run now, then run again.",
+    "Run now refused: this schedule's executor pool is disabled. Choose an available pool next to Run now, then run again.",
   executor_pool_archived:
-    "Run now refused — this schedule's executor pool was retired. Choose an available pool next to Run now, then run again.",
+    "Run now refused: this schedule's executor pool was retired. Choose an available pool next to Run now, then run again.",
   executor_pool_not_owned:
-    "Run now refused — this schedule's executor pool belongs to another project. Choose one of this project's pools next to Run now, then run again.",
+    "Run now refused: this schedule's executor pool belongs to another project. Choose one of this project's pools next to Run now, then run again.",
 };
 
 function describeTriggerRefusal(error: unknown): string {
@@ -303,14 +303,14 @@ function describeTriggerRefusal(error: unknown): string {
   if (known) return known;
   if (isApiError(error)) {
     // A 422 from trigger means the server has no checkout to run these
-    // tasks from (published catalog) — only a connected executor can.
+    // tasks from (published catalog); only a connected executor can.
     if (error.status === 422) {
-      return `Run now refused — ${error.message} Run it from a connected executor (apo connect) instead.`;
+      return `Run now refused: ${error.message} Run it from a connected executor (apo connect) instead.`;
     }
-    return `Run now failed — ${error.message}`;
+    return `Run now failed: ${error.message}`;
   }
   return error instanceof Error && error.message
-    ? `Run now failed — ${error.message}`
+    ? `Run now failed: ${error.message}`
     : "Run now failed.";
 }
 
@@ -429,6 +429,7 @@ function AdaptiveScheduleBody({
                     <td className="px-6 py-2.5">
                       <Link
                         href={taskDetailHref(projectId, state.task_id)}
+                        prefetch={false}
                         className="block hover:text-primary"
                       >
                         <div className="text-[13px] font-medium text-foreground">{displayName}</div>
@@ -459,6 +460,7 @@ function AdaptiveScheduleBody({
                       {state.last_run_at ? (
                         <Link
                           href={taskDetailHref(projectId, state.task_id)}
+                          prefetch={false}
                           className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-primary"
                         >
                           <span className={cn("h-1.5 w-1.5 rounded-full", lastStatusDot)} />

@@ -165,7 +165,7 @@ function UsageCell({ metrics, primaryModel, sortedCosts }: { metrics: TraceMetri
   );
 }
 
-function TraceNameCell({ trace, projectId }: { trace: TraceSummary; projectId: string }) {
+export function TraceNameCell({ trace, projectId }: { trace: TraceSummary; projectId: string }) {
   const name = trace.scopeKey || trace.task_id || "Untitled";
   const scopeLabel = trace.scopeKey
     ? trace.scopeKey === "agent-task.e2e" ? "E2E" : trace.scopeKey
@@ -179,10 +179,33 @@ function TraceNameCell({ trace, projectId }: { trace: TraceSummary; projectId: s
       )}
       <Link
         href={`/project/${projectId}/traces/${trace.id}`}
+        prefetch={false}
         onClick={(e) => e.stopPropagation()}
         className="truncate text-xs font-medium text-foreground hover:text-primary hover:underline"
       >
         {name}
+      </Link>
+    </div>
+  );
+}
+
+export function TraceIdCell({ trace, projectId }: { trace: TraceSummary; projectId: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      <CopyIdPopover ids={[{ label: "Trace ID", value: trace.id }]}>
+        <span className="font-mono text-xs text-primary hover:underline cursor-pointer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {trace.id.length > 16 ? `${trace.id.slice(0, 16)}...` : trace.id}
+        </span>
+      </CopyIdPopover>
+      <Link
+        href={`/project/${projectId}/traces/${trace.id}`}
+        prefetch={false}
+        className="text-muted-foreground/50 hover:text-foreground"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <ArrowUpRight className="h-3 w-3" />
       </Link>
     </div>
   );
@@ -279,24 +302,7 @@ export function createTraceColumns(
       header: "ID",
       size: 140,
       enableSorting: false,
-      cell: ({ row }) => (
-        <div className="flex min-w-0 items-center gap-1.5">
-          <CopyIdPopover ids={[{ label: "Trace ID", value: row.original.id }]}>
-            <span className="font-mono text-xs text-primary hover:underline cursor-pointer"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {row.original.id.length > 16 ? `${row.original.id.slice(0, 16)}...` : row.original.id}
-            </span>
-          </CopyIdPopover>
-          <Link
-            href={`/project/${projectId}/traces/${row.original.id}`}
-            className="text-muted-foreground/50 hover:text-foreground"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <ArrowUpRight className="h-3 w-3" />
-          </Link>
-        </div>
-      ),
+      cell: ({ row }) => <TraceIdCell trace={row.original} projectId={projectId} />,
     },
     {
       id: "name",
@@ -369,7 +375,7 @@ export function createTraceColumns(
     },
     {
       // Serving host (route wins over provider; issue #307). No host reported
-      // renders an em dash, not "unknown" — absence is not a value here.
+      // renders an em dash, not "unknown"; absence is not a value here.
       id: "providers",
       header: "Host",
       size: 110,

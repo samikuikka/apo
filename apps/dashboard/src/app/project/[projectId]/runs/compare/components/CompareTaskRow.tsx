@@ -50,8 +50,7 @@ interface CompareTaskRowProps {
 
 /**
  * One task aligned across both runs: a left verdict cell and a right
- * verdict cell. Shows raw pass/fail with no directional claim. A
- * "not run" side is a muted em-dash, never a fail cell. Expanding a
+ * verdict cell. Shows raw pass/fail with no directional claim. Expanding a
  * differing task lazily loads both runs' checks and aligns them by
  * check id so the reader can see *which* check behaved differently.
  */
@@ -69,7 +68,7 @@ export function CompareTaskRow({
   const notRunSide: "A" | "B" | "either" =
     !left.run && !right.run ? "either" : !left.run ? "A" : "B";
   // Per-row passed-checks delta (B − A), only when both sides ran checks
-  // against the same eval — across eval versions the counts don't align.
+  // against the same eval; across eval versions the counts don't align.
   const checkDelta =
     state === "aligned" && left.run && right.run && left.run.total_checks > 0 && right.run.total_checks > 0
       ? (right.run.passed_checks ?? 0) - (left.run.passed_checks ?? 0)
@@ -115,15 +114,13 @@ export function CompareTaskRow({
           )}
         </div>
 
-        {/* Left checks cell. */}
         <ChecksCell run={left.run} hideCount={state === "different_definition"} />
-        {/* Right checks cell — separate column at md+, wraps under on narrow.
-            md:grid (not md:flex): the cell's internal layout IS a grid, and
-            md:flex would override it, collapsing the bar slot. */}
+        {/* Right checks cell. md:grid (not md:flex): the cell's internal
+            layout is a grid, and md:flex would override it, collapsing
+            the bar slot. */}
         <ChecksCell run={right.run} className="hidden md:grid" hideCount={state === "different_definition"} delta={checkDelta} />
       </div>
 
-      {/* On narrow screens, stack the two cells so both are visible. */}
       <div className="grid grid-cols-2 gap-3 px-6 pb-2 md:hidden">
         <ChecksCell run={left.run} compact hideCount={state === "different_definition"} />
         <ChecksCell run={right.run} compact hideCount={state === "different_definition"} delta={checkDelta} />
@@ -133,7 +130,7 @@ export function CompareTaskRow({
         <>
           {state === "different_definition" && (
             <div className="mx-6 mb-2 rounded border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[12px] text-amber-600 dark:text-amber-500">
-              These runs used different versions of the eval file. Check counts and IDs won't align — re-run both models against the current eval for a fair comparison.
+              These runs used different versions of the eval file. Check counts and IDs won't align, so re-run both models against the current eval for a fair comparison.
             </div>
           )}
           <CheckDiff
@@ -157,7 +154,7 @@ export function CompareTaskRow({
  *  carries both:
  *
  *  - Did the task pass? Green is reserved for a run whose task verdict is a
- *    pass (every check green). Any failed check makes the count red — 58/60
+ *    pass (every check green). Any failed check makes the count red: 58/60
  *    and 60/60 must never look the same, because "which side had failures"
  *    is the first question a comparison answers.
  *  - How much passed? The bar is stacked: the passed share, then the failed
@@ -165,9 +162,8 @@ export function CompareTaskRow({
  *    of 60 are still a visible red sliver rather than a rounding error.
  *
  *  Errored/running/no-checks runs fall back to a status dot. Cost/time are
- *  NOT here — they live in the expand (a compact mirrored A-vs-B view),
- *  where the comparison has room to breathe without crowding the collapsed
- *  row.
+ *  not here; they live in the expand, where there is room without crowding
+ *  the collapsed row.
  *
  *  `delta` (right cell only) is this side's passed count minus the other
  *  side's, rendered `(+2)` / `(−2)` like the folder header, so the row says
@@ -295,22 +291,6 @@ function shortModel(model: string): string {
   return slash >= 0 ? model.slice(slash + 1) : model;
 }
 
-/** A compact mirrored (tornado) view of cost + time for the two runs, shown at
- *  the top of an expanded check row. Run A's bar grows left from the center
- *  axis, Run B's grows right. Symmetry reads as "same", asymmetry as
- *  "different" — the whole point of a comparison, made visual instead of
- *  forcing the reader to subtract two numbers.
- *
- *  Per-row scale: each side's fill = value / max(A,B), mapped to half the
- *  track width (each side owns 50%, so 100% fill on a side reaches the axis).
- *  Cross-row comparison is intentionally disabled — the page's job is A-vs-B
- *  within a row. A null value renders a muted empty slot (NOT zero), since
- *  "no cost recorded" is different from "$0" and a zero-fill on a scaled bar
- *  would misread as "free".
- *
- *  Bars are neutral (no winner coloring): a slower run might be doing more
- *  work, so "slower = bad" would moralize wrongly. Length carries the signal;
- *  color stays out of it. */
 /** Deep link into the trace observation behind a max metric (issue #309).
  *  Null when the run has no trace or no winning call to point at. */
 function observationHref(
@@ -322,8 +302,6 @@ function observationHref(
   return `/project/${projectId}/traces/${run.trace_run_id}?observation=${callId}`;
 }
 
-/** Sub-line for the reasoning row: the deepest single call, linked, shown
- *  only when that call holds a large share of the run's reasoning. */
 function maxReasoningSub(
   projectId: string,
   run: AgentTaskRunSummary | null | undefined,
@@ -342,7 +320,7 @@ function maxReasoningSub(
 }
 
 /** One metric row (cost or time) that drops into the SAME grid as the checks
- *  below — `[label · Run A cell · Run B cell]`. Sharing the grid means Run A's
+ *  below: `[label · Run A cell · Run B cell]`. Sharing the grid means Run A's
  *  cost bar aligns directly under Run A's check column, so the eye scans one
  *  column instead of two unrelated layouts.
  *
@@ -350,11 +328,11 @@ function maxReasoningSub(
  *  (`value / max(A,B)`), so the larger side fills its track and the smaller
  *  side's shorter bar is the visual difference. Because the two bars sit in
  *  aligned columns with identical track widths, comparing their fill lengths
- *  is a single vertical eye movement — no tick or axis needed.
+ *  is a single vertical eye movement, with no tick or axis needed.
  *
  *  Null value → muted empty bar + "—" (no data), distinct from a true zero
  *  (which on a per-row-scaled bar would misread as "free/instant"). Bars are
- *  neutral — a slower run might be doing more work, so "slower = red" would
+ *  neutral: a slower run might be doing more work, so "slower = red" would
  *  moralize wrongly. Length carries the signal; color stays out of it. */
 function MetricRow({
   label,
@@ -370,7 +348,7 @@ function MetricRow({
   rightValue: number | null;
   formatLeft: string;
   formatRight: string;
-  /** Optional muted sub-line under a side's bar — e.g. a jump-to-observation
+  /** Optional muted sub-line under a side's bar, e.g. a jump-to-observation
    *  link for the call behind a max metric (issue #309). */
   subLeft?: ReactNode;
   subRight?: ReactNode;
@@ -378,7 +356,6 @@ function MetricRow({
   const max = Math.max(leftValue ?? 0, rightValue ?? 0);
   return (
     <>
-      {/* Label cell — sits in the same track as check names. */}
       <div className="px-3 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
         {label}
       </div>
@@ -400,8 +377,6 @@ function MetricRow({
   );
 }
 
-/** One side of a metric row: a bar + the formatted value. Drops into the
- *  shared grid as a single cell. */
 function MetricSide({
   value,
   max,
@@ -449,22 +424,22 @@ function MetricSide({
   );
 }
 
-/** The per-side result text for the reveal panel — built from the RUN's
+/** The per-side result text for the reveal panel, built from the RUN's
  *  result, never the assertion's source text (which is already on the line).
  *
  *  Code vs judge differ in what's informative, so they branch (same isJudge
  *  condition as the runs page, task-run-detail-body.tsx:206):
  *
  *  - Code assertion: `received` is a scalar (e.g. `1`, `"ok"`, `false`). It's
- *    informative on BOTH pass and fail — "length < 2" with received `1` vs
+ *    informative on BOTH pass and fail: "length < 2" with received `1` vs
  *    `0` is a real difference even when both passed. So always surface it,
  *    with `expected` when it differs. This is the datum not visible on the
  *    source line, and the one that differs between runs.
  *  - Judge assertion: `received` is the SUBMISSION being graded (often a
- *    large blob), never a differing scalar — echoing it is a category error.
- *    On fail, the reasoning IS the result (the judge's explanation). On pass,
- *    the reasoning is typically a stub ("passed") with no real content, so
- *    don't manufacture detail — the ✓ already says it passed.
+ *    large blob), never a differing scalar, so echoing it is a category
+ *    error. On fail, the reasoning IS the result (the judge's explanation).
+ *    On pass, the reasoning is typically a stub ("passed") with no real
+ *    content, so don't manufacture detail; the ✓ already says it passed.
  *  - No result: undefined (handled as notEvaluated / "Not recorded" upstream). */
 function resultLabel(
   assertion: CheckAssertionResult | undefined,
@@ -474,8 +449,6 @@ function resultLabel(
 
   const isJudge = Boolean(assertion.judge) || assertion.evaluator_type === "llm";
 
-  // Code assertion: the received value is informative regardless of pass/fail.
-  // "length < 2" passing with received 1 vs 0 is a real difference worth seeing.
   if (!isJudge && assertion.received !== undefined) {
     const received = formatValue(assertion.received);
     const expected =
@@ -483,21 +456,15 @@ function resultLabel(
         ? assertion.expected
         : undefined;
     if (assertion.pass) {
-      // Passed: the value met the bar. Still show it — "received 1" is real
-      // information about how this run did, not just "passed".
       return expected
-        ? `${side} · passed — received "${received}" (expected ${expected})`
-        : `${side} · passed — received "${received}"`;
+        ? `${side} · passed, received "${received}" (expected ${expected})`
+        : `${side} · passed, received "${received}"`;
     }
     return expected
       ? `${side} · expected "${expected}", received "${received}"`
       : `${side} · received "${received}"`;
   }
 
-  // Judge assertion: on fail, the reasoning is the result. Same extraction as
-  // the runs page (task-run-detail-body.tsx:207) — try assertion.reasoning
-  // first, then fall back to the judge metadata, where the real explanation
-  // actually lives (the top-level field is usually a stub like "judge").
   if (isJudge && !assertion.pass) {
     const top = typeof assertion.reasoning === "string" ? assertion.reasoning.trim() : "";
     const reasoning =
@@ -507,12 +474,9 @@ function resultLabel(
       const firstLine = reasoning.split("\n")[0];
       return `${side} · ${firstLine.slice(0, 150)}`;
     }
-    return `${side} · Failed — no judge reasoning recorded`;
+    return `${side} · Failed: no judge reasoning recorded`;
   }
 
-  // Passed judge, or no received value on a code assertion: nothing
-  // informative to add beyond the verdict. Returns undefined so the panel
-  // shows the "Passed — no detail" empty state honestly.
   return undefined;
 }
 
@@ -543,13 +507,13 @@ function isStubReasoning(reasoning: string): boolean {
 }
 
 /** The panel that appears below the code when a gutter marker is clicked.
- *  Shows both runs' results for that assertion line, side by side — the
- *  comparison's whole purpose. The clicked side is highlighted so the reader
- *  knows which marker they opened from; both are shown because the value of
- *  the comparison is seeing them adjacent.
+ *  Shows both runs' results for that assertion line, side by side. The
+ *  clicked side is highlighted so the reader knows which marker they opened
+ *  from; both are shown because the value of the comparison is seeing them
+ *  adjacent.
  *
- *  Reuses `resultLabel` for the per-side text (same logic the old tooltip
- *  used): received value for code assertions, judge reasoning for judges. */
+ *  Reuses `resultLabel` for the per-side text: received value for code
+ *  assertions, judge reasoning for judges. */
 function RevealPanel({
   line,
   side,
@@ -599,7 +563,7 @@ function RevealPanel({
  *  clicked; both sides are always shown so the comparison reads at a glance.
  *
  *  Text sizing follows design.md: body ≥12px for readability, muted-foreground
- *  (not /50 — that's below the established gray hierarchy and too faint). */
+ *  (not /50, which is below the established gray hierarchy and too faint). */
 function RevealSide({
   label,
   active,
@@ -633,8 +597,8 @@ function RevealSide({
           {pass === undefined
             ? "Not recorded in this run."
             : pass
-              ? "Passed — no further detail recorded."
-              : "Failed — no detail recorded."}
+              ? "Passed, no further detail recorded."
+              : "Failed, no detail recorded."}
         </p>
       )}
     </div>
@@ -716,7 +680,6 @@ function fetchCheckPair({
   };
 }
 
-/** The pair from memory when both sides are already loaded, else null. */
 function peekCheckPair({
   taskId,
   leftId,
@@ -736,7 +699,6 @@ function peekCheckPair({
   return result.ok ? { left: result.left, right: result.right } : null;
 }
 
-/** Aligned checks for a differing task — lazily loaded on expand. */
 function CheckDiff({
   taskId,
   leftId,
@@ -775,8 +737,6 @@ function CheckDiff({
     evidenceLoaderRef.current = evidenceLoader;
   }, [evidenceLoader]);
 
-  // Aborts whichever load is currently in flight — the mount/input-change
-  // load from the effect, or a retry.
   const abortInFlightRef = useRef<(() => void) | null>(null);
 
   const load = useCallback(() => {
@@ -814,14 +774,14 @@ function CheckDiff({
   }, [load]);
 
   // Retry is a user event: flip to loading and re-run the fetch from the
-  // handler — one state update, no retry-counter state driving the effect.
+  // handler, one state update, no retry-counter state driving the effect.
   const handleRetry = useCallback(() => {
     setState({ status: "loading" });
     load();
   }, [load]);
 
-  // The pinned Task Definition is the authoritative source and — unlike
-  // the filesystem resolver — resolves wherever the task executed. Both sides are
+  // The pinned Task Definition is the authoritative source and, unlike
+  // the filesystem resolver, resolves wherever the task executed. Both sides are
   // offered because either run's revision renders the same source; two runs of one
   // task normally pin the same digest. Memoized so the per-check source effect
   // isn't re-fired by a fresh array identity on every render.
@@ -858,7 +818,6 @@ function CheckDiff({
   const leftChecks = left?.checks_json ?? [];
   const rightChecks = right?.checks_json ?? [];
 
-  // Union of check ids, ordered by the left run's order then right-only.
   const leftOrder = new Map(leftChecks.map((c, i) => [c.id, i]));
   const ids = Array.from(new Set([...leftChecks.map((c) => c.id), ...rightChecks.map((c) => c.id)]));
   ids.sort((a, b) => {
@@ -871,12 +830,10 @@ function CheckDiff({
   const rightModel = right?.primary_model ? shortModel(right.primary_model) : null;
   const leftLabel = leftModel ? `Run A · ${leftModel}` : "Run A";
   const rightLabel = rightModel ? `Run B · ${rightModel}` : "Run B";
-  // Commit SHA for source fetching — prefer the left run's, fall back to right.
+  // Commit SHA for source fetching; prefer the left run's, fall back to right.
   // The check definition should be the same across both runs of the same task.
   const commitSha = left?.task_source_commit_sha ?? right?.task_source_commit_sha ?? null;
 
-  // Run-level metrics shown as rows in the same grid as the checks (below the
-  // header, above the check rows). Null when a run didn't record the datum.
   const leftCost = left?.total_cost != null && left.total_cost > 0 ? left.total_cost : null;
   const rightCost = right?.total_cost != null && right.total_cost > 0 ? right.total_cost : null;
   const leftTime = runDurationMs(left?.started_at ?? null, left?.completed_at ?? null);
@@ -884,7 +841,7 @@ function CheckDiff({
   const leftTokens = left?.total_tokens != null && left.total_tokens > 0 ? left.total_tokens : null;
   const rightTokens = right?.total_tokens != null && right.total_tokens > 0 ? right.total_tokens : null;
   // Reasoning totals (issue #309): null is UNKNOWN (provider never reported
-  // the dimension) and stays null — distinct from a reported zero, which
+  // the dimension) and stays null, distinct from a reported zero, which
   // renders as "0 tok" with a hairline bar. Never collapsed to 0.
   const leftReasoning = left?.total_reasoning_tokens ?? null;
   const rightReasoning = right?.total_reasoning_tokens ?? null;
@@ -894,19 +851,14 @@ function CheckDiff({
     (leftTokens ?? rightTokens) != null ||
     (leftReasoning ?? rightReasoning) != null;
 
-  // The grid is the single container for header + metrics + checks. Columns
-  // are wide enough that cost/time values (e.g. "$0.0122") don't ellipsize —
-  // minmax(180px,1fr) per side reserves room for the value slot. When there
-  // are no checks but metrics exist, the grid still renders (header + metrics,
-  // then a "No checks recorded" row).
+  // minmax(180px,1fr) per side reserves room for the value slot, so cost/time
+  // values (e.g. "$0.0122") don't ellipsize.
   const hasContent = hasMetrics || ids.length > 0;
 
   return (
     <div className="border-t border-border/60 bg-muted/10 px-6 py-3">
       {hasContent ? (
         <div className="overflow-hidden rounded-md border border-border">
-          {/* Column headers name Run A / Run B explicitly so each cell reads
-              in its column. Model is shown as run-level context for the checks. */}
           <div className="grid grid-cols-[minmax(120px,1fr)_minmax(180px,1fr)_minmax(180px,1fr)] border-b border-border bg-card/60 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             <div className="px-3 py-1.5">Check</div>
             <div className="border-l border-border px-3 py-1.5">
@@ -937,11 +889,6 @@ function CheckDiff({
             </div>
           </div>
 
-          {/* Run-level metric rows (cost/time). Same grid as the checks →
-              Run A's cost bar aligns under Run A's check column. Skipped when
-              neither side recorded either metric. The shared per-row scale
-              means the larger side fills its bar; the shorter bar IS the
-              difference, no tick needed (the bars sit in aligned columns). */}
           {hasMetrics && (
             <div className="grid grid-cols-[minmax(120px,1fr)_minmax(180px,1fr)_minmax(180px,1fr)] border-b border-border bg-muted/20">
               {(leftCost != null || rightCost != null) && (
@@ -971,11 +918,11 @@ function CheckDiff({
                   formatRight={rightTokens != null ? formatTokenTotal(rightTokens) : "—"}
                 />
               )}
-              {/* Reasoning delta (issue #309): the point of the compare view —
-                  a reasoning-budget change shows up as a number. Row only
-                  appears when at least one side reported the dimension; the
-                  sub-line links to the deepest single call when that call
-                  dominates the run's reasoning. */}
+              {/* Reasoning delta (issue #309): a reasoning-budget change
+                  shows up as a number. Row only appears when at least one
+                  side reported the dimension; the sub-line links to the
+                  deepest single call when that call dominates the run's
+                  reasoning. */}
               {(leftReasoning != null || rightReasoning != null) && (
                 <MetricRow
                   label="reasoning"
@@ -1000,7 +947,7 @@ function CheckDiff({
               const rc = rightChecks.find((c) => c.id === id);
               const bothPresent = Boolean(lc && rc);
               const flipped = bothPresent && lc!.pass !== rc!.pass;
-              // A check is inspectable whenever it exists on at least one side —
+              // A check is inspectable whenever it exists on at least one side,
               // not only when both sides flipped. A check present in only one run
               // is itself a difference worth expanding (to see its reasoning).
               const inspectable = Boolean(lc || rc);
@@ -1029,13 +976,13 @@ function CheckDiff({
 }
 
 /** One check row: name + Run A ✓/✗ + Run B ✓/✗. Expanding an inspectable
- *  check shows its source with both runs' assertion results inline — where,
+ *  check shows its source with both runs' assertion results inline: where,
  *  within the check, the two runs diverged. A check is inspectable whenever
- *  it exists on at least one side — a symmetric flip, but also a check
- *  present in only one run (itself a difference). Non-inspectable checks
- *  (neither side has the check) don't render a row at all. The judge's prose
- *  reasoning is deliberately not shown here; it lives on the individual run
- *  page, one click away via the Run A / Run B header links. */
+ *  it exists on at least one side, not only on a symmetric flip but also a
+ *  check present in only one run (itself a difference). Non-inspectable
+ *  checks (neither side has the check) don't render a row at all. The
+ *  judge's prose reasoning is deliberately not shown here; it lives on the
+ *  individual run page, one click away via the Run A / Run B header links. */
 function CheckRow({
   id,
   left,
@@ -1089,11 +1036,6 @@ function CheckRow({
         </div>
       </div>
 
-      {/* The check's source with both runs' assertion results inline — the one
-          thing the comparison can show that the individual run page can't:
-          where, within the check, Run A and Run B diverged. The judge's prose
-          reasoning is intentionally absent here; it lives on the run page (the
-          Run A / Run B header links), one click away. */}
       {inspectable && open && ref && (
         <div className="border-t border-border/40 px-3 py-2">
           <CheckSourceWithResults
@@ -1112,29 +1054,17 @@ function CheckRow({
   );
 }
 
-/** The verdict explanation for one side — *why* it passed or failed. This is
- *  the single thing the comparison shows that the individual run page can't:
- *  the two reasonings side by side. Everything else (criterion, test source,
- *  judge prompt/response) lives on the individual run page, reached via the
- *  Run A / Run B header links — no duplication here.
- *
- *  ── Removed (option C): the prose reasoning panel and the inline first-line
- *  of reasoning in the collapsed row. In a comparison the tall, multi-judge
- *  reasoning was noise — the source view below shows where runs diverge; the
- *  judge's "why" lives on the run page. The reasoning-picker helpers
- *  (checkReasoning / isGenericStub) were deleted with it. Reach it via the
- *  Run A / Run B links in the check header. */
-
 /** The check's source code with both runs' assertion results shown as gutter
- *  markers on the lines they test. The code IS the structure — no separate
+ *  markers on the lines they test. The code IS the structure: no separate
  *  table, no floating source block. Each assertion line carries Run A's and
  *  Run B's ✓/✗ marker in a dedicated gutter, so you see WHERE each run
  *  passed/failed within the check, right on the code that defines it.
  *
- *  The full source is shown — the reader already chose to inspect this check
- *  by expanding its row, so no second preview-then-expand step. Clicking a
- *  marker reveals that run's result (received value / judge reasoning) in a
- *  panel below the code. Fetches automatically when the check row is opened. */
+ *  The full source is shown, because the reader already chose to inspect
+ *  this check by expanding its row, so there is no second
+ *  preview-then-expand step. Clicking a marker reveals that run's result
+ *  (received value / judge reasoning) in a panel below the code. Fetches
+ *  automatically when the check row is opened. */
 function CheckSourceWithResults({
   checkId,
   sourceFile,
@@ -1156,13 +1086,13 @@ function CheckSourceWithResults({
 }) {
   // Which assertion's result the reader clicked to reveal (line + side). Null
   // when nothing is revealed. Lives in this component (not the viewer) so the
-  // viewer stays a controlled component — it reports clicks, the parent owns
+  // viewer stays a controlled component: it reports clicks, the parent owns
   // the reveal state and renders the panel. Cleared implicitly when the check
   // row collapses (this component unmounts).
   const [revealed, setRevealed] = useState<{ line: number; side: "A" | "B" } | null>(null);
   // Issue #178: generated-title checks (table-driven evals) never appear
   // literally in the source, so `{ id }` alone extracted nothing and the view
-  // fell back to the whole file — with the gutter markers landing on an
+  // fell back to the whole file, with the gutter markers landing on an
   // unrelated check's lines. Both runs' results carry the anchor; prefer
   // whichever side recorded one.
   // Keyed by the anchor lines, so a refresh that brings new check objects
@@ -1245,10 +1175,9 @@ function CheckSourceWithResults({
     };
   }, [sourceKey, taskId, projectId, sourceFile, commitSha, definitionRefs, blockQuery, viewOf]);
 
-  // Locate each run's assertions onto lines of the source block. Builds a
-  // map: line number → { left?, right? } assertion results. Empty when the
-  // source isn't loaded yet — hooks must run unconditionally (Rules of Hooks),
-  // so the early returns for loading/error come AFTER all useMemo calls.
+  // Line number → { left?, right? } assertion results. Empty when the source
+  // isn't loaded yet; hooks must run unconditionally (Rules of Hooks), so the
+  // early returns for loading/error come AFTER all useMemo calls.
   const lineMap = useMemo(() => {
     if (state.status !== "ready") return new Map<number, { left?: CheckAssertionResult; right?: CheckAssertionResult }>();
     const map = new Map<number, { left?: CheckAssertionResult; right?: CheckAssertionResult }>();
@@ -1269,7 +1198,7 @@ function CheckSourceWithResults({
     place(leftCheck, "left");
     place(rightCheck, "right");
 
-    // Also detect `t.<method>(` lines that have NO recorded assertion — these
+    // Also detect `t.<method>(` lines that have NO recorded assertion; these
     // are assertions that never ran (e.g. the check short-circuited after an
     // earlier failure). Without this, those lines look broken/empty. We mark
     // them so the viewer can show a muted "not evaluated" indicator.
@@ -1286,11 +1215,7 @@ function CheckSourceWithResults({
 
   // Convert the line map into the array shape the CodeMirror viewer wants.
   // `notEvaluated` is true when the line has a `t.*` call but no recorded
-  // result on either side — the assertion exists but never ran (short-circuit).
-  // Per-side labels are built from each RUN's RESULT (received value), not
-  // the assertion's `expected` text — the source line already shows `expected`,
-  // so a tooltip repeating it is useless. The received value is the one datum
-  // not visible on the line, and it's what differs between runs.
+  // result on either side; the assertion exists but never ran (short-circuit).
   const lineAssertions: LineAssertion[] = useMemo(() => {
     const result: LineAssertion[] = [];
     for (const [line, entry] of lineMap) {
@@ -1307,7 +1232,7 @@ function CheckSourceWithResults({
     return result;
   }, [lineMap]);
 
-  // Early returns come AFTER all hooks — see Rules of Hooks.
+  // Early returns come AFTER all hooks; see Rules of Hooks.
   if (state.status === "loading") {
     return <p className="text-[11px] text-muted-foreground/50">Loading check source…</p>;
   }
@@ -1315,11 +1240,6 @@ function CheckSourceWithResults({
     return <p className="text-[11px] text-muted-foreground/50">{state.message}</p>;
   }
 
-  // The reader already chose to inspect this check by expanding its row — no
-  // second preview-then-expand step. Show the full source with all markers.
-  // (Previously this clipped to a 7-line preview with a fade-to-expand, which
-  // was friction inherited from when the source shared space with a prose
-  // reasoning panel. With the panel gone, the preview is just an extra click.)
   return (
     <div className="rounded border border-border">
       <CompareCodeViewer

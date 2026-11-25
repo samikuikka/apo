@@ -18,7 +18,6 @@ import { errorMessageTextClass, runStatusLabel } from "@/lib/run-verdict";
 
 import { formatDuration, formatRelative } from "./runs-utils";
 
-/** A single task run nested under its parent batch run row. */
 export function InlineTaskRunRow({
   run,
   projectId,
@@ -43,7 +42,7 @@ export function InlineTaskRunRow({
   const isInactive = status === "pending" || status === "error";
   const passRate = run.total_checks > 0 ? Math.round((run.passed_checks / run.total_checks) * 100) : 0;
   // Scope loop: the Runs page's URL cohort travels into run detail
-  // (single-model selections only — the drill-down vocabulary has no
+  // (single-model selections only; the drill-down vocabulary has no
   // comma-joined multi-model form).
   const cohort = parseDrilldownCohort(Object.fromEntries(useSearchParams().entries()));
   const runHref = hrefWithRunCohort(`/project/${projectId}/runs/task/${run.id}`, cohort);
@@ -124,7 +123,7 @@ export function InlineTaskRunRow({
               {(run.errored_checks ?? 0) > 0 && (
                 <span
                   className="text-warning"
-                  title="Checks that produced no verdict (judge error) — unknown, not failed"
+                  title="Checks that produced no verdict (judge error), so pass or fail is unknown"
                 >
                   {" "}{run.errored_checks}!
                 </span>

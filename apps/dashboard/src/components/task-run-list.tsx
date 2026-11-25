@@ -48,7 +48,6 @@ function TaskRunPassBar({ value, muted }: { value: number; muted?: boolean }) {
   );
 }
 
-/** Judge counts in the three states (running / no verdict yet / final). */
 function JudgesCounts({ run }: { run: AgentTaskRunSummary }) {
   const isRunning = run.status === "running";
   const isInactive = run.status === "pending" || run.status === "error";
@@ -113,12 +112,9 @@ export function TaskRunRow({
 }: {
   run: AgentTaskRunSummary;
   projectId: string;
-  /** Optional compare toggle (task page). When omitted, no compare button renders. */
   compareSelected?: boolean;
   compareDisabled?: boolean;
   onToggleCompare?: () => void;
-  /** Optional delete action (batch detail / task history). When either
-   * prop is omitted, no delete button renders. */
   canDelete?: boolean;
   onDelete?: () => void;
   /** Show the run's environment and labels (lists spanning several batches). */
@@ -203,7 +199,6 @@ export function TaskRunRow({
         <HostLabelsCell labels={providerLabels(run.model_providers)} />
       </TableCell>
 
-      {/* Execution: model · effort. Full qualified name on hover. */}
       <TableCell className="hidden max-w-[190px] xl:table-cell" style={{ width: COL.execution }}>
         <span
           className="block truncate font-mono text-[12px] tabular-nums text-muted-foreground"
